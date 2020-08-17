@@ -23,6 +23,13 @@
 ```
 WARNING- Work In Progress
 
+
+## Installing on an airgap network
+1) (Skip if you aren't using SELINUX) Install the `selinux` dependencies. `yum localinstall -y ./artifacts/yum/*`.
+2)  
+
+
+
 ## Charts to include
 * Rancher
 * Registry

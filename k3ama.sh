@@ -17,7 +17,6 @@
 # k3ama - airgap migration assistant
 
 LOCAL_IMAGES_FILEPATH=/var/lib/rancher/k3s/agent/images
-
 ADDL_IMAGES=./artifacts/images
 
 copy_images(){
@@ -30,7 +29,7 @@ install_k3s(){
   ## Note: currently requires root
   mkdir -p ${LOCAL_IMAGES_FILEPATH}
   echo "copying ${AIRGAP_IMAGES_TAR} -> ${LOCAL_IMAGES_FILEPATH}"
-
+  cp artifacts/k3s-airgap-images-amd64.tar /var/lib/rancher/k3s/agent/images
   # copy over the k3s binary
   cp ./artifacts/k3s /usr/local/bin/k3s
   chmod +x /usr/local/bin/k3s
@@ -40,7 +39,7 @@ install_k3s(){
 
 uninstall_k3s(){
   if [ -f "/usr/local/bin/k3s-uninstall.sh" ]; then
-    ./usr/local/bin/k3s-uninstall.sh
+    /usr/local/bin/k3s-uninstall.sh
   else
     echo "k3s is not installed"
   fi
@@ -61,8 +60,37 @@ usage () {
     echo "  [-h|--help] Usage message"
 }
 
+check_firewalld(){
+  if pgrep -x "firewalld" >/dev/null
+  then
+      echo "[FATAL] disable firewalld first"
+  fi
+}
+
+check_selinux(){
+  # yes i know we want selinux, but it's a pain in the ass right now and i will come back to it
+  SELINUXSTATUS=$(getenforce)
+  if [ "$SELINUXSTATUS" == "Permissive" ]; then
+      echo "[FATAL] disable selinux"
+      exit 1
+  else
+      echo "SELINUX disabled. continuing"
+  fi
+}
+
+
+copy_yaml_manifests(){
+  cp -r ./yaml/* /var/lib/rancher/k3s/server/manifests
+}
 
 ## TODO: Make this interactive with case statements
 # debug
+uninstall_k3s
+check_firewalld
+#check_selinux
 install_k3s ./artifacts/k3s-airgap-images-amd64.tar
 copy_images
+copy_yaml_manifests
+
+
+/usr/local/bin/k3s kubectl get pods -A -w
