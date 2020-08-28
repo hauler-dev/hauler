@@ -45,6 +45,12 @@ uninstall_k3s(){
   fi
 }
 
+check_deps(){
+  #TODO
+  echo "TODO: check to ensure that the dependencies are in place."
+  #rpm -qa | grep k3s-selinux
+}
+
 #gather_selinux_rpms(){
 #  if ! yum list installed yum-utils >/dev/null 2>&1; then
 #  yum install -y yum-utils
@@ -78,14 +84,30 @@ check_selinux(){
   fi
 }
 
-
 copy_yaml_manifests(){
   cp -r ./yaml/* /var/lib/rancher/k3s/server/manifests
 }
 
+copy_local_bins(){
+  if [ -f "./artifacts/k9s" ]; then
+    cp -v ./artifacts/k9s /usr/local/bin/
+  fi
+}
+
+copy_local_kubectl(){
+  echo "TODO"
+}
+
+iptable_block_docker_io() {
+  # iptables -A OUTPUT -p tcp -m string --string "docker.io" --algo kmp -j REJECT
+  echo "iptable_block_docker_io() disabled"
+}
 ## TODO: Make this interactive with case statements
-# debug
+
 uninstall_k3s
+copy_local_bins
+iptable_block_docker_io
+check_deps
 check_firewalld
 #check_selinux
 install_k3s ./artifacts/k3s-airgap-images-amd64.tar
@@ -93,4 +115,14 @@ copy_images
 copy_yaml_manifests
 
 
+
+
 /usr/local/bin/k3s kubectl get pods -A -w
+
+
+#######
+# Notes:
+# - workaround: busybox is not included in the main images.txt list and therefor the pvcs cannot create.
+# - VAGRANT FAIL: INFO[0000] Preparing data dir /var/lib/rancher/k3s/data ... for some reason local-path provisioner cannot create vols in vagrant
+# - bug: RunContainerError results you try to reinstall k3s on top of an old instance WHEN RUNNING SELINUX
+#######
