@@ -112,8 +112,6 @@ func (p *Packager) Run() error {
 	tarWriter := tar.NewWriter(gzipWriter)
 	defer tarWriter.Close()
 
-	// tarWriter := tar.NewWriter(p.dst)
-
 	switch p.k8sDistro {
 	case distroK3s:
 		err = packageK3sArtifacts(p, tarWriter, p.k8sVersion)
@@ -134,6 +132,8 @@ type Artifact struct {
 	Name   string
 }
 
+// GetName returns the explicitly set name of the artifact or the base path
+// segment as a default.
 func (a Artifact) GetName() string {
 	if a.Name == "" {
 		return path.Base(a.Source)
@@ -492,11 +492,13 @@ func (p *Packager) PackageImageList(dst io.Writer, src io.Reader) error {
 
 const (
 	k3sDownloadFmtStr = `https://github.com/rancher/k3s/releases/download/%s/%s`
+	k3sRawFmtStr      = `https://raw.githubusercontent.com/rancher/k3s/%s/%s`
 )
 
 func packageK3sArtifacts(p *Packager, dst *tar.Writer, version string) error {
 	binaries := []Artifact{
 		{Source: fmt.Sprintf(k3sDownloadFmtStr, url.QueryEscape(version), "k3s")},
+		{Source: fmt.Sprintf(k3sRawFmtStr, url.QueryEscape(version), "install.sh")},
 	}
 	imageArchives := []Artifact{
 		{Source: fmt.Sprintf(k3sDownloadFmtStr, url.QueryEscape(version), "k3s-airgap-images-amd64.tar")},
