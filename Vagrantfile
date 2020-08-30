@@ -17,6 +17,6 @@ Vagrant.configure("2") do |config|
   
   config.vm.provision "shell",
     run: "always",
-    inline: "/opt/k3ama/k3ama-vagrant-airgap.sh airgap"
+    inline: "/opt/k3ama/vagrant-scripts/airgap.sh airgap"
   end
 end

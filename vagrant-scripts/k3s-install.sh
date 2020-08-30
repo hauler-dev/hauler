@@ -1,3 +1,9 @@
+#!/bin/sh
+
+################################################################################
+# RUN IN VAGRANT MACHINE
+# Install a default, bare k3s cluster into the Vagrant machine
+################################################################################
 
 if [ -f "/usr/local/bin/k3s-uninstall.sh" ]; then
   /usr/local/bin/k3s-uninstall.sh
