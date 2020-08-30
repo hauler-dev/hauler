@@ -8,8 +8,12 @@ Vagrant.configure("2") do |config|
   config.vm.box = "centos/7"
   config.vm.hostname = "airgap"
   config.vm.network "private_network", type: "dhcp"
+  config.vm.provision "shell",
+    run: "always",
+    inline: "ip route delete default"
+
   config.vm.synced_folder ".", "/opt/k3ama"
-  
+
   config.vm.provider "virtualbox" do |vb|
     vb.memory = "1024"
     vb.cpus = "2"
