@@ -53,3 +53,29 @@ WARNING- Work In Progress
 * k3wh - k3 wormhole
 * k3cia - Comms insensensitive Assistant
 * k3diode
+
+## Go CLI
+
+The initial MVP for a k3ama CLI used to streamline the packaging and deploying processes is in the
+`cmd/` and `pkg/` folders, along with `go.mod` and `go.sum`. Currently only a `package` subcommand
+is supported, which generates a `.tar.gz` archive used in the future `deploy` subcommand.
+
+### Build
+
+To build k3ama, the Go CLI v1.14 or higher is required. See <https://golang.org/dl/> for downloads
+and see <https://golang.org/doc/install> for installation instructions.
+
+To build k3ama for your local machine (usually for the `package` step), run the following:
+
+```bash
+mkdir bin
+go build -o bin ./cmd/...
+```
+
+To build k3ama for linux amd64 (required for the `deploy` step in an air-gapped environment), run
+the following:
+
+```bash
+mkdir bin-linux-amd64
+GOOS=linux GOARCH=amd64 go build -o bin-linux-amd64 ./cmd/...
+```
