@@ -1,3 +1,4 @@
 artifacts
+local-artifacts
 airgap-scp.sh
 .vagrant
