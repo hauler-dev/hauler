@@ -64,24 +64,24 @@ k3ama) into this machine.
 ### First-time setup
 
 1. Install vagrant, if needed: <https://www.vagrantup.com/downloads>
-1. Install `vagrant-vbguest` plugin, as noted in the Vagrantfile:
-```bash
-vagrant plugin install vagrant-vbguest
-```
-1. Deploy Vagrant machine:
-```bash
-vagrant up
-```
-1. Access the Vagrant machine via SSH:
-```bash
-vagrant ssh
-```
-1. Run the prep script inside of the Vagrant machine:
-```bash
-sudo /opt/k3ama/vagrant-scripts/prep-all.sh
-```
-> This script temporarily enables internet access from within the VM to allow downloading all
-> dependencies. Even so, the air-gapped network configuration IS restored before completion.
+2. Install `vagrant-vbguest` plugin, as noted in the Vagrantfile:  
+  ```bash
+  vagrant plugin install vagrant-vbguest
+  ```
+3. Deploy Vagrant machine:
+  ```bash
+  vagrant up
+  ```
+4. Access the Vagrant machine via SSH:
+  ```bash
+  vagrant ssh
+  ```
+5. Run the prep script inside of the Vagrant machine:
+  ```bash
+  sudo /opt/k3ama/vagrant-scripts/prep-all.sh
+  ```
+  > This script temporarily enables internet access from within the VM to allow downloading all
+  > dependencies. Even so, the air-gapped network configuration IS restored before completion.
 
 All dependencies for all `vagrant-scripts/*-install.sh` scripts are now downloaded to the local
 repository under `local-artifacts`.
@@ -89,13 +89,13 @@ repository under `local-artifacts`.
 ### Installing k3s manually
 
 1. Access the Vagrant machine via SSH:
-```bash
-vagrant ssh
-```
-1. Run the k3s install script inside of the Vagrant machine:
-```bash
-sudo /opt/k3ama/vagrant-scripts/k3s-install.sh
-```
+  ```bash
+  vagrant ssh
+  ```
+2. Run the k3s install script inside of the Vagrant machine:
+  ```bash
+  sudo /opt/k3ama/vagrant-scripts/k3s-install.sh
+  ```
 
 ## Go CLI
 
