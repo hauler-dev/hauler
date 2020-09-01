@@ -6,33 +6,35 @@
 # to the folder shared with the host machine.
 ################################################################################
 
-BASE_SHARED_DIR=/opt/k3ama
+BASE_SHARED_DIR="/opt/k3ama"
 VAGRANT_SCRIPTS_DIR="${BASE_SHARED_DIR}/vagrant-scripts"
+ARTIFACTS_DIR="${BASE_SHARED_DIR}/local-artifacts/k3s"
 
-K3S_VERSION='v1.18.8%2Bk3s1'
+K3S_VERSION='v1.18.8+k3s1'
+K3S_VERSION_URL='v1.18.8%2Bk3s1'
 
-ADDL_IMAGES="${BASE_SHARED_DIR}/local-artifacts/images"
-LOCAL_BIN="${BASE_SHARED_DIR}/local-artifacts/bin"
-LOCAL_RPM="${BASE_SHARED_DIR}/local-artifacts/rpm"
+LOCAL_IMAGES="${ARTIFACTS_DIR}/images"
+LOCAL_BIN="${ARTIFACTS_DIR}/bin"
+LOCAL_RPM="${ARTIFACTS_DIR}/rpm"
 
-mkdir -p ${ADDL_IMAGES}
+mkdir -p ${LOCAL_IMAGES}
 mkdir -p ${LOCAL_BIN}
+mkdir -p ${LOCAL_RPM}
 
 # temporarily allow internet access
 ${VAGRANT_SCRIPTS_DIR}/airgap.sh internet
 
-pushd ${ADDL_IMAGES}
+pushd ${LOCAL_IMAGES}
 
-curl -LO https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-amd64.tar
+curl -LO https://github.com/rancher/k3s/releases/download/${K3S_VERSION_URL}/k3s-airgap-images-amd64.tar
 
 popd
 
 pushd ${LOCAL_BIN}
 
-curl -LO https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/k3s
-chmod +x k3s
-curl -L https://raw.githubusercontent.com/rancher/k3s/${K3S_VERSION}/install.sh -o k3s-install.sh
-chmod +x k3s-install.sh
+curl -LO https://github.com/rancher/k3s/releases/download/${K3S_VERSION_URL}/k3s
+curl -L https://raw.githubusercontent.com/rancher/k3s/${K3S_VERSION_URL}/install.sh -o k3s-install.sh
+chmod +x ./*
 
 popd
 
