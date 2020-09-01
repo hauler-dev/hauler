@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder ".", "/opt/k3ama"
 
   config.vm.provider "virtualbox" do |vb|
-    vb.memory = "1024"
+    vb.memory = "2048"
     vb.cpus = "2"
   
   config.vm.provision "shell",
