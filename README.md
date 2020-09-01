@@ -68,15 +68,15 @@ k3ama) into this machine.
   ```bash
   vagrant plugin install vagrant-vbguest
   ```
-3. Deploy Vagrant machine:
+3. Deploy Vagrant machine, disabling SELinux:
   ```bash
-  vagrant up
+  SELINUX=Disabled vagrant up
   ```
 4. Access the Vagrant machine via SSH:
   ```bash
   vagrant ssh
   ```
-5. Run the prep script inside of the Vagrant machine:
+5. Run all prep scripts inside of the Vagrant machine:
   ```bash
   sudo /opt/k3ama/vagrant-scripts/prep-all.sh
   ```
@@ -95,6 +95,17 @@ repository under `local-artifacts`.
 2. Run the k3s install script inside of the Vagrant machine:
   ```bash
   sudo /opt/k3ama/vagrant-scripts/k3s-install.sh
+  ```
+
+### Installing RKE2 manually
+
+1. Access the Vagrant machine via SSH:
+  ```bash
+  vagrant ssh
+  ```
+2. Run the RKE2 install script inside of the Vagrant machine:
+  ```bash
+  sudo /opt/k3ama/vagrant-scripts/rke2-install.sh
   ```
 
 ## Go CLI
