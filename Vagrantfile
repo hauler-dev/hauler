@@ -15,7 +15,7 @@ Vagrant.configure("2") do |config|
     vb.memory = "2048"
     vb.cpus = "2"
   
-  config.vm.provision "airgap", run: "always",
+  config.vm.provision "airgap", type: "shell", run: "always",
     inline: "/opt/k3ama/vagrant-scripts/airgap.sh airgap"
   end
 
