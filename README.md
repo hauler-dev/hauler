@@ -1,10 +1,10 @@
-# k3ama - Air-gap Migration Assistant (working name)
+# Hauler - Kubernetes Air Gap Migration
 ```bash
-#  _    _____   _    __  __    _
-# | | _|___ /  / \  |  \/  |  / \
-# | |/ / |_ \ / _ \ | |\/| | / _ \
-# |   < ___) / ___ \| |  | |/ ___ \
-# |_|\_\____/_/   \_\_|  |_/_/   \_\ k3s- Air-gap Migration Assistant
+#  _                 _           
+# | |__   __ _ _   _| | ___ _ __ 
+# | '_ \ / _` | | | | |/ _ \ '__|
+# | | | | (_| | |_| | |  __/ |   
+# |_| |_|\__,_|\__,_|_|\___|_| 
 #
 #                ,        ,  _______________________________
 #    ,-----------|'------'|  |                             |
@@ -59,7 +59,7 @@ WARNING- Work In Progress
 A Vagrantfile is provided to allow easy provisioning of a local air-gapped CentOS environment. Some
 artifacts need to be collected from the internet, however; below are the steps required for
 successfully provisioning this machine, downloading all dependencies, and installing k3s (without
-k3ama) into this machine.
+hauler) into this machine.
 
 ### First-time setup
 
@@ -110,23 +110,23 @@ repository under `local-artifacts`.
 
 ## Go CLI
 
-The initial MVP for a k3ama CLI used to streamline the packaging and deploying processes is in the
+The initial MVP for a hauler CLI used to streamline the packaging and deploying processes is in the
 `cmd/` and `pkg/` folders, along with `go.mod` and `go.sum`. Currently only a `package` subcommand
 is supported, which generates a `.tar.gz` archive used in the future `deploy` subcommand.
 
 ### Build
 
-To build k3ama, the Go CLI v1.14 or higher is required. See <https://golang.org/dl/> for downloads
+To build hauler, the Go CLI v1.14 or higher is required. See <https://golang.org/dl/> for downloads
 and see <https://golang.org/doc/install> for installation instructions.
 
-To build k3ama for your local machine (usually for the `package` step), run the following:
+To build hauler for your local machine (usually for the `package` step), run the following:
 
 ```bash
 mkdir bin
 go build -o bin ./cmd/...
 ```
 
-To build k3ama for linux amd64 (required for the `deploy` step in an air-gapped environment), run
+To build hauler for linux amd64 (required for the `deploy` step in an air-gapped environment), run
 the following:
 
 ```bash

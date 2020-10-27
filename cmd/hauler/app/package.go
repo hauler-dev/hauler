@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/rancherfederal/k3ama/pkg/packager"
+	"github.com/rancherfederal/hauler/pkg/packager"
 
 	"github.com/spf13/cobra"
 )
@@ -31,7 +31,10 @@ Container images, git repositories, and more, packaged and ready to be served wi
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.OutputFileName, "out-file", "k3ama-package.tar.gz", "specify the package's output location; - writes to standard out")
+	cmd.Flags().StringVar(
+		&opts.OutputFileName, "out-file", "hauler-package.tar.gz",
+		"specify the package's output location; '-' writes to standard out",
+		)
 
 	return cmd
 }

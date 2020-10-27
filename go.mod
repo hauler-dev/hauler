@@ -1,4 +1,4 @@
-module github.com/rancherfederal/k3ama
+module github.com/rancherfederal/hauler
 
 go 1.14
 

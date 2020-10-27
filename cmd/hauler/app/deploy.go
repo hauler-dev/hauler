@@ -8,10 +8,10 @@ func NewDeployCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "deploy all dependencies from a generated package",
-		Long: `deploy a k3s cluster serving all dependencies in a generated package.
+		Long: `deploy all dependencies in a generated package.
 
-Given the package archive generated from package, deploy the k3s cluster used to serve all packaged
-dependencies.`,
+Given the package archive generated from the package command, deploy all needed
+components to serve all packaged dependencies.`,
 	}
 
 	return cmd

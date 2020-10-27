@@ -37,11 +37,15 @@ cp ${ARTIFACT_DIR}/images/* ${LOCAL_IMAGES_FILEPATH}
 
 if [ -n "${LOCAL_RKE2_BIN}" ] && [ -f "${ARTIFACT_DIR}/bin/${LOCAL_RKE2_BIN}" ] ; then
   echo "Use "${ARTIFACT_DIR}/bin/${LOCAL_RKE2_BIN}" for rke2 binary"
+
   INSTALL_RKE2_SKIP_START=true \
     RKE2_RUNTIME_IMAGE="rancher/rke2-runtime:${RKE2_VERSION_DOCKER}" \
     ${ARTIFACT_DIR}/bin/rke2-installer.run
+
   rm -f /usr/local/bin/rke2
+
   cp "${ARTIFACT_DIR}/bin/${LOCAL_RKE2_BIN}" /usr/local/bin/rke2
+
   systemctl start rke2
 else
   ${ARTIFACT_DIR}/bin/rke2-installer.run
