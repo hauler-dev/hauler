@@ -14,99 +14,32 @@
 #    |  ||        |  ||      |                             |
 #    \__|'        \__|'      |_____________________________|
 #
-# |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
+# __________________________________________________________
+# |                                                        |
 # |________________________________________________________|
-#                                                          |
-# |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
+#
+# __________________________________________________________
+# |                                                        |
 # |________________________________________________________|
 
 ```
-WARNING- Work In Progress
 
-## Prerequisites
-* CentOS 7
-* User with root/sudo privileges
-* 
-
-## Installing on an airgap network
-1) (Skip if you aren't using SELINUX) Install the `selinux` dependencies. `yum localinstall -y ./artifacts/yum/*`.
-2) For some reason, centos doesn't add `/usr/local/bin` to the path. Add it with `echo 'export PATH=${PATH}:/usr/local/bin' >> ~/.bashrc`
-3) 
+## WARNING - Work In Progress
 
 
+## Purpose: collect, transfer, and self-host cloud-native artifacts
 
-## Charts to include
-* Rancher
-* Registry
-* Minio
-* Longhorn
-* git-http-backend
-* argo
+Kubernetes-focused software usually relies on CLI binaries, container images, helm charts, and more
+for installation. Standing up tools for serving these artifacts, collecting the dependencies, and
+mirroring them into the self-hosting solutions is usually a manual process with minimal automation. 
 
-## TODO
-* Write the thing
-* Include Vagrantfile for testing
+Hauler aims to fill this gap by standardizing low-level components of this stack and automating the
+collection and transfer of all artifacts.
 
-### Other possible names
-* k3vac
-* k3ziplock
-* k3wh - k3 wormhole
-* k3cia - Comms insensensitive Assistant
-* k3diode
+## Additional Details
 
-## Vagrant machine
-
-A Vagrantfile is provided to allow easy provisioning of a local air-gapped CentOS environment. Some
-artifacts need to be collected from the internet, however; below are the steps required for
-successfully provisioning this machine, downloading all dependencies, and installing k3s (without
-hauler) into this machine.
-
-### First-time setup
-
-1. Install vagrant, if needed: <https://www.vagrantup.com/downloads>
-2. Install `vagrant-vbguest` plugin, as noted in the Vagrantfile:  
-  ```bash
-  vagrant plugin install vagrant-vbguest
-  ```
-3. Deploy Vagrant machine, disabling SELinux:
-  ```bash
-  SELINUX=Disabled vagrant up
-  ```
-4. Access the Vagrant machine via SSH:
-  ```bash
-  vagrant ssh
-  ```
-5. Run all prep scripts inside of the Vagrant machine:
-  ```bash
-  sudo /opt/k3ama/vagrant-scripts/prep-all.sh
-  ```
-  > This script temporarily enables internet access from within the VM to allow downloading all
-  > dependencies. Even so, the air-gapped network configuration IS restored before completion.
-
-All dependencies for all `vagrant-scripts/*-install.sh` scripts are now downloaded to the local
-repository under `local-artifacts`.
-
-### Installing k3s manually
-
-1. Access the Vagrant machine via SSH:
-  ```bash
-  vagrant ssh
-  ```
-2. Run the k3s install script inside of the Vagrant machine:
-  ```bash
-  sudo /opt/k3ama/vagrant-scripts/k3s-install.sh
-  ```
-
-### Installing RKE2 manually
-
-1. Access the Vagrant machine via SSH:
-  ```bash
-  vagrant ssh
-  ```
-2. Run the RKE2 install script inside of the Vagrant machine:
-  ```bash
-  sudo /opt/k3ama/vagrant-scripts/rke2-install.sh
-  ```
+- [Roadmap](./ROADMAP.md)
+- [Vagrant](./VAGRANT.md)
 
 ## Go CLI
 
