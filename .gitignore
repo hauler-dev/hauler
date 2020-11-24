@@ -1,4 +1,17 @@
+
+# Vagrant
+.vagrant
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# old, ad-hoc ignores
 artifacts
 local-artifacts
 airgap-scp.sh
-.vagrant
