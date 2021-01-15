@@ -3,7 +3,7 @@ set -x
 
 if [ "$#" -ne 1 ] || ( [ "$1" != "internet" ] && [ "$1" != "airgap" ] ); then
   echo \
-"Enable or disable internet access in k3ama's CentOS Vagrant machine.
+"Enable or disable internet access in hauler's CentOS Vagrant machine.
 
 Usage: $0 internet
        $0 airgap" >&2

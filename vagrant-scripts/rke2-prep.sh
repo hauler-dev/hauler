@@ -6,7 +6,7 @@
 # to the folder shared with the host machine.
 ################################################################################
 
-BASE_SHARED_DIR="/opt/k3ama"
+BASE_SHARED_DIR="/opt/hauler"
 VAGRANT_SCRIPTS_DIR="${BASE_SHARED_DIR}/vagrant-scripts"
 ARTIFACTS_DIR="${BASE_SHARED_DIR}/local-artifacts/rke2"
 

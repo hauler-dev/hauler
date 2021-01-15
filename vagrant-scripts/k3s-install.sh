@@ -25,7 +25,7 @@ else
 fi
 
 LOCAL_IMAGES_FILEPATH=/var/lib/rancher/k3s/agent/images
-ARTIFACT_DIR=/opt/k3ama/local-artifacts/k3s
+ARTIFACT_DIR=/opt/hauler/local-artifacts/k3s
 
 mkdir -p ${LOCAL_IMAGES_FILEPATH}
 

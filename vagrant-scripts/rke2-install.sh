@@ -5,7 +5,7 @@
 # Install a default, bare rke2 cluster into the Vagrant machine
 ################################################################################
 
-BASE_SHARED_DIR="/opt/k3ama"
+BASE_SHARED_DIR="/opt/hauler"
 VAGRANT_SCRIPTS_DIR="${BASE_SHARED_DIR}/vagrant-scripts"
 
 RKE2_VERSION_DOCKER='v1.18.4-beta16-rke2'
