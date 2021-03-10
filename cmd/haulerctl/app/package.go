@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +12,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	outputFileNameFlag    = "out-file"
+	outputFileNameDefault = "hauler-package.tar.gz"
+)
+
 func NewPackageCommand() *cobra.Command {
 	opts := &PackageOptions{}
 
@@ -19,12 +25,9 @@ func NewPackageCommand() *cobra.Command {
 		Short: "package all dependencies into an installable archive",
 		Long: `package all dependencies into an archive used by deploy.
 
-Container images, git repositories, and more, packaged and ready to be served within an air gap.`,
+Container images, git repositories, and more, packaged and ready to be served within an air-gap.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Complete(); err != nil {
-				return err
-			}
-			if err := opts.Validate(); err != nil {
+			if err := opts.Preprocess(); err != nil {
 				return err
 			}
 			return opts.Run()
@@ -32,9 +35,9 @@ Container images, git repositories, and more, packaged and ready to be served wi
 	}
 
 	cmd.Flags().StringVar(
-		&opts.OutputFileName, "out-file", "hauler-package.tar.gz",
+		&opts.OutputFileName, outputFileNameFlag, outputFileNameDefault,
 		"specify the package's output location; '-' writes to standard out",
-		)
+	)
 
 	return cmd
 }
@@ -45,18 +48,16 @@ type PackageOptions struct {
 	// ImageArchives []string
 }
 
-// Complete takes the command arguments and infers any remaining options.
-func (o *PackageOptions) Complete() error {
-	return nil
-}
-
-// Validate checks the provided set of options.
-func (o *PackageOptions) Validate() error {
+// Preprocess infers any remaining options and performs any required validation.
+func (o *PackageOptions) Preprocess() error {
+	if o.OutputFileName == "" {
+		return errors.New("output file is required")
+	}
 	return nil
 }
 
 const (
-	k3sVersion = "v1.18.8+k3s1"
+	k3sVersion = "v1.19.5+k3s1"
 )
 
 // Run performs the operation.

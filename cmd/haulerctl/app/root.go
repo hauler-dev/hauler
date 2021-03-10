@@ -6,9 +6,9 @@ import (
 
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "hauler",
-		Short: "hauler provides airgap migration assitance",
-		Long: `hauler provides airgap migration assistance using k3s.
+		Use:   "haulerctl",
+		Short: "haulerctl provides CLI-based air-gap migration assistance",
+		Long: `haulerctl provides CLI-based air-gap migration assistance using k3s.
 
 Choose your functionality and create a package when internet access is available,
 then deploy the package into your air-gapped environment.`,

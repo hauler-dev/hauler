@@ -25,7 +25,6 @@ const (
 	distroSep = ":"
 	distroK3s = "k3s"
 	// distroRKE2 = "rke2"
-
 )
 
 var (
@@ -45,21 +44,21 @@ type Config struct {
 	// currently only supports k3s.
 	KubernetesVersion string
 
-	// HTTPClient is the client to use for all HTTP calls. If nil, will use
+	// HTTPClient is the client to use for all HTTP calls. If nil, will use the
 	// default client from http module. Possible use is to trust additional CAs
-	// without assuming access to the local filesytem.
+	// without assuming access to the local filesystem.
 	HTTPClient *http.Client
 }
 
 func (c Config) Complete() (completedPackageConfig, error) {
 	splitK8s := strings.Split(c.KubernetesVersion, distroSep)
 	if len(splitK8s) != 2 {
-		return completedPackageConfig{}, fmt.Errorf("kubernetes version %s not supported", c.KubernetesVersion)
+		return completedPackageConfig{}, fmt.Errorf("bad kubernetes version provided: %q", c.KubernetesVersion)
 	}
 
 	k8sDistro, k8sVersion := splitK8s[0], splitK8s[1]
 	if !packageDistros[k8sDistro] {
-		return completedPackageConfig{}, fmt.Errorf("kubernetes distribution %s not supported", k8sDistro)
+		return completedPackageConfig{}, fmt.Errorf("kubernetes distribution %q not supported", k8sDistro)
 	}
 
 	httpClient := c.HTTPClient
@@ -491,27 +490,50 @@ func (p *Packager) PackageImageList(dst io.Writer, src io.Reader) error {
 }
 
 const (
-	k3sDownloadFmtStr = `https://github.com/rancher/k3s/releases/download/%s/%s`
-	k3sRawFmtStr      = `https://raw.githubusercontent.com/rancher/k3s/%s/%s`
+	k3sDownloadFmtStr = `https://github.com/k3s-io/k3s/releases/download/%s/%s`
+	k3sRawFmtStr      = `https://raw.githubusercontent.com/k3s-io/k3s/%s/%s`
+
+	k3sVersionDefault          = "v1.19.5+k3s1"
+	k3sInstallScriptRefDefault = "master"
 )
 
-func packageK3sArtifacts(p *Packager, dst *tar.Writer, version string) error {
+type K3sPackageConfig struct {
+	Version          string
+	InstallScriptRef string
+}
+
+type completedK3sPackageConfig struct {
+	K3sPackageConfig
+}
+
+func (c *K3sPackageConfig) Complete() *completedK3sPackageConfig {
+	config := &completedK3sPackageConfig{
+		K3sPackageConfig: *c,
+	}
+
+	if config.Version == "" {
+		config.Version = k3sVersionDefault
+	}
+	if config.InstallScriptRef == "" {
+		config.InstallScriptRef = k3sInstallScriptRefDefault
+	}
+
+	return config
+}
+
+func packageK3sArtifacts(p *Packager, dst *tar.Writer, config *completedK3sPackageConfig) error {
 	binaries := []Artifact{
-		{Source: fmt.Sprintf(k3sDownloadFmtStr, url.QueryEscape(version), "k3s")},
-		{Source: fmt.Sprintf(k3sRawFmtStr, url.QueryEscape(version), "install.sh")},
+		{Source: fmt.Sprintf(k3sDownloadFmtStr, url.QueryEscape(config.Version), "k3s")},
+		{Source: fmt.Sprintf(k3sRawFmtStr, url.QueryEscape(config.InstallScriptRef), "install.sh")},
 	}
 	imageArchives := []Artifact{
-		{Source: fmt.Sprintf(k3sDownloadFmtStr, url.QueryEscape(version), "k3s-airgap-images-amd64.tar")},
-	}
-	imageLists := []Artifact{
-		{Source: fmt.Sprintf(k3sDownloadFmtStr, url.QueryEscape(version), "k3s-images.txt")},
+		{Source: fmt.Sprintf(k3sDownloadFmtStr, url.QueryEscape(config.Version), "k3s-airgap-images-amd64.tar")},
 	}
 
 	k3sArtifactGroup := ArtifactGroup{
 		PackagePath:   "kubernetes/k3s",
 		Binaries:      binaries,
 		ImageArchives: imageArchives,
-		ImageLists:    imageLists,
 	}
 
 	if err := TarMkdirP(dst, k3sArtifactGroup.PackagePath); err != nil {
