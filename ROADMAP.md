@@ -1,8 +1,14 @@
 # Hauler Roadmap
 
+## v0.0.x
+
+- Install single-node k3s cluster into an Ubuntu machine using the tarball installation method
+
 ## v0.1.0
 
 - Install single-node k3s cluster
+  - Support tarball and rpm installation methods
+  - Target narrow set of known Operating Systems to have OS-specific code if needed
 - Serve container images
   - Collect images from image list file
   - Collect images from image archives
