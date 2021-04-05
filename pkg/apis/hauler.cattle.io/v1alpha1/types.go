@@ -44,9 +44,8 @@ type EnvConfig struct {
 	NoProxy string `json:"noProxy,omitempty"`
 
 	// TrustedCAFiles is a list of files to add to hauler's pool of trusted
-	// Certificate Authorities. Relative paths set in a config file are resolved
-	// relative to the file's location; relative paths passed as a struct are
-	// resolved relative to the process's current working directory.
+	// Certificate Authorities. All relative paths are resolved relative to the
+	// process's current working directory unless specified otherwise.
 	TrustedCAFiles []string `json:"trustedCAFiles,omitempty"`
 
 	// TrustedCAFiles is a list of base64-encoded certificates to add to
@@ -55,6 +54,13 @@ type EnvConfig struct {
 	// encoding (base64.URLEncoding).
 	TrustedCACerts []string `json:"trustedCACerts,omitempty"`
 }
+
+type Archive struct {
+	metav1.TypeMeta
+	Metadata metav1.ObjectMeta `json:"metadata,omitempty"`
+}
+
+// TODO - decide if Packages should be array of structs or array of pointers
 
 type PackageConfig struct {
 	metav1.TypeMeta
@@ -294,6 +300,8 @@ func (pd Package) MarshalJSON() ([]byte, error) {
 
 	return baseBytes, nil
 }
+
+// TODO - add concept of operating system and install type (tarball vs. rpm)
 
 // PackageK3s is a configuration for packaging and deploying k3s. Currently always
 // sources artifacts from GitHub.
