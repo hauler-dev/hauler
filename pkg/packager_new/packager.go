@@ -48,7 +48,7 @@ func (p *Packager) Package(
 ) error {
 	// TODO - allow changing writer kind
 	// wrap around dst
-	aw, err := archive.NewWriter(dst, archive.WriterKindTar)
+	aw, err := archive.NewWriter(dst, archive.KindTar)
 	if err != nil {
 		return fmt.Errorf("create archive writer: %v", err)
 	}

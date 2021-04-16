@@ -14,16 +14,6 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type WriterKind int
-
-const (
-	WriterKindUnknown = iota
-	WriterKindTar
-	WriterKindTarGz
-)
-
-var ErrNoKind = errors.New("no kind specified for Writer")
-
 type writerOptions struct {
 	archiveName string
 }
@@ -50,26 +40,26 @@ func WithArchiveName(name string) WriterOption {
 }
 
 type Writer struct {
-	kind WriterKind
+	Kind Kind
 
 	tarWriter  *tar.Writer
 	gzipWriter *gzip.Writer
 }
 
-func NewWriter(dst io.Writer, kind WriterKind, opts ...WriterOption) (*Writer, error) {
+func NewWriter(dst io.Writer, kind Kind, opts ...WriterOption) (*Writer, error) {
 	opt := defaultWriterOptions()
 	for _, o := range opts {
 		o.Apply(opt)
 	}
 
 	w := &Writer{
-		kind: kind,
+		Kind: kind,
 	}
 
 	switch kind {
-	case WriterKindTar:
+	case KindTar:
 		w.tarWriter = tar.NewWriter(dst)
-	case WriterKindTarGz:
+	case KindTarGz:
 		w.gzipWriter = gzip.NewWriter(dst)
 		w.tarWriter = tar.NewWriter(w.gzipWriter)
 	default:
@@ -93,7 +83,7 @@ func NewWriter(dst io.Writer, kind WriterKind, opts ...WriterOption) (*Writer, e
 	}
 
 	switch kind {
-	case WriterKindTar, WriterKindTarGz:
+	case KindTar, KindTarGz:
 		archiveHeader := &tar.Header{
 			Typeflag: tar.TypeReg,
 			Name:     "./hauler_archive.yaml",
@@ -120,12 +110,12 @@ func (w *Writer) MkdirP(
 	packageName string,
 	path string,
 ) error {
-	switch w.kind {
-	case WriterKindTar, WriterKindTarGz:
+	switch w.Kind {
+	case KindTar, KindTarGz:
 		return errors.New("unimplemented")
 
 	default:
-		return ErrNoKind
+		return ErrNoWriterKind
 	}
 }
 
@@ -173,8 +163,8 @@ func (w *Writer) CreateFile(
 
 	cleanFileName := "./" + path.Clean(path.Join(".", packageKind, packageName, fileName))
 
-	switch w.kind {
-	case WriterKindTar, WriterKindTarGz:
+	switch w.Kind {
+	case KindTar, KindTarGz:
 		tarHeader := &tar.Header{
 			Typeflag: tar.TypeReg,
 			Name:     cleanFileName,
@@ -184,35 +174,35 @@ func (w *Writer) CreateFile(
 		return w.tarWriter.WriteHeader(tarHeader)
 
 	default:
-		return ErrNoKind
+		return ErrNoWriterKind
 	}
 }
 
 // Write implements io.Writer
 func (w *Writer) Write(b []byte) (int, error) {
-	switch w.kind {
-	case WriterKindTar, WriterKindTarGz:
+	switch w.Kind {
+	case KindTar, KindTarGz:
 		return w.tarWriter.Write(b)
 
 	default:
-		return 0, ErrNoKind
+		return 0, ErrNoWriterKind
 	}
 }
 
 // Close flushes and closes the underlying writers when this archive is done
 // being written to.
 func (w *Writer) Close() error {
-	switch w.kind {
-	case WriterKindTar:
+	switch w.Kind {
+	case KindTar:
 		return w.tarWriter.Close()
 
-	case WriterKindTarGz:
+	case KindTarGz:
 		if err := w.tarWriter.Close(); err != nil {
 			return err
 		}
 		return w.gzipWriter.Close()
 
 	default:
-		return ErrNoKind
+		return ErrNoWriterKind
 	}
 }
