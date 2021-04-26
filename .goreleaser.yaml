@@ -1,0 +1,12 @@
+project_name: hauler
+builds:
+  - main: cmd/haulerctl/main.go
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0

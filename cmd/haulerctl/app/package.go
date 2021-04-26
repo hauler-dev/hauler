@@ -1,159 +1,90 @@
 package app
 
 import (
-	"errors"
-	"fmt"
-	"io"
-	"io/ioutil"
-	"os"
-	"strings"
-
+	"bytes"
+	"context"
+	"github.com/imdario/mergo"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/archive"
-	"github.com/rancherfederal/hauler/pkg/packager_new"
-
+	"github.com/rancherfederal/hauler/pkg/packager"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
+	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/util/json"
 )
 
-const (
-	packageConfigFileNameFlag    = "package-config"
-	packageConfigFileNameDefault = ""
-	outputFileNameFlag           = "output-file"
-	outputFileNameShorthand      = "f"
-	outputFileNameDefault        = "hauler-archive.tar.gz"
-	outputFormatFlag             = "output-format"
-)
+type packageOpts struct {
+	driver string
+	outputFile string
+	userClusterConfig v1alpha1.Cluster
+	clusterConfigFile string
+}
 
 func NewPackageCommand() *cobra.Command {
-	opts := &PackageOptions{}
+	opts := &packageOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "package",
-		Short: "package all dependencies into an installable archive",
-		Long: `package all dependencies into an archive used by deploy.
+		Short: "package all dependencies into a compressed archive",
+		Long: `package all dependencies into a compresed archive used by deploy.
 
 Container images, git repositories, and more, packaged and ready to be served within an air gap.`,
+		Aliases: []string{"p", "pkg"},
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return opts.PreRun()
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Preprocess(args); err != nil {
-				return err
-			}
 			return opts.Run()
 		},
 	}
 
-	// TODO - set EnvConfig options through CLI
-
-	cmd.Flags().StringVar(&opts.PackageConfigFileName,
-		packageConfigFileNameFlag, packageConfigFileNameDefault,
-		"package config YAML used for creating archive",
-	)
-	// TODO - determine if OutputFileName should be positional arg or flag
-	cmd.Flags().StringVarP(&opts.OutputFileName,
-		outputFileNameFlag, outputFileNameShorthand, outputFileNameDefault,
-		"specify the package's output location; - writes to stdout",
-	)
-	// TODO - improve usage message, dynamically populate all formats for easier future additions
-	cmd.Flags().Var(&opts.OutputFormat,
-		outputFormatFlag,
-		"choose the format of the outputted archive (TarGz, Tar); if unset, will auto-complete based on "+outputFileNameFlag,
-	)
+	f := cmd.Flags()
+	f.StringVarP(&opts.driver, "driver", "d", "k3s",
+		"Driver type to use for package (k3s or rke2)")
+	f.StringVarP(&opts.outputFile, "output", "o", "haul.tar.zst",
+		"package output location relative to the current directory (haul.tar.zst)")
+	f.StringVarP(&opts.clusterConfigFile, "config", "c", "./cluster.yaml",
+		"config file to use to override default utility cluster settings (./cluster.yaml)")
 
 	return cmd
 }
 
-type PackageOptions struct {
-	PackageConfigFileName string
-	OutputFileName        string
-	OutputFormat          OutputFormat
-	// ImageLists    []string
-	// ImageArchives []string
+func (o *packageOpts) PreRun() error {
+	viper.AutomaticEnv()
 
-	// completed options stored in the options struct
-	co *completedPackageOptions
-}
+	viper.SetConfigFile(o.clusterConfigFile)
 
-// TODO - decide if "frozen" options from PackageOptions should be stored in completedPackageOptions
-
-type completedPackageOptions struct {
-	PackageConfig     v1alpha1.PackageConfig
-	OutputArchiveKind archive.Kind
-
-	Dst io.Writer
-}
-
-// Preprocess infers any remaining options and performs any required validation.
-func (o *PackageOptions) Preprocess(_ []string) error {
-	// TODO - perform as much validation as possible and return error containing all known issues
-
-	co := &completedPackageOptions{}
-
-	if o.PackageConfigFileName == "" {
-		return errors.New("package config is required")
-	}
-	if o.OutputFileName == "" {
-		return errors.New("output file is required")
-	}
-	if o.OutputFileName == "-" && o.OutputFormat == UnknownFormat {
-		return errors.New("must specify a format when outputting to stdout")
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+		logrus.Debugf("Using config file: %s", viper.ConfigFileUsed())
 	}
 
-	pconfigBytes, err := ioutil.ReadFile(o.PackageConfigFileName)
+	err := viper.Unmarshal(&o.userClusterConfig)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't read package config file %s: %v",
-			o.PackageConfigFileName, err,
-		)
+		logrus.Fatalf("Failed to unmarshal config file: %v", err)
 	}
 
-	pconfig := v1alpha1.PackageConfig{}
-	if err := yaml.Unmarshal(pconfigBytes, &pconfig); err != nil {
-		return fmt.Errorf(
-			"couldn't parse %s as a PackageConfig: %v",
-			o.PackageConfigFileName, err,
-		)
-	}
-	co.PackageConfig = pconfig
-
-	if o.OutputFileName == "-" {
-		co.Dst = os.Stdout
-	} else {
-		if dstFile, err := os.Create(o.OutputFileName); err != nil {
-			return fmt.Errorf(
-				"couldn't create output file %s: %v",
-				o.OutputFileName, err,
-			)
-		} else {
-			co.Dst = dstFile
-		}
-	}
-
-	// TODO - improve scalability of format auto-detection
-	switch {
-	case o.OutputFileName == "-" || o.OutputFormat != UnknownFormat:
-		co.OutputArchiveKind = o.OutputFormat.ToArchiveKind()
-	case strings.HasSuffix(o.OutputFileName, ".tar"):
-		co.OutputArchiveKind = archive.KindTar
-	case strings.HasSuffix(o.OutputFileName, ".tar.gz") || strings.HasSuffix(o.OutputFileName, ".tgz"):
-		co.OutputArchiveKind = archive.KindTarGz
-	default:
-		return errors.New("unable to determine output format, please specify flag or allow auto-detection by using known file type")
-	}
-
-	o.co = co
 	return nil
 }
 
 // Run performs the operation.
-func (o *PackageOptions) Run() error {
-	if o.co == nil {
-		return errors.New("PackageOptions must be preprocessed before Run is called")
+func (o *packageOpts) Run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cluster := v1alpha1.NewDefaultCluster(o.driver)
+
+	// Merge user defined config with default config
+	// TODO: This should be done with types... but we'll need mergo for more stuff so lazy approach here
+	if err := mergo.Merge(cluster, o.userClusterConfig, mergo.WithOverride); err != nil {
+		return err
 	}
 
-	// TODO - set EnvConfig options through CLI
-	p := packager.New(nil)
-	// TODO - use o.co.OutputArchiveKind
-	if err := p.Package(o.co.Dst, o.co.PackageConfig); err != nil {
+	d, _ := json.Marshal(cluster)
+	buf := bytes.NewReader(d)
+	viper.ReadConfig(buf)
+
+	pkg := packager.NewPackager(cluster)
+	if err := pkg.Package(ctx, o.outputFile); err != nil {
 		return err
 	}
 
