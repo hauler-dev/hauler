@@ -5,7 +5,6 @@ go 1.16
 require (
 	cloud.google.com/go/storage v1.8.0 // indirect
 	github.com/aws/aws-sdk-go v1.31.6 // indirect
-	github.com/cheggaaa/pb/v3 v3.0.8 // indirect
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/google/go-containerregistry v0.4.1
 	github.com/google/go-querystring v1.1.0

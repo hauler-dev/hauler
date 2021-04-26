@@ -41,7 +41,7 @@ then deploy the package into your air-gapped environment.`,
 	cmd.AddCommand(NewBundleCommand())
 
 	f := cmd.PersistentFlags()
-	f.StringVarP(&loglevel, "verbosity", "l", "info",
+	f.StringVarP(&loglevel, "loglevel", "l", "info",
 		"Log level (debug, info, warn, error, fatal, panic)")
 	f.StringVarP(&cfgFile, "config", "c", "./hauler.yaml",
 		"config file (./hauler.yaml)")

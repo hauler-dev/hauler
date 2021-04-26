@@ -21,4 +21,4 @@ airgap-scp.sh
 
 # generated
 dist/
-bundle/
+./bundle/
