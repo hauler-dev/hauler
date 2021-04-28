@@ -38,7 +38,7 @@ jobs:
     - name: Generate release notes
       run: |
           echo 'CHANGELOG' > /tmp/release.txt
-          github-release-notes -org rancherfederal -repo toolkit -since-latest-release -include-author >> /tmp/release.txt
+          github-release-notes -org rancherfederal -repo hauler -since-latest-release -include-author >> /tmp/release.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Run GoReleaser
@@ -46,14 +46,15 @@ jobs:
       uses: goreleaser/goreleaser-action@v1
       with:
         version: latest
-        args: release --release-notes=/tmp/release.txt --skip-validate
+        args: release --release-notes=/tmp/release.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Upload assets
       uses: actions/upload-artifact@v2
       with:
         name: hauler
-        path: dist/*
+        path: dist/hauler_linux_amd64/hauler
+        retention-days: 2
   
   create-artifacts:
     runs-on: ubuntu-latest
@@ -62,9 +63,8 @@ jobs:
      - name: Download Hauler binary
        id: download
        uses: actions/download-artifact@v2
-     - name: Run Hauler package
-       run: |
-         echo "Running hauler"
+     - name: Run Hauler bundle
+       run: hauler bundle
      - name: Upload default package to Release
        id: upload-release-asset 
        uses: actions/upload-release-asset@v1
@@ -72,7 +72,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
        with:
         upload_url: ${{ needs,create-release.outputs.upload_url }} 
-        asset_path: ${{github.workspace}}/bundle.tar.gz
+        asset_path: ${{github.workspace}}/bundle/bundle.tar.gz
         asset_name: bundle.tar.gz
         asset_content_type: application/gzip
        
