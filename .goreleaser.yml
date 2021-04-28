@@ -2,49 +2,13 @@ project_name: hauler
 before:
   hooks:
     - go mod tidy
-    - go generate ./...
 builds:
-  - <<: &build_defaults
-      binary: hauler
-      main: ./cmd/
-      ldflags:
-        - -s -w -X main.VERSION={{ .Version }}
-      env:
-        - CGO_ENABLED=0
-    id: linux
+  - main: cmd/haulerctl/main.go
     goos:
       - linux
-    goarch:
-      - amd64
-      - arm64
-      - arm
-    goarm:
-      - 7
-  - <<: *build_defaults
-    id: darwin
-    goos:
       - darwin
     goarch:
       - amd64
       - arm64
-  - <<: *build_defaults
-    id: windows
-    goos:
-      - windows
-archives:
-  - name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    id: nix
-    builds: [linux, darwin]
-    format: tar.gz
-    files:
-      - none*
-checksum:
-  name_template: 'checksums.txt'
-snapshot:
-  name_template: "{{ .Tag }}-next"
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
+    env:
+      - CGO_ENABLED=0
