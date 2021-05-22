@@ -55,6 +55,15 @@ func (p *Packager) Package(ctx context.Context, outFile string) error {
 		return err
 	}
 
+	// TODO: Build api space for providing git repos to package, below is just an example of it "working"
+	//var reposToGet []string
+	//reposToGet = append(reposToGet, []string{"https://github.com/hashicorp/go-getter.git", "https://github.com/open-policy-agent/conftest.git"}...)
+	//
+	//gitReposPath := filepath.Join(tmpdir, "repos")
+	//if err := p.pkgGitRepos(ctx, gitReposPath, reposToGet); err != nil {
+	//	return err
+	//}
+
 	var urlsToGet []string
 	urlsToGet = append(urlsToGet, buildDriverURLs(p.Cluster.Driver)...)
 	// TODO: User defined gets
@@ -132,6 +141,21 @@ func (p *Packager) pkgPreloadImages(ctx context.Context, dir string, images []st
 		return err
 	}
 
+	return nil
+}
+
+func (p *Packager) pkgGitRepos(ctx context.Context, dir string, repos []string) error {
+	logrus.Infof("Packaging %d repos to prepopulate...", len(repos))
+
+	f := fetcher.GitFetcher{ Bare: true }
+	for _, repo := range repos {
+		dst := filepath.Join(dir, fetcher.GetFileNameFromURL(repo))
+
+		err := f.Get(ctx, repo, dst)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
