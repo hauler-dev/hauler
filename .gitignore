@@ -17,8 +17,9 @@ local-artifacts
 airgap-scp.sh
 
 # test artifacts
-*.tar.*
+*.tar*
 
 # generated
 dist/
 ./bundle/
+tmp/

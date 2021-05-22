@@ -65,6 +65,7 @@ func (p *Packager) Package(ctx context.Context, outFile string) error {
 	}
 
 	var imgs []string
+	imgs = append(imgs, p.Cluster.Driver.Images()...)
 	imgs = append(imgs, p.Cluster.PreloadImages...)
 	// TODO: User defined preloaded images
 
@@ -98,9 +99,7 @@ func (p *Packager) pkgFiles(ctx context.Context, dir string, rawUrls []string) e
 
 func buildDriverURLs(driver v1alpha1.Driver) []string {
 	urls := make([]string, 0)
-
 	urls = append(urls, driver.ExecutableURL())
-	urls = append(urls, driver.ReleaseImagesURL())
 
 	return urls
 }

@@ -1,9 +1,11 @@
 package v1alpha1
 
 import (
+	"bufio"
 	"fmt"
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"net/http"
 )
 
 const (
@@ -49,7 +51,7 @@ func NewDefaultCluster(driver string) *Cluster {
 
 	case DriverRKE2:
 		d := RKE2Driver{
-			Version:    "v1.20.6+rke2r1",
+			Version:    "v1.20.7+rke2r1",
 			ReleaseURL: "https://github.com/rancher/rke2/releases/download",
 		}
 
@@ -73,6 +75,7 @@ type Cluster struct {
 type Driver interface {
 	String() string
 	ExecutableURL() string
+	Images() []string
 	ReleaseImagesURL() string
 	MarshalConfig() ([]byte, error)
 }
@@ -117,6 +120,22 @@ func (d K3SDriver) String() string {
 func (d K3SDriver) ExecutableURL() string {
 	return fmt.Sprintf("%s/%s/%s", d.ReleaseURL, d.Version, d.String())
 }
+func (d K3SDriver) Images() []string {
+	var images []string
+	resp, err := http.Get(fmt.Sprintf("%s/%s/%s-images.txt", d.ReleaseURL, d.Version, d.String()))
+	if err != nil {
+		fmt.Errorf("to get list of images: %w", err)
+	}
+	defer resp.Body.Close()
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		images = append(images, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Errorf("reading list of images: %w", err)
+	}
+	return images
+}
 func (d K3SDriver) ReleaseImagesURL() string {
 	return fmt.Sprintf("%s/%s/%s-airgap-images-amd64.tar.zst", d.ReleaseURL, d.Version, d.String())
 }
@@ -129,6 +148,10 @@ func (d RKE2Driver) String() string {
 }
 func (d RKE2Driver) ExecutableURL() string {
 	return fmt.Sprintf("%s/%s/%s.linux-amd64", d.ReleaseURL, d.Version, d.String())
+}
+func (d RKE2Driver) Images() []string {
+	// TODO
+	return nil
 }
 func (d RKE2Driver) ReleaseImagesURL() string {
 	return fmt.Sprintf("%s/%s/%s-images.linux-amd64.tar.zst", d.ReleaseURL, d.Version, d.String())
