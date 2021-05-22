@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+
 	"github.com/imdario/mergo"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/packager"
@@ -12,23 +13,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 )
 
-type packageOpts struct {
-	driver string
-	outputFile string
+type createOpts struct {
+	driver            string
+	outputFile        string
 	userClusterConfig v1alpha1.Cluster
 	clusterConfigFile string
 }
 
-func NewPackageCommand() *cobra.Command {
-	opts := &packageOpts{}
+func NewCreateCommand() *cobra.Command {
+	opts := &createOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "package",
-		Short: "package all dependencies into a compressed archive",
-		Long: `package all dependencies into a compresed archive used by deploy.
-
+		Use:   "create",
+		Short: "create all dependencies into a compressed archive",
+		Long: `create all dependencies into a compresed archive used by deploy.
 Container images, git repositories, and more, packaged and ready to be served within an air gap.`,
-		Aliases: []string{"p", "pkg"},
+		Aliases: []string{"cr"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return opts.PreRun()
 		},
@@ -48,7 +48,7 @@ Container images, git repositories, and more, packaged and ready to be served wi
 	return cmd
 }
 
-func (o *packageOpts) PreRun() error {
+func (o *createOpts) PreRun() error {
 	viper.AutomaticEnv()
 
 	viper.SetConfigFile(o.clusterConfigFile)
@@ -67,7 +67,7 @@ func (o *packageOpts) PreRun() error {
 }
 
 // Run performs the operation.
-func (o *packageOpts) Run() error {
+func (o *createOpts) Run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 

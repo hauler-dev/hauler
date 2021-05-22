@@ -12,23 +12,21 @@ func NewRelocateCommand() *cobra.Command {
 	opts := &relocateOpts{}
 
 	cmd := &cobra.Command{
-		Use: "relocate",
-		Short: "relocate images to a registry",
-		Long: "",
+		Use:     "relocate",
+		Short:   "relocate images or artifacts to a registry",
+		Long:    "",
 		Aliases: []string{"r"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return opts.Run()
+			return cmd.Help()
 		},
 	}
 
-	f := cmd.Flags()
+	f := cmd.PersistentFlags()
 	f.StringVarP(&opts.bundleDir, "bundledir", "b", "./bundle",
 		"directory locating a bundle, if one exists we will append (./bundle)")
 
-	return cmd
-}
+	cmd.AddCommand(NewRelocateArtifactsCommand())
+	cmd.AddCommand(NewRelocateImagesCommand())
 
-func (o *relocateOpts) Run() error {
-	//TODO
-	return nil
+	return cmd
 }

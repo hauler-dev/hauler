@@ -1,28 +1,46 @@
 package app
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"fmt"
 	"io"
 	"os"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+
+	homedir "github.com/mitchellh/go-homedir"
+	"github.com/spf13/viper"
 )
 
 var (
-	cfgFile string
+	cfgFile  string
 	loglevel string
-	timeout time.Duration
+	timeout  time.Duration
+
+	getLong = `haulerctl provides CLI-based air-gap migration assistance using k3s.
+
+	Choose your functionality and create a package when internet access is available,
+	then deploy the package into your air-gapped environment.
+		`
+
+	getExample = `
+		# Run Hauler
+		haulerctl bundle images <images>
+		haulerctl bundle artifacts <artfiacts>
+		haulerctl relocate artifacts <aritfacts>
+		haulerctl relocate images <images>
+		haulerctl copy 
+		haulerctl create
+		haulerctl bootstrap`
 )
 
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "haulerctl",
-		Short: "haulerctl provides CLI-based air-gap migration assistance",
-		Long: `haulerctl provides CLI-based air-gap migration assistance using k3s.
-
-Choose your functionality and create a package when internet access is available,
-then deploy the package into your air-gapped environment.`,
+		Use:     "haulerctl",
+		Short:   "haulerctl provides CLI-based air-gap migration assistance",
+		Long:    getLong,
+		Example: getExample,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if err := setupLogger(os.Stdout, loglevel); err != nil {
 				return err
@@ -36,9 +54,11 @@ then deploy the package into your air-gapped environment.`,
 
 	cobra.OnInitialize(initConfig)
 
-	cmd.AddCommand(NewPackageCommand())
-	cmd.AddCommand(NewDeployCommand())
+	cmd.AddCommand(NewRelocateCommand())
+	cmd.AddCommand(NewCreateCommand())
 	cmd.AddCommand(NewBundleCommand())
+	cmd.AddCommand(NewCopyCommand())
+	cmd.AddCommand(NewBootstrapCommand())
 
 	f := cmd.PersistentFlags()
 	f.StringVarP(&loglevel, "loglevel", "l", "info",
@@ -51,9 +71,27 @@ then deploy the package into your air-gapped environment.`,
 	return cmd
 }
 
-// TODO: Add more
+// initConfig reads in config file and ENV variables if set.
 func initConfig() {
-	viper.AutomaticEnv() 	// read in any environment variables that match flags
+	if cfgFile != "" {
+		// Use config file from the flag.
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Find home directory.
+		home, err := homedir.Dir()
+		cobra.CheckErr(err)
+
+		// Search config in home directory with name ".hauler" (without extension).
+		viper.AddConfigPath(home)
+		viper.SetConfigName(".hauler")
+	}
+
+	viper.AutomaticEnv() // read in environment variables that match
+
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+	}
 }
 
 func setupLogger(out io.Writer, level string) error {
@@ -64,12 +102,4 @@ func setupLogger(out io.Writer, level string) error {
 	}
 	log.SetLevel(lvl)
 	return nil
-}
-
-// homeDir gets the location of the users home directory. Will be needed for eventual KUBECONFIG searching
-func homeDir() string {
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	return os.Getenv("USERPROFILE") // windows
 }

@@ -16,6 +16,7 @@ require (
 	github.com/imdario/mergo v0.3.12
 	github.com/klauspost/compress v1.12.2 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/pelletier/go-toml v1.8.1 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/afero v1.2.2 // indirect
