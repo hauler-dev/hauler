@@ -29,5 +29,6 @@ func NewRelocateCommand() *cobra.Command {
 }
 
 func (o *relocateOpts) Run() error {
+	//TODO
 	return nil
 }

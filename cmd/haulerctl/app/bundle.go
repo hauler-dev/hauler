@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 
-	"github.com/rancherfederal/hauler/pkg/bundle"
 	"github.com/spf13/cobra"
 )
 
@@ -32,18 +31,20 @@ func NewBundleCommand() *cobra.Command {
 }
 
 func (o *bundleOpts) Run() error {
+	//TODO
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	b := bundle.NewLayoutStore(o.bundleDir)
-
-	images := []string{"alpine:latest", "registry:2.7.1"}
-
-	for _, i := range images {
-		if err := b.Add(ctx, i); err != nil {
-			return err
-		}
-	}
+	//b := bundle.NewLayoutStore(o.bundleDir)
+	//
+	//images := []string{"alpine:latest", "registry:2.7.1"}
+	//
+	//for _, i := range images {
+	//	if err := b.Add(ctx, i); err != nil {
+	//		return err
+	//	}
+	//}
+	_ = ctx
 
 	return nil
 }
