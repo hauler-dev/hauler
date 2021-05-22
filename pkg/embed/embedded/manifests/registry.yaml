@@ -22,6 +22,8 @@ spec:
   valuesContent: |-
     persistence:
       enabled: true
+    image:
+      pullPolicy: Never
 
 ---
 apiVersion: traefik.containo.us/v1alpha1

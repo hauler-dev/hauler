@@ -30,7 +30,7 @@ func NewDefaultCluster(driver string) *Cluster {
 		PreloadImages: []string{
 			"registry:2.7.1",
 			"plndr/kube-vip:0.3.4",
-			"gitea/gitea:1.14-rootless",
+			"gitea/gitea:1.14.1-rootless",
 		},
 		AutodeployManifests: []string{},
 	}
