@@ -25,11 +25,10 @@ func NewDefaultCluster(driver string) *Cluster {
 			Name: "hauler",
 		},
 		Arch: "amd64", 		// TODO: Not used anywhere yet
-		PreloadImages: []Image{
+		PreloadImages: []string{
 			"registry:2.7.1",
-			"plndr/kube-vip:0.3.3",
-			"caddy:2.3.0-alpine",
-			"gitea/gitea:1.14.0",
+			"plndr/kube-vip:0.3.4",
+			"gitea/gitea:1.14-rootless",
 		},
 		AutodeployManifests: []string{},
 	}
@@ -37,7 +36,7 @@ func NewDefaultCluster(driver string) *Cluster {
 	switch driver {
 	case DriverK3S:
 		d := K3SDriver{
-			Version:    "v1.21.0-rc1+k3s1",
+			Version:    "v1.21.1+k3s1",
 			ReleaseURL: "https://github.com/k3s-io/k3s/releases/download",
 			Config: K3SConfig{
 				NodeName:       "hauler",
@@ -67,14 +66,14 @@ type Cluster struct {
 	Driver Driver
 
 	Arch string
-	PreloadImages []Image `mapstructure:"images,omitempty" ,json:"images,omitempty"`
+	PreloadImages []string `mapstructure:"images,omitempty" ,json:"images,omitempty"`
 	AutodeployManifests []string `mapstructure:"manifests,omitempty" ,json:"manifests,omitempty"`
 }
 
 type Driver interface {
 	String() string
-	GetBinaryURL() string
-	GetPreloadImages() string
+	ExecutableURL() string
+	ReleaseImagesURL() string
 	MarshalConfig() ([]byte, error)
 }
 
@@ -115,10 +114,10 @@ type Manifest struct {}
 func (d K3SDriver) String() string {
 	return "k3s"
 }
-func (d K3SDriver) GetBinaryURL() string {
+func (d K3SDriver) ExecutableURL() string {
 	return fmt.Sprintf("%s/%s/%s", d.ReleaseURL, d.Version, d.String())
 }
-func (d K3SDriver) GetPreloadImages() string {
+func (d K3SDriver) ReleaseImagesURL() string {
 	return fmt.Sprintf("%s/%s/%s-airgap-images-amd64.tar.zst", d.ReleaseURL, d.Version, d.String())
 }
 func (d K3SDriver) MarshalConfig() ([]byte, error) {
@@ -128,10 +127,10 @@ func (d K3SDriver) MarshalConfig() ([]byte, error) {
 func (d RKE2Driver) String() string {
 	return "rke2"
 }
-func (d RKE2Driver) GetBinaryURL() string {
+func (d RKE2Driver) ExecutableURL() string {
 	return fmt.Sprintf("%s/%s/%s.linux-amd64", d.ReleaseURL, d.Version, d.String())
 }
-func (d RKE2Driver) GetPreloadImages() string {
+func (d RKE2Driver) ReleaseImagesURL() string {
 	return fmt.Sprintf("%s/%s/%s-images.linux-amd64.tar.zst", d.ReleaseURL, d.Version, d.String())
 }
 func (d RKE2Driver) MarshalConfig() ([]byte, error) {

@@ -1,6 +1,8 @@
 package app
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+)
 
 type relocateOpts struct {
 	bundleDir string

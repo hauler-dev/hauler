@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+
 	"github.com/rancherfederal/hauler/pkg/bundle"
 	"github.com/spf13/cobra"
 )
@@ -14,9 +15,9 @@ func NewBundleCommand() *cobra.Command {
 	opts := &bundleOpts{}
 
 	cmd := &cobra.Command{
-		Use: "bundle",
-		Short: "bundle images for relocation",
-		Long: "",
+		Use:     "bundle",
+		Short:   "bundle images for relocation",
+		Long:    "",
 		Aliases: []string{"b"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return opts.Run()
