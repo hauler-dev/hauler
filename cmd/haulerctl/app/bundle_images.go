@@ -5,20 +5,23 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type bundleImagesOpts struct {
-	bundleOpts
+	bundleOpts bundleOpts
 }
 
+// NewBundleImagesCommand creates a new sub command of bundle for images
 func NewBundleImagesCommand() *cobra.Command {
+
 	opts := &bundleImagesOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "images",
-		Short: "bundles images",
-		Long:  "",
+		Short: "Download a list of container images, create artifact containing all of them",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.bundleOpts.bundleDir = viper.GetString("bundledir")
 			return opts.Run()
 		},
 	}
@@ -27,6 +30,7 @@ func NewBundleImagesCommand() *cobra.Command {
 }
 
 func (o *bundleImagesOpts) Run() error {
+
 	//TODO
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -43,6 +47,7 @@ func (o *bundleImagesOpts) Run() error {
 	_ = ctx
 
 	fmt.Println("bundle images")
+	fmt.Println(o.bundleOpts.bundleDir)
 
 	return nil
 }

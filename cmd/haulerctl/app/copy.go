@@ -8,13 +8,14 @@ type copyOpts struct {
 	haul string
 }
 
+// NewCopyCommand creates a new sub command under
+// haulerctl for coping files to local disk
 func NewCopyCommand() *cobra.Command {
 	opts := &copyOpts{}
 
 	cmd := &cobra.Command{
 		Use:     "copy",
-		Short:   "copy things",
-		Long:    ``,
+		Short:   "Download artifacts from OCI registry to local disk",
 		Aliases: []string{"c", "cp"},
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

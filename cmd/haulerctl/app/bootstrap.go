@@ -10,16 +10,16 @@ type deployOpts struct {
 	haul string
 }
 
+// NewBootstrapCommand create a new sub command of haulerctl that bootstraps a cluster
 func NewBootstrapCommand() *cobra.Command {
 	opts := &deployOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "deploy",
-		Short: "deploy all dependencies from a generated package",
-		Long: `deploy all dependencies from a generated package.
-Given an archive generated from the package command, deploy all needed
-components to serve packaged dependencies.`,
-		Aliases: []string{"d", "dpl", "dep"},
+		Use:   "bootstrap",
+		Short: "Single-command install of a k3s cluster with known tools running inside of it",
+		Long: `Single-command install of a k3s cluster with known tools running inside of it. Tools
+		include an OCI registry and Git server`,
+		Aliases: []string{"b", "btstrp"},
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return opts.Run(args[0])

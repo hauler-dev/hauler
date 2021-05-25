@@ -2,12 +2,15 @@ package app
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type bundleOpts struct {
 	bundleDir string
 }
 
+// NewBundleCommand creates a new sub command under
+// haulterctl for bundling images and artifacts
 func NewBundleCommand() *cobra.Command {
 	opts := &bundleOpts{}
 
@@ -24,9 +27,12 @@ func NewBundleCommand() *cobra.Command {
 	f := cmd.PersistentFlags()
 	f.StringVarP(&opts.bundleDir, "bundledir", "b", "./bundle",
 		"directory locating a bundle, if one exists we will append (./bundle)")
+	viper.BindPFlag("bundlerdir", cmd.PersistentFlags().Lookup("bundledir"))
 
 	cmd.AddCommand(NewBundleArtifactsCommand())
 	cmd.AddCommand(NewBundleImagesCommand())
+
+	viper.AutomaticEnv()
 
 	return cmd
 }

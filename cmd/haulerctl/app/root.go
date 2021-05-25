@@ -30,11 +30,12 @@ var (
 		haulerctl bundle artifacts <artfiacts>
 		haulerctl relocate artifacts <aritfacts>
 		haulerctl relocate images <images>
-		haulerctl copy 
+		haulerctl copy <registry>
 		haulerctl create
 		haulerctl bootstrap`
 )
 
+// NewRootCommand defines the root haulerctl command
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "haulerctl",

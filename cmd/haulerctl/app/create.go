@@ -7,7 +7,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/packager"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -20,14 +20,14 @@ type createOpts struct {
 	clusterConfigFile string
 }
 
+// NewCreateCommand creates a new sub command under
+// haulerctl  for creating dependency artifacts for bootstraps
 func NewCreateCommand() *cobra.Command {
 	opts := &createOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "create all dependencies into a compressed archive",
-		Long: `create all dependencies into a compresed archive used by deploy.
-Container images, git repositories, and more, packaged and ready to be served within an air gap.`,
+		Use:     "create",
+		Short:   "Generate a customized artifact containing all dependencies for a bootstrap run",
 		Aliases: []string{"cr"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return opts.PreRun()
@@ -55,12 +55,12 @@ func (o *createOpts) PreRun() error {
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		logrus.Debugf("Using config file: %s", viper.ConfigFileUsed())
+		log.Debugf("Using config file: %s", viper.ConfigFileUsed())
 	}
 
 	err := viper.Unmarshal(&o.userClusterConfig)
 	if err != nil {
-		logrus.Fatalf("Failed to unmarshal config file: %v", err)
+		log.Fatalf("Failed to unmarshal config file: %v", err)
 	}
 
 	return nil
