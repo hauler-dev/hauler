@@ -1,11 +1,16 @@
 package app
 
 import (
+	"context"
+
+	"github.com/rancherfederal/hauler/pkg/copy"
 	"github.com/spf13/cobra"
 )
 
 type copyOpts struct {
-	haul string
+	dir       string
+	mediatype string
+	src       string
 }
 
 // NewCopyCommand creates a new sub command under
@@ -19,22 +24,27 @@ func NewCopyCommand() *cobra.Command {
 		Aliases: []string{"c", "cp"},
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return opts.Run(args[0])
+			return opts.Run()
 		},
 	}
+
+	f := cmd.Flags()
+	f.StringVarP(&opts.dir, "dir", "d", ".", "Target directory for file copy")
+	f.StringVarP(&opts.src, "registry", "r", " ", "Registry URL to copy file from")
 
 	return cmd
 }
 
 // Run performs the operation.
-func (o *copyOpts) Run(haul string) error {
-	//ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	//defer cancel()
+func (o *copyOpts) Run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-	//dpl := deployer.NewDeployer()
-	//if err := dpl.Deploy(ctx, haul); err != nil {
-	//	return err
-	//}
+	cp := copy.NewCopier(o.dir, o.mediatype)
+
+	if err := cp.Get(ctx, o.src); err != nil {
+		return err
+	}
 
 	return nil
 }
