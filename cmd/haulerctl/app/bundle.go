@@ -1,50 +1,38 @@
 package app
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type bundleOpts struct {
 	bundleDir string
 }
 
+// NewBundleCommand creates a new sub command under
+// haulterctl for bundling images and artifacts
 func NewBundleCommand() *cobra.Command {
 	opts := &bundleOpts{}
 
 	cmd := &cobra.Command{
 		Use:     "bundle",
-		Short:   "bundle images for relocation",
+		Short:   "bundle images or artifact for relocation",
 		Long:    "",
 		Aliases: []string{"b"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return opts.Run()
+			return cmd.Help()
 		},
 	}
 
-	f := cmd.Flags()
+	f := cmd.PersistentFlags()
 	f.StringVarP(&opts.bundleDir, "bundledir", "b", "./bundle",
 		"directory locating a bundle, if one exists we will append (./bundle)")
+	viper.BindPFlag("bundlerdir", cmd.PersistentFlags().Lookup("bundledir"))
+
+	cmd.AddCommand(NewBundleArtifactsCommand())
+	cmd.AddCommand(NewBundleImagesCommand())
+
+	viper.AutomaticEnv()
 
 	return cmd
-}
-
-func (o *bundleOpts) Run() error {
-	//TODO
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	//b := bundle.NewLayoutStore(o.bundleDir)
-	//
-	//images := []string{"alpine:latest", "registry:2.7.1"}
-	//
-	//for _, i := range images {
-	//	if err := b.Add(ctx, i); err != nil {
-	//		return err
-	//	}
-	//}
-	_ = ctx
-
-	return nil
 }

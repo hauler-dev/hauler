@@ -11,9 +11,8 @@ require (
 	github.com/imdario/mergo v0.3.12
 	github.com/klauspost/compress v1.12.2 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
-	github.com/opencontainers/image-spec v1.0.1
-	github.com/oras-project/oras-go v0.1.0
-	github.com/rs/zerolog v1.22.0 // indirect
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
+	github.com/pelletier/go-toml v1.8.1 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/viper v1.7.0

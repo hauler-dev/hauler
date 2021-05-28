@@ -1,80 +1,95 @@
 package app
 
 import (
+	"bytes"
 	"context"
-	"fmt"
-	"github.com/rancherfederal/hauler/pkg/apis/driver"
-	"github.com/rancherfederal/hauler/pkg/apis/haul"
-	"github.com/rancherfederal/hauler/pkg/create"
-	"github.com/rancherfederal/hauler/pkg/log"
+
+	"github.com/imdario/mergo"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/packager"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/util/json"
 )
 
 type createOpts struct {
+	driver            string
+	outputFile        string
+	userClusterConfig v1alpha1.Cluster
+	clusterConfigFile string
 }
 
+// NewCreateCommand creates a new sub command under
+// haulerctl  for creating dependency artifacts for bootstraps
 func NewCreateCommand() *cobra.Command {
 	opts := &createOpts{}
 
 	cmd := &cobra.Command{
-		Use: "create",
-		Short: "create a haul",
+		Use:   "package",
+		Short: "package all dependencies into a compressed archive",
+		Long: `package all dependencies into a compressed archive used by deploy.
+
+Container images, git repositories, and more, packaged and ready to be served within an air gap.`,
+		Aliases: []string{"p", "pkg"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return nil
+			return opts.PreRun()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return opts.Run()
 		},
 	}
 
+	f := cmd.Flags()
+	f.StringVarP(&opts.driver, "driver", "d", "k3s",
+		"Driver type to use for package (k3s or rke2)")
+	f.StringVarP(&opts.outputFile, "output", "o", "haul.tar.zst",
+		"package output location relative to the current directory (haul.tar.zst)")
+	f.StringVarP(&opts.clusterConfigFile, "config", "c", "./cluster.yaml",
+		"config file to use to override default utility cluster settings (./cluster.yaml)")
+
 	return cmd
 }
 
-func (o createOpts) Run() error {
-	ctx, cancel := context.WithCancel(context.Background())
+func (o *createOpts) PreRun() error {
+	viper.AutomaticEnv()
+
+	viper.SetConfigFile(o.clusterConfigFile)
+
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+		log.Debugf("Using config file: %s", viper.ConfigFileUsed())
+	}
+
+	err := viper.Unmarshal(&o.userClusterConfig)
+	if err != nil {
+		log.Fatalf("Failed to unmarshal config file: %v", err)
+	}
+
+	return nil
+}
+
+// Run performs the operation.
+func (o *createOpts) Run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	logger := log.NewPrettyLogger()
+	cluster := v1alpha1.NewDefaultCluster(o.driver)
 
-	// TODO: Load this from config if provided
-	h := haul.Haul{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Haul",
-			APIVersion: "v1alpha1",
-		},
-		Metadata: metav1.ObjectMeta{
-			Name: "haul",
-		},
-		Spec:     haul.HaulSpec{
-			Driver: driver.K3sDriver{
-				Version: driver.K3sDefaultVersion,
-			},
-			PreloadImages: []string{
-				"plndr/kube-vip:0.3.4",
-				"registry:2.7.1",
-				"gitea/gitea:1.14.1-rootless",
-			},
-		},
-	}
-
-	d, err := yaml.Marshal(h)
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(d))
-
-	c, err := create.NewCreator(logger)
-	if err != nil {
+	// Merge user defined config with default config
+	// TODO: This should be done with types... but we'll need mergo for more stuff so lazy approach here
+	if err := mergo.Merge(cluster, o.userClusterConfig, mergo.WithOverride); err != nil {
 		return err
 	}
 
-	_ = c
-	_ = ctx
-	//if err := c.Create(ctx, h); err != nil {
-	//	return err
-	//}
+	d, _ := json.Marshal(cluster)
+	buf := bytes.NewReader(d)
+	viper.ReadConfig(buf)
+
+	pkg := packager.NewPackager(cluster)
+	if err := pkg.Package(ctx, o.outputFile); err != nil {
+		return err
+	}
 
 	return nil
 }
