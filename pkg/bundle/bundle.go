@@ -2,7 +2,6 @@ package bundle
 
 import (
 	"context"
-	"fmt"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -77,13 +76,30 @@ func (l *LayoutStore) Add(ctx context.Context, imageName string) error {
 	return nil
 }
 
-func (l *LayoutStore) Push(ctx context.Context, imageName string) error {
-	ii, err := l.layout.ImageIndex()
-	if err != nil {
-		return err
-	}
+func (l *LayoutStore) Find(ctx context.Context, imageName string) error {
+	//ii, err := l.layout.ImageIndex()
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//im, err := ii.IndexManifest()
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//for _, m := range im.Manifests {
+	//	if ref, ok := m.Annotations[refNameAnnotation]; ok {
+	//		r, err := l.layout.Image(m.Digest)
+	//		if err != nil {
+	//			return err
+	//		}
+	//		if r == imageName {
+	//			return
+	//		}
+	//	}
+	//}
 
-	fmt.Println(ii)
+	return nil
 }
 
 func (l *LayoutStore) appendImage(img v1.Image, ref name.Reference, options ...layout.Option) error {

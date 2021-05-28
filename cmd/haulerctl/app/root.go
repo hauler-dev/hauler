@@ -39,6 +39,8 @@ then deploy the package into your air-gapped environment.`,
 	cmd.AddCommand(NewPackageCommand())
 	cmd.AddCommand(NewDeployCommand())
 	cmd.AddCommand(NewBundleCommand())
+	cmd.AddCommand(NewOCICommand())
+	cmd.AddCommand(NewCreateCommand())
 
 	f := cmd.PersistentFlags()
 	f.StringVarP(&loglevel, "loglevel", "l", "info",

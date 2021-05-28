@@ -140,7 +140,6 @@ func (p *Packager) pkgPreloadImages(ctx context.Context, dir string, images []st
 	if err := tarball.MultiRefWriteToFile(dir, imageRefs); err != nil {
 		return err
 	}
-
 	return nil
 }
 

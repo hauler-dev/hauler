@@ -25,7 +25,7 @@ func NewPackageCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "package",
 		Short: "package all dependencies into a compressed archive",
-		Long: `package all dependencies into a compresed archive used by deploy.
+		Long: `package all dependencies into a compressed archive used by deploy.
 
 Container images, git repositories, and more, packaged and ready to be served within an air gap.`,
 		Aliases: []string{"p", "pkg"},

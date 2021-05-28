@@ -103,7 +103,7 @@ func (d *Deployer) explode(pkg string) error {
 // config will create a driver config if not exists, and merge if one exists
 func (d *Deployer) config() error {
 	cfgFilePath := filepath.Join(v1alpha1.DriverEtcPath, d.Cluster.Driver.String(), "config.yaml")
-	err := os.MkdirAll(filepath.Dir(cfgFilePath), 0666)
+	err := os.MkdirAll(filepath.Dir(cfgFilePath), 0755)
 	if err != nil {
 		return err
 	}
@@ -125,6 +125,7 @@ func (d *Deployer) config() error {
 func (d *Deployer) start() error {
 	cmd := exec.Command("/bin/sh", "/opt/hauler/bin/k3s-init.sh")
 	cmd.Env = append(os.Environ(), []string{
+		"INSTALL_K3S_EXEC=--write-kubeconfig-mode '0644'",
 		"INSTALL_K3S_SKIP_DOWNLOAD=true",
 		"INSTALL_K3S_SELINUX_WARN=true",
 		"INSTALL_K3S_SKIP_SELINUX_RPM=true",
