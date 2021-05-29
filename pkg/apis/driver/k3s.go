@@ -2,6 +2,7 @@ package driver
 
 import (
 	"fmt"
+	"github.com/rancherfederal/hauler/pkg/util"
 	"net/http"
 	"path/filepath"
 )
@@ -17,13 +18,13 @@ const (
 )
 
 type K3sDriver struct {
-	Version string `json:"version" yaml:"version"`
+	Version string `yaml:"version"`
 
-	Config K3sConfig `json:"config"`
+	Config K3sConfig
 }
 
 type K3sConfig struct {
-	DriverConfig
+	DriverConfig `yaml:"config,inline"`
 }
 
 func (k K3sDriver) Name() string { return k3sDriverName }
@@ -35,7 +36,7 @@ func (k K3sDriver) Images() []string {
 	}
 	defer resp.Body.Close()
 
-	images, err := linesToSlice(resp.Body)
+	images, err := util.LinesToSlice(resp.Body)
 	if err != nil {
 		panic("failed getting images")
 	}
@@ -44,6 +45,7 @@ func (k K3sDriver) Images() []string {
 }
 
 func (k K3sDriver) ReleaseArtifactsURL() string { return fmt.Sprintf("%s/%s", K3sDefaultReleasesURL, k.Version) }
-func (k K3sDriver) PreloadImagesPath() string { return filepath.Join(k3sDriverName, "agent/images") }
-func (k K3sDriver) AutodeployManifestsPath() string { return filepath.Join(k3sDriverName, "server/manifests") }
-func (k K3sDriver) AnonymousStaticPath() string { return filepath.Join(k3sDriverName, "server/static") }
+func (k K3sDriver) PreloadImagesPath() string { return "agent/images" }
+func (k K3sDriver) AutodeployManifestsPath() string { return "server/manifests" }
+func (k K3sDriver) AnonymousStaticPath() string { return "server/static" }
+func (k K3sDriver) VarPath() string { return filepath.Join(VarBasePath, k.Name()) }

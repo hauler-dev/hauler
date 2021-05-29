@@ -28,7 +28,7 @@ func NewCopier(path string, media string) *Copier {
 
 	return &Copier{
 		Dir:       path,
-		fileStore: fs,
+		fileStore: *fs,
 		mediaType: media,
 		logger: logrus.WithFields(logrus.Fields{
 			"store": "hauler",
@@ -36,13 +36,13 @@ func NewCopier(path string, media string) *Copier {
 	}
 }
 
-func createFileStoreIfNotExists(path string) (content.FileStore, error) {
+func createFileStoreIfNotExists(path string) (*content.FileStore, error) {
 	if _, err := os.Stat(path); err != nil {
 		if !os.IsNotExist(err) {
-			return "", err
+			return nil, err
 		}
 		if err := os.MkdirAll(path, 0755); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
@@ -62,7 +62,7 @@ func (c Copier) Get(ctx context.Context, src string) error {
 	// Pull file(s) from registry and save to disk
 	fmt.Printf("Pulling from %s and saving to %s...\n", src, c.Dir)
 	allowedMediaTypes := []string{(c.mediaType)}
-	desc, _, err := oras.Pull(ctx, resolver, src, c.fileStore, oras.WithAllowedMediaTypes(allowedMediaTypes))
+	desc, _, err := oras.Pull(ctx, resolver, src, &c.fileStore, oras.WithAllowedMediaTypes(allowedMediaTypes))
 
 	if err != nil {
 		return err

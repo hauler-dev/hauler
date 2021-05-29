@@ -1,16 +1,17 @@
 package app
 
 import (
-	"bytes"
 	"context"
+	"github.com/rancherfederal/hauler/pkg/apis/bundle"
 
-	"github.com/imdario/mergo"
+	"github.com/rancherfederal/hauler/pkg/apis/driver"
+	"github.com/rancherfederal/hauler/pkg/apis/haul"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/packager"
+	"github.com/rancherfederal/hauler/pkg/create"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"k8s.io/apimachinery/pkg/util/json"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type createOpts struct {
@@ -26,7 +27,7 @@ func NewCreateCommand() *cobra.Command {
 	opts := &createOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "package",
+		Use:   "create",
 		Short: "package all dependencies into a compressed archive",
 		Long: `package all dependencies into a compressed archive used by deploy.
 
@@ -74,20 +75,27 @@ func (o *createOpts) Run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cluster := v1alpha1.NewDefaultCluster(o.driver)
-
-	// Merge user defined config with default config
-	// TODO: This should be done with types... but we'll need mergo for more stuff so lazy approach here
-	if err := mergo.Merge(cluster, o.userClusterConfig, mergo.WithOverride); err != nil {
-		return err
+	d := driver.K3sDriver{
+		Version: "v1.21.1+k3s1",
+		Config:  driver.K3sConfig{},
 	}
 
-	d, _ := json.Marshal(cluster)
-	buf := bytes.NewReader(d)
-	viper.ReadConfig(buf)
+	h := haul.Haul{
+		TypeMeta: metav1.TypeMeta{},
+		Metadata: metav1.ObjectMeta{
+			Name: "haul",
+		},
+		Spec: haul.HaulSpec{
+			Driver: d,
+			Bundles: []bundle.Bundle{
+				bundle.CreateDriverBundle(d),
+				{ Name: "test", Path: "testdata/bundle-a" },
+			},
+		},
+	}
 
-	pkg := packager.NewPackager(cluster)
-	if err := pkg.Package(ctx, o.outputFile); err != nil {
+	creator, _ := create.NewCreator()
+	if err := creator.Create(ctx, h); err != nil {
 		return err
 	}
 

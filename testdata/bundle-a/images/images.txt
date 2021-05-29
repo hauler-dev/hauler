@@ -1,0 +1,2 @@
+registry:2.7.1
+gitea/gitea:1.14.1-rootless

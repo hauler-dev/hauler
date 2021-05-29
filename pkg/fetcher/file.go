@@ -3,7 +3,7 @@ package fetcher
 import (
 	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
+	"github.com/pterm/pterm"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,7 +22,7 @@ func (f FileFetcher) Get(ctx context.Context, src string, dst string) error {
 	}
 	defer out.Close()
 
-	logrus.Infof("Getting %s from %s", dst, src)
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching ", src, " and saving to ", dst)
 	resp, err := http.Get(src)
 	if err != nil {
 		return fmt.Errorf("getting file: %w", err)
@@ -30,6 +30,8 @@ func (f FileFetcher) Get(ctx context.Context, src string, dst string) error {
 	defer resp.Body.Close()
 
 	_, err = io.Copy(out, resp.Body)
+
+	spinner.Success("Finished fetching ", src)
 	return err
 }
 
