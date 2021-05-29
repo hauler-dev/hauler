@@ -96,7 +96,6 @@ func StartDriver(d driver.Driver) error {
 		"INSTALL_K3S_SELINUX_WARN=true",
 		"INSTALL_K3S_SKIP_SELINUX_RPM=true",
 		"INSTALL_K3S_BIN_DIR=/opt/hauler/bin",
-		"INSTALL_K3S_SKIP_START=true",
 	}...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

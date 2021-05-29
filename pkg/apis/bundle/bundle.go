@@ -91,29 +91,18 @@ func (b *Bundle) ResolveBundleFromPath() error {
 }
 
 func (b Bundle) Setup(d driver.Driver, path string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	defer os.Chdir(cwd)
-
-	err = os.Chdir(path)
-	if err != nil {
-		return err
-	}
-
 	targetStatic := filepath.Join(d.VarPath(), d.AnonymousStaticPath(), b.Name)
-	if err := safeSymlink(StaticDirectory, targetStatic); err != nil {
+	if err := safeSymlink(filepath.Join(path, StaticDirectory), targetStatic); err != nil {
 		return err
 	}
 
 	targetImages := filepath.Join(d.VarPath(), d.PreloadImagesPath(), b.Name)
-	if err := safeSymlink(ImagePreloadDirectory, targetImages); err != nil {
+	if err := safeSymlink(filepath.Join(path, ImagePreloadDirectory), targetImages); err != nil {
 		return err
 	}
 
 	targetManifests := filepath.Join(d.VarPath(), d.AutodeployManifestsPath(), b.Name)
-	if err := safeSymlink(AutodeployDirectory, targetManifests); err != nil {
+	if err := safeSymlink(filepath.Join(path, AutodeployDirectory), targetManifests); err != nil {
 		return err
 	}
 
