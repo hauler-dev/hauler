@@ -122,7 +122,7 @@ func (b Bundle) Setup(d driver.Driver, path string) error {
 
 func safeSymlink(src, dst string) error {
 	logrus.Infof("symlinking %s to %s", src, dst)
-	if _, err := os.Stat(dst); err == nil {
+	if _, err := os.Stat(dst); err != nil {
 		if err := os.RemoveAll(dst); err != nil {
 			return err
 		}		
