@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
+	"github.com/rancherfederal/hauler/pkg/fetcher/image"
 
-	"github.com/rancherfederal/hauler/pkg/copy"
 	"github.com/spf13/cobra"
 )
 
@@ -40,9 +40,19 @@ func (o *copyOpts) Run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cp := copy.NewCopier(o.dir, o.mediatype)
+	//cp := copy.NewCopier(o.dir, o.mediatype)
+	//
+	//if err := cp.Get(ctx, o.src); err != nil {
+	//	return err
+	//}
 
-	if err := cp.Get(ctx, o.src); err != nil {
+	client, err := image.NewClient()
+	if err != nil {
+		return err
+	}
+
+	err = client.Save(ctx, "registry:2", "hauler")
+	if err != nil {
 		return err
 	}
 

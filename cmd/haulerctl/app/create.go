@@ -27,7 +27,7 @@ func NewCreateCommand() *cobra.Command {
 	opts := &createOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "create",
+		Use:   "new",
 		Short: "package all dependencies into a compressed archive",
 		Long: `package all dependencies into a compressed archive used by deploy.
 

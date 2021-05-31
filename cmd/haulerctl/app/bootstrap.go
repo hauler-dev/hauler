@@ -15,7 +15,7 @@ type deployOpts struct {
 	haulerDir string
 }
 
-// NewBootstrapCommand create a new sub command of haulerctl that bootstraps a cluster
+// NewBootstrapCommand new a new sub command of haulerctl that bootstraps a cluster
 func NewBootstrapCommand() *cobra.Command {
 	opts := &deployOpts{}
 

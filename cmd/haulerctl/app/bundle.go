@@ -31,6 +31,7 @@ func NewBundleCommand() *cobra.Command {
 
 	cmd.AddCommand(NewBundleArtifactsCommand())
 	cmd.AddCommand(NewBundleImagesCommand())
+	cmd.AddCommand(NewBundleBootCommand())
 
 	viper.AutomaticEnv()
 

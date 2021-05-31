@@ -19,7 +19,7 @@ func NewBundleImagesCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "images",
-		Short: "Download a list of container images, create artifact containing all of them",
+		Short: "Download a list of container images, new artifact containing all of them",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.bundleOpts.bundleDir = viper.GetString("bundledir")
 			return opts.Run()

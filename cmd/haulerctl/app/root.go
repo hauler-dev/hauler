@@ -20,7 +20,7 @@ var (
 
 	getLong = `haulerctl provides CLI-based air-gap migration assistance using k3s.
 
-	Choose your functionality and create a package when internet access is available,
+	Choose your functionality and new a package when internet access is available,
 	then deploy the package into your air-gapped environment.
 		`
 
@@ -31,7 +31,7 @@ var (
 		haulerctl relocate artifacts <aritfacts>
 		haulerctl relocate images <images>
 		haulerctl copy <registry>
-		haulerctl create
+		haulerctl new
 		haulerctl bootstrap`
 )
 

@@ -19,7 +19,7 @@ func NewBundleArtifactsCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "artifacts",
-		Short: "Choose a folder on disk, create artifact containing all of folder's contents",
+		Short: "Choose a folder on disk, new artifact containing all of folder's contents",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.bundleOpts.bundleDir = viper.GetString("bundledir")
 			return opts.Run()
