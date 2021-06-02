@@ -14,17 +14,14 @@ import (
 
 type Copier struct {
 	Dir       string
-	fileStore content.FileStore
+	fileStore *content.FileStore
 	mediaType string
 	logger    *logrus.Entry
 }
 
 func NewCopier(path string, media string) *Copier {
 
-	fs, err := createFileStoreIfNotExists(path)
-	if err != nil {
-		return nil
-	}
+	fs := createFileStoreIfNotExists(path)
 
 	return &Copier{
 		Dir:       path,
@@ -36,20 +33,20 @@ func NewCopier(path string, media string) *Copier {
 	}
 }
 
-func createFileStoreIfNotExists(path string) (content.FileStore, error) {
+func createFileStoreIfNotExists(path string) *content.FileStore {
 	if _, err := os.Stat(path); err != nil {
 		if !os.IsNotExist(err) {
-			return "", err
+			logrus.Error(err)
 		}
 		if err := os.MkdirAll(path, 0755); err != nil {
-			return "", err
+			logrus.Error(err)
 		}
 	}
 
 	fs := content.NewFileStore(path)
 	defer fs.Close()
 
-	return fs, nil
+	return fs
 }
 
 func (c Copier) Get(ctx context.Context, src string) error {
