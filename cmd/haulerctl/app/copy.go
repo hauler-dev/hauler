@@ -22,7 +22,7 @@ func NewCopyCommand() *cobra.Command {
 		Use:     "copy",
 		Short:   "Download artifacts from OCI registry to local disk",
 		Aliases: []string{"c", "cp"},
-		Args:    cobra.MinimumNArgs(1),
+		//Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return opts.Run()
 		},
@@ -30,7 +30,7 @@ func NewCopyCommand() *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.dir, "dir", "d", ".", "Target directory for file copy")
-	f.StringVarP(&opts.src, "registry", "r", " ", "Registry URL to copy file from")
+	f.StringVarP(&opts.src, "registry", "r", "myregistry:5000", "Registry URL to copy file from")
 
 	return cmd
 }

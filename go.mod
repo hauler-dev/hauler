@@ -4,6 +4,10 @@ go 1.16
 
 require (
 	github.com/containerd/containerd v1.5.0-rc.3
+	cloud.google.com/go/storage v1.8.0 // indirect
+	github.com/aws/aws-sdk-go v1.31.6 // indirect
+	github.com/containerd/containerd v1.5.0-rc.3 // indirect
+	github.com/docker/cli v20.10.6+incompatible // indirect
 	github.com/docker/docker v20.10.6+incompatible // indirect
 	github.com/go-git/go-git/v5 v5.4.0
 	github.com/google/go-cmp v0.5.5 // indirect
@@ -16,6 +20,9 @@ require (
 	github.com/pterm/pterm v0.12.18
 	github.com/rogpeppe/go-internal v1.3.0
 	github.com/rs/zerolog v1.22.0
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
+	github.com/oras-project/oras-go v0.1.0 // indirect
+	github.com/pelletier/go-toml v1.8.1 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/viper v1.7.0

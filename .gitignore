@@ -23,3 +23,4 @@ airgap-scp.sh
 dist/
 ./bundle/
 tmp/
+bin/
