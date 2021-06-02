@@ -57,7 +57,7 @@ func (c Copier) Get(ctx context.Context, src string) error {
 	resolver := docker.NewResolver(docker.ResolverOptions{})
 
 	// Pull file(s) from registry and save to disk
-	fmt.Printf("Pulling from %s and saving to %s...\n", src, c.Dir)
+	fmt.Printf("Pulling from %s and saving to %s\n", src, c.Dir)
 	allowedMediaTypes := []string{(c.mediaType)}
 	desc, _, err := oras.Pull(ctx, resolver, src, &c.fileStore, oras.WithAllowedMediaTypes(allowedMediaTypes))
 

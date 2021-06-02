@@ -30,7 +30,7 @@ func NewCopyCommand() *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.dir, "dir", "d", ".", "Target directory for file copy")
-	f.StringVarP(&opts.src, "registry", "r", "myregistry:5000", "Registry URL to copy file from")
+	f.StringVarP(&opts.src, "registry", "r", "localhost:5000/file:test", "URI for object in the registry")
 
 	return cmd
 }
