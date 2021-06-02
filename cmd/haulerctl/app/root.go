@@ -30,7 +30,7 @@ var (
 		haulerctl bundle artifacts <artfiacts>
 		haulerctl relocate artifacts <aritfacts>
 		haulerctl relocate images <images>
-		haulerctl copy <registry>
+		haulerctl copy
 		haulerctl create
 		haulerctl bootstrap`
 )
@@ -38,10 +38,11 @@ var (
 // NewRootCommand defines the root haulerctl command
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "haulerctl",
-		Short:   "haulerctl provides CLI-based air-gap migration assistance",
-		Long:    getLong,
-		Example: getExample,
+		Use:          "haulerctl",
+		Short:        "haulerctl provides CLI-based air-gap migration assistance",
+		Long:         getLong,
+		Example:      getExample,
+		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if err := setupLogger(os.Stdout, loglevel); err != nil {
 				return err
