@@ -3,8 +3,6 @@ package copy
 import (
 	"context"
 	"fmt"
-	"os"
-	"time"
 
 	"github.com/containerd/containerd/remotes/docker"
 	"github.com/oras-project/oras-go/pkg/content"
@@ -15,51 +13,32 @@ import (
 type Copier struct {
 	Dir       string
 	fileStore *content.FileStore
-	mediaType string
+	mediaOpts []string
 	logger    *logrus.Entry
 }
 
-func NewCopier(path string, media string) *Copier {
-
-	fs := createFileStoreIfNotExists(path)
+func NewCopier(dir string, media []string, fileStore *content.FileStore) *Copier {
 
 	return &Copier{
-		Dir:       path,
-		fileStore: fs,
-		mediaType: media,
+		Dir:       dir,
+		fileStore: fileStore,
+		mediaOpts: media,
 		logger: logrus.WithFields(logrus.Fields{
 			"store": "hauler",
 		}),
 	}
 }
 
-func createFileStoreIfNotExists(path string) *content.FileStore {
-	if _, err := os.Stat(path); err != nil {
-		if !os.IsNotExist(err) {
-			logrus.Error(err)
-		}
-		if err := os.MkdirAll(path, 0755); err != nil {
-			logrus.Error(err)
-		}
-	}
-
-	fs := content.NewFileStore(path)
-	defer fs.Close()
-
-	return fs
-}
-
 func (c Copier) Get(ctx context.Context, src string) error {
 
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resolver := docker.NewResolver(docker.ResolverOptions{})
+	resolver := docker.NewResolver(docker.ResolverOptions{PlainHTTP: true})
 
 	// Pull file(s) from registry and save to disk
 	fmt.Printf("Pulling from %s and saving to %s\n", src, c.Dir)
-	allowedMediaTypes := []string{(c.mediaType)}
-	desc, _, err := oras.Pull(ctx, resolver, src, c.fileStore, oras.WithAllowedMediaTypes(allowedMediaTypes))
+	desc, _, err := oras.Pull(ctx, resolver, src, c.fileStore, oras.WithAllowedMediaTypes(c.mediaOpts))
 
 	if err != nil {
 		return err
