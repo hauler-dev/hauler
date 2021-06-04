@@ -1,17 +1,10 @@
 package app
 
 import (
-	"context"
-	"github.com/rancherfederal/hauler/pkg/apis/bundle"
-
-	"github.com/rancherfederal/hauler/pkg/apis/driver"
-	"github.com/rancherfederal/hauler/pkg/apis/haul"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/create"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type createOpts struct {
@@ -72,32 +65,5 @@ func (o *createOpts) PreRun() error {
 
 // Run performs the operation.
 func (o *createOpts) Run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	d := driver.K3sDriver{
-		Version: "v1.21.1+k3s1",
-		Config:  driver.K3sConfig{},
-	}
-
-	h := haul.Haul{
-		TypeMeta: metav1.TypeMeta{},
-		Metadata: metav1.ObjectMeta{
-			Name: "haul",
-		},
-		Spec: haul.HaulSpec{
-			Driver: d,
-			Bundles: []bundle.Bundle{
-				bundle.CreateDriverBundle(d),
-				{ Name: "test", Path: "testdata/bundle-a" },
-			},
-		},
-	}
-
-	creator, _ := create.NewCreator()
-	if err := creator.Create(ctx, h); err != nil {
-		return err
-	}
-
 	return nil
 }

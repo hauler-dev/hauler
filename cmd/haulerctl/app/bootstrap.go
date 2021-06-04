@@ -2,13 +2,12 @@ package app
 
 import (
 	"context"
-	"github.com/mholt/archiver/v3"
-	"github.com/rancherfederal/hauler/pkg/apis/haul"
-	"github.com/rancherfederal/hauler/pkg/bootstrap"
+	"github.com/rancherfederal/hauler/pkg/bundle"
+	"github.com/rancherfederal/hauler/pkg/bundle/boot"
+	"github.com/rancherfederal/hauler/pkg/packager"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	"os"
-	"path/filepath"
 )
 
 type deployOpts struct {
@@ -38,29 +37,38 @@ func NewBootstrapCommand() *cobra.Command {
 }
 
 // Run performs the operation.
-func (o *deployOpts) Run(haulPath string) error {
+func (o *deployOpts) Run(bootPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	z := archiver.NewTarZstd()
-	z.OverwriteExisting = true
-	z.MkdirAll = true
-
-	err := z.Unarchive(haulPath, o.haulerDir)
+	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		return err
 	}
 
-	haulerCfgPath := filepath.Join(o.haulerDir, "hauler.yaml")
-	data, err := os.ReadFile(haulerCfgPath)
+	tp := bundle.Path(tmpdir)
 
-	var h haul.Haul
-	if err := yaml.Unmarshal(data, &h); err != nil {
+	if err := packager.Decompress(bootPath, tmpdir); err != nil {
 		return err
 	}
 
-	bstrp := bootstrap.NewBootstrapper(h, o.haulerDir)
-	err = bstrp.Bootstrap(ctx)
+	_, err = os.Stat(tp.Path("boot.bundle.yaml"))
+	if err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(tp.Path("boot.bundle.yaml"))
+	if err != nil {
+		return err
+	}
+
+	var b *boot.Bundle
+	err = yaml.Unmarshal(data, &b)
+	if err != nil {
+		return err
+	}
+
+	err := b.Install(tp.Path())
 	if err != nil {
 		return err
 	}
