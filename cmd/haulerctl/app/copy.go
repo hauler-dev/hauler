@@ -3,16 +3,13 @@ package app
 import (
 	"context"
 
-	"github.com/oras-project/oras-go/pkg/content"
-	"github.com/rancherfederal/hauler/pkg/copy"
+	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/spf13/cobra"
 )
 
 type copyOpts struct {
-	dir                string
-	allowedMediaTypes  []string
-	allowAllMediaTypes bool
-	sourceRef          string
+	dir       string
+	sourceRef string
 }
 
 // NewCopyCommand creates a new sub command under
@@ -32,8 +29,6 @@ func NewCopyCommand() *cobra.Command {
 	}
 
 	f := cmd.Flags()
-	f.StringArrayVarP(&opts.allowedMediaTypes, "media-type", "t", nil, "allowed media types to be pulled")
-	f.BoolVarP(&opts.allowAllMediaTypes, "allow-all", "a", false, "allow all media types to be pulled")
 	f.StringVarP(&opts.dir, "dir", "d", ".", "Target directory for file copy")
 
 	return cmd
@@ -44,17 +39,9 @@ func (o *copyOpts) Run(src string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	store := content.NewFileStore(o.dir)
-	defer store.Close()
+	err := oci.Get(ctx, o.sourceRef, o.dir)
 
-	if o.allowAllMediaTypes {
-		o.allowedMediaTypes = nil
-	} else if len(o.allowedMediaTypes) == 0 {
-		o.allowedMediaTypes = []string{content.DefaultBlobMediaType, content.DefaultBlobDirMediaType}
-	}
-
-	cp := copy.NewCopier(o.dir, o.allowedMediaTypes, store)
-	if err := cp.Get(ctx, src); err != nil {
+	if err != nil {
 		return err
 	}
 
