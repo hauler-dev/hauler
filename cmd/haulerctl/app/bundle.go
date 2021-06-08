@@ -30,8 +30,6 @@ func NewBundleCommand() *cobra.Command {
 	viper.BindPFlag("bundlerdir", cmd.PersistentFlags().Lookup("bundledir"))
 
 	cmd.AddCommand(NewBundleArtifactsCommand())
-	cmd.AddCommand(NewBundleImagesCommand())
-	cmd.AddCommand(NewBundleBootCommand())
 
 	viper.AutomaticEnv()
 

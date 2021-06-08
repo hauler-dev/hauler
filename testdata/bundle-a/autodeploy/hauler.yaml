@@ -1,8 +1,0 @@
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: hauler
-  labels:
-    app.kubernetes.io/name: hauler
-    app.kubernetes.io/managed-by: hauler

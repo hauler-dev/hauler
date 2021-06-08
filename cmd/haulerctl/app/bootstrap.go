@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
-	"github.com/rancherfederal/hauler/pkg/bundle"
-	"github.com/rancherfederal/hauler/pkg/bundle/boot"
-	"github.com/rancherfederal/hauler/pkg/packager"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/bootstrap"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 	"os"
+	"path/filepath"
+	"sigs.k8s.io/yaml"
 )
 
 type deployOpts struct {
@@ -23,7 +24,7 @@ func NewBootstrapCommand() *cobra.Command {
 		Short: "Single-command install of a k3s cluster with known tools running inside of it",
 		Long: `Single-command install of a k3s cluster with known tools running inside of it. Tools
 		include an OCI registry and Git server`,
-		Aliases: []string{"b", "btstrp"},
+		Aliases: []string{"b"},
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return opts.Run(args[0])
@@ -37,38 +38,40 @@ func NewBootstrapCommand() *cobra.Command {
 }
 
 // Run performs the operation.
-func (o *deployOpts) Run(bootPath string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func (o *deployOpts) Run(packagePath string) error {
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	tmpdir, err := os.MkdirTemp("", "hauler")
+	fsys, tmpdir, err := tmpFS()
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpdir)
+	logrus.Infof("Built temporary working dir: %s", tmpdir)
+
+	z := newTarZstd()
+
+	logrus.Infof("Unarchiving %s", packagePath)
+	err = z.Unarchive(packagePath, tmpdir)
+	if err != nil {
+		return err
+	}
+	logrus.Infof("Unarchived %s to %s", packagePath, tmpdir)
+
+	logrus.Infof("Loading package.json from archive")
+	bundleData, err := os.ReadFile(filepath.Join(tmpdir, "package.json"))
 	if err != nil {
 		return err
 	}
 
-	tp := bundle.Path(tmpdir)
-
-	if err := packager.Decompress(bootPath, tmpdir); err != nil {
+	var p v1alpha1.Package
+	if err := yaml.Unmarshal(bundleData, &p); err != nil {
 		return err
 	}
+	logrus.Infof("Loaded package '%s'", p.Name)
 
-	_, err = os.Stat(tp.Path("boot.bundle.yaml"))
-	if err != nil {
-		return err
-	}
-
-	data, err := os.ReadFile(tp.Path("boot.bundle.yaml"))
-	if err != nil {
-		return err
-	}
-
-	var b *boot.Bundle
-	err = yaml.Unmarshal(data, &b)
-	if err != nil {
-		return err
-	}
-
-	err := b.Install(tp.Path())
+	logrus.Infof("Bootstrapping cluster")
+	err = bootstrap.Boot(ctx, p, fsys)
 	if err != nil {
 		return err
 	}

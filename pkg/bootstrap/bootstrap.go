@@ -2,107 +2,87 @@ package bootstrap
 
 import (
 	"context"
-	"embed"
-	"fmt"
-	"github.com/rancherfederal/hauler/pkg/apis/driver"
-	"github.com/rancherfederal/hauler/pkg/apis/haul"
-	"github.com/rancherfederal/hauler/pkg/util"
-	"io/fs"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/fs"
+	"github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
+	"sigs.k8s.io/yaml"
 )
 
-//go:embed bin/*
-var e embed.FS
+func Boot(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs) error {
+	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
+	_ = d
 
-type bootstrapper struct {
-	haul haul.Haul
-	dir string
-}
-
-func NewBootstrapper(h haul.Haul, haulerDir string) *bootstrapper {
-	return &bootstrapper{
-		haul: h,
-		dir: haulerDir,
-	}
-}
-
-func (b bootstrapper) Bootstrap(ctx context.Context) error {
-	if err := b.renderEmbeddedDriverInit(); err != nil {
+	if err := fsys.MoveBin(); err != nil {
 		return err
 	}
 
-	if err := b.createLayout(); err != nil {
+	if err := fsys.MoveBundle(); err != nil {
 		return err
 	}
 
-	for _, bndl := range b.haul.Spec.Bundles {
-		bundleBasePath := filepath.Join(b.dir, "bundles", bndl.Name)
-		err := bndl.Setup(b.haul.Spec.Driver, bundleBasePath)
+	if err := fsys.MoveImage(); err != nil {
+		return err
+	}
+
+	if err := config(ctx, d); err != nil {
+		return err
+	}
+
+	out, err := start(ctx, d)
+	if err != nil {
+		return err
+	}
+
+	//TODO: Log better
+	logrus.Infof(string(out))
+
+	return nil
+}
+
+//config will write out the driver config to the appropriate location and merge with anything already there
+func config(ctx context.Context, d v1alpha1.Drive) error {
+	c := make(map[string]interface{})
+	c["write-kubeconfig-mode"] = 0644
+
+	//TODO: Randomize this name so multi-node works
+	c["node-name"] = "hauler"
+
+	//TODO: Lazy
+	if err := os.MkdirAll("/etc/rancher/k3s", os.ModePerm); err != nil {
+		return err
+	}
+
+	//Merge anything existing
+	if data, err := os.ReadFile(d.ConfigFile()); err == nil {
+		// file exists
+		err := yaml.Unmarshal(data, &c)
 		if err != nil {
 			return err
 		}
 	}
 
-	err := StartDriver(b.haul.Spec.Driver)
+	data, err := yaml.Marshal(c)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	return os.WriteFile(d.ConfigFile(), data, 0644)
 }
 
-func (b bootstrapper) renderEmbeddedDriverInit() error {
-	err := fs.WalkDir(e, "bin", func(path string, d fs.DirEntry, err error) error {
-		if d.IsDir() {
-			return nil
-		}
-
-		if strings.Contains(path, b.haul.Spec.Driver.Name()) {
-			data, err := fs.ReadFile(e, path)
-			if err != nil {
-				return err
-			}
-
-			renderedFile := filepath.Join(b.dir, path)
-			err = os.WriteFile(renderedFile, data, 0755)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (b bootstrapper) createLayout() error {
-	l := util.NewLayout(b.haul.Spec.Driver.VarPath())
-	l.AddDir("server/static", 0700)
-	l.AddDir("server/manifests", 0755)
-	l.AddDir("agent/images", 0755)
-	return l.Create()
-}
-
-func StartDriver(d driver.Driver) error {
+//start will start the cluster using the appropriate driver
+func start(ctx context.Context, d v1alpha1.Drive) ([]byte, error) {
 	cmd := exec.Command("/bin/sh", "/opt/hauler/bin/k3s-init.sh")
-	cmd.Env = append(os.Environ(), []string{
+
+	//General rule of thumb is keep as much configuration in config.yaml as possible, only set script args here
+	cmd.Env	= append(os.Environ(), []string{
 		"INSTALL_K3S_SKIP_DOWNLOAD=true",
 		"INSTALL_K3S_SELINUX_WARN=true",
 		"INSTALL_K3S_SKIP_SELINUX_RPM=true",
 		"INSTALL_K3S_BIN_DIR=/opt/hauler/bin",
+		"INSTALL_K3S_SKIP_START=true",
 	}...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("with driver: %s\n%v", out, err)
-	}
 
-	fmt.Println(string(out))
-
-	return nil
+	return cmd.CombinedOutput()
 }
