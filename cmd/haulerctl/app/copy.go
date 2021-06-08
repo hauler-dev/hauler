@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
+
+	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/spf13/cobra"
 )
 
 type copyOpts struct {
 	dir       string
-	mediatype string
-	src       string
+	sourceRef string
 }
 
 // NewCopyCommand creates a new sub command under
@@ -20,30 +21,29 @@ func NewCopyCommand() *cobra.Command {
 		Use:     "copy",
 		Short:   "Download artifacts from OCI registry to local disk",
 		Aliases: []string{"c", "cp"},
-		Args:    cobra.MinimumNArgs(1),
+		//Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return opts.Run()
+			opts.sourceRef = args[0]
+			return opts.Run(opts.sourceRef)
 		},
 	}
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.dir, "dir", "d", ".", "Target directory for file copy")
-	f.StringVarP(&opts.src, "registry", "r", " ", "Registry URL to copy file from")
 
 	return cmd
 }
 
 // Run performs the operation.
-func (o *copyOpts) Run() error {
+func (o *copyOpts) Run(src string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	//cp := copy.NewCopier(o.dir, o.mediatype)
-	//
-	//if err := cp.Get(ctx, o.src); err != nil {
-	//	return err
-	//}
-	_ = ctx
+	err := oci.Get(ctx, o.sourceRef, o.dir)
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

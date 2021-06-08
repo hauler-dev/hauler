@@ -3,6 +3,7 @@ module github.com/rancherfederal/hauler
 go 1.16
 
 require (
+	cloud.google.com/go/storage v1.8.0 // indirect
 	github.com/Microsoft/go-winio v0.5.0 // indirect
 	github.com/Microsoft/hcsshim v0.8.17 // indirect
 	github.com/containerd/containerd v1.5.1
@@ -12,6 +13,7 @@ require (
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/klauspost/compress v1.12.3 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
+	github.com/mattn/go-runewidth v0.0.12 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
@@ -19,6 +21,7 @@ require (
 	github.com/otiai10/copy v1.6.0
 	github.com/rancher/fleet v0.3.5
 	github.com/rancher/fleet/pkg/apis v0.0.0
+	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.1.3
@@ -27,6 +30,7 @@ require (
 	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea // indirect
+	golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d // indirect
 	google.golang.org/genproto v0.0.0-20210524171403-669157292da3 // indirect
 	google.golang.org/grpc v1.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
