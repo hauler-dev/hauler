@@ -2,23 +2,24 @@ package fs
 
 import (
 	"fmt"
-	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/mholt/archiver/v3"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/otiai10/copy"
 	fleetapi "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/spf13/afero"
+	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/downloader"
+	"helm.sh/helm/v3/pkg/getter"
 	"io"
 	"k8s.io/apimachinery/pkg/util/json"
 	"os"
 	"path/filepath"
-	"github.com/otiai10/copy"
 )
 
 type PkgFs struct {
@@ -77,6 +78,13 @@ func (p PkgFs) Bin() PkgFs {
 	}
 }
 
+func (p PkgFs) Chart() PkgFs {
+	return PkgFs{
+		FS:   afero.NewBasePathFs(p.FS, v1alpha1.ChartDir).(*afero.BasePathFs),
+		root: p.path(v1alpha1.ChartDir),
+	}
+}
+
 func (p PkgFs) AddBundle(b *fleetapi.Bundle) error {
 	data, err := json.Marshal(b)
 	if err != nil {
@@ -93,19 +101,9 @@ func (p PkgFs) AddBin(r io.Reader, name string) error {
 
 //AddImage will add an image to the pkgfs in OCI layout fmt
 //TODO: Extra work is done to ensure this is unique within the index.json
-func (p PkgFs) AddImage(image string) error {
-	ref, err := name.ParseReference(image)
-	if err != nil {
-		return err
-	}
-
+func (p PkgFs) AddImage(ref name.Reference, img v1.Image) error {
 	annotations := make(map[string]string)
 	annotations[ocispec.AnnotationRefName] = ref.Name()
-
-	img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
-	if err != nil {
-		return err
-	}
 
 	lp, err := p.layout()
 	if err != nil {
@@ -114,6 +112,22 @@ func (p PkgFs) AddImage(image string) error {
 
 	//TODO: Change to ReplaceImage
 	return lp.AppendImage(img, layout.WithAnnotations(annotations))
+}
+
+//TODO: Fully aware this _only_ works for fleet right now, refactor this to use downloader.ChartDownloader
+//For ref: https://github.com/helm/helm/blob/bf486a25cdc12017c7dac74d1582a8a16acd37ea/pkg/action/pull.go#L75
+func (p PkgFs) AddChart(ref string, version string) error {
+	d := downloader.ChartDownloader{
+		Out:              nil,
+		Verify:           downloader.VerifyNever,
+		Getters: getter.All(cli.New()), 		// TODO: Probably shouldn't do this...
+		Options:          []getter.Option{
+			getter.WithInsecureSkipVerifyTLS(true),
+		},
+	}
+
+	_, _, err := d.DownloadTo(ref, version, p.Chart().path())
+	return err
 }
 
 func (p PkgFs) layout() (layout.Path, error) {
@@ -135,6 +149,9 @@ func (p *PkgFs) Init() error {
 		return err
 	}
 	if err := p.FS.Mkdir(v1alpha1.BinDir, os.ModePerm); err != nil {
+		return err
+	}
+	if err := p.FS.Mkdir(v1alpha1.ChartDir, os.ModePerm); err != nil {
 		return err
 	}
 
@@ -174,7 +191,7 @@ func (p PkgFs) MoveBundle() error {
 
 func (p PkgFs) MoveImage() error {
 	//TODO: Generic
-	if err := os.MkdirAll("/var/lib/rancher/k3s/agent/images/hauler", os.ModePerm); err != nil {
+	if err := os.MkdirAll("/var/lib/rancher/k3s/agent/images", os.ModePerm); err != nil {
 		return err
 	}
 
@@ -200,5 +217,13 @@ func (p PkgFs) MoveImage() error {
 	}
 
 	//TODO: Would be great if k3s/containerd could load directly from an OCI layout
-	return tarball.MultiRefWriteToFile("/var/lib/rancher/k3s/agent/images/hauler/hauler.tar", imgRefs)
+	return tarball.MultiRefWriteToFile("/var/lib/rancher/k3s/agent/images/hauler.tar", imgRefs)
+}
+
+func (p PkgFs) MoveChart() error {
+	if err := os.MkdirAll("/var/lib/rancher/k3s/server/static/charts/hauler", 0700); err != nil {
+		return err
+	}
+
+	return copy.Copy(p.Chart().path(), "/var/lib/rancher/k3s/server/static/charts/hauler")
 }

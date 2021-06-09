@@ -19,10 +19,14 @@ func Test_createOpts_Run(t *testing.T) {
 			Name:                       "test",
 		},
 		Spec:       v1alpha1.PackageSpec{
-			Paths:  []string{"../../../testdata/docker-registry", "../../../testdata/rawmanifests"},
+			Fleet: v1alpha1.Fleet{Version: "0.3.5"},
 			Driver: v1alpha1.Driver{
 				Kind: "k3s",
 				Version: "v1.21.1+k3s1",
+			},
+			Paths:  []string{
+				//"../../../testdata/docker-registry",
+				"../../../testdata/rawmanifests",
 			},
 			Images: []string{},
 		},

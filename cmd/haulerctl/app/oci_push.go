@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/oras-project/oras-go/pkg/content"
-	"github.com/oras-project/oras-go/pkg/oras"
+	"github.com/deislabs/oras/pkg/content"
+	"github.com/deislabs/oras/pkg/oras"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"os"

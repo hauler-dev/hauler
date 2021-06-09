@@ -8,6 +8,7 @@ const (
 	BundlesDir = "bundles"
 	LayoutDir = "layout"
 	BinDir = "bin"
+	ChartDir = "charts"
 )
 
 type Package struct {
@@ -18,12 +19,14 @@ type Package struct {
 }
 
 type PackageSpec struct {
+	Fleet Fleet `json:"fleet"`
+
+	Driver Driver `json:"driver"`
+
 	// Paths is the list of directories relative to the working directory contains all resources to be bundled.
 	// path globbing is supported, for example [ "charts/*" ] will match all folders as a subdirectory of charts/
 	// If empty, "/" is the default
 	Paths []string `json:"paths,omitempty"`
-
-	Driver Driver `json:"driver,omitempty"`
 
 	Images []string `json:"images,omitempty"`
 }

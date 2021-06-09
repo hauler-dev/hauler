@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/containerd/containerd/remotes/docker"
-	"github.com/oras-project/oras-go/pkg/content"
-	"github.com/oras-project/oras-go/pkg/oras"
+	"github.com/deislabs/oras/pkg/content"
+	"github.com/deislabs/oras/pkg/oras"
 	"github.com/sirupsen/logrus"
 )
 

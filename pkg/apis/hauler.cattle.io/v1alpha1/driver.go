@@ -5,7 +5,7 @@ import (
 )
 
 type Drive interface {
-	Images() []string
+	Images() ([]string, error)
 	BinURL() string
 
 	ImagesDir() string
@@ -26,7 +26,7 @@ type k3s struct {
 //TODO: Don't hardcode this
 func (k k3s) BinURL() string { return "https://github.com/k3s-io/k3s/releases/download/v1.21.1%2Bk3s1/k3s" }
 
-func (k k3s) Images() []string {
+func (k k3s) Images() ([]string, error) {
 	//TODO: Replace this with a query to images.txt on release page
 	return []string{
 		"docker.io/rancher/coredns-coredns:1.8.3",
@@ -37,7 +37,7 @@ func (k k3s) Images() []string {
 		"docker.io/rancher/local-path-provisioner:v0.0.19",
 		"docker.io/rancher/metrics-server:v0.3.6",
 		"docker.io/rancher/pause:3.1",
-	}
+	}, nil
 }
 
 func (k k3s) ImagesDir() string { return filepath.Join(k.dataDir, "agent/images") }
@@ -46,7 +46,7 @@ func (k k3s) ConfigFile() string { return filepath.Join(k.etcDir, "config.yaml")
 
 //TODO: Implement rke2 as a driver
 type rke2 struct {}
-func (r rke2) Images() []string { return []string{} }
+func (r rke2) Images() ([]string, error) { return []string{}, nil }
 func (r rke2) BinURL() string { return "" }
 func (r rke2) ImagesDir() string { return "" }
 func (r rke2) ManifestsDir() string { return "" }

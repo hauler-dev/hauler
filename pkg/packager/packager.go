@@ -2,28 +2,15 @@ package packager
 
 import (
 	"context"
-	"fmt"
 	"github.com/mholt/archiver/v3"
+	fleetapi "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"github.com/rancher/fleet/pkg/bundle"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/fs"
 	"k8s.io/apimachinery/pkg/util/json"
 	"net/http"
-	"os"
 	"path/filepath"
 )
-
-//Unpackage will do things
-func Unpackage(ctx context.Context, a archiver.Archiver, source string, dest string) (v1alpha1.Package, error) {
-	//err := a.Unarchive(source, dest)
-
-	var p v1alpha1.Package
-
-	data, err := os.ReadFile(filepath.Join(dest, "package.json"))
-	err = json.Unmarshal(data, &p)
-
-	return p, err
-}
 
 //Create will create a deployable package
 func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.Archiver) error {
@@ -32,6 +19,7 @@ func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.A
 		return err
 	}
 
+	//TODO: Lol @ npm
 	if err := fsys.WriteFile("package.json", data, 0644); err != nil {
 		return err
 	}
@@ -42,13 +30,21 @@ func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.A
 
 	//Get and write bundles to disk
 	for _, path := range p.Spec.Paths {
-		base := filepath.Base(path)
-		b, err := bundle.Open(ctx, fmt.Sprintf("hauler-%s", base), path, "", opts)
+		bundleName := filepath.Base(path)
+		fb, err := bundle.Open(ctx, bundleName, path, "", opts)
 		if err != nil {
 			return err
 		}
 
-		if err := fsys.AddBundle(b.Definition); err != nil {
+		//TODO: Figure out why bundle.Open doesn't return with GVK
+		bn := fleetapi.NewBundle("fleet-local", bundleName, *fb.Definition)
+
+		_, err = IdentifyImages(bn)
+		if err != nil {
+			return err
+		}
+
+		if err := fsys.AddBundle(bn); err != nil {
 			return err
 		}
 	}
@@ -63,13 +59,22 @@ func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.A
 		return err
 	}
 
-	images := append(p.Spec.Images, d.Images()...)
+	//TODO: Bad bad
+	if err := fsys.AddChart("https://github.com/rancher/fleet/releases/download/v0.3.5/fleet-crd-0.3.5.tgz", "0.3.5"); err != nil {
+		return err
+	}
 
-	//TODO: Smartly add fleet images
-	images = append(images, []string{"rancher/gitjob:v0.1.15", "rancher/fleet:v0.3.5", "rancher/fleet-agent:v0.3.5"}...)
+	if err := fsys.AddChart("https://github.com/rancher/fleet/releases/download/v0.3.5/fleet-0.3.5.tgz", "0.3.5"); err != nil {
+		return err
+	}
 
-	for _, i := range images {
-		err := fsys.AddImage(i)
+	imgMap, err := ConcatImages(d, p.Spec.Fleet)
+	if err != nil {
+		return err
+	}
+
+	for ref, im := range imgMap {
+		err := fsys.AddImage(ref, im)
 		if err != nil {
 			return err
 		}
