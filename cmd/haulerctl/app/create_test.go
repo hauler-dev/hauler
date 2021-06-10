@@ -25,7 +25,7 @@ func Test_createOpts_Run(t *testing.T) {
 				Version: "v1.21.1+k3s1",
 			},
 			Paths: []string{
-				//"../../../testdata/docker-registry",
+				"../../../testdata/docker-registry",
 				"../../../testdata/rawmanifests",
 			},
 			Images: []string{},

@@ -19,7 +19,7 @@ type standardLogger struct {
 }
 
 type Event struct {
-	id int
+	id      int
 	message string
 }
 

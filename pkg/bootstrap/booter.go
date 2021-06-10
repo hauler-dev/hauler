@@ -25,7 +25,7 @@ type Booter interface {
 
 type booter struct {
 	Package v1alpha1.Package
-	fs fs.PkgFs
+	fs      fs.PkgFs
 }
 
 //NewBooter will build a new booter given a path to a directory containing a hauler package.json
@@ -39,7 +39,7 @@ func NewBooter(pkgPath string) (*booter, error) {
 
 	return &booter{
 		Package: pkg,
-		fs:     fsys,
+		fs:      fsys,
 	}, nil
 }
 
@@ -47,10 +47,18 @@ func (b booter) Init() error {
 	d := v1alpha1.NewDriver(b.Package.Spec.Driver.Kind)
 
 	//TODO: Feel like there's a better way to do this
-	if err := b.moveBin(); err != nil { return err }
-	if err := b.moveImages(d); err != nil { return err }
-	if err := b.moveBundles(d); err != nil { return err }
-	if err := b.moveCharts(d); err != nil { return err }
+	if err := b.moveBin(); err != nil {
+		return err
+	}
+	if err := b.moveImages(d); err != nil {
+		return err
+	}
+	if err := b.moveBundles(d); err != nil {
+		return err
+	}
+	if err := b.moveCharts(d); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -67,7 +75,7 @@ func (b booter) Boot(ctx context.Context, d v1alpha1.Drive) error {
 	//TODO: Generic
 	cmd := exec.Command("/bin/sh", "/opt/hauler/bin/k3s-init.sh")
 
-	cmd.Env	= append(os.Environ(), []string{
+	cmd.Env = append(os.Environ(), []string{
 		"INSTALL_K3S_SKIP_DOWNLOAD=true",
 		"INSTALL_K3S_SELINUX_WARN=true",
 		"INSTALL_K3S_SKIP_SELINUX_RPM=true",

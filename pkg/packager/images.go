@@ -20,6 +20,7 @@ type Imager interface {
 }
 
 type discoveredImages []string
+
 func (d discoveredImages) Images() ([]string, error) {
 	return d, nil
 }
@@ -79,7 +80,9 @@ func ResolveRemoteRefs(images ...string) (map[name.Reference]v1.Image, error) {
 	m := make(map[name.Reference]v1.Image)
 
 	for _, i := range images {
-		if i == "" { continue }
+		if i == "" {
+			continue
+		}
 
 		//TODO: This will error out if remote is a v1 image, do better error handling for this
 		ref, err := name.ParseReference(i)
@@ -98,8 +101,15 @@ func ResolveRemoteRefs(images ...string) (map[name.Reference]v1.Image, error) {
 	return m, nil
 }
 
+//TODO: Add user defined paths
 var knownImagePaths = []string{
+	// Deployments & DaemonSets
+	"{.spec.template.spec.initContainers[*].image}",
 	"{.spec.template.spec.containers[*].image}",
+
+	// Pods
+	"{.spec.initContainers[*].image}",
+	"{.spec.containers[*].image}",
 }
 
 ////imageFromRuntimeObject will return any images found in known obj specs
@@ -135,6 +145,6 @@ func parseJSONPath(input interface{}, parser *jsonpath.JSONPath, template string
 		return nil, err
 	}
 
-	r:= strings.Split(buf.String(), " ")
+	r := strings.Split(buf.String(), " ")
 	return r, nil
 }

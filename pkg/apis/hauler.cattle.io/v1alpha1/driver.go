@@ -74,7 +74,7 @@ func (r rke2) Images() ([]string, error)                  { return []string{}, n
 func (r rke2) BinURL() string                             { return "" }
 func (r rke2) LibPath() string                            { return "" }
 func (r rke2) EtcPath() string                            { return "" }
-func (r rke2) Config() (*map[string]interface{}, error)    { return nil, nil }
+func (r rke2) Config() (*map[string]interface{}, error)   { return nil, nil }
 func (r rke2) SystemObjects() (objs []object.ObjMetadata) { return objs }
 
 //NewDriver will return the appropriate driver given a kind, defaults to k3s

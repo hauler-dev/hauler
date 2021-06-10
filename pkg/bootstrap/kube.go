@@ -31,7 +31,7 @@ func waitForDriver(ctx context.Context, d v1alpha1.Drive) error {
 			return errors.New("timed out waiting for driver to provision")
 		}
 
-		time.Sleep(1*time.Second)
+		time.Sleep(1 * time.Second)
 	}
 
 	cfg, err := kube.NewKubeConfig()
@@ -56,7 +56,7 @@ func installChart(cf *genericclioptions.ConfigFlags, chart *chart.Chart, release
 
 	client := action.NewInstall(actionConfig)
 	client.ReleaseName = releaseName
-	client.Namespace, cf.Namespace = namespace, stringptr(namespace) 	// TODO: Not sure why this needs to be set twice
+	client.Namespace, cf.Namespace = namespace, stringptr(namespace) // TODO: Not sure why this needs to be set twice
 	client.CreateNamespace = true
 	client.Wait = true
 
