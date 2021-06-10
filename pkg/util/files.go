@@ -10,7 +10,7 @@ import (
 )
 
 type dir struct {
-	Path string
+	Path       string
 	Permission os.FileMode
 }
 
@@ -48,7 +48,7 @@ func (l FSLayout) Create() error {
 //AddDir will add a folder to the FSLayout
 func (l *FSLayout) AddDir(relPath string, perm os.FileMode) {
 	l.dirs = append(l.dirs, dir{
-		Path: relPath,
+		Path:       relPath,
 		Permission: perm,
 	})
 }

@@ -12,8 +12,8 @@ import (
 )
 
 type createOpts struct {
-	driver            string
-	outputFile        string
+	driver     string
+	outputFile string
 	configFile string
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 type ociOpts struct {
-	insecure bool
+	insecure  bool
 	plainHTTP bool
 }
 
@@ -19,7 +19,7 @@ func NewOCICommand() *cobra.Command {
 	opts := ociOpts{}
 
 	cmd := &cobra.Command{
-		Use: "oci",
+		Use:   "oci",
 		Short: "oci stuff",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()

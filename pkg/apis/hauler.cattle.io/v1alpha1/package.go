@@ -6,13 +6,13 @@ import (
 
 const (
 	BundlesDir = "bundles"
-	LayoutDir = "layout"
-	BinDir = "bin"
-	ChartDir = "charts"
+	LayoutDir  = "layout"
+	BinDir     = "bin"
+	ChartDir   = "charts"
 )
 
 type Package struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec PackageSpec `json:"spec"`

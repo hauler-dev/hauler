@@ -14,17 +14,19 @@ type Drive interface {
 }
 
 type Driver struct {
-	Kind string `json:"kind"`
+	Kind    string `json:"kind"`
 	Version string `json:"version"`
 }
 
 type k3s struct {
 	dataDir string
-	etcDir string
+	etcDir  string
 }
 
 //TODO: Don't hardcode this
-func (k k3s) BinURL() string { return "https://github.com/k3s-io/k3s/releases/download/v1.21.1%2Bk3s1/k3s" }
+func (k k3s) BinURL() string {
+	return "https://github.com/k3s-io/k3s/releases/download/v1.21.1%2Bk3s1/k3s"
+}
 
 func (k k3s) Images() ([]string, error) {
 	//TODO: Replace this with a query to images.txt on release page
@@ -40,17 +42,18 @@ func (k k3s) Images() ([]string, error) {
 	}, nil
 }
 
-func (k k3s) ImagesDir() string { return filepath.Join(k.dataDir, "agent/images") }
+func (k k3s) ImagesDir() string    { return filepath.Join(k.dataDir, "agent/images") }
 func (k k3s) ManifestsDir() string { return filepath.Join(k.dataDir, "server/manifests") }
-func (k k3s) ConfigFile() string { return filepath.Join(k.etcDir, "config.yaml") }
+func (k k3s) ConfigFile() string   { return filepath.Join(k.etcDir, "config.yaml") }
 
 //TODO: Implement rke2 as a driver
-type rke2 struct {}
+type rke2 struct{}
+
 func (r rke2) Images() ([]string, error) { return []string{}, nil }
-func (r rke2) BinURL() string { return "" }
-func (r rke2) ImagesDir() string { return "" }
-func (r rke2) ManifestsDir() string { return "" }
-func (r rke2) ConfigFile() string { return "" }
+func (r rke2) BinURL() string            { return "" }
+func (r rke2) ImagesDir() string         { return "" }
+func (r rke2) ManifestsDir() string      { return "" }
+func (r rke2) ConfigFile() string        { return "" }
 
 //NewDriver will return the appropriate driver given a kind, defaults to k3s
 func NewDriver(kind string) Drive {
@@ -63,7 +66,7 @@ func NewDriver(kind string) Drive {
 	default:
 		d = k3s{
 			dataDir: "/var/lib/rancher/k3s",
-			etcDir: "/etc/rancher/k3s",
+			etcDir:  "/etc/rancher/k3s",
 		}
 	}
 

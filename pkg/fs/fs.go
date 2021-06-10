@@ -118,10 +118,10 @@ func (p PkgFs) AddImage(ref name.Reference, img v1.Image) error {
 //For ref: https://github.com/helm/helm/blob/bf486a25cdc12017c7dac74d1582a8a16acd37ea/pkg/action/pull.go#L75
 func (p PkgFs) AddChart(ref string, version string) error {
 	d := downloader.ChartDownloader{
-		Out:              nil,
-		Verify:           downloader.VerifyNever,
-		Getters: getter.All(cli.New()), 		// TODO: Probably shouldn't do this...
-		Options:          []getter.Option{
+		Out:     nil,
+		Verify:  downloader.VerifyNever,
+		Getters: getter.All(cli.New()), // TODO: Probably shouldn't do this...
+		Options: []getter.Option{
 			getter.WithInsecureSkipVerifyTLS(true),
 		},
 	}

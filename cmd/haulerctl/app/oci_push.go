@@ -2,9 +2,9 @@ package app
 
 import (
 	"context"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/deislabs/oras/pkg/content"
 	"github.com/deislabs/oras/pkg/oras"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"os"
@@ -14,17 +14,17 @@ type ociPushOpts struct {
 	ociOpts
 
 	targetRef string
-	pathRef string
+	pathRef   string
 }
 
 func NewOCIPushCommand() *cobra.Command {
 	opts := ociPushOpts{}
 
 	cmd := &cobra.Command{
-		Use: "push",
-		Short: "oci push",
+		Use:     "push",
+		Short:   "oci push",
 		Aliases: []string{"p"},
-		Args: cobra.MinimumNArgs(2),
+		Args:    cobra.MinimumNArgs(2),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return opts.PreRun()
 		},

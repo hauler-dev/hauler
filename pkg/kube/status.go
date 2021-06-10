@@ -22,7 +22,7 @@ type StatusChecker struct {
 	client client.Client
 
 	interval time.Duration
-	timeout time.Duration
+	timeout  time.Duration
 }
 
 func NewStatusChecker(kubeConfig *rest.Config, interval time.Duration, timeout time.Duration) (*StatusChecker, error) {
@@ -35,7 +35,7 @@ func NewStatusChecker(kubeConfig *rest.Config, interval time.Duration, timeout t
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &StatusChecker{
 		poller:   polling.NewStatusPoller(c, restMapper),
 		client:   c,
@@ -50,7 +50,7 @@ func (c *StatusChecker) WaitForCondition(objs ...object.ObjMetadata) error {
 
 	eventsChan := c.poller.Poll(ctx, objs, polling.Options{
 		PollInterval: c.interval,
-		UseCache: true,
+		UseCache:     true,
 	})
 	coll := collector.NewResourceStatusCollector(objs)
 

@@ -10,11 +10,11 @@ import (
 
 func NewKubeConfig() (*rest.Config, error) {
 	loadingRules := &clientcmd.ClientConfigLoadingRules{
-		Precedence:          []string{
+		Precedence: []string{
 			filepath.Join("/etc/rancher/k3s/k3s.yaml"),
 			filepath.Join("/etc/rancher/rke2/rke2.yaml"),
 		},
-		WarnIfAllMissing:    true,
+		WarnIfAllMissing: true,
 	}
 
 	cfgOverrides := &clientcmd.ConfigOverrides{}

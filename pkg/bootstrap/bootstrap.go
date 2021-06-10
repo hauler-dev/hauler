@@ -110,7 +110,7 @@ func start(ctx context.Context, d v1alpha1.Drive) ([]byte, error) {
 	cmd := exec.Command("/bin/sh", "/opt/hauler/bin/k3s-init.sh")
 
 	//General rule of thumb is keep as much configuration in config.yaml as possible, only set script args here
-	cmd.Env	= append(os.Environ(), []string{
+	cmd.Env = append(os.Environ(), []string{
 		"INSTALL_K3S_SKIP_DOWNLOAD=true",
 		"INSTALL_K3S_SELINUX_WARN=true",
 		"INSTALL_K3S_SKIP_SELINUX_RPM=true",
@@ -138,7 +138,7 @@ func waitForDriver(ctx context.Context, cfg *rest.Config) error {
 			return errors.New("timed out waiting for driver")
 		}
 
-		time.Sleep(5*time.Second)
+		time.Sleep(5 * time.Second)
 	}
 
 	logrus.Infof("waiting for k3s to be ready")
@@ -232,7 +232,6 @@ func installFleet(ctx context.Context, fsys fs.PkgFs, cfg *rest.Config) error {
 
 	return nil
 }
-
 
 //installChart is a helper function to install a chart located _on disk_
 //TODO: This is probably wrong since it makes several fleet assumptions
