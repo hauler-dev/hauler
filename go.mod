@@ -14,12 +14,12 @@ require (
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/google/go-containerregistry v0.4.1
 	github.com/google/uuid v1.2.0 // indirect
+	github.com/imdario/mergo v0.3.12
 	github.com/klauspost/compress v1.12.3 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mattn/go-runewidth v0.0.12 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/ohler55/ojg v1.11.1 // indirect
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
 	github.com/opencontainers/runc v1.0.0-rc93 // indirect
 	github.com/otiai10/copy v1.6.0
@@ -31,8 +31,6 @@ require (
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/viper v1.7.0
-	github.com/tidwall/gjson v1.8.0 // indirect
-	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
 	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect

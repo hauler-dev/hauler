@@ -6,10 +6,8 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/mholt/archiver/v3"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/otiai10/copy"
 	fleetapi "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/spf13/afero"
@@ -52,7 +50,7 @@ func (p *PkgFs) Archive(a archiver.Archiver, out string) error {
 	return a.Archive([]string{"."}, filepath.Join(cwd, out))
 }
 
-func (p PkgFs) path(elem ...string) string {
+func (p PkgFs) Path(elem ...string) string {
 	complete := []string{p.root}
 	return filepath.Join(append(complete, elem...)...)
 }
@@ -60,28 +58,28 @@ func (p PkgFs) path(elem ...string) string {
 func (p PkgFs) Bundle() PkgFs {
 	return PkgFs{
 		FS:   afero.NewBasePathFs(p.FS, v1alpha1.BundlesDir).(*afero.BasePathFs),
-		root: p.path(v1alpha1.BundlesDir),
+		root: p.Path(v1alpha1.BundlesDir),
 	}
 }
 
 func (p PkgFs) Image() PkgFs {
 	return PkgFs{
 		FS:   afero.NewBasePathFs(p.FS, v1alpha1.LayoutDir).(*afero.BasePathFs),
-		root: p.path(v1alpha1.LayoutDir),
+		root: p.Path(v1alpha1.LayoutDir),
 	}
 }
 
 func (p PkgFs) Bin() PkgFs {
 	return PkgFs{
 		FS:   afero.NewBasePathFs(p.FS, v1alpha1.BinDir).(*afero.BasePathFs),
-		root: p.path(v1alpha1.BinDir),
+		root: p.Path(v1alpha1.BinDir),
 	}
 }
 
 func (p PkgFs) Chart() PkgFs {
 	return PkgFs{
 		FS:   afero.NewBasePathFs(p.FS, v1alpha1.ChartDir).(*afero.BasePathFs),
-		root: p.path(v1alpha1.ChartDir),
+		root: p.Path(v1alpha1.ChartDir),
 	}
 }
 
@@ -126,12 +124,12 @@ func (p PkgFs) AddChart(ref string, version string) error {
 		},
 	}
 
-	_, _, err := d.DownloadTo(ref, version, p.Chart().path())
+	_, _, err := d.DownloadTo(ref, version, p.Chart().Path())
 	return err
 }
 
 func (p PkgFs) layout() (layout.Path, error) {
-	path := p.Image().path(".")
+	path := p.Image().Path(".")
 	lp, err := layout.FromPath(path)
 	if os.IsNotExist(err) {
 		lp, err = layout.Write(path, empty.Index)
@@ -154,7 +152,6 @@ func (p *PkgFs) Init() error {
 	if err := p.FS.Mkdir(v1alpha1.ChartDir, os.ModePerm); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -171,59 +168,31 @@ func (p PkgFs) WriteFile(name string, data []byte, perm os.FileMode) error {
 	return err
 }
 
-//TODO: Move* will actually just copy. This is more expensive, but is much safer/easier at handling deep merges, should this change?
-func (p PkgFs) MoveBin() error {
-	if err := os.MkdirAll("/opt/hauler", os.ModePerm); err != nil {
-		return err
-	}
-
-	return copy.Copy(p.Bin().path(), "/opt/hauler/bin")
-}
-
-func (p PkgFs) MoveBundle() error {
-	//TODO: Generic
-	if err := os.MkdirAll("/var/lib/rancher/k3s/server/manifests/hauler", os.ModePerm); err != nil {
-		return err
-	}
-
-	return copy.Copy(p.Bundle().path(), "/var/lib/rancher/k3s/server/manifests/hauler")
-}
-
-func (p PkgFs) MoveImage() error {
-	//TODO: Generic
-	if err := os.MkdirAll("/var/lib/rancher/k3s/agent/images", os.ModePerm); err != nil {
-		return err
-	}
+func (p PkgFs) MapLayout() (map[name.Reference]v1.Image, error) {
+	imgRefs := make(map[name.Reference]v1.Image)
 
 	//TODO: Factor this out to a Store interface
-	lp, _ := p.layout()
+	lp, err := p.layout()
+	if err != nil {
+		return nil, err
+	}
+
 	ii, _ := lp.ImageIndex()
 	im, _ := ii.IndexManifest()
-
-	imgRefs := make(map[name.Reference]v1.Image)
 
 	for _, m := range im.Manifests {
 		ref, err := name.ParseReference(m.Annotations[ocispec.AnnotationRefName])
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		img, err := lp.Image(m.Digest)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		imgRefs[ref] = img
 	}
 
-	//TODO: Would be great if k3s/containerd could load directly from an OCI layout
-	return tarball.MultiRefWriteToFile("/var/lib/rancher/k3s/agent/images/hauler.tar", imgRefs)
-}
-
-func (p PkgFs) MoveChart() error {
-	if err := os.MkdirAll("/var/lib/rancher/k3s/server/static/charts/hauler", 0700); err != nil {
-		return err
-	}
-
-	return copy.Copy(p.Chart().path(), "/var/lib/rancher/k3s/server/static/charts/hauler")
+	return imgRefs, err
 }

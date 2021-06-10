@@ -2,11 +2,12 @@ package app
 
 import (
 	"fmt"
+	"github.com/rancherfederal/hauler/pkg/log"
 	"io"
 	"os"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -35,6 +36,12 @@ var (
 		haulerctl bootstrap`
 )
 
+type rootOpts struct {
+	logger log.Logger
+}
+
+var ro rootOpts
+
 // NewRootCommand defines the root haulerctl command
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -44,9 +51,12 @@ func NewRootCommand() *cobra.Command {
 		Example:      getExample,
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := setupLogger(os.Stdout, loglevel); err != nil {
+			l, err := setupCliLogger(os.Stdout, loglevel)
+			if err != nil {
 				return err
 			}
+
+			ro.logger = l
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -96,12 +106,14 @@ func initConfig() {
 	}
 }
 
-func setupLogger(out io.Writer, level string) error {
-	log.SetOutput(out)
-	lvl, err := log.ParseLevel(level)
+func setupCliLogger(out io.Writer, level string) (log.Logger, error) {
+	l := log.NewLogger(out)
+
+	lvl, err := logrus.ParseLevel(level)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	log.SetLevel(lvl)
-	return nil
+
+	l.SetLevel(lvl)
+	return l, nil
 }

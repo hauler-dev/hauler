@@ -2,6 +2,9 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"os"
+	"path/filepath"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -9,6 +12,8 @@ const (
 	LayoutDir = "layout"
 	BinDir = "bin"
 	ChartDir = "charts"
+
+	PackageFile = "package.json"
 )
 
 type Package struct {
@@ -29,4 +34,19 @@ type PackageSpec struct {
 	Paths []string `json:"paths,omitempty"`
 
 	Images []string `json:"images,omitempty"`
+}
+
+//LoadPackageFromDir will load an existing package from a directory on disk, it fails if no PackageFile is found in dir
+func LoadPackageFromDir(path string) (Package, error) {
+	data, err := os.ReadFile(filepath.Join(path, PackageFile))
+	if err != nil {
+		return Package{}, err
+	}
+
+	var p Package
+	if err := yaml.Unmarshal(data, &p); err != nil {
+		return Package{}, err
+	}
+
+	return p, nil
 }

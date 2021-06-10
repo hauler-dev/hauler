@@ -1,16 +1,18 @@
 package v1alpha1
 
 import (
-	"path/filepath"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/cli-utils/pkg/object"
 )
 
 type Drive interface {
 	Images() ([]string, error)
 	BinURL() string
 
-	ImagesDir() string
-	ManifestsDir() string
-	ConfigFile() string
+	LibPath() string
+	EtcPath() string
+	Config() (map[string]interface{}, error)
+	SystemObjects() (objs []object.ObjMetadata)
 }
 
 type Driver struct {
@@ -40,17 +42,37 @@ func (k k3s) Images() ([]string, error) {
 	}, nil
 }
 
-func (k k3s) ImagesDir() string { return filepath.Join(k.dataDir, "agent/images") }
-func (k k3s) ManifestsDir() string { return filepath.Join(k.dataDir, "server/manifests") }
-func (k k3s) ConfigFile() string { return filepath.Join(k.etcDir, "config.yaml") }
+func (k k3s) Config() (map[string]interface{}, error) {
+//	TODO: This should be typed
+	c := make(map[string]interface{})
+	c["write-kubeconfig-mode"] = "0644"
+
+	//TODO: Add uid or something to ensure this works for multi-node setups
+	c["node-name"] = "hauler"
+
+	return c, nil
+}
+
+func (k k3s) SystemObjects() (objs []object.ObjMetadata) {
+	//TODO: Make sure this matches up with specified config disables
+	for _, dep := range []string{"coredns", "local-path-provisioner", "metrics-server"} {
+		objMeta, _ := object.CreateObjMetadata("kube-system", dep, schema.GroupKind{Kind: "Deployment", Group: "apps"})
+		objs = append(objs, objMeta)
+	}
+	return objs
+}
+
+func (k k3s) LibPath() string { return "/var/lib/rancher/k3s" }
+func (k k3s) EtcPath() string { return "/etc/rancher/k3s" }
 
 //TODO: Implement rke2 as a driver
 type rke2 struct {}
 func (r rke2) Images() ([]string, error) { return []string{}, nil }
 func (r rke2) BinURL() string { return "" }
-func (r rke2) ImagesDir() string { return "" }
-func (r rke2) ManifestsDir() string { return "" }
-func (r rke2) ConfigFile() string { return "" }
+func (r rke2) LibPath() string { return "" }
+func (r rke2) EtcPath() string { return "" }
+func (r rke2) Config() (map[string]interface{}, error) { return nil, nil }
+func (r rke2) SystemObjects() (objs []object.ObjMetadata) { return objs }
 
 //NewDriver will return the appropriate driver given a kind, defaults to k3s
 func NewDriver(kind string) Drive {

@@ -25,7 +25,7 @@ func ConcatImages(imager... Imager) (map[name.Reference]v1.Image, error) {
 			return nil, err
 		}
 
-		remoteMap, err := resolveRemoteRefs(ims...)
+		remoteMap, err := ResolveRemoteRefs(ims...)
 		if err != nil {
 			return nil, err
 		}
@@ -41,11 +41,7 @@ func ConcatImages(imager... Imager) (map[name.Reference]v1.Image, error) {
 
 func IdentifyImages(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
 	opts := fleetapi.BundleDeploymentOptions{
-		DefaultNamespace:    "kube-system",
-		Kustomize:           nil,
-		Helm:                nil,
-		YAML:                nil,
-		Diff:                nil,
+		DefaultNamespace:    "default",
 	}
 		
 	m := &manifest.Manifest{ Resources: b.Spec.Resources }
@@ -56,18 +52,20 @@ func IdentifyImages(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
 		return nil, err
 	}
 
+
 	for _, o := range objs {
-		//TODO: Parse through unstructured objs for known images using json pointers
 		u := o.(*unstructured.Unstructured)
-		_ = u
-		//imageFromRuntimeObject(u)
+
+		//TODO: Parse through unstructured objs for known images using json pointers
+		images := imageFromRuntimeObject(u)
+		_ = images
 	}
 
 	return nil, err
 }
 
-//resolveRemoteRefs will return a slice of remote images resolved from their fully qualified name
-func resolveRemoteRefs(images... string) (map[name.Reference]v1.Image, error) {
+//ResolveRemoteRefs will return a slice of remote images resolved from their fully qualified name
+func ResolveRemoteRefs(images... string) (map[name.Reference]v1.Image, error) {
 	m := make(map[name.Reference]v1.Image)
 
 	for _, i := range images {
@@ -91,14 +89,14 @@ var knownImagePaths = []string{
 	"spec.template.spec.containers.#.image",
 }
 
-////imageFromRuntimeObject will return any images found in known obj specs
-//func imageFromRuntimeObject(obj *unstructured.Unstructured) []string {
-//	data, err := obj.MarshalJSON()
-//	if err != nil {
-//		return nil
-//	}
-//
-//	jsonpath.NewParser()
-//
-//	return images
-//}
+//imageFromRuntimeObject will return any images found in known obj specs
+func imageFromRuntimeObject(obj *unstructured.Unstructured) []string {
+	//data, err := obj.MarshalJSON()
+	//if err != nil {
+	//	return nil
+	//}
+	//
+	//jsonpath.NewParser()
+
+	return nil
+}
