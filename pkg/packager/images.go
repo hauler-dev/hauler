@@ -2,8 +2,6 @@ package packager
 
 import (
 	"bytes"
-	"encoding/json"
-
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -12,11 +10,18 @@ import (
 	"github.com/rancher/fleet/pkg/helmdeployer"
 	"github.com/rancher/fleet/pkg/manifest"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/util/jsonpath"
+	"strings"
 )
 
 type Imager interface {
 	Images() ([]string, error)
+}
+
+type discoveredImages []string
+func (d discoveredImages) Images() ([]string, error) {
+	return d, nil
 }
 
 //ConcatImages will gather images from various Imager sources and return a single slilce
@@ -43,7 +48,7 @@ func ConcatImages(imager ...Imager) (map[name.Reference]v1.Image, error) {
 	return m, nil
 }
 
-func IdentifyImages(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
+func IdentifyImages(b *fleetapi.Bundle) (discoveredImages, error) {
 	opts := fleetapi.BundleDeploymentOptions{
 		DefaultNamespace: "default",
 	}
@@ -56,13 +61,17 @@ func IdentifyImages(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
 		return nil, err
 	}
 
+	var di discoveredImages
+
 	for _, o := range objs {
-		u := o.(*unstructured.Unstructured)
-		_ = u
-		imageFromRuntimeObject(u)
+		imgs, err := imageFromRuntimeObject(o.(*unstructured.Unstructured))
+		if err != nil {
+			return nil, err
+		}
+		di = append(di, imgs...)
 	}
 
-	return nil, err
+	return di, err
 }
 
 //ResolveRemoteRefs will return a slice of remote images resolved from their fully qualified name
@@ -70,6 +79,9 @@ func ResolveRemoteRefs(images ...string) (map[name.Reference]v1.Image, error) {
 	m := make(map[name.Reference]v1.Image)
 
 	for _, i := range images {
+		if i == "" { continue }
+
+		//TODO: This will error out if remote is a v1 image, do better error handling for this
 		ref, err := name.ParseReference(i)
 		if err != nil {
 			return nil, err
@@ -87,40 +99,42 @@ func ResolveRemoteRefs(images ...string) (map[name.Reference]v1.Image, error) {
 }
 
 var knownImagePaths = []string{
-	"spec.template.spec.containers.#.image",
+	"{.spec.template.spec.containers[*].image}",
 }
 
 ////imageFromRuntimeObject will return any images found in known obj specs
-func imageFromRuntimeObject(obj *unstructured.Unstructured) ([]string, error) {
-	data, err := obj.MarshalJSON()
-	if err != nil {
+func imageFromRuntimeObject(obj *unstructured.Unstructured) (images []string, err error) {
+	objData, _ := obj.MarshalJSON()
+
+	var data interface{}
+	if err := json.Unmarshal(objData, &data); err != nil {
 		return nil, err
 	}
 
-	var images []string
-
-	j := jsonpath.New("imagePath")
-
-	var imageData interface{}
-
-	err = json.Unmarshal(data, &imageData)
-
-	if err != nil {
-		return nil, err
-	}
+	j := jsonpath.New("")
+	j.AllowMissingKeys(true)
 
 	for _, path := range knownImagePaths {
-
-		j.Parse(path)
-		buf := new(bytes.Buffer)
-		err = j.Execute(buf, imageData)
-
+		r, err := parseJSONPath(data, j, path)
 		if err != nil {
 			return nil, err
 		}
 
-		images = append(images, buf.String())
+		images = append(images, r...)
 	}
 
 	return images, nil
+}
+
+func parseJSONPath(input interface{}, parser *jsonpath.JSONPath, template string) ([]string, error) {
+	buf := new(bytes.Buffer)
+	if err := parser.Parse(template); err != nil {
+		return nil, err
+	}
+	if err := parser.Execute(buf, input); err != nil {
+		return nil, err
+	}
+
+	r:= strings.Split(buf.String(), " ")
+	return r, nil
 }

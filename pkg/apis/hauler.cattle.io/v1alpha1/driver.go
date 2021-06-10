@@ -11,7 +11,7 @@ type Drive interface {
 
 	LibPath() string
 	EtcPath() string
-	Config() (map[string]interface{}, error)
+	Config() (*map[string]interface{}, error)
 	SystemObjects() (objs []object.ObjMetadata)
 }
 
@@ -44,7 +44,7 @@ func (k k3s) Images() ([]string, error) {
 	}, nil
 }
 
-func (k k3s) Config() (map[string]interface{}, error) {
+func (k k3s) Config() (*map[string]interface{}, error) {
 	//	TODO: This should be typed
 	c := make(map[string]interface{})
 	c["write-kubeconfig-mode"] = "0644"
@@ -52,7 +52,7 @@ func (k k3s) Config() (map[string]interface{}, error) {
 	//TODO: Add uid or something to ensure this works for multi-node setups
 	c["node-name"] = "hauler"
 
-	return c, nil
+	return &c, nil
 }
 
 func (k k3s) SystemObjects() (objs []object.ObjMetadata) {
@@ -74,7 +74,7 @@ func (r rke2) Images() ([]string, error)                  { return []string{}, n
 func (r rke2) BinURL() string                             { return "" }
 func (r rke2) LibPath() string                            { return "" }
 func (r rke2) EtcPath() string                            { return "" }
-func (r rke2) Config() (map[string]interface{}, error)    { return nil, nil }
+func (r rke2) Config() (*map[string]interface{}, error)    { return nil, nil }
 func (r rke2) SystemObjects() (objs []object.ObjMetadata) { return objs }
 
 //NewDriver will return the appropriate driver given a kind, defaults to k3s

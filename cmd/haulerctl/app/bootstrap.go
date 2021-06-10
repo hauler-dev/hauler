@@ -71,6 +71,8 @@ func (o *deployOpts) Run(packagePath string) error {
 		return err
 	}
 
+	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
+
 	b, err := bootstrap.NewBooter(tmpdir)
 	if err != nil {
 		return err
@@ -82,14 +84,21 @@ func (o *deployOpts) Run(packagePath string) error {
 	}
 
 	o.logger.Infof("Performing pre %s boot steps", p.Spec.Driver.Kind)
+	if err := b.PreBoot(ctx, d); err != nil {
+		return err
+	}
 
 	o.logger.Infof("Booting %s", p.Spec.Driver.Kind)
+	if err := b.Boot(ctx, d); err != nil {
+		return err
+	}
 
 	o.logger.Infof("Performing post %s boot steps", p.Spec.Driver.Kind)
+	if err := b.PostBoot(ctx, d); err != nil {
+		return err
+	}
 
-	o.logger.Infof("Success!")
-
-	_ = ctx
+	o.logger.Infof("Success! You can access the cluster with '/opt/hauler/bin/kubectl'")
 
 	return nil
 }

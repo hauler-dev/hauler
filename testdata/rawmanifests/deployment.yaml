@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: frontend
+  name: podinfo
 spec:
   selector:
     matchLabels:
-      app: guestbook
+      app: podinfo
       tier: frontend
-  replicas: 3
+  replicas: 1
   template:
     metadata:
       labels:
-        app: guestbook
+        app: podinfo
         tier: frontend
     spec:
       containers:
-        - name: php-redis
-          image: gcr.io/google-samples/gb-frontend:v4
+        - name: podinfo
+          image: stefanprodan/podinfo:5.2.1
           resources:
             requests:
               cpu: 100m

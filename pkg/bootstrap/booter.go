@@ -18,9 +18,9 @@ import (
 
 type Booter interface {
 	Init() error
-	PreBoot() error
-	Boot() error
-	PostBoot() error
+	PreBoot(context.Context) error
+	Boot(context.Context, v1alpha1.Drive) error
+	PostBoot(context.Context, v1alpha1.Drive) error
 }
 
 type booter struct {
@@ -55,7 +55,11 @@ func (b booter) Init() error {
 	return nil
 }
 
-func (b booter) PreBoot() error {
+func (b booter) PreBoot(ctx context.Context, d v1alpha1.Drive) error {
+	if err := b.writeConfig(d); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -68,15 +72,15 @@ func (b booter) Boot(ctx context.Context, d v1alpha1.Drive) error {
 		"INSTALL_K3S_SELINUX_WARN=true",
 		"INSTALL_K3S_SKIP_SELINUX_RPM=true",
 		"INSTALL_K3S_BIN_DIR=/opt/hauler/bin",
+		//"INSTALL_K3S_SKIP_START=true",
 	}...)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return err
+		return fmt.Errorf("%s\n%v", out, err)
 	}
 
 	//TODO: Figure out what to do with output
-	_ = out
 
 	return waitForDriver(ctx, d)
 }
@@ -121,7 +125,7 @@ func (b booter) moveBin() error {
 		return err
 	}
 
-	return copy.Copy(b.fs.Path(), path)
+	return copy.Copy(b.fs.Bin().Path(), path)
 }
 
 func (b booter) moveImages(d v1alpha1.Drive) error {
@@ -145,7 +149,7 @@ func (b booter) moveBundles(d v1alpha1.Drive) error {
 		return err
 	}
 
-	return copy.Copy(b.fs.Path(), path)
+	return copy.Copy(b.fs.Bundle().Path(), path)
 }
 
 func (b booter) moveCharts(d v1alpha1.Drive) error {
@@ -154,7 +158,7 @@ func (b booter) moveCharts(d v1alpha1.Drive) error {
 		return err
 	}
 
-	return copy.Copy(b.fs.Path(), path)
+	return copy.Copy(b.fs.Chart().Path(), path)
 }
 
 func (b booter) writeConfig(d v1alpha1.Drive) error {
@@ -183,5 +187,5 @@ func (b booter) writeConfig(d v1alpha1.Drive) error {
 	}
 
 	data, err := yaml.Marshal(c)
-	return os.WriteFile(path, data, 0600)
+	return os.WriteFile(path, data, 0644)
 }

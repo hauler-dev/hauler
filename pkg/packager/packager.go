@@ -28,6 +28,8 @@ func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.A
 		Compress: true,
 	}
 
+	var di discoveredImages
+
 	//Get and write bundles to disk
 	for _, path := range p.Spec.Paths {
 		bundleName := filepath.Base(path)
@@ -39,10 +41,12 @@ func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.A
 		//TODO: Figure out why bundle.Open doesn't return with GVK
 		bn := fleetapi.NewBundle("fleet-local", bundleName, *fb.Definition)
 
-		_, err = IdentifyImages(bn)
+		imgs, err := IdentifyImages(bn)
 		if err != nil {
 			return err
 		}
+
+		di = append(di, imgs...)
 
 		if err := fsys.AddBundle(bn); err != nil {
 			return err
@@ -68,7 +72,7 @@ func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.A
 		return err
 	}
 
-	imgMap, err := ConcatImages(d, p.Spec.Fleet)
+	imgMap, err := ConcatImages(d, p.Spec.Fleet, di)
 	if err != nil {
 		return err
 	}
