@@ -1,6 +1,9 @@
 package packager
 
 import (
+	"bytes"
+	"encoding/json"
+
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -9,6 +12,7 @@ import (
 	"github.com/rancher/fleet/pkg/helmdeployer"
 	"github.com/rancher/fleet/pkg/manifest"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/util/jsonpath"
 )
 
 type Imager interface {
@@ -16,7 +20,7 @@ type Imager interface {
 }
 
 //ConcatImages will gather images from various Imager sources and return a single slilce
-func ConcatImages(imager... Imager) (map[name.Reference]v1.Image, error) {
+func ConcatImages(imager ...Imager) (map[name.Reference]v1.Image, error) {
 	m := make(map[name.Reference]v1.Image)
 
 	for _, i := range imager {
@@ -41,14 +45,14 @@ func ConcatImages(imager... Imager) (map[name.Reference]v1.Image, error) {
 
 func IdentifyImages(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
 	opts := fleetapi.BundleDeploymentOptions{
-		DefaultNamespace:    "kube-system",
-		Kustomize:           nil,
-		Helm:                nil,
-		YAML:                nil,
-		Diff:                nil,
+		DefaultNamespace: "kube-system",
+		Kustomize:        nil,
+		Helm:             nil,
+		YAML:             nil,
+		Diff:             nil,
 	}
-		
-	m := &manifest.Manifest{ Resources: b.Spec.Resources }
+
+	m := &manifest.Manifest{Resources: b.Spec.Resources}
 
 	//TODO: I think this is right?
 	objs, err := helmdeployer.Template("anything", m, opts)
@@ -60,14 +64,14 @@ func IdentifyImages(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
 		//TODO: Parse through unstructured objs for known images using json pointers
 		u := o.(*unstructured.Unstructured)
 		_ = u
-		//imageFromRuntimeObject(u)
+		imageFromRuntimeObject(u)
 	}
 
 	return nil, err
 }
 
 //resolveRemoteRefs will return a slice of remote images resolved from their fully qualified name
-func resolveRemoteRefs(images... string) (map[name.Reference]v1.Image, error) {
+func resolveRemoteRefs(images ...string) (map[name.Reference]v1.Image, error) {
 	m := make(map[name.Reference]v1.Image)
 
 	for _, i := range images {
@@ -92,13 +96,36 @@ var knownImagePaths = []string{
 }
 
 ////imageFromRuntimeObject will return any images found in known obj specs
-//func imageFromRuntimeObject(obj *unstructured.Unstructured) []string {
-//	data, err := obj.MarshalJSON()
-//	if err != nil {
-//		return nil
-//	}
-//
-//	jsonpath.NewParser()
-//
-//	return images
-//}
+func imageFromRuntimeObject(obj *unstructured.Unstructured) ([]string, error) {
+	data, err := obj.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	var images []string
+
+	j := jsonpath.New("imagePath")
+
+	var imageData interface{}
+
+	err = json.Unmarshal(data, &imageData)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, path := range knownImagePaths {
+
+		j.Parse(path)
+		buf := new(bytes.Buffer)
+		err = j.Execute(buf, imageData)
+
+		if err != nil {
+			return nil, err
+		}
+
+		images = append(images, buf.String())
+	}
+
+	return images, nil
+}
