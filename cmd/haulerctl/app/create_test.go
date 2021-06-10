@@ -11,20 +11,20 @@ import (
 
 func Test_createOpts_Run(t *testing.T) {
 	p := v1alpha1.Package{
-		TypeMeta:   metav1.TypeMeta{
+		TypeMeta: metav1.TypeMeta{
 			Kind:       "Package",
 			APIVersion: "hauler.cattle.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:                       "test",
+			Name: "test",
 		},
-		Spec:       v1alpha1.PackageSpec{
+		Spec: v1alpha1.PackageSpec{
 			Fleet: v1alpha1.Fleet{Version: "0.3.5"},
 			Driver: v1alpha1.Driver{
-				Kind: "k3s",
+				Kind:    "k3s",
 				Version: "v1.21.1+k3s1",
 			},
-			Paths:  []string{
+			Paths: []string{
 				//"../../../testdata/docker-registry",
 				"../../../testdata/rawmanifests",
 			},
@@ -37,7 +37,7 @@ func Test_createOpts_Run(t *testing.T) {
 		t.Fatalf("failed to write test config file: %v", err)
 	}
 	defer os.Remove("create_test.package.yaml")
-	
+
 	type fields struct {
 		driver     string
 		outputFile string

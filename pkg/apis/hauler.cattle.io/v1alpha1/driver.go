@@ -16,17 +16,19 @@ type Drive interface {
 }
 
 type Driver struct {
-	Kind string `json:"kind"`
+	Kind    string `json:"kind"`
 	Version string `json:"version"`
 }
 
 type k3s struct {
 	dataDir string
-	etcDir string
+	etcDir  string
 }
 
 //TODO: Don't hardcode this
-func (k k3s) BinURL() string { return "https://github.com/k3s-io/k3s/releases/download/v1.21.1%2Bk3s1/k3s" }
+func (k k3s) BinURL() string {
+	return "https://github.com/k3s-io/k3s/releases/download/v1.21.1%2Bk3s1/k3s"
+}
 
 func (k k3s) Images() ([]string, error) {
 	//TODO: Replace this with a query to images.txt on release page
@@ -43,7 +45,7 @@ func (k k3s) Images() ([]string, error) {
 }
 
 func (k k3s) Config() (map[string]interface{}, error) {
-//	TODO: This should be typed
+	//	TODO: This should be typed
 	c := make(map[string]interface{})
 	c["write-kubeconfig-mode"] = "0644"
 
@@ -66,12 +68,13 @@ func (k k3s) LibPath() string { return "/var/lib/rancher/k3s" }
 func (k k3s) EtcPath() string { return "/etc/rancher/k3s" }
 
 //TODO: Implement rke2 as a driver
-type rke2 struct {}
-func (r rke2) Images() ([]string, error) { return []string{}, nil }
-func (r rke2) BinURL() string { return "" }
-func (r rke2) LibPath() string { return "" }
-func (r rke2) EtcPath() string { return "" }
-func (r rke2) Config() (map[string]interface{}, error) { return nil, nil }
+type rke2 struct{}
+
+func (r rke2) Images() ([]string, error)                  { return []string{}, nil }
+func (r rke2) BinURL() string                             { return "" }
+func (r rke2) LibPath() string                            { return "" }
+func (r rke2) EtcPath() string                            { return "" }
+func (r rke2) Config() (map[string]interface{}, error)    { return nil, nil }
 func (r rke2) SystemObjects() (objs []object.ObjMetadata) { return objs }
 
 //NewDriver will return the appropriate driver given a kind, defaults to k3s
@@ -85,7 +88,7 @@ func NewDriver(kind string) Drive {
 	default:
 		d = k3s{
 			dataDir: "/var/lib/rancher/k3s",
-			etcDir: "/etc/rancher/k3s",
+			etcDir:  "/etc/rancher/k3s",
 		}
 	}
 

@@ -2,6 +2,10 @@ package fs
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
@@ -14,10 +18,7 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/downloader"
 	"helm.sh/helm/v3/pkg/getter"
-	"io"
 	"k8s.io/apimachinery/pkg/util/json"
-	"os"
-	"path/filepath"
 )
 
 type PkgFs struct {
@@ -116,10 +117,10 @@ func (p PkgFs) AddImage(ref name.Reference, img v1.Image) error {
 //For ref: https://github.com/helm/helm/blob/bf486a25cdc12017c7dac74d1582a8a16acd37ea/pkg/action/pull.go#L75
 func (p PkgFs) AddChart(ref string, version string) error {
 	d := downloader.ChartDownloader{
-		Out:              nil,
-		Verify:           downloader.VerifyNever,
-		Getters: getter.All(cli.New()), 		// TODO: Probably shouldn't do this...
-		Options:          []getter.Option{
+		Out:     nil,
+		Verify:  downloader.VerifyNever,
+		Getters: getter.All(cli.New()), // TODO: Probably shouldn't do this...
+		Options: []getter.Option{
 			getter.WithInsecureSkipVerifyTLS(true),
 		},
 	}

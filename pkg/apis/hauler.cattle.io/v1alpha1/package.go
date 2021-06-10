@@ -1,23 +1,24 @@
 package v1alpha1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"path/filepath"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
 const (
 	BundlesDir = "bundles"
-	LayoutDir = "layout"
-	BinDir = "bin"
-	ChartDir = "charts"
+	LayoutDir  = "layout"
+	BinDir     = "bin"
+	ChartDir   = "charts"
 
 	PackageFile = "package.json"
 )
 
 type Package struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec PackageSpec `json:"spec"`

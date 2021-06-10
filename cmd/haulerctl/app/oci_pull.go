@@ -12,17 +12,17 @@ type ociPullOpts struct {
 	ociOpts
 
 	sourceRef string
-	outDir string
+	outDir    string
 }
 
 func NewOCIPullCommand() *cobra.Command {
 	opts := ociPullOpts{}
 
 	cmd := &cobra.Command{
-		Use: "pull",
-		Short: "oci pull",
+		Use:     "pull",
+		Short:   "oci pull",
 		Aliases: []string{"p"},
-		Args: cobra.MinimumNArgs(1),
+		Args:    cobra.MinimumNArgs(1),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return opts.PreRun()
 		},
