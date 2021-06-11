@@ -2,9 +2,7 @@ package app
 
 import (
 	"context"
-	"github.com/mholt/archiver/v3"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/fs"
 	"github.com/rancherfederal/hauler/pkg/packager"
 	"github.com/spf13/cobra"
 	"os"
@@ -12,15 +10,19 @@ import (
 )
 
 type createOpts struct {
+	*rootOpts
+
 	driver     string
 	outputFile string
 	configFile string
 }
 
 // NewCreateCommand creates a new sub command under
-// haulerctl  for creating dependency artifacts for bootstraps
+// haulerctl for creating dependency artifacts for bootstraps
 func NewCreateCommand() *cobra.Command {
-	opts := &createOpts{}
+	opts := &createOpts{
+		rootOpts: &ro,
+	}
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -54,6 +56,8 @@ func (o *createOpts) PreRun() error {
 
 // Run performs the operation.
 func (o *createOpts) Run() error {
+	o.logger.Infof("Creating new deployable bundle using driver: %s", o.driver)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -72,44 +76,35 @@ func (o *createOpts) Run() error {
 		return err
 	}
 
-	fsys, tmpdir, err := tmpFS()
+	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		return err
 	}
-
 	defer os.RemoveAll(tmpdir)
 
-	if err := fsys.Init(); err != nil {
+	pkgr := packager.NewPackager(tmpdir)
+
+	o.logger.Infof("Packaging driver (%s %s) artifacts...", p.Spec.Driver.Version, p.Spec.Driver.Kind)
+	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
+	if err = pkgr.Driver(ctx, d); err != nil {
 		return err
 	}
 
-	z := newTarZstd()
+	o.logger.Infof("Packaging fleet artifacts...")
+	if err = pkgr.Fleet(ctx, p.Spec.Fleet); err != nil {
+		return err
+	}
 
-	err = packager.Create(ctx, p, fsys, z)
-	if err != nil {
+	o.logger.Infof("Packaging images and manifests defined in specified paths...")
+	if _, err = pkgr.Bundles(ctx, p.Spec.Paths...); err != nil {
+		return err
+	}
+
+	a := packager.NewArchiver()
+	o.logger.Infof("Archiving and compressing package to: %s.%s", o.outputFile, a.String())
+	if err = pkgr.Archive(a, p, o.outputFile); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func tmpFS() (fs.PkgFs, string, error) {
-	tmpdir, err := os.MkdirTemp("", "hauler")
-	if err != nil {
-		return fs.PkgFs{}, "", err
-	}
-
-	return fs.NewPkgFS(tmpdir), tmpdir, nil
-}
-
-func newTarZstd() *archiver.TarZstd {
-	return &archiver.TarZstd{
-		Tar: &archiver.Tar{
-			OverwriteExisting:      true,
-			MkdirAll:               true,
-			ImplicitTopLevelFolder: false,
-			StripComponents:        0,
-			ContinueOnError:        false,
-		},
-	}
 }

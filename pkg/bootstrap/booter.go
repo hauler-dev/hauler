@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
@@ -8,7 +9,10 @@ import (
 	"github.com/otiai10/copy"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/fs"
+	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/sirupsen/logrus"
 	"helm.sh/helm/v3/pkg/chart/loader"
+	"io"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"os"
 	"os/exec"
@@ -63,7 +67,12 @@ func (b booter) Init() error {
 	return nil
 }
 
-func (b booter) PreBoot(ctx context.Context, d v1alpha1.Drive) error {
+func (b booter) PreBoot(ctx context.Context, d v1alpha1.Drive, logger log.Logger) error {
+	l := logger.WithFields(logrus.Fields{
+		"phase": "preboot",
+	})
+
+	l.Infof("Creating driver configuration")
 	if err := b.writeConfig(d); err != nil {
 		return err
 	}
@@ -71,7 +80,11 @@ func (b booter) PreBoot(ctx context.Context, d v1alpha1.Drive) error {
 	return nil
 }
 
-func (b booter) Boot(ctx context.Context, d v1alpha1.Drive) error {
+func (b booter) Boot(ctx context.Context, d v1alpha1.Drive, logger log.Logger) error {
+	l := logger.WithFields(logrus.Fields{
+		"phase": "boot",
+	})
+
 	//TODO: Generic
 	cmd := exec.Command("/bin/sh", "/opt/hauler/bin/k3s-init.sh")
 
@@ -80,20 +93,36 @@ func (b booter) Boot(ctx context.Context, d v1alpha1.Drive) error {
 		"INSTALL_K3S_SELINUX_WARN=true",
 		"INSTALL_K3S_SKIP_SELINUX_RPM=true",
 		"INSTALL_K3S_BIN_DIR=/opt/hauler/bin",
+
+		//TODO: Provide a real dryrun option
 		//"INSTALL_K3S_SKIP_START=true",
 	}...)
 
-	out, err := cmd.CombinedOutput()
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+
+	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("%s\n%v", out, err)
+		return err
 	}
 
-	//TODO: Figure out what to do with output
+	l.Infof("Driver successfully started!")
 
-	return waitForDriver(ctx, d)
+	l.Infof("Waiting for driver core components to provision...")
+	waitErr := waitForDriver(ctx, d)
+	if waitErr != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (b booter) PostBoot(ctx context.Context, d v1alpha1.Drive) error {
+func (b booter) PostBoot(ctx context.Context, d v1alpha1.Drive, logger log.Logger) error {
+	l := logger.WithFields(logrus.Fields{
+		"phase": "postboot",
+	})
+
 	cf := genericclioptions.NewConfigFlags(true)
 	cf.KubeConfig = stringptr(fmt.Sprintf("%s/k3s.yaml", d.EtcPath()))
 
@@ -103,10 +132,13 @@ func (b booter) PostBoot(ctx context.Context, d v1alpha1.Drive) error {
 		return err
 	}
 
+	l.Infof("Installing fleet crds")
 	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", "fleet-system", nil)
 	if fleetCrdErr != nil {
 		return fleetCrdErr
 	}
+
+	l.Infof("Successfully installed '%s' to namespace '%s'", fleetCrdRelease.Name, fleetCrdRelease.Namespace)
 
 	fleetChartPath := b.fs.Chart().Path(fmt.Sprintf("fleet-%s.tgz", b.Package.Spec.Fleet.Version))
 	fleetChart, err := loader.Load(fleetChartPath)
@@ -114,14 +146,13 @@ func (b booter) PostBoot(ctx context.Context, d v1alpha1.Drive) error {
 		return err
 	}
 
+	l.Infof("Installing fleet")
 	fleetRelease, fleetErr := installChart(cf, fleetChart, "fleet", "fleet-system", nil)
 	if fleetErr != nil {
 		return fleetErr
 	}
 
-	//TODO
-	_ = fleetCrdRelease
-	_ = fleetRelease
+	l.Infof("Successfully installed '%s' to namespace '%s'", fleetRelease.Name, fleetRelease.Namespace)
 
 	return nil
 }

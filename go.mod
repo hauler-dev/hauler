@@ -15,7 +15,7 @@ require (
 	github.com/google/go-containerregistry v0.4.1
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.12
-	github.com/klauspost/compress v1.12.3 // indirect
+	github.com/klauspost/compress v1.13.0 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mattn/go-runewidth v0.0.12 // indirect
 	github.com/mholt/archiver/v3 v3.5.0

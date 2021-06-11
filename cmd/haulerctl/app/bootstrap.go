@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/bootstrap"
+	"github.com/rancherfederal/hauler/pkg/packager"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
@@ -47,16 +49,15 @@ func (o *deployOpts) Run(packagePath string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, tmpdir, err := tmpFS()
+	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmpdir)
 	o.logger.Debugf("Using temporary working directory: %s", tmpdir)
 
-	z := newTarZstd()
-
-	err = z.Unarchive(packagePath, tmpdir)
+	a := packager.NewArchiver()
+	err = packager.Unpackage(a, packagePath, tmpdir)
 	if err != nil {
 		return err
 	}
@@ -73,6 +74,10 @@ func (o *deployOpts) Run(packagePath string) error {
 
 	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
 
+	bootLogger := o.logger.WithFields(logrus.Fields{
+		"driver": p.Spec.Driver.Kind,
+	})
+
 	b, err := bootstrap.NewBooter(tmpdir)
 	if err != nil {
 		return err
@@ -84,17 +89,17 @@ func (o *deployOpts) Run(packagePath string) error {
 	}
 
 	o.logger.Infof("Performing pre %s boot steps", p.Spec.Driver.Kind)
-	if err := b.PreBoot(ctx, d); err != nil {
+	if err := b.PreBoot(ctx, d, bootLogger); err != nil {
 		return err
 	}
 
 	o.logger.Infof("Booting %s", p.Spec.Driver.Kind)
-	if err := b.Boot(ctx, d); err != nil {
+	if err := b.Boot(ctx, d, bootLogger); err != nil {
 		return err
 	}
 
 	o.logger.Infof("Performing post %s boot steps", p.Spec.Driver.Kind)
-	if err := b.PostBoot(ctx, d); err != nil {
+	if err := b.PostBoot(ctx, d, bootLogger); err != nil {
 		return err
 	}
 

@@ -6,12 +6,12 @@ import (
 )
 
 type Logger interface {
-	InvalidArg(string)
-
 	Errorf(string, ...interface{})
 	Infof(string, ...interface{})
 	Warnf(string, ...interface{})
 	Debugf(string, ...interface{})
+
+	WithFields(logrus.Fields) *logrus.Entry
 }
 
 type standardLogger struct {

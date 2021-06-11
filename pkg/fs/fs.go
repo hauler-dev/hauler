@@ -2,6 +2,7 @@ package fs
 
 import (
 	"fmt"
+	"github.com/rancherfederal/hauler/pkg/packager/images"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,7 +11,6 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/mholt/archiver/v3"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	fleetapi "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -34,21 +34,6 @@ func NewPkgFS(dir string) PkgFs {
 	abs, _ := filepath.Abs(dir)
 	p.root = abs
 	return p
-}
-
-func (p *PkgFs) Archive(a archiver.Archiver, out string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	defer os.Chdir(cwd)
-
-	err = os.Chdir(p.root)
-	if err != nil {
-		return err
-	}
-
-	return a.Archive([]string{"."}, filepath.Join(cwd, out))
 }
 
 func (p PkgFs) Path(elem ...string) string {
@@ -84,16 +69,46 @@ func (p PkgFs) Chart() PkgFs {
 	}
 }
 
+//AddBundle will add a bundle to a package and all images that are autodetected from it
 func (p PkgFs) AddBundle(b *fleetapi.Bundle) error {
+	if err := p.mkdirIfNotExists(v1alpha1.BundlesDir, os.ModePerm); err != nil {
+		return err
+	}
+
 	data, err := json.Marshal(b)
 	if err != nil {
 		return err
 	}
-	return p.Bundle().WriteFile(fmt.Sprintf("%s.json", b.Name), data, 0644)
+
+	if err := p.Bundle().WriteFile(fmt.Sprintf("%s.json", b.Name), data, 0644); err != nil {
+		return err
+	}
+
+	imgs, err := images.ImageMapFromBundle(b)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range imgs {
+		err := p.AddImage(k, v)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (p PkgFs) AddBin(r io.Reader, name string) error {
+	if err := p.mkdirIfNotExists(v1alpha1.BinDir, os.ModePerm); err != nil {
+		return err
+	}
+
 	f, err := p.Bin().FS.OpenFile(name, os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		return err
+	}
+
 	_, err = io.Copy(f, r)
 	return err
 }
@@ -101,6 +116,10 @@ func (p PkgFs) AddBin(r io.Reader, name string) error {
 //AddImage will add an image to the pkgfs in OCI layout fmt
 //TODO: Extra work is done to ensure this is unique within the index.json
 func (p PkgFs) AddImage(ref name.Reference, img v1.Image) error {
+	if err := p.mkdirIfNotExists(v1alpha1.LayoutDir, os.ModePerm); err != nil {
+		return err
+	}
+
 	annotations := make(map[string]string)
 	annotations[ocispec.AnnotationRefName] = ref.Name()
 
@@ -113,9 +132,13 @@ func (p PkgFs) AddImage(ref name.Reference, img v1.Image) error {
 	return lp.AppendImage(img, layout.WithAnnotations(annotations))
 }
 
-//TODO: Fully aware this _only_ works for fleet right now, refactor this to use downloader.ChartDownloader
+//TODO: Not very robust
 //For ref: https://github.com/helm/helm/blob/bf486a25cdc12017c7dac74d1582a8a16acd37ea/pkg/action/pull.go#L75
 func (p PkgFs) AddChart(ref string, version string) error {
+	if err := p.mkdirIfNotExists(v1alpha1.ChartDir, os.ModePerm); err != nil {
+		return err
+	}
+
 	d := downloader.ChartDownloader{
 		Out:     nil,
 		Verify:  downloader.VerifyNever,
@@ -137,23 +160,6 @@ func (p PkgFs) layout() (layout.Path, error) {
 	}
 
 	return lp, err
-}
-
-//TODO: Init feels too primitive, should this just be added to object factory?
-func (p *PkgFs) Init() error {
-	if err := p.FS.Mkdir(v1alpha1.BundlesDir, os.ModePerm); err != nil {
-		return err
-	}
-	if err := p.FS.Mkdir(v1alpha1.LayoutDir, os.ModePerm); err != nil {
-		return err
-	}
-	if err := p.FS.Mkdir(v1alpha1.BinDir, os.ModePerm); err != nil {
-		return err
-	}
-	if err := p.FS.Mkdir(v1alpha1.ChartDir, os.ModePerm); err != nil {
-		return err
-	}
-	return nil
 }
 
 //WriteFile is a helper method to write a file within the PkgFs
@@ -196,4 +202,17 @@ func (p PkgFs) MapLayout() (map[name.Reference]v1.Image, error) {
 	}
 
 	return imgRefs, err
+}
+
+//TODO: Is this actually faster than just os.MkdirAll?
+func (p PkgFs) mkdirIfNotExists(dir string, perm os.FileMode) error {
+	_, err := os.Stat(p.Path(dir))
+	if os.IsNotExist(err) {
+		mkdirErr := p.FS.MkdirAll(dir, perm)
+		if mkdirErr != nil {
+			return mkdirErr
+		}
+	}
+
+	return nil
 }

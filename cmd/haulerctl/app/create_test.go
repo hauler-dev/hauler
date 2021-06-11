@@ -10,6 +10,9 @@ import (
 )
 
 func Test_createOpts_Run(t *testing.T) {
+	l, _ := setupCliLogger(os.Stdout, "debug")
+	tro := rootOpts{l}
+
 	p := v1alpha1.Package{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Package",
@@ -39,6 +42,7 @@ func Test_createOpts_Run(t *testing.T) {
 	defer os.Remove("create_test.package.yaml")
 
 	type fields struct {
+		rootOpts   *rootOpts
 		driver     string
 		outputFile string
 		configFile string
@@ -51,8 +55,9 @@ func Test_createOpts_Run(t *testing.T) {
 		{
 			name: "should work",
 			fields: fields{
+				rootOpts:   &tro,
 				driver:     "k3s",
-				outputFile: "",
+				outputFile: "package",
 				configFile: "./create_test.package.yaml",
 			},
 		},
@@ -60,6 +65,7 @@ func Test_createOpts_Run(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := &createOpts{
+				rootOpts:   tt.fields.rootOpts,
 				driver:     tt.fields.driver,
 				outputFile: tt.fields.outputFile,
 				configFile: tt.fields.configFile,

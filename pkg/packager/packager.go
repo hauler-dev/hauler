@@ -2,97 +2,140 @@ package packager
 
 import (
 	"context"
-	"github.com/mholt/archiver/v3"
 	fleetapi "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"github.com/rancher/fleet/pkg/bundle"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/fs"
+	"github.com/rancherfederal/hauler/pkg/packager/images"
+	"io"
 	"k8s.io/apimachinery/pkg/util/json"
 	"net/http"
 	"path/filepath"
 )
 
-//Create will create a deployable package
-func Create(ctx context.Context, p v1alpha1.Package, fsys fs.PkgFs, a archiver.Archiver) error {
-	data, err := json.Marshal(p)
+type Packager interface {
+	Bundles(context.Context, ...string) ([]*fleetapi.Bundle, error)
+	Driver(context.Context, v1alpha1.Drive) error
+	Fleet(context.Context, v1alpha1.Fleet) error
+	Archive(Archiver, v1alpha1.Package, string) error
+}
+
+type pkg struct {
+	fs fs.PkgFs
+}
+
+//NewPackager loads a new packager given a path on disk
+func NewPackager(path string) Packager {
+	return pkg{
+		fs: fs.NewPkgFS(path),
+	}
+}
+
+func (p pkg) Archive(a Archiver, pkg v1alpha1.Package, output string) error {
+	data, err := json.Marshal(pkg)
 	if err != nil {
 		return err
 	}
 
-	//TODO: Lol @ npm
-	if err := fsys.WriteFile("package.json", data, 0644); err != nil {
+	if err = p.fs.WriteFile("package.json", data, 0644); err != nil {
 		return err
 	}
 
-	opts := &bundle.Options{
-		Compress: true,
-	}
+	return Package(a, p.fs.Path(), output)
+}
 
-	var di discoveredImages
+func (p pkg) Bundles(ctx context.Context, path ...string) ([]*fleetapi.Bundle, error) {
+	opts := &bundle.Options{Compress: true}
 
-	//Get and write bundles to disk
-	for _, path := range p.Spec.Paths {
-		bundleName := filepath.Base(path)
-		fb, err := bundle.Open(ctx, bundleName, path, "", opts)
+	var bundles []*fleetapi.Bundle
+	for _, pth := range path {
+		bundleName := filepath.Base(pth)
+		fb, err := bundle.Open(ctx, bundleName, pth, "", opts)
 		if err != nil {
-			return err
+			return nil, err
 		}
-
 		//TODO: Figure out why bundle.Open doesn't return with GVK
 		bn := fleetapi.NewBundle("fleet-local", bundleName, *fb.Definition)
 
-		imgs, err := IdentifyImages(bn)
-		if err != nil {
-			return err
+		if err := p.fs.AddBundle(bn); err != nil {
+			return nil, err
 		}
 
-		di = append(di, imgs...)
-
-		if err := fsys.AddBundle(bn); err != nil {
-			return err
-		}
+		bundles = append(bundles, bn)
 	}
 
-	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
+	return bundles, nil
+}
 
-	if err := writeURL(fsys, d.BinURL(), "k3s"); err != nil {
+func (p pkg) Driver(ctx context.Context, d v1alpha1.Drive) error {
+	if err := writeURL(p.fs, d.BinURL(), "k3s"); err != nil {
 		return err
 	}
 
-	if err := writeURL(fsys, "https://get.k3s.io", "k3s-init.sh"); err != nil {
+	//TODO: Stop hardcoding
+	if err := writeURL(p.fs, "https://get.k3s.io", "k3s-init.sh"); err != nil {
 		return err
 	}
 
-	//TODO: Bad bad
-	if err := fsys.AddChart("https://github.com/rancher/fleet/releases/download/v0.3.5/fleet-crd-0.3.5.tgz", "0.3.5"); err != nil {
-		return err
-	}
-
-	if err := fsys.AddChart("https://github.com/rancher/fleet/releases/download/v0.3.5/fleet-0.3.5.tgz", "0.3.5"); err != nil {
-		return err
-	}
-
-	imgMap, err := ConcatImages(d, p.Spec.Fleet, di)
+	imgMap, err := images.MapImager(d)
 	if err != nil {
 		return err
 	}
 
 	for ref, im := range imgMap {
-		err := fsys.AddImage(ref, im)
+		err := p.fs.AddImage(ref, im)
 		if err != nil {
 			return err
 		}
 	}
 
-	return fsys.Archive(a, "hauler.tar.zst")
+	return nil
 }
 
-func writeURL(fsys fs.PkgFs, rawURL string, name string) error {
-	resp, err := http.Get(rawURL)
+//TODO: Add this to Driver?
+func (p pkg) Fleet(ctx context.Context, fl v1alpha1.Fleet) error {
+	imgMap, err := images.MapImager(fl)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
-	return fsys.AddBin(resp.Body, name)
+	for ref, im := range imgMap {
+		err := p.fs.AddImage(ref, im)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := p.fs.AddChart(fl.CRDChart(), fl.Version); err != nil {
+		return err
+	}
+
+	if err := p.fs.AddChart(fl.Chart(), fl.Version); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func writeURL(fsys fs.PkgFs, rawURL string, name string) error {
+	rc, err := fetchURL(rawURL)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	return fsys.AddBin(rc, name)
+}
+
+func fetchURL(rawURL string) (io.ReadCloser, error) {
+	resp, err := http.Get(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, err
+	}
+
+	return resp.Body, nil
 }

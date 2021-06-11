@@ -1,4 +1,4 @@
-package packager
+package images
 
 import (
 	"k8s.io/apimachinery/pkg/util/json"

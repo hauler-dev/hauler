@@ -1,4 +1,4 @@
-package packager
+package images
 
 import (
 	"bytes"
@@ -25,8 +25,8 @@ func (d discoveredImages) Images() ([]string, error) {
 	return d, nil
 }
 
-//ConcatImages will gather images from various Imager sources and return a single slilce
-func ConcatImages(imager ...Imager) (map[name.Reference]v1.Image, error) {
+//MapImager will gather images from various Imager sources and return a single slice
+func MapImager(imager ...Imager) (map[name.Reference]v1.Image, error) {
 	m := make(map[name.Reference]v1.Image)
 
 	for _, i := range imager {
@@ -47,6 +47,31 @@ func ConcatImages(imager ...Imager) (map[name.Reference]v1.Image, error) {
 	}
 
 	return m, nil
+}
+
+func ImageMapFromBundle(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
+	opts := fleetapi.BundleDeploymentOptions{
+		DefaultNamespace: "default",
+	}
+
+	m := &manifest.Manifest{Resources: b.Spec.Resources}
+
+	//TODO: I think this is right?
+	objs, err := helmdeployer.Template("anything", m, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var di discoveredImages
+	for _, o := range objs {
+		imgs, err := imageFromRuntimeObject(o.(*unstructured.Unstructured))
+		if err != nil {
+			return nil, err
+		}
+		di = append(di, imgs...)
+	}
+
+	return ResolveRemoteRefs(di...)
 }
 
 func IdentifyImages(b *fleetapi.Bundle) (discoveredImages, error) {
