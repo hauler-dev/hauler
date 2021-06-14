@@ -30,4 +30,4 @@ integration_test:
 	go test -tags=integration $(GO_FILES)
 
 clean:
-	rm -rf bin-linux-and64 2> /dev/null
+	rm -rf bin 2> /dev/null

@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"os"
+
+	"github.com/pterm/pterm"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/packager"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"os"
 	"sigs.k8s.io/yaml"
 )
 
@@ -62,49 +65,55 @@ func (o *createOpts) Run() error {
 	defer cancel()
 
 	if _, err := os.Stat(o.configFile); err != nil {
-		return err
+		logrus.Error(err)
 	}
 
 	bundleData, err := os.ReadFile(o.configFile)
 	if err != nil {
-		return err
+		logrus.Error(err)
 	}
 
 	var p v1alpha1.Package
 	err = yaml.Unmarshal(bundleData, &p)
 	if err != nil {
-		return err
+		logrus.Error(err)
 	}
 
 	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
-		return err
+		logrus.Error(err)
 	}
 	defer os.RemoveAll(tmpdir)
 
 	pkgr := packager.NewPackager(tmpdir)
 
+	pb, _ := pterm.DefaultProgressbar.WithTotal(4).WithTitle("Start Packaging").Start()
+
 	o.logger.Infof("Packaging driver (%s %s) artifacts...", p.Spec.Driver.Version, p.Spec.Driver.Kind)
 	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
 	if err = pkgr.Driver(ctx, d); err != nil {
-		return err
+		logrus.Error(err)
 	}
+	pb.Increment()
 
 	o.logger.Infof("Packaging fleet artifacts...")
 	if err = pkgr.Fleet(ctx, p.Spec.Fleet); err != nil {
-		return err
+		logrus.Error(err)
 	}
+	pb.Increment()
 
 	o.logger.Infof("Packaging images and manifests defined in specified paths...")
 	if _, err = pkgr.Bundles(ctx, p.Spec.Paths...); err != nil {
-		return err
+		logrus.Error(err)
 	}
+	pb.Increment()
 
 	a := packager.NewArchiver()
 	o.logger.Infof("Archiving and compressing package to: %s.%s", o.outputFile, a.String())
 	if err = pkgr.Archive(a, p, o.outputFile); err != nil {
-		return err
+		logrus.Error(err)
 	}
+	pb.Increment()
 
 	return nil
 }
