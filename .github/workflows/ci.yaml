@@ -53,7 +53,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: hauler
-        path: dist/hauler_linux_amd64/hauler
+        path: dist/hauler_linux_amd64/haulerctl
         retention-days: 2
   
   create-artifacts:
@@ -64,7 +64,7 @@ jobs:
        id: download
        uses: actions/download-artifact@v2
      - name: Run Hauler bundle
-       run: hauler bundle
+       run: chmod +x haulerctl && ./haulerctl create
      - name: Upload default package to Release
        id: upload-release-asset 
        uses: actions/upload-release-asset@v1
@@ -72,7 +72,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
        with:
         upload_url: ${{ needs,create-release.outputs.upload_url }} 
-        asset_path: ${{github.workspace}}/bundle/bundle.tar.gz
-        asset_name: bundle.tar.gz
-        asset_content_type: application/gzip
+        asset_path: ${{github.workspace}}/haul.tar.zst
+        asset_name: haul.tar.zst
+        asset_content_type: application/zstd
        
