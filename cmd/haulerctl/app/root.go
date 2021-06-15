@@ -28,8 +28,8 @@ var (
 		# Run Hauler
 		haulerctl bundle images <images>
 		haulerctl bundle artifacts <artfiacts>
-		haulerctl relocate artifacts <aritfacts>
-		haulerctl relocate images <images>
+		haulerctl relocate artifacts -i <package-name>
+		haulerctl relocate images -i <package-name> locahost:5000
 		haulerctl copy
 		haulerctl create
 		haulerctl bootstrap`
@@ -70,7 +70,6 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(NewCopyCommand())
 
 	cmd.AddCommand(NewPkgCommand())
-	cmd.AddCommand(NewCreateCommand())
 
 	f := cmd.PersistentFlags()
 	f.StringVarP(&loglevel, "loglevel", "l", "info",

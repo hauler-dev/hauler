@@ -2,11 +2,10 @@ package app
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 type relocateOpts struct {
-	bundleDir string
+	inputFile string
 }
 
 // NewRelocateCommand creates a new sub command under
@@ -25,12 +24,11 @@ func NewRelocateCommand() *cobra.Command {
 	}
 
 	f := cmd.PersistentFlags()
-	f.StringVarP(&opts.bundleDir, "bundledir", "b", "./bundle",
-		"directory locating a bundle, if one exists we will append (./bundle)")
-	viper.BindPFlag("bundlerdir", cmd.PersistentFlags().Lookup("bundledir"))
+	f.StringVarP(&opts.inputFile, "input", "i", "haul.tar.zst",
+		"package output location relative to the current directory (haul.tar.zst)")
 
-	cmd.AddCommand(NewRelocateArtifactsCommand())
-	cmd.AddCommand(NewRelocateImagesCommand())
+	cmd.AddCommand(NewRelocateArtifactsCommand(opts))
+	cmd.AddCommand(NewRelocateImagesCommand(opts))
 
 	return cmd
 }

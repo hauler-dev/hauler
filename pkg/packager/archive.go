@@ -2,9 +2,10 @@ package packager
 
 import (
 	"fmt"
-	"github.com/mholt/archiver/v3"
 	"os"
 	"path/filepath"
+
+	"github.com/mholt/archiver/v3"
 )
 
 type Archiver interface {

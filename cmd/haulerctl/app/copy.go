@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rancherfederal/hauler/pkg/oci"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -39,10 +40,8 @@ func (o *copyOpts) Run(src string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	err := oci.Get(ctx, o.sourceRef, o.dir)
-
-	if err != nil {
-		return err
+	if err := oci.Get(ctx, src, o.dir); err != nil {
+		logrus.Error(err)
 	}
 
 	return nil
