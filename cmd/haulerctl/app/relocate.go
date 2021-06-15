@@ -5,7 +5,7 @@ import (
 )
 
 type relocateOpts struct {
-	bundleDir string
+	inputFile string
 }
 
 // NewRelocateCommand creates a new sub command under
@@ -24,8 +24,8 @@ func NewRelocateCommand() *cobra.Command {
 	}
 
 	f := cmd.PersistentFlags()
-	f.StringVarP(&opts.bundleDir, "bundledir", "b", "./bundle",
-		"directory locating a bundle, if one exists we will append (./bundle)")
+	f.StringVarP(&opts.inputFile, "input", "i", "haul.tar.zst",
+		"package output location relative to the current directory (haul.tar.zst)")
 
 	cmd.AddCommand(NewRelocateArtifactsCommand(opts))
 	cmd.AddCommand(NewRelocateImagesCommand(opts))

@@ -2,10 +2,11 @@ package app
 
 import (
 	"fmt"
-	"github.com/rancherfederal/hauler/pkg/log"
 	"io"
 	"os"
 	"time"
+
+	"github.com/rancherfederal/hauler/pkg/log"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -29,8 +30,8 @@ var (
 		# Run Hauler
 		haulerctl bundle images <images>
 		haulerctl bundle artifacts <artfiacts>
-		haulerctl relocate artifacts <aritfacts>
-		haulerctl relocate images <images>
+		haulerctl relocate artifacts -i <package-name>
+		haulerctl relocate images -i <package-name> locahost:5000
 		haulerctl copy
 		haulerctl create
 		haulerctl bootstrap`

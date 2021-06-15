@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/rancherfederal/hauler/pkg/packager"
@@ -44,10 +46,18 @@ func (o *relocateArtifactsOpts) Run(dst string) error {
 		logrus.Error(err)
 	}
 
-	packager.Unpackage(ar, o.relocate.bundleDir, tmpdir)
+	packager.Unpackage(ar, o.relocate.inputFile, tmpdir)
 
-	if err := oci.Put(ctx, tmpdir, dst); err != nil {
+	files, err := ioutil.ReadDir(tmpdir)
+
+	if err != nil {
 		logrus.Error(err)
+	}
+
+	for _, f := range files {
+		if err := oci.Put(ctx, filepath.Join(tmpdir, f.Name()), dst); err != nil {
+			logrus.Error(err)
+		}
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package oci
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/containerd/containerd/remotes"
@@ -9,7 +10,6 @@ import (
 	"github.com/deislabs/oras/pkg/content"
 	"github.com/deislabs/oras/pkg/oras"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -32,14 +32,14 @@ func Get(ctx context.Context, src string, dst string) error {
 	}
 
 	// Pull file(s) from registry and save to disk
-	logrus.Infof("Pulling from %s and saving to %s\n", src, dst)
+	fmt.Printf("pulling from %s and saving to %s\n", src, dst)
 	desc, _, err := oras.Pull(ctx, resolver, src, store, oras.WithAllowedMediaTypes(allowedMediaTypes))
 
 	if err != nil {
 		return err
 	}
 
-	logrus.Infof("Pulled from %s with digest %s\n", src, desc.Digest)
+	fmt.Printf("pulled from %s with digest %s\n", src, desc.Digest)
 
 	return nil
 }
@@ -68,7 +68,7 @@ func Put(ctx context.Context, src string, dst string) error {
 		return err
 	}
 
-	logrus.Infof("pushed %s to %s with digest: %s", src, dst, desc.Digest)
+	fmt.Printf("pushed %s to %s with digest: %s", src, dst, desc.Digest)
 
 	return nil
 }

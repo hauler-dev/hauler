@@ -13,7 +13,6 @@ build:
 	mkdir bin;\
 	$(GO_BUILD_ENV) go build -o bin ./cmd/...;\
 	
-
 install:
 	$(GO_BUILD_ENV) go install
 

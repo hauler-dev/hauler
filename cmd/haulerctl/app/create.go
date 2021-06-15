@@ -45,7 +45,7 @@ Container images, git repositories, and more, packaged and ready to be served wi
 	f := cmd.Flags()
 	f.StringVarP(&opts.driver, "driver", "d", "k3s",
 		"Driver type to use for package (k3s or rke2)")
-	f.StringVarP(&opts.outputFile, "output", "o", "haul.tar.zst",
+	f.StringVarP(&opts.outputFile, "output", "o", "haul",
 		"package output location relative to the current directory (haul.tar.zst)")
 	f.StringVarP(&opts.configFile, "config", "c", "./package.yaml",
 		"config file")
