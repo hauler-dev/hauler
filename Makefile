@@ -13,7 +13,6 @@ build:
 	mkdir bin;\
 	$(GO_BUILD_ENV) go build -o bin ./cmd/...;\
 	
-
 install:
 	$(GO_BUILD_ENV) go install
 
@@ -30,4 +29,4 @@ integration_test:
 	go test -tags=integration $(GO_FILES)
 
 clean:
-	rm -rf bin-linux-and64 2> /dev/null
+	rm -rf bin 2> /dev/null

@@ -27,9 +27,8 @@ func NewBundleCommand() *cobra.Command {
 	f := cmd.PersistentFlags()
 	f.StringVarP(&opts.bundleDir, "bundledir", "b", "./bundle",
 		"directory locating a bundle, if one exists we will append (./bundle)")
-	viper.BindPFlag("bundlerdir", cmd.PersistentFlags().Lookup("bundledir"))
 
-	cmd.AddCommand(NewBundleArtifactsCommand())
+	cmd.AddCommand(NewBundleArtifactsCommand(opts))
 
 	viper.AutomaticEnv()
 
