@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -72,7 +71,6 @@ func NewRootCommand() *cobra.Command {
 
 	cmd.AddCommand(NewPkgCommand())
 	cmd.AddCommand(NewCreateCommand())
-	cmd.AddCommand(NewBootstrapCommand())
 
 	f := cmd.PersistentFlags()
 	f.StringVarP(&loglevel, "loglevel", "l", "info",
@@ -111,11 +109,5 @@ func initConfig() {
 func setupCliLogger(out io.Writer, level string) (log.Logger, error) {
 	l := log.NewLogger(out)
 
-	lvl, err := logrus.ParseLevel(level)
-	if err != nil {
-		return nil, err
-	}
-
-	l.SetLevel(lvl)
 	return l, nil
 }

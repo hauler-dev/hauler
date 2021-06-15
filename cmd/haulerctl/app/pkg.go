@@ -19,8 +19,8 @@ func NewPkgCommand() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(NewPkgCreateCommand())
-	cmd.AddCommand(NewPkgBootCommand())
+	cmd.AddCommand(NewPkgBuildCommand())
+	cmd.AddCommand(NewPkgRunCommand())
 
 	return cmd
 }

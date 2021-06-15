@@ -10,7 +10,6 @@ import (
 	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/fs"
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/sirupsen/logrus"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"io"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -46,9 +45,7 @@ func NewBooter(pkgPath string) (*booter, error) {
 }
 
 func (b booter) PreBoot(ctx context.Context, d driver.Driver, logger log.Logger) error {
-	l := logger.WithFields(logrus.Fields{
-		"phase": "preboot",
-	})
+	logger.Infof("Beginning pre boot")
 
 	//TODO: Feel like there's a better way to do this
 	if err := b.moveBin(); err != nil {
@@ -67,18 +64,18 @@ func (b booter) PreBoot(ctx context.Context, d driver.Driver, logger log.Logger)
 		return err
 	}
 
-	l.Infof("Creating driver configuration")
+	logger.Debugf("Writing %s config", d.Name())
 	if err := d.WriteConfig(); err != nil {
 		return err
 	}
+
+	logger.Successf("Completed pre boot")
 
 	return nil
 }
 
 func (b booter) Boot(ctx context.Context, d driver.Driver, logger log.Logger) error {
-	l := logger.WithFields(logrus.Fields{
-		"phase": "boot",
-	})
+	logger.Infof("Beginning boot")
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	out := io.MultiWriter(os.Stdout, &stdoutBuf, &stderrBuf)
@@ -88,19 +85,18 @@ func (b booter) Boot(ctx context.Context, d driver.Driver, logger log.Logger) er
 		return err
 	}
 
-	l.Infof("Waiting for driver core components to provision...")
+	logger.Infof("Waiting for driver core components to provision...")
 	waitErr := waitForDriver(ctx, d)
 	if waitErr != nil {
 		return err
 	}
 
+	logger.Successf("Completed boot")
 	return nil
 }
 
 func (b booter) PostBoot(ctx context.Context, d driver.Driver, logger log.Logger) error {
-	l := logger.WithFields(logrus.Fields{
-		"phase": "postboot",
-	})
+	logger.Infof("Beginning post boot")
 
 	cf := genericclioptions.NewConfigFlags(true)
 	cf.KubeConfig = stringptr(d.KubeConfigPath())
@@ -111,13 +107,13 @@ func (b booter) PostBoot(ctx context.Context, d driver.Driver, logger log.Logger
 		return err
 	}
 
-	l.Infof("Installing fleet crds")
+	logger.Infof("Installing fleet crds")
 	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", "fleet-system", nil)
 	if fleetCrdErr != nil {
 		return fleetCrdErr
 	}
 
-	l.Infof("Successfully installed '%s' to namespace '%s'", fleetCrdRelease.Name, fleetCrdRelease.Namespace)
+	logger.Infof("Successfully installed '%s' to namespace '%s'", fleetCrdRelease.Name, fleetCrdRelease.Namespace)
 
 	fleetChartPath := b.fs.Chart().Path(fmt.Sprintf("fleet-%s.tgz", b.Package.Spec.Fleet.Version))
 	fleetChart, err := loader.Load(fleetChartPath)
@@ -125,14 +121,15 @@ func (b booter) PostBoot(ctx context.Context, d driver.Driver, logger log.Logger
 		return err
 	}
 
-	l.Infof("Installing fleet")
+	logger.Infof("Installing fleet")
 	fleetRelease, fleetErr := installChart(cf, fleetChart, "fleet", "fleet-system", nil)
 	if fleetErr != nil {
 		return fleetErr
 	}
 
-	l.Infof("Successfully installed '%s' to namespace '%s'", fleetRelease.Name, fleetRelease.Namespace)
+	logger.Infof("Successfully installed '%s' to namespace '%s'", fleetRelease.Name, fleetRelease.Namespace)
 
+	logger.Successf("Completed post boot")
 	return nil
 }
 

@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/driver"
+	"github.com/rancherfederal/hauler/pkg/packager"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -10,9 +12,12 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type pkgCreateOpts struct {
+type pkgBuildOpts struct {
+	*rootOpts
+
 	cfgFile string
 
+	name          string
 	driver        string
 	driverVersion string
 
@@ -22,14 +27,16 @@ type pkgCreateOpts struct {
 	paths  []string
 }
 
-func NewPkgCreateCommand() *cobra.Command {
-	opts := pkgCreateOpts{}
+func NewPkgBuildCommand() *cobra.Command {
+	opts := pkgBuildOpts{
+		rootOpts: &ro,
+	}
 
 	cmd := &cobra.Command{
-		Use:     "create",
+		Use:     "build",
 		Short:   "",
 		Long:    "",
-		Aliases: []string{"c"},
+		Aliases: []string{"b"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return opts.PreRun()
 		},
@@ -39,6 +46,8 @@ func NewPkgCreateCommand() *cobra.Command {
 	}
 
 	f := cmd.PersistentFlags()
+	f.StringVarP(&opts.name, "name", "n", "pkg",
+		"name of the pkg to create, will dicate file name")
 	f.StringVarP(&opts.cfgFile, "config", "c", "./pkg.yaml",
 		"path to config file")
 	f.StringVarP(&opts.driver, "driver", "d", "k3s",
@@ -55,7 +64,7 @@ func NewPkgCreateCommand() *cobra.Command {
 	return cmd
 }
 
-func (o *pkgCreateOpts) PreRun() error {
+func (o *pkgBuildOpts) PreRun() error {
 	_, err := os.Stat(o.cfgFile)
 	if os.IsNotExist(err) {
 		logrus.Infof("Could not find %s, creating one", o.cfgFile)
@@ -65,7 +74,7 @@ func (o *pkgCreateOpts) PreRun() error {
 				APIVersion: "",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "",
+				Name: o.name,
 			},
 			Spec: v1alpha1.PackageSpec{
 				Fleet: v1alpha1.Fleet{
@@ -96,11 +105,47 @@ func (o *pkgCreateOpts) PreRun() error {
 	return nil
 }
 
-func (o *pkgCreateOpts) Run() error {
+func (o *pkgBuildOpts) Run() error {
+	o.logger.Infof("Building package")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_ = ctx
+	cfgData, err := os.ReadFile(o.cfgFile)
+	if err != nil {
+		return err
+	}
 
+	var p v1alpha1.Package
+	if err := yaml.Unmarshal(cfgData, &p); err != nil {
+		return err
+	}
+
+	tmpdir, err := os.MkdirTemp("", "hauler")
+	if err != nil {
+		return err
+	}
+
+	pkgr := packager.NewPackager(tmpdir, o.logger)
+
+	d := driver.NewDriver(p.Spec.Driver)
+	if dErr := pkgr.PackageDriver(ctx, d); dErr != nil {
+		return dErr
+	}
+
+	if fErr := pkgr.PackageFleet(ctx, p.Spec.Fleet); fErr != nil {
+		return fErr
+	}
+
+	if _, bErr := pkgr.PackageBundles(ctx, p.Spec.Paths...); bErr != nil {
+		return bErr
+	}
+
+	a := packager.NewArchiver()
+	if aErr := pkgr.Archive(a, p, o.name); aErr != nil {
+		return aErr
+	}
+
+	o.logger.Successf("Finished building package")
 	return nil
 }

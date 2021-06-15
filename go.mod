@@ -17,13 +17,13 @@ require (
 	github.com/imdario/mergo v0.3.12
 	github.com/klauspost/compress v1.13.0 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
-	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
 	github.com/opencontainers/runc v1.0.0-rc93 // indirect
 	github.com/otiai10/copy v1.6.0
 	github.com/pelletier/go-toml v1.8.1 // indirect
+	github.com/pterm/pterm v0.12.24
 	github.com/rancher/fleet v0.3.5
 	github.com/rancher/fleet/pkg/apis v0.0.0
 	github.com/sirupsen/logrus v1.8.1
@@ -33,7 +33,6 @@ require (
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
 	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
-	golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d // indirect
 	google.golang.org/genproto v0.0.0-20210524171403-669157292da3 // indirect
 	google.golang.org/grpc v1.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
