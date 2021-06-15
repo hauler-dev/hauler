@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/packager"
 	"github.com/spf13/cobra"
 	"os"
@@ -41,7 +42,7 @@ Container images, git repositories, and more, packaged and ready to be served wi
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.driver, "driver", "d", "k3s",
-		"Driver type to use for package (k3s or rke2)")
+		"IDriver type to use for package (k3s or rke2)")
 	f.StringVarP(&opts.outputFile, "output", "o", "haul.tar.zst",
 		"package output location relative to the current directory (haul.tar.zst)")
 	f.StringVarP(&opts.configFile, "config", "c", "./package.yaml",
@@ -82,21 +83,21 @@ func (o *createOpts) Run() error {
 	}
 	defer os.RemoveAll(tmpdir)
 
-	pkgr := packager.NewPackager(tmpdir)
+	pkgr := packager.NewPackager(tmpdir, o.logger)
 
-	o.logger.Infof("Packaging driver (%s %s) artifacts...", p.Spec.Driver.Version, p.Spec.Driver.Kind)
-	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
-	if err = pkgr.Driver(ctx, d); err != nil {
+	o.logger.Infof("Packaging driver (%s %s) artifacts...", p.Spec.Driver.Version, p.Spec.Driver.Type)
+	d := driver.NewDriver(p.Spec.Driver)
+	if err = pkgr.PackageDriver(ctx, d); err != nil {
 		return err
 	}
 
 	o.logger.Infof("Packaging fleet artifacts...")
-	if err = pkgr.Fleet(ctx, p.Spec.Fleet); err != nil {
+	if err = pkgr.PackageFleet(ctx, p.Spec.Fleet); err != nil {
 		return err
 	}
 
 	o.logger.Infof("Packaging images and manifests defined in specified paths...")
-	if _, err = pkgr.Bundles(ctx, p.Spec.Paths...); err != nil {
+	if _, err = pkgr.PackageBundles(ctx, p.Spec.Paths...); err != nil {
 		return err
 	}
 

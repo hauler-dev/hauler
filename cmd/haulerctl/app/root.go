@@ -67,9 +67,11 @@ func NewRootCommand() *cobra.Command {
 	cobra.OnInitialize(initConfig)
 
 	cmd.AddCommand(NewRelocateCommand())
-	cmd.AddCommand(NewCreateCommand())
 	cmd.AddCommand(NewBundleCommand())
 	cmd.AddCommand(NewCopyCommand())
+
+	cmd.AddCommand(NewPkgCommand())
+	cmd.AddCommand(NewCreateCommand())
 	cmd.AddCommand(NewBootstrapCommand())
 
 	f := cmd.PersistentFlags()

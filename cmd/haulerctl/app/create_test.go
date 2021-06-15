@@ -24,7 +24,7 @@ func Test_createOpts_Run(t *testing.T) {
 		Spec: v1alpha1.PackageSpec{
 			Fleet: v1alpha1.Fleet{Version: "0.3.5"},
 			Driver: v1alpha1.Driver{
-				Kind:    "k3s",
+				Type:    "k3s",
 				Version: "v1.21.1+k3s1",
 			},
 			Paths: []string{

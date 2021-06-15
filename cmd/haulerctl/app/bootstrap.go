@@ -2,14 +2,11 @@ package app
 
 import (
 	"context"
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/bootstrap"
+	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/packager"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"os"
-	"path/filepath"
-	"sigs.k8s.io/yaml"
 )
 
 type deployOpts struct {
@@ -62,44 +59,28 @@ func (o *deployOpts) Run(packagePath string) error {
 		return err
 	}
 
-	bundleData, err := os.ReadFile(filepath.Join(tmpdir, "package.json"))
-	if err != nil {
-		return err
-	}
-
-	var p v1alpha1.Package
-	if err := yaml.Unmarshal(bundleData, &p); err != nil {
-		return err
-	}
-
-	d := v1alpha1.NewDriver(p.Spec.Driver.Kind)
-
-	bootLogger := o.logger.WithFields(logrus.Fields{
-		"driver": p.Spec.Driver.Kind,
-	})
-
 	b, err := bootstrap.NewBooter(tmpdir)
 	if err != nil {
 		return err
 	}
 
-	o.logger.Infof("Initializing package for driver: %s", p.Spec.Driver.Kind)
-	if err := b.Init(); err != nil {
+	d := driver.NewDriver(b.Package.Spec.Driver)
+	if err != nil {
 		return err
 	}
 
-	o.logger.Infof("Performing pre %s boot steps", p.Spec.Driver.Kind)
-	if err := b.PreBoot(ctx, d, bootLogger); err != nil {
+	o.logger.Infof("Performing pre %s boot steps", b.Package.Spec.Driver.Type)
+	if err := b.PreBoot(ctx, d, o.logger); err != nil {
 		return err
 	}
 
-	o.logger.Infof("Booting %s", p.Spec.Driver.Kind)
-	if err := b.Boot(ctx, d, bootLogger); err != nil {
+	o.logger.Infof("Booting %s", b.Package.Spec.Driver.Type)
+	if err := b.Boot(ctx, d, o.logger); err != nil {
 		return err
 	}
 
-	o.logger.Infof("Performing post %s boot steps", p.Spec.Driver.Kind)
-	if err := b.PostBoot(ctx, d, bootLogger); err != nil {
+	o.logger.Infof("Performing post %s boot steps", b.Package.Spec.Driver.Type)
+	if err := b.PostBoot(ctx, d, o.logger); err != nil {
 		return err
 	}
 

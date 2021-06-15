@@ -2,32 +2,42 @@ package packager
 
 import (
 	"context"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	fleetapi "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"github.com/rancher/fleet/pkg/bundle"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/fs"
+	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/packager/images"
-	"io"
 	"k8s.io/apimachinery/pkg/util/json"
-	"net/http"
 	"path/filepath"
 )
 
 type Packager interface {
-	Bundles(context.Context, ...string) ([]*fleetapi.Bundle, error)
-	Driver(context.Context, v1alpha1.Drive) error
-	Fleet(context.Context, v1alpha1.Fleet) error
 	Archive(Archiver, v1alpha1.Package, string) error
+
+	PackageBundles(context.Context, ...string) ([]*fleetapi.Bundle, error)
+
+	PackageDriver(context.Context, driver.Driver) error
+
+	PackageFleet(context.Context, v1alpha1.Fleet) error
+
+	PackageImages(context.Context, map[name.Reference]v1.Image) error
 }
 
 type pkg struct {
 	fs fs.PkgFs
+
+	logger log.Logger
 }
 
 //NewPackager loads a new packager given a path on disk
-func NewPackager(path string) Packager {
+func NewPackager(path string, logger log.Logger) Packager {
 	return pkg{
-		fs: fs.NewPkgFS(path),
+		fs:     fs.NewPkgFS(path),
+		logger: logger,
 	}
 }
 
@@ -44,7 +54,7 @@ func (p pkg) Archive(a Archiver, pkg v1alpha1.Package, output string) error {
 	return Package(a, p.fs.Path(), output)
 }
 
-func (p pkg) Bundles(ctx context.Context, path ...string) ([]*fleetapi.Bundle, error) {
+func (p pkg) PackageBundles(ctx context.Context, path ...string) ([]*fleetapi.Bundle, error) {
 	opts := &bundle.Options{Compress: true}
 
 	var bundles []*fleetapi.Bundle
@@ -67,33 +77,41 @@ func (p pkg) Bundles(ctx context.Context, path ...string) ([]*fleetapi.Bundle, e
 	return bundles, nil
 }
 
-func (p pkg) Driver(ctx context.Context, d v1alpha1.Drive) error {
-	if err := writeURL(p.fs, d.BinURL(), "k3s"); err != nil {
-		return err
-	}
-
-	//TODO: Stop hardcoding
-	if err := writeURL(p.fs, "https://get.k3s.io", "k3s-init.sh"); err != nil {
-		return err
-	}
-
-	imgMap, err := images.MapImager(d)
+func (p pkg) PackageDriver(ctx context.Context, d driver.Driver) error {
+	rc, err := d.Binary()
 	if err != nil {
 		return err
 	}
 
-	for ref, im := range imgMap {
-		err := p.fs.AddImage(ref, im)
-		if err != nil {
-			return err
-		}
+	if err := p.fs.AddBin(rc, d.Name()); err != nil {
+		return err
+	}
+	rc.Close()
+
+	imgMap, err := d.Images(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = p.PackageImages(ctx, imgMap)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-//TODO: Add this to Driver?
-func (p pkg) Fleet(ctx context.Context, fl v1alpha1.Fleet) error {
+func (p pkg) PackageImages(ctx context.Context, imgMap map[name.Reference]v1.Image) error {
+	for ref, im := range imgMap {
+		if err := p.fs.AddImage(ref, im); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+//TODO: Add this to PackageDriver?
+func (p pkg) PackageFleet(ctx context.Context, fl v1alpha1.Fleet) error {
 	imgMap, err := images.MapImager(fl)
 	if err != nil {
 		return err
@@ -115,27 +133,4 @@ func (p pkg) Fleet(ctx context.Context, fl v1alpha1.Fleet) error {
 	}
 
 	return nil
-}
-
-func writeURL(fsys fs.PkgFs, rawURL string, name string) error {
-	rc, err := fetchURL(rawURL)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-
-	return fsys.AddBin(rc, name)
-}
-
-func fetchURL(rawURL string) (io.ReadCloser, error) {
-	resp, err := http.Get(rawURL)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != 200 {
-		return nil, err
-	}
-
-	return resp.Body, nil
 }

@@ -74,32 +74,6 @@ func ImageMapFromBundle(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error)
 	return ResolveRemoteRefs(di...)
 }
 
-func IdentifyImages(b *fleetapi.Bundle) (discoveredImages, error) {
-	opts := fleetapi.BundleDeploymentOptions{
-		DefaultNamespace: "default",
-	}
-
-	m := &manifest.Manifest{Resources: b.Spec.Resources}
-
-	//TODO: I think this is right?
-	objs, err := helmdeployer.Template("anything", m, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	var di discoveredImages
-
-	for _, o := range objs {
-		imgs, err := imageFromRuntimeObject(o.(*unstructured.Unstructured))
-		if err != nil {
-			return nil, err
-		}
-		di = append(di, imgs...)
-	}
-
-	return di, err
-}
-
 //ResolveRemoteRefs will return a slice of remote images resolved from their fully qualified name
 func ResolveRemoteRefs(images ...string) (map[name.Reference]v1.Image, error) {
 	m := make(map[name.Reference]v1.Image)
@@ -137,7 +111,7 @@ var knownImagePaths = []string{
 	"{.spec.containers[*].image}",
 }
 
-////imageFromRuntimeObject will return any images found in known obj specs
+//imageFromRuntimeObject will return any images found in known obj specs
 func imageFromRuntimeObject(obj *unstructured.Unstructured) (images []string, err error) {
 	objData, _ := obj.MarshalJSON()
 

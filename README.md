@@ -1,28 +1,4 @@
 # Hauler - Kubernetes Air Gap Migration
-```bash
-#  _                 _           
-# | |__   __ _ _   _| | ___ _ __ 
-# | '_ \ / _` | | | | |/ _ \ '__|
-# | | | | (_| | |_| | |  __/ |   
-# |_| |_|\__,_|\__,_|_|\___|_| 
-#
-#                ,        ,  _______________________________
-#    ,-----------|'------'|  |                             |
-#   /.           '-'    |-'  |_____________________________|
-#  |/|             |    |
-#    |   .________.'----'    _______________________________
-#    |  ||        |  ||      |                             |
-#    \__|'        \__|'      |_____________________________|
-#
-# __________________________________________________________
-# |                                                        |
-# |________________________________________________________|
-#
-# __________________________________________________________
-# |                                                        |
-# |________________________________________________________|
-
-```
 
 ## WARNING - Work In Progress
 
@@ -37,14 +13,40 @@ Kubernetes-focused software usually relies on executables, archives, container i
 
 Hauler aims to fill this gap by standardizing low-level components of this stack and automating the collection and transfer of artifacts.
 
+## Usage
+
+Package a self contained deployable cluster
+
+```bash
+# CLI 
+# bare k3s cluster
+hauler create
+
+# k3s cluster with autodeployed manifests on boot
+hauler create -p path/to/rawmanifests -p path/to/kustomizebase -p path/to/helmchart -i image
+
+# Config File
+hauler create [-c ./package.yaml]
+```
+
+Bootstrap a cluster from a packaged archive
+
+```bash
+hauler boot package.tar.zst
+```
+
+Relocate a set of images
+
+```bash
+hauler save -p path/to/manifests -i image:tag -i image@sha256:...
+
+hauler relocate bundle.tar.zst airgap-registry:5000
+```
+
 ## Additional Details
 
 - [Roadmap](./ROADMAP.md)
 - [Vagrant](./VAGRANT.md)
-
-## Go CLI
-
-The initial MVP for a hauler CLI used to streamline the packaging and deploying processes is in the `cmd/` and `pkg/` folders, along with `go.mod` and `go.sum`. Currently only a `package` subcommand is supported, which generates a `.tar.gz` archive used in the future `deploy` subcommand.
 
 ### Build
 

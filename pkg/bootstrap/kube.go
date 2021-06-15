@@ -3,7 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/kube"
 	log "github.com/sirupsen/logrus"
 	"helm.sh/helm/v3/pkg/action"
@@ -11,18 +11,16 @@ import (
 	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"os"
-	"path/filepath"
 	"time"
 )
 
-func waitForDriver(ctx context.Context, d v1alpha1.Drive) error {
+func waitForDriver(ctx context.Context, d driver.Driver) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	//TODO: This is a janky way of waiting for file to exist
-	path := filepath.Join(d.EtcPath(), "k3s.yaml")
 	for {
-		_, err := os.Stat(path)
+		_, err := os.Stat(d.KubeConfigPath())
 		if err == nil {
 			break
 		}
@@ -56,9 +54,11 @@ func installChart(cf *genericclioptions.ConfigFlags, chart *chart.Chart, release
 
 	client := action.NewInstall(actionConfig)
 	client.ReleaseName = releaseName
-	client.Namespace, cf.Namespace = namespace, stringptr(namespace) // TODO: Not sure why this needs to be set twice
 	client.CreateNamespace = true
 	client.Wait = true
+
+	//TODO: Do this better
+	client.Namespace, cf.Namespace = namespace, stringptr(namespace)
 
 	return client.Run(chart, vals)
 }

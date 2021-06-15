@@ -17,7 +17,7 @@ require (
 	github.com/imdario/mergo v0.3.12
 	github.com/klauspost/compress v1.13.0 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
-	github.com/mattn/go-runewidth v0.0.12 // indirect
+	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
@@ -26,7 +26,6 @@ require (
 	github.com/pelletier/go-toml v1.8.1 // indirect
 	github.com/rancher/fleet v0.3.5
 	github.com/rancher/fleet/pkg/apis v0.0.0
-	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.1.3
