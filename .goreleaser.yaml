@@ -1,0 +1,14 @@
+project_name: hauler
+builds:
+  - main: cmd/haulerctl/main.go
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -tags=containers_image_openpgp containers_image_ostree
+

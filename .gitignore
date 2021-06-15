@@ -15,3 +15,12 @@
 artifacts
 local-artifacts
 airgap-scp.sh
+
+# test artifacts
+*.tar*
+
+# generated
+dist/
+./bundle/
+tmp/
+bin/
