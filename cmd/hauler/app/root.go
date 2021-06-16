@@ -18,7 +18,7 @@ var (
 	loglevel string
 	timeout  time.Duration
 
-	getLong = `haulerctl provides CLI-based air-gap migration assistance using k3s.
+	getLong = `hauler provides CLI-based air-gap migration assistance using k3s.
 
 	Choose your functionality and new a package when internet access is available,
 	then deploy the package into your air-gapped environment.
@@ -43,11 +43,11 @@ type rootOpts struct {
 
 var ro rootOpts
 
-// NewRootCommand defines the root haulerctl command
+// NewRootCommand defines the root hauler command
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "haulerctl",
-		Short:        "haulerctl provides CLI-based air-gap migration assistance",
+		Use:          "hauler",
+		Short:        "hauler provides CLI-based air-gap migration assistance",
 		Long:         getLong,
 		Example:      getExample,
 		SilenceUsage: true,

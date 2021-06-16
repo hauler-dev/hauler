@@ -14,7 +14,7 @@ type copyOpts struct {
 }
 
 // NewCopyCommand creates a new sub command under
-// haulerctl for coping files to local disk
+// hauler for coping files to local disk
 func NewCopyCommand() *cobra.Command {
 	opts := &copyOpts{}
 

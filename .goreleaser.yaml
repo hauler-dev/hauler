@@ -1,6 +1,6 @@
 project_name: hauler
 builds:
-  - main: cmd/haulerctl/main.go
+  - main: cmd/hauler/main.go
     goos:
       - linux
       - darwin
