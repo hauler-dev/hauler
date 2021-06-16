@@ -5,11 +5,15 @@ go 1.16
 require (
 	cloud.google.com/go/storage v1.8.0 // indirect
 	github.com/Microsoft/go-winio v0.5.0 // indirect
+	github.com/Microsoft/hcsshim v0.8.16 // indirect
+	github.com/containerd/cgroups v1.0.1 // indirect
 	github.com/containerd/containerd v1.5.0-beta.4
+	github.com/containerd/continuity v0.1.0 // indirect
 	github.com/deislabs/oras v0.11.1
 	github.com/docker/docker v20.10.6+incompatible // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
-	github.com/google/go-containerregistry v0.5.1
+	github.com/google/go-containerregistry v0.4.1
+	github.com/google/uuid v1.2.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/imdario/mergo v0.3.12
 	github.com/klauspost/compress v1.13.0 // indirect
@@ -27,7 +31,9 @@ require (
 	github.com/spf13/viper v1.7.0
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190809123943-df4f5c81cb3b // indirect
+	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
 	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	google.golang.org/genproto v0.0.0-20210524171403-669157292da3 // indirect
 	google.golang.org/grpc v1.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
