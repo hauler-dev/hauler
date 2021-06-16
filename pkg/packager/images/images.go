@@ -52,16 +52,17 @@ func MapImager(imager ...Imager) (map[name.Reference]v1.Image, error) {
 func ImageMapFromBundle(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
 	opts := fleetapi.BundleDeploymentOptions{}
 
+	//TODO: Why doesn't fleet do this...
 	if b.Spec.Helm != nil {
-		opts.Helm = &fleetapi.HelmOptions{
-			Chart:       b.Spec.Helm.Chart,
-			Repo:        b.Spec.Helm.Repo,
-			ReleaseName: b.Spec.Helm.ReleaseName,
-			Version:     b.Spec.Helm.Version,
-			Values:      b.Spec.Helm.Values,
-			ValuesFrom:  b.Spec.Helm.ValuesFrom,
-			ValuesFiles: b.Spec.Helm.ValuesFiles,
-		}
+		opts.Helm = b.Spec.Helm
+	}
+
+	if b.Spec.Kustomize != nil {
+		opts.Kustomize = b.Spec.Kustomize
+	}
+
+	if b.Spec.YAML != nil {
+		opts.YAML = b.Spec.YAML
 	}
 
 	m, err := manifest.New(&b.Spec)
