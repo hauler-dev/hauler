@@ -55,8 +55,9 @@ jobs:
         go-version: 1.16
     - name: Build and run Hauler package build
       run: |
-        go build ./cmd/...
-        chmod +x haulerctl && haulerctl package build
+        mkdir bin
+        go build -o bin ./cmd/...
+        ./bin/haulerctl package build
     - name: Run GoReleaser
       id: goreleaser
       uses: goreleaser/goreleaser-action@v1
