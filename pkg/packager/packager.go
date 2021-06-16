@@ -24,7 +24,7 @@ type Packager interface {
 
 	PackageFleet(context.Context, v1alpha1.Fleet) error
 
-	PackageImages(context.Context, map[name.Reference]v1.Image) error
+	PackageImages(context.Context, ...string) error
 }
 
 type pkg struct {
@@ -80,7 +80,7 @@ func (p pkg) PackageBundles(ctx context.Context, path ...string) ([]*fleetapi.Bu
 			return nil, err
 		}
 
-		if err := p.PackageImages(ctx, imgs); err != nil {
+		if err := p.pkgImages(ctx, imgs); err != nil {
 			return nil, err
 		}
 
@@ -112,7 +112,7 @@ func (p pkg) PackageDriver(ctx context.Context, d driver.Driver) error {
 		return err
 	}
 
-	err = p.PackageImages(ctx, imgMap)
+	err = p.pkgImages(ctx, imgMap)
 	if err != nil {
 		return err
 	}
@@ -121,15 +121,18 @@ func (p pkg) PackageDriver(ctx context.Context, d driver.Driver) error {
 	return nil
 }
 
-func (p pkg) PackageImages(ctx context.Context, imgMap map[name.Reference]v1.Image) error {
-	var i int
-	for ref, im := range imgMap {
-		p.logger.Infof("Packaging image (%d/%d): %s", i+1, len(imgMap), ref.Name())
-		if err := p.fs.AddImage(ref, im); err != nil {
-			return err
-		}
-		i++
+func (p pkg) PackageImages(ctx context.Context, imgs ...string) error {
+	p.logger.Infof("Packaging %d user defined images", len(imgs))
+	imgMap, err := images.ResolveRemoteRefs(imgs...)
+	if err != nil {
+		return err
 	}
+
+	if err := p.pkgImages(ctx, imgMap); err != nil {
+		return err
+	}
+
+	p.logger.Successf("Finished packaging %d user defined images", len(imgs))
 	return nil
 }
 
@@ -142,7 +145,7 @@ func (p pkg) PackageFleet(ctx context.Context, fl v1alpha1.Fleet) error {
 		return err
 	}
 
-	if err := p.PackageImages(ctx, imgMap); err != nil {
+	if err := p.pkgImages(ctx, imgMap); err != nil {
 		return err
 	}
 
@@ -157,5 +160,18 @@ func (p pkg) PackageFleet(ctx context.Context, fl v1alpha1.Fleet) error {
 	}
 
 	p.logger.Successf("Finished packaging fleet components")
+	return nil
+}
+
+//pkgImages is a helper function to loop through an image map and add it to a layout
+func (p pkg) pkgImages(ctx context.Context, imgMap map[name.Reference]v1.Image) error {
+	var i int
+	for ref, im := range imgMap {
+		p.logger.Infof("Packaging image (%d/%d): %s", i+1, len(imgMap), ref.Name())
+		if err := p.fs.AddImage(ref, im); err != nil {
+			return err
+		}
+		i++
+	}
 	return nil
 }

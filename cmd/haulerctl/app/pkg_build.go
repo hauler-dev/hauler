@@ -47,7 +47,7 @@ func NewPkgBuildCommand() *cobra.Command {
 	f := cmd.PersistentFlags()
 	f.StringVarP(&opts.name, "name", "n", "pkg",
 		"name of the pkg to create, will dicate file name")
-	f.StringVarP(&opts.cfgFile, "config", "c", "./pkg.yaml",
+	f.StringVarP(&opts.cfgFile, "config", "c", "",
 		"path to config file")
 	f.StringVarP(&opts.driver, "driver", "d", "k3s",
 		"")
@@ -66,27 +66,12 @@ func NewPkgBuildCommand() *cobra.Command {
 func (o *pkgBuildOpts) PreRun() error {
 	_, err := os.Stat(o.cfgFile)
 	if os.IsNotExist(err) {
-		o.logger.Warnf("Did not find an existing %s, creating one", o.cfgFile)
-		p := v1alpha1.Package{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "",
-				APIVersion: "",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: o.name,
-			},
-			Spec: v1alpha1.PackageSpec{
-				Fleet: v1alpha1.Fleet{
-					Version: o.fleetVersion,
-				},
-				Driver: v1alpha1.Driver{
-					Type:    o.driver,
-					Version: o.driverVersion,
-				},
-				Paths:  o.paths,
-				Images: o.images,
-			},
+		if o.cfgFile == "" {
+			return nil
 		}
+
+		o.logger.Warnf("Did not find an existing %s, creating one", o.cfgFile)
+		p := o.toPackage()
 
 		data, err := yaml.Marshal(p)
 		if err != nil {
@@ -109,14 +94,21 @@ func (o *pkgBuildOpts) Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cfgData, err := os.ReadFile(o.cfgFile)
-	if err != nil {
-		return err
-	}
-
 	var p v1alpha1.Package
-	if err := yaml.Unmarshal(cfgData, &p); err != nil {
-		return err
+	if o.cfgFile != "" {
+		o.logger.Infof("Config file '%s' specified, attempting to load existing package config", o.cfgFile)
+		cfgData, err := os.ReadFile(o.cfgFile)
+		if err != nil {
+			return err
+		}
+
+		if err := yaml.Unmarshal(cfgData, &p); err != nil {
+			return err
+		}
+
+	} else {
+		o.logger.Infof("No config file specified, strictly using cli arguments")
+		p = o.toPackage()
 	}
 
 	tmpdir, err := os.MkdirTemp("", "hauler")
@@ -129,6 +121,10 @@ func (o *pkgBuildOpts) Run() error {
 	d := driver.NewDriver(p.Spec.Driver)
 	if _, bErr := pkgr.PackageBundles(ctx, p.Spec.Paths...); bErr != nil {
 		return bErr
+	}
+
+	if iErr := pkgr.PackageImages(ctx, o.images...); iErr != nil {
+		return iErr
 	}
 
 	if dErr := pkgr.PackageDriver(ctx, d); dErr != nil {
@@ -146,4 +142,28 @@ func (o *pkgBuildOpts) Run() error {
 
 	o.logger.Successf("Finished building package")
 	return nil
+}
+
+func (o *pkgBuildOpts) toPackage() v1alpha1.Package {
+	p := v1alpha1.Package{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "",
+			APIVersion: "",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: o.name,
+		},
+		Spec: v1alpha1.PackageSpec{
+			Fleet: v1alpha1.Fleet{
+				Version: o.fleetVersion,
+			},
+			Driver: v1alpha1.Driver{
+				Type:    o.driver,
+				Version: o.driverVersion,
+			},
+			Paths:  o.paths,
+			Images: o.images,
+		},
+	}
+	return p
 }
