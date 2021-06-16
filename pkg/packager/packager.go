@@ -57,7 +57,9 @@ func (p pkg) Archive(a Archiver, pkg v1alpha1.Package, output string) error {
 func (p pkg) PackageBundles(ctx context.Context, path ...string) ([]*fleetapi.Bundle, error) {
 	p.logger.Infof("Packaging %d bundle(s)", len(path))
 
-	opts := &bundle.Options{Compress: true}
+	opts := &bundle.Options{
+		Compress: true,
+	}
 
 	var cImgs int
 

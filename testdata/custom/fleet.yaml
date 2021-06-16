@@ -1,0 +1,8 @@
+#defaultNamespace: fleet-system
+#helm:
+#  chart: https://github.com/rancher/fleet/releases/download/v0.3.5/fleet-agent-0.3.5.tgz
+#  releaseName: fleet-agent
+
+helm:
+  repo: https://charts.longhorn.io
+  chart: longhorn

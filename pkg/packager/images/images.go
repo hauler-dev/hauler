@@ -50,14 +50,27 @@ func MapImager(imager ...Imager) (map[name.Reference]v1.Image, error) {
 }
 
 func ImageMapFromBundle(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
-	opts := fleetapi.BundleDeploymentOptions{
-		DefaultNamespace: "default",
+	opts := fleetapi.BundleDeploymentOptions{}
+
+	if b.Spec.Helm != nil {
+		opts.Helm = &fleetapi.HelmOptions{
+			Chart:       b.Spec.Helm.Chart,
+			Repo:        b.Spec.Helm.Repo,
+			ReleaseName: b.Spec.Helm.ReleaseName,
+			Version:     b.Spec.Helm.Version,
+			Values:      b.Spec.Helm.Values,
+			ValuesFrom:  b.Spec.Helm.ValuesFrom,
+			ValuesFiles: b.Spec.Helm.ValuesFiles,
+		}
 	}
 
-	m := &manifest.Manifest{Resources: b.Spec.Resources}
+	m, err := manifest.New(&b.Spec)
+	if err != nil {
+		return nil, err
+	}
 
 	//TODO: I think this is right?
-	objs, err := helmdeployer.Template("anything", m, opts)
+	objs, err := helmdeployer.Template(b.Name, m, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +157,7 @@ func parseJSONPath(input interface{}, parser *jsonpath.JSONPath, template string
 		return nil, err
 	}
 
-	r := strings.Split(buf.String(), " ")
+	f := func(s rune) bool { return s == ' ' }
+	r := strings.FieldsFunc(buf.String(), f)
 	return r, nil
 }

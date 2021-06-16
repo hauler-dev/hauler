@@ -52,7 +52,7 @@ func Test_pkgBuildOpts_Run(t *testing.T) {
 				fleetVersion:  "v0.3.5",
 				images:        nil,
 				paths: []string{
-					"../../../testdata/flt",
+					"../../../testdata/custom",
 				},
 			},
 			wantErr: false,
