@@ -1,6 +1,9 @@
 package v1alpha1
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 //Fleet is used as the deployment engine for all things Hauler
 type Fleet struct {
@@ -10,12 +13,20 @@ type Fleet struct {
 
 //TODO: These should be identified from the chart version
 func (f Fleet) Images() ([]string, error) {
-	return []string{"rancher/gitjob:v0.1.15", "rancher/fleet:v0.3.5", "rancher/fleet-agent:v0.3.5"}, nil
+	return []string{
+		fmt.Sprintf("rancher/gitjob:v0.1.15"),
+		fmt.Sprintf("rancher/fleet:%s", f.Version),
+		fmt.Sprintf("rancher/fleet-agent:%s", f.Version),
+	}, nil
 }
 
 func (f Fleet) CRDChart() string {
-	return fmt.Sprintf("https://github.com/rancher/fleet/releases/download/v0.3.5/fleet-crd-%s.tgz", f.Version)
+	return fmt.Sprintf("https://github.com/rancher/fleet/releases/download/%s/fleet-crd-%s.tgz", f.Version, f.VLess())
 }
 func (f Fleet) Chart() string {
-	return fmt.Sprintf("https://github.com/rancher/fleet/releases/download/v0.3.5/fleet-%s.tgz", f.Version)
+	return fmt.Sprintf("https://github.com/rancher/fleet/releases/download/%s/fleet-%s.tgz", f.Version, f.VLess())
+}
+
+func (f Fleet) VLess() string {
+	return strings.ReplaceAll(f.Version, "v", "")
 }

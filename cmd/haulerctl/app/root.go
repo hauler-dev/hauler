@@ -26,13 +26,15 @@ var (
 
 	getExample = `
 		# Run Hauler
-		haulerctl bundle images <images>
-		haulerctl bundle artifacts <artfiacts>
-		haulerctl relocate artifacts -i <package-name>
-		haulerctl relocate images -i <package-name> locahost:5000
-		haulerctl copy
-		haulerctl create
-		haulerctl bootstrap`
+		hauler pkg build
+		hauler pkg run pkg.tar.zst
+		hauler bundle images <images>
+		hauler bundle artifacts <artfiacts>
+		hauler relocate artifacts -i <package-name>
+		hauler relocate images -i <package-name> locahost:5000
+		hauler copy
+		hauler create
+		hauler bootstrap`
 )
 
 type rootOpts struct {

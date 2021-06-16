@@ -27,10 +27,12 @@ type Booter interface {
 type booter struct {
 	Package v1alpha1.Package
 	fs      fs.PkgFs
+
+	logger log.Logger
 }
 
 //NewBooter will build a new booter given a path to a directory containing a hauler package.json
-func NewBooter(pkgPath string) (*booter, error) {
+func NewBooter(pkgPath string, logger log.Logger) (*booter, error) {
 	pkg, err := v1alpha1.LoadPackageFromDir(pkgPath)
 	if err != nil {
 		return nil, err
@@ -41,13 +43,19 @@ func NewBooter(pkgPath string) (*booter, error) {
 	return &booter{
 		Package: pkg,
 		fs:      fsys,
+		logger:  logger,
 	}, nil
 }
 
-func (b booter) PreBoot(ctx context.Context, d driver.Driver, logger log.Logger) error {
-	logger.Infof("Beginning pre boot")
+func (b booter) PreBoot(ctx context.Context, d driver.Driver) error {
+	b.logger.Infof("Beginning pre boot")
 
-	//TODO: Feel like there's a better way to do this
+	//TODO: Feel like there's a better way to do all this dir creation
+
+	if err := os.MkdirAll(d.DataPath(), os.ModePerm); err != nil {
+		return err
+	}
+
 	if err := b.moveBin(); err != nil {
 		return err
 	}
@@ -64,18 +72,17 @@ func (b booter) PreBoot(ctx context.Context, d driver.Driver, logger log.Logger)
 		return err
 	}
 
-	logger.Debugf("Writing %s config", d.Name())
+	b.logger.Debugf("Writing %s config", d.Name())
 	if err := d.WriteConfig(); err != nil {
 		return err
 	}
 
-	logger.Successf("Completed pre boot")
-
+	b.logger.Successf("Completed pre boot")
 	return nil
 }
 
-func (b booter) Boot(ctx context.Context, d driver.Driver, logger log.Logger) error {
-	logger.Infof("Beginning boot")
+func (b booter) Boot(ctx context.Context, d driver.Driver) error {
+	b.logger.Infof("Beginning boot")
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	out := io.MultiWriter(os.Stdout, &stdoutBuf, &stderrBuf)
@@ -85,51 +92,51 @@ func (b booter) Boot(ctx context.Context, d driver.Driver, logger log.Logger) er
 		return err
 	}
 
-	logger.Infof("Waiting for driver core components to provision...")
+	b.logger.Infof("Waiting for driver core components to provision...")
 	waitErr := waitForDriver(ctx, d)
 	if waitErr != nil {
 		return err
 	}
 
-	logger.Successf("Completed boot")
+	b.logger.Successf("Completed boot")
 	return nil
 }
 
-func (b booter) PostBoot(ctx context.Context, d driver.Driver, logger log.Logger) error {
-	logger.Infof("Beginning post boot")
+func (b booter) PostBoot(ctx context.Context, d driver.Driver) error {
+	b.logger.Infof("Beginning post boot")
 
 	cf := genericclioptions.NewConfigFlags(true)
 	cf.KubeConfig = stringptr(d.KubeConfigPath())
 
-	fleetCrdChartPath := b.fs.Chart().Path(fmt.Sprintf("fleet-crd-%s.tgz", b.Package.Spec.Fleet.Version))
+	fleetCrdChartPath := b.fs.Chart().Path(fmt.Sprintf("fleet-crd-%s.tgz", b.Package.Spec.Fleet.VLess()))
 	fleetCrdChart, err := loader.Load(fleetCrdChartPath)
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Installing fleet crds")
-	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", "fleet-system", nil)
+	b.logger.Infof("Installing fleet crds")
+	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", "fleet-system", nil, b.logger)
 	if fleetCrdErr != nil {
 		return fleetCrdErr
 	}
 
-	logger.Infof("Successfully installed '%s' to namespace '%s'", fleetCrdRelease.Name, fleetCrdRelease.Namespace)
+	b.logger.Infof("Installed '%s' to namespace '%s'", fleetCrdRelease.Name, fleetCrdRelease.Namespace)
 
-	fleetChartPath := b.fs.Chart().Path(fmt.Sprintf("fleet-%s.tgz", b.Package.Spec.Fleet.Version))
+	fleetChartPath := b.fs.Chart().Path(fmt.Sprintf("fleet-%s.tgz", b.Package.Spec.Fleet.VLess()))
 	fleetChart, err := loader.Load(fleetChartPath)
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Installing fleet")
-	fleetRelease, fleetErr := installChart(cf, fleetChart, "fleet", "fleet-system", nil)
+	b.logger.Infof("Installing fleet")
+	fleetRelease, fleetErr := installChart(cf, fleetChart, "fleet", "fleet-system", nil, b.logger)
 	if fleetErr != nil {
 		return fleetErr
 	}
 
-	logger.Infof("Successfully installed '%s' to namespace '%s'", fleetRelease.Name, fleetRelease.Namespace)
+	b.logger.Infof("Installed '%s' to namespace '%s'", fleetRelease.Name, fleetRelease.Namespace)
 
-	logger.Successf("Completed post boot")
+	b.logger.Successf("Completed post boot")
 	return nil
 }
 

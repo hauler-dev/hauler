@@ -25,18 +25,34 @@ func Test_pkgBuildOpts_Run(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "should work",
+			name: "should package all types of local manifests",
 			fields: fields{
 				rootOpts:      &tro,
 				cfgFile:       "pkg.yaml",
 				name:          "k3s",
 				driver:        "k3s",
 				driverVersion: "v1.21.1+k3s1",
-				fleetVersion:  "0.3.5",
+				fleetVersion:  "v0.3.5",
 				images:        nil,
 				paths: []string{
 					"../../../testdata/docker-registry",
 					"../../../testdata/rawmanifests",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "should package using fleet.yaml",
+			fields: fields{
+				rootOpts:      &tro,
+				cfgFile:       "pkg.yaml",
+				name:          "k3s",
+				driver:        "k3s",
+				driverVersion: "v1.21.1+k3s1",
+				fleetVersion:  "v0.3.5",
+				images:        nil,
+				paths: []string{
+					"../../../testdata/flt",
 				},
 			},
 			wantErr: false,

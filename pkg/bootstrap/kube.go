@@ -5,7 +5,7 @@ import (
 	"errors"
 	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/kube"
-	log "github.com/sirupsen/logrus"
+	"github.com/rancherfederal/hauler/pkg/log"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
@@ -46,9 +46,9 @@ func waitForDriver(ctx context.Context, d driver.Driver) error {
 }
 
 //TODO: This is likely way too fleet specific
-func installChart(cf *genericclioptions.ConfigFlags, chart *chart.Chart, releaseName, namespace string, vals map[string]interface{}) (*release.Release, error) {
+func installChart(cf *genericclioptions.ConfigFlags, chart *chart.Chart, releaseName, namespace string, vals map[string]interface{}, logger log.Logger) (*release.Release, error) {
 	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(cf, namespace, os.Getenv("HELM_DRIVER"), log.Debugf); err != nil {
+	if err := actionConfig.Init(cf, namespace, os.Getenv("HELM_DRIVER"), logger.Debugf); err != nil {
 		return nil, err
 	}
 

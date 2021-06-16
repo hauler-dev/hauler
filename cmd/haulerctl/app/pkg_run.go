@@ -60,22 +60,22 @@ func (o *pkgRunOpts) Run(pkgPath string) error {
 	}
 	o.logger.Debugf("Unpackaged %s", pkgPath)
 
-	b, err := bootstrap.NewBooter(tmpdir)
+	b, err := bootstrap.NewBooter(tmpdir, o.logger)
 	if err != nil {
 		return err
 	}
 
 	d := driver.NewDriver(b.Package.Spec.Driver)
 
-	if preErr := b.PreBoot(ctx, d, o.logger); preErr != nil {
+	if preErr := b.PreBoot(ctx, d); preErr != nil {
 		return preErr
 	}
 
-	if bErr := b.Boot(ctx, d, o.logger); bErr != nil {
+	if bErr := b.Boot(ctx, d); bErr != nil {
 		return bErr
 	}
 
-	if postErr := b.PostBoot(ctx, d, o.logger); postErr != nil {
+	if postErr := b.PostBoot(ctx, d); postErr != nil {
 		return postErr
 	}
 

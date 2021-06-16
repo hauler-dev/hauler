@@ -5,7 +5,6 @@ import (
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/packager"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
@@ -67,7 +66,7 @@ func NewPkgBuildCommand() *cobra.Command {
 func (o *pkgBuildOpts) PreRun() error {
 	_, err := os.Stat(o.cfgFile)
 	if os.IsNotExist(err) {
-		logrus.Infof("Could not find %s, creating one", o.cfgFile)
+		o.logger.Warnf("Did not find an existing %s, creating one", o.cfgFile)
 		p := v1alpha1.Package{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "",
@@ -97,11 +96,10 @@ func (o *pkgBuildOpts) PreRun() error {
 		if err := os.WriteFile(o.cfgFile, data, 0644); err != nil {
 			return err
 		}
-	}
-
-	if err != nil {
+	} else if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -129,16 +127,16 @@ func (o *pkgBuildOpts) Run() error {
 	pkgr := packager.NewPackager(tmpdir, o.logger)
 
 	d := driver.NewDriver(p.Spec.Driver)
+	if _, bErr := pkgr.PackageBundles(ctx, p.Spec.Paths...); bErr != nil {
+		return bErr
+	}
+
 	if dErr := pkgr.PackageDriver(ctx, d); dErr != nil {
 		return dErr
 	}
 
 	if fErr := pkgr.PackageFleet(ctx, p.Spec.Fleet); fErr != nil {
 		return fErr
-	}
-
-	if _, bErr := pkgr.PackageBundles(ctx, p.Spec.Paths...); bErr != nil {
-		return bErr
 	}
 
 	a := packager.NewArchiver()

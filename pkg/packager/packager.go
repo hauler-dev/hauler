@@ -55,10 +55,16 @@ func (p pkg) Archive(a Archiver, pkg v1alpha1.Package, output string) error {
 }
 
 func (p pkg) PackageBundles(ctx context.Context, path ...string) ([]*fleetapi.Bundle, error) {
+	p.logger.Infof("Packaging %d bundle(s)", len(path))
+
 	opts := &bundle.Options{Compress: true}
+
+	var cImgs int
 
 	var bundles []*fleetapi.Bundle
 	for _, pth := range path {
+		p.logger.Infof("Creating bundle from path: %s", pth)
+
 		bundleName := filepath.Base(pth)
 		fb, err := bundle.Open(ctx, bundleName, pth, "", opts)
 		if err != nil {
@@ -67,17 +73,27 @@ func (p pkg) PackageBundles(ctx context.Context, path ...string) ([]*fleetapi.Bu
 		//TODO: Figure out why bundle.Open doesn't return with GVK
 		bn := fleetapi.NewBundle("fleet-local", bundleName, *fb.Definition)
 
-		if err := p.fs.AddBundle(bn); err != nil {
+		imgs, err := p.fs.AddBundle(bn)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := p.PackageImages(ctx, imgs); err != nil {
 			return nil, err
 		}
 
 		bundles = append(bundles, bn)
+		cImgs += len(imgs)
 	}
 
+	p.logger.Successf("Finished packaging %d bundle(s) along with %d autodetected image(s)", len(path), cImgs)
 	return bundles, nil
 }
 
 func (p pkg) PackageDriver(ctx context.Context, d driver.Driver) error {
+	p.logger.Infof("Packaging %s components", d.Name())
+
+	p.logger.Infof("Adding %s executable to package", d.Name())
 	rc, err := d.Binary()
 	if err != nil {
 		return err
@@ -88,6 +104,7 @@ func (p pkg) PackageDriver(ctx context.Context, d driver.Driver) error {
 	}
 	rc.Close()
 
+	p.logger.Infof("Adding required images for %s to package", d.Name())
 	imgMap, err := d.Images(ctx)
 	if err != nil {
 		return err
@@ -98,39 +115,45 @@ func (p pkg) PackageDriver(ctx context.Context, d driver.Driver) error {
 		return err
 	}
 
+	p.logger.Successf("Finished packaging %s components", d.Name())
 	return nil
 }
 
 func (p pkg) PackageImages(ctx context.Context, imgMap map[name.Reference]v1.Image) error {
+	var i int
 	for ref, im := range imgMap {
+		p.logger.Infof("Packaging image (%d/%d): %s", i+1, len(imgMap), ref.Name())
 		if err := p.fs.AddImage(ref, im); err != nil {
 			return err
 		}
+		i++
 	}
 	return nil
 }
 
 //TODO: Add this to PackageDriver?
 func (p pkg) PackageFleet(ctx context.Context, fl v1alpha1.Fleet) error {
+	p.logger.Infof("Packaging fleet components")
+
 	imgMap, err := images.MapImager(fl)
 	if err != nil {
 		return err
 	}
 
-	for ref, im := range imgMap {
-		err := p.fs.AddImage(ref, im)
-		if err != nil {
-			return err
-		}
+	if err := p.PackageImages(ctx, imgMap); err != nil {
+		return err
 	}
 
+	p.logger.Infof("Adding fleet crds to package")
 	if err := p.fs.AddChart(fl.CRDChart(), fl.Version); err != nil {
 		return err
 	}
 
+	p.logger.Infof("Adding fleet to package")
 	if err := p.fs.AddChart(fl.Chart(), fl.Version); err != nil {
 		return err
 	}
 
+	p.logger.Successf("Finished packaging fleet components")
 	return nil
 }

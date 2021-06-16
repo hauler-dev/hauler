@@ -70,33 +70,26 @@ func (p PkgFs) Chart() PkgFs {
 }
 
 //AddBundle will add a bundle to a package and all images that are autodetected from it
-func (p PkgFs) AddBundle(b *fleetapi.Bundle) error {
+func (p PkgFs) AddBundle(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
 	if err := p.mkdirIfNotExists(v1alpha1.BundlesDir, os.ModePerm); err != nil {
-		return err
+		return nil, err
 	}
 
 	data, err := json.Marshal(b)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := p.Bundle().WriteFile(fmt.Sprintf("%s.json", b.Name), data, 0644); err != nil {
-		return err
+		return nil, err
 	}
 
 	imgs, err := images.ImageMapFromBundle(b)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for k, v := range imgs {
-		err := p.AddImage(k, v)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return imgs, nil
 }
 
 func (p PkgFs) AddBin(r io.Reader, name string) error {
