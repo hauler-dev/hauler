@@ -2,10 +2,11 @@ package app
 
 import (
 	"fmt"
-	"github.com/rancherfederal/hauler/pkg/log"
 	"io"
 	"os"
 	"time"
+
+	"github.com/rancherfederal/hauler/pkg/log"
 
 	"github.com/spf13/cobra"
 
@@ -30,9 +31,9 @@ var (
 		hauler pkg run pkg.tar.zst
 		hauler bundle images <images>
 		hauler bundle artifacts <artfiacts>
-		hauler relocate artifacts -i <package-name>
-		hauler relocate images -i <package-name> locahost:5000
-		hauler copy`
+		hauler relocate artifacts artifacts.tar.zst
+		hauler relocate images pkg.tar.zst locahost:5000
+		hauler copy local:5000/artifacts:latest`
 )
 
 type rootOpts struct {
@@ -72,7 +73,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(NewPkgCommand())
 
 	f := cmd.PersistentFlags()
-	f.StringVarP(&loglevel, "loglevel", "l", "info",
+	f.StringVarP(&loglevel, "loglevel", "l", "debug",
 		"Log level (debug, info, warn, error, fatal, panic)")
 	f.StringVarP(&cfgFile, "config", "c", "./hauler.yaml",
 		"config file (./hauler.yaml)")

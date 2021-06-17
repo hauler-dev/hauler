@@ -2,9 +2,10 @@ package packager
 
 import (
 	"context"
+	"testing"
+
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/fs"
-	"testing"
 )
 
 func Test_pkg_driver(t *testing.T) {
@@ -13,7 +14,7 @@ func Test_pkg_driver(t *testing.T) {
 	}
 	type args struct {
 		ctx context.Context
-		d   v1alpha1.IDriver
+		d   v1alpha1.Driver
 	}
 	tests := []struct {
 		name    string

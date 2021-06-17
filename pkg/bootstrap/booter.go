@@ -12,7 +12,6 @@ import (
 	"github.com/rancherfederal/hauler/pkg/log"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"io"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"os"
 	"path/filepath"
 )
@@ -105,8 +104,7 @@ func (b booter) Boot(ctx context.Context, d driver.Driver) error {
 func (b booter) PostBoot(ctx context.Context, d driver.Driver) error {
 	b.logger.Infof("Beginning post boot")
 
-	cf := genericclioptions.NewConfigFlags(true)
-	cf.KubeConfig = stringptr(d.KubeConfigPath())
+	cf := NewBootConfig("fleet-system", d.KubeConfigPath())
 
 	fleetCrdChartPath := b.fs.Chart().Path(fmt.Sprintf("fleet-crd-%s.tgz", b.Package.Spec.Fleet.VLess()))
 	fleetCrdChart, err := loader.Load(fleetCrdChartPath)
@@ -115,7 +113,7 @@ func (b booter) PostBoot(ctx context.Context, d driver.Driver) error {
 	}
 
 	b.logger.Infof("Installing fleet crds")
-	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", "fleet-system", nil, b.logger)
+	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", nil,  b.logger)
 	if fleetCrdErr != nil {
 		return fleetCrdErr
 	}
@@ -129,7 +127,7 @@ func (b booter) PostBoot(ctx context.Context, d driver.Driver) error {
 	}
 
 	b.logger.Infof("Installing fleet")
-	fleetRelease, fleetErr := installChart(cf, fleetChart, "fleet", "fleet-system", nil, b.logger)
+	fleetRelease, fleetErr := installChart(cf, fleetChart, "fleet", nil, b.logger)
 	if fleetErr != nil {
 		return fleetErr
 	}
