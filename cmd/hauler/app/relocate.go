@@ -6,14 +6,15 @@ import (
 
 type relocateOpts struct {
 	inputFile string
+	*rootOpts
 }
-
-var rlo relocateOpts
 
 // NewRelocateCommand creates a new sub command under
 // haulterctl for relocating images and artifacts
 func NewRelocateCommand() *cobra.Command {
-	opts := &relocateOpts{}
+	opts := &relocateOpts{
+		rootOpts: &ro,
+	}
 
 	cmd := &cobra.Command{
 		Use:     "relocate",
@@ -25,12 +26,8 @@ func NewRelocateCommand() *cobra.Command {
 		},
 	}
 
-	f := cmd.PersistentFlags()
-	f.StringVarP(&opts.inputFile, "input", "i", "haul.tar.zst",
-		"package output location relative to the current directory (haul.tar.zst)")
-
-	cmd.AddCommand(NewRelocateArtifactsCommand())
-	cmd.AddCommand(NewRelocateImagesCommand())
+	cmd.AddCommand(NewRelocateArtifactsCommand(opts))
+	cmd.AddCommand(NewRelocateImagesCommand(opts))
 
 	return cmd
 }

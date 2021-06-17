@@ -13,46 +13,55 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	relocateImagesLong = `hauler relocate images processes a bundle provides by hauler
+	package build and copies all of the collected images to a registry`
+
+	relocateImagesExample = `
+		# Run Hauler
+		hauler relocate images pkg.tar.zst locahost:5000`
+)
+
 type relocateImagesOpts struct {
-	*rootOpts
 	*relocateOpts
 	destRef string
 }
 
 // NewRelocateImagesCommand creates a new sub command of relocate for images
-func NewRelocateImagesCommand() *cobra.Command {
+func NewRelocateImagesCommand(relocate *relocateOpts) *cobra.Command {
 	opts := &relocateImagesOpts{
-		rootOpts:     &ro,
-		relocateOpts: &rlo,
+		relocateOpts: relocate,
 	}
 
 	cmd := &cobra.Command{
-		Use:   "images",
-		Short: "Use artifact from bundle images to populate a target registry with the artifact's images",
+		Use:     "images",
+		Short:   "Use artifact from bundle images to populate a target registry with the artifact's images",
+		Long:    relocateImagesLong,
+		Example: relocateImagesExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.destRef = args[0]
-			return opts.Run(opts.destRef)
+			opts.inputFile = args[0]
+			opts.destRef = args[1]
+			return opts.Run(opts.destRef, opts.inputFile)
 		},
 	}
 
 	return cmd
 }
 
-func (o *relocateImagesOpts) Run(dst string) error {
-
-	ar := packager.NewArchiver()
+func (o *relocateImagesOpts) Run(dst string, input string) error {
 
 	tmpdir, err := os.MkdirTemp("", "hauler")
-
 	if err != nil {
-		o.logger.Errorf("error making temp directory: %v", err)
+		return err
 	}
+	o.logger.Debugf("Using temporary working directory: %s", tmpdir)
 
-	packager.Unpackage(ar, o.inputFile, tmpdir)
+	a := packager.NewArchiver()
 
-	if err != nil {
-		o.logger.Errorf("error unpackaging bundle: %v", err)
+	if err := packager.Unpackage(a, input, tmpdir); err != nil {
+		o.logger.Errorf("error unpackaging input %s: %v", input, err)
 	}
+	o.logger.Debugf("Unpackaged %s", input)
 
 	path := filepath.Join(tmpdir, "layout")
 

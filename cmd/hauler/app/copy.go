@@ -7,6 +7,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	copyLong = `hauler copies artifacts stored on a registry to local disk`
+
+	copyExample = `
+		# Run Hauler
+		hauler copy locahost:5000/artifacts:latest`
+)
+
 type copyOpts struct {
 	*rootOpts
 	dir       string
@@ -23,6 +31,8 @@ func NewCopyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "copy",
 		Short:   "Download artifacts from OCI registry to local disk",
+		Long:    copyLong,
+		Example: copyExample,
 		Aliases: []string{"c", "cp"},
 		//Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
