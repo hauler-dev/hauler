@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,13 +14,17 @@ import (
 )
 
 type relocateImagesOpts struct {
-	relocate *relocateOpts
-	destRef  string
+	*rootOpts
+	*relocateOpts
+	destRef string
 }
 
 // NewRelocateImagesCommand creates a new sub command of relocate for images
-func NewRelocateImagesCommand(relocate *relocateOpts) *cobra.Command {
-	opts := &relocateImagesOpts{relocate: relocate}
+func NewRelocateImagesCommand() *cobra.Command {
+	opts := &relocateImagesOpts{
+		rootOpts:     &ro,
+		relocateOpts: &rlo,
+	}
 
 	cmd := &cobra.Command{
 		Use:   "images",
@@ -42,13 +45,13 @@ func (o *relocateImagesOpts) Run(dst string) error {
 	tmpdir, err := os.MkdirTemp("", "hauler")
 
 	if err != nil {
-		return err
+		o.logger.Errorf("error making temp directory: %v", err)
 	}
 
-	packager.Unpackage(ar, o.relocate.inputFile, tmpdir)
+	packager.Unpackage(ar, o.inputFile, tmpdir)
 
 	if err != nil {
-		return err
+		o.logger.Errorf("error unpackaging bundle: %v", err)
 	}
 
 	path := filepath.Join(tmpdir, "layout")
@@ -56,7 +59,7 @@ func (o *relocateImagesOpts) Run(dst string) error {
 	ly, err := layout.FromPath(path)
 
 	if err != nil {
-		return err
+		o.logger.Errorf("error creating OCI layout: %v", err)
 	}
 
 	for nm, hash := range oci.ListImages(ly) {
@@ -65,11 +68,10 @@ func (o *relocateImagesOpts) Run(dst string) error {
 
 		img, err := ly.Image(hash)
 
-		fmt.Printf("Copy %s to %s", n[1], dst)
-		fmt.Println()
+		o.logger.Infof("Copy %s to %s", n[1], dst)
 
 		if err != nil {
-			return err
+			o.logger.Errorf("error creating image from layout: %v", err)
 		}
 
 		dstimg := dst + "/" + n[1]
@@ -77,11 +79,11 @@ func (o *relocateImagesOpts) Run(dst string) error {
 		tag, err := name.ParseReference(dstimg)
 
 		if err != nil {
-			return err
+			o.logger.Errorf("err parsing destination image %s: %v", dstimg, err)
 		}
 
 		if err := remote.Write(tag, img); err != nil {
-			return err
+			o.logger.Errorf("error writing image to destination registry %s: %v", dst, err)
 		}
 	}
 

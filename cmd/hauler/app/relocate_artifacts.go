@@ -8,18 +8,21 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/rancherfederal/hauler/pkg/packager"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 type relocateArtifactsOpts struct {
-	relocate *relocateOpts
+	*rootOpts
+	*relocateOpts
 	destRef  string
 }
 
 // NewRelocateArtifactsCommand creates a new sub command of relocate for artifacts
-func NewRelocateArtifactsCommand(relocate *relocateOpts) *cobra.Command {
-	opts := &relocateArtifactsOpts{relocate: relocate}
+func NewRelocateArtifactsCommand() *cobra.Command {
+	opts := &relocateArtifactsOpts{
+		rootOpts:     &ro,
+		relocateOpts: &rlo,
+	}
 
 	cmd := &cobra.Command{
 		Use:   "artifacts",
@@ -43,20 +46,20 @@ func (o *relocateArtifactsOpts) Run(dst string) error {
 	tmpdir, err := os.MkdirTemp("", "hauler")
 
 	if err != nil {
-		logrus.Error(err)
+		o.logger.Errorf("error creating temporary directory hauler: %v", err)
 	}
 
-	packager.Unpackage(ar, o.relocate.inputFile, tmpdir)
+	packager.Unpackage(ar, o.inputFile, tmpdir)
 
 	files, err := ioutil.ReadDir(tmpdir)
 
 	if err != nil {
-		logrus.Error(err)
+		o.logger.Errorf("error reading files from temporary directory: %v", err)
 	}
 
 	for _, f := range files {
 		if err := oci.Put(ctx, filepath.Join(tmpdir, f.Name()), dst); err != nil {
-			logrus.Error(err)
+			o.logger.Errorf("error pushing artifact to registry %s: %v", dst, err)
 		}
 	}
 

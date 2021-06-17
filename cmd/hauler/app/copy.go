@@ -4,11 +4,11 @@ import (
 	"context"
 
 	"github.com/rancherfederal/hauler/pkg/oci"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 type copyOpts struct {
+	*rootOpts
 	dir       string
 	sourceRef string
 }
@@ -16,7 +16,9 @@ type copyOpts struct {
 // NewCopyCommand creates a new sub command under
 // hauler for coping files to local disk
 func NewCopyCommand() *cobra.Command {
-	opts := &copyOpts{}
+	opts := &copyOpts{
+		rootOpts: &ro,
+	}
 
 	cmd := &cobra.Command{
 		Use:     "copy",
@@ -41,7 +43,7 @@ func (o *copyOpts) Run(src string) error {
 	defer cancel()
 
 	if err := oci.Get(ctx, src, o.dir); err != nil {
-		logrus.Error(err)
+		o.logger.Errorf("error copy artifact %s to local directory %s: %v", src, o.dir, err)
 	}
 
 	return nil
