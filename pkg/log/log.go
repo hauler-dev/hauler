@@ -61,6 +61,8 @@ func (l *standardLogger) logf(level string, format string, args ...interface{}) 
 		pterm.Warning.Printfln(format, args...)
 	case "success":
 		pterm.Success.Printfln(format, args...)
+	case "error":
+		pterm.Error.Printfln(format, args...)
 	default:
 		pterm.Error.Printfln("%s is not a valid log level", level)
 	}

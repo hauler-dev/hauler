@@ -21,9 +21,16 @@ func NewPkgRunCommand() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:     "run",
-		Short:   "",
-		Long:    "",
+		Use:   "run",
+		Short: "Run a compressed archive",
+		Long: `
+Run a compressed archive created from a 'hauler package build'.
+
+Examples:
+
+	# Run a package
+	hauler package run pkg.tar.zst
+`,
 		Aliases: []string{"r"},
 		Args:    cobra.MinimumNArgs(1),
 		PreRunE: func(cmd *cobra.Command, args []string) error {

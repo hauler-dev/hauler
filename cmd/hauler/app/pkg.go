@@ -11,8 +11,7 @@ func NewPkgCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "pkg",
-		Short:   "",
-		Long:    "",
+		Short:   "Interact with packages",
 		Aliases: []string{"p", "package"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()

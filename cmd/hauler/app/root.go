@@ -32,9 +32,7 @@ var (
 		hauler bundle artifacts <artfiacts>
 		hauler relocate artifacts -i <package-name>
 		hauler relocate images -i <package-name> locahost:5000
-		hauler copy
-		hauler create
-		hauler bootstrap`
+		hauler copy`
 )
 
 type rootOpts struct {
