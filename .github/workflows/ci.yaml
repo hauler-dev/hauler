@@ -27,6 +27,7 @@ jobs:
     - name: Run lint/vet
       run: |
         go get -u golang.org/x/lint/golint
+        go mod tidy
         golint ./...
         go vet ./...
     
