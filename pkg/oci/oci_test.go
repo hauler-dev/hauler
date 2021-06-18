@@ -3,6 +3,7 @@ package oci
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http/httptest"
 	"net/url"
@@ -11,11 +12,14 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 const timeout = 1 * time.Minute
 
 func Test_Get_Put(t *testing.T) {
+
+	lg, _ := setupTestLogger(os.Stdout, "info")
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -41,7 +45,7 @@ func Test_Get_Put(t *testing.T) {
 
 	img := fmt.Sprintf("%s/artifact:latest", u.Host)
 
-	if err := Put(ctx, file.Name(), img); err != nil {
+	if err := Put(ctx, file.Name(), img, lg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,10 +54,16 @@ func Test_Get_Put(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Get(ctx, img, dir); err != nil {
+	if err := Get(ctx, img, dir, lg); err != nil {
 		t.Fatal(err)
 	}
 
 	defer os.Remove(file.Name())
 	defer os.RemoveAll(dir)
+}
+
+func setupTestLogger(out io.Writer, level string) (log.Logger, error) {
+	l := log.NewLogger(out)
+
+	return l, nil
 }

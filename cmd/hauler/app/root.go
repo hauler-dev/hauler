@@ -66,7 +66,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(NewPkgCommand())
 
 	f := cmd.PersistentFlags()
-	f.StringVarP(&loglevel, "loglevel", "l", "debug",
+	f.StringVarP(&loglevel, "loglevel", "l", "info",
 		"Log level (debug, info, warn, error, fatal, panic)")
 	f.DurationVar(&timeout, "timeout", 1*time.Minute,
 		"TODO: timeout for operations")

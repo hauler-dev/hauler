@@ -53,7 +53,7 @@ func (o *copyOpts) Run(src string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	if err := oci.Get(ctx, src, o.dir); err != nil {
+	if err := oci.Get(ctx, src, o.dir, o.logger); err != nil {
 		o.logger.Errorf("error copy artifact %s to local directory %s: %v", src, o.dir, err)
 	}
 

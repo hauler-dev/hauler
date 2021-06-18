@@ -48,7 +48,7 @@ func (o *relocateArtifactsOpts) Run(dst string, input string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	if err := oci.Put(ctx, input, dst); err != nil {
+	if err := oci.Put(ctx, input, dst, o.logger); err != nil {
 		o.logger.Errorf("error pushing artifact to registry %s: %v", dst, err)
 	}
 
