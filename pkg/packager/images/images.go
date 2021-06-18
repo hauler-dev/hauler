@@ -50,14 +50,28 @@ func MapImager(imager ...Imager) (map[name.Reference]v1.Image, error) {
 }
 
 func ImageMapFromBundle(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error) {
-	opts := fleetapi.BundleDeploymentOptions{
-		DefaultNamespace: "default",
+	opts := fleetapi.BundleDeploymentOptions{}
+
+	//TODO: Why doesn't fleet do this...
+	if b.Spec.Helm != nil {
+		opts.Helm = b.Spec.Helm
 	}
 
-	m := &manifest.Manifest{Resources: b.Spec.Resources}
+	if b.Spec.Kustomize != nil {
+		opts.Kustomize = b.Spec.Kustomize
+	}
+
+	if b.Spec.YAML != nil {
+		opts.YAML = b.Spec.YAML
+	}
+
+	m, err := manifest.New(&b.Spec)
+	if err != nil {
+		return nil, err
+	}
 
 	//TODO: I think this is right?
-	objs, err := helmdeployer.Template("anything", m, opts)
+	objs, err := helmdeployer.Template(b.Name, m, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -72,32 +86,6 @@ func ImageMapFromBundle(b *fleetapi.Bundle) (map[name.Reference]v1.Image, error)
 	}
 
 	return ResolveRemoteRefs(di...)
-}
-
-func IdentifyImages(b *fleetapi.Bundle) (discoveredImages, error) {
-	opts := fleetapi.BundleDeploymentOptions{
-		DefaultNamespace: "default",
-	}
-
-	m := &manifest.Manifest{Resources: b.Spec.Resources}
-
-	//TODO: I think this is right?
-	objs, err := helmdeployer.Template("anything", m, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	var di discoveredImages
-
-	for _, o := range objs {
-		imgs, err := imageFromRuntimeObject(o.(*unstructured.Unstructured))
-		if err != nil {
-			return nil, err
-		}
-		di = append(di, imgs...)
-	}
-
-	return di, err
 }
 
 //ResolveRemoteRefs will return a slice of remote images resolved from their fully qualified name
@@ -137,7 +125,7 @@ var knownImagePaths = []string{
 	"{.spec.containers[*].image}",
 }
 
-////imageFromRuntimeObject will return any images found in known obj specs
+//imageFromRuntimeObject will return any images found in known obj specs
 func imageFromRuntimeObject(obj *unstructured.Unstructured) (images []string, err error) {
 	objData, _ := obj.MarshalJSON()
 
@@ -170,6 +158,7 @@ func parseJSONPath(input interface{}, parser *jsonpath.JSONPath, template string
 		return nil, err
 	}
 
-	r := strings.Split(buf.String(), " ")
+	f := func(s rune) bool { return s == ' ' }
+	r := strings.FieldsFunc(buf.String(), f)
 	return r, nil
 }

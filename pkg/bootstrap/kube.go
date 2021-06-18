@@ -3,26 +3,23 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/driver"
 	"github.com/rancherfederal/hauler/pkg/kube"
-	log "github.com/sirupsen/logrus"
+	"github.com/rancherfederal/hauler/pkg/log"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"os"
-	"path/filepath"
 	"time"
 )
 
-func waitForDriver(ctx context.Context, d v1alpha1.Drive) error {
+func waitForDriver(ctx context.Context, d driver.Driver) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	//TODO: This is a janky way of waiting for file to exist
-	path := filepath.Join(d.EtcPath(), "k3s.yaml")
 	for {
-		_, err := os.Stat(path)
+		_, err := os.Stat(d.KubeConfigPath())
 		if err == nil {
 			break
 		}
@@ -48,20 +45,19 @@ func waitForDriver(ctx context.Context, d v1alpha1.Drive) error {
 }
 
 //TODO: This is likely way too fleet specific
-func installChart(cf *genericclioptions.ConfigFlags, chart *chart.Chart, releaseName, namespace string, vals map[string]interface{}) (*release.Release, error) {
+func installChart(cf *BootSettings, chart *chart.Chart, releaseName string, vals map[string]interface{}, logger log.Logger) (*release.Release, error) {
 	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(cf, namespace, os.Getenv("HELM_DRIVER"), log.Debugf); err != nil {
+	if err := actionConfig.Init(cf.RESTClientGetter(), cf.Namespace, os.Getenv("HELM_DRIVER"), logger.Debugf); err != nil {
 		return nil, err
 	}
 
 	client := action.NewInstall(actionConfig)
 	client.ReleaseName = releaseName
-	client.Namespace, cf.Namespace = namespace, stringptr(namespace) // TODO: Not sure why this needs to be set twice
 	client.CreateNamespace = true
 	client.Wait = true
 
+	//TODO: Do this better
+	client.Namespace = cf.Namespace
+
 	return client.Run(chart, vals)
 }
-
-//still can't figure out why helm does it this way
-func stringptr(val string) *string { return &val }

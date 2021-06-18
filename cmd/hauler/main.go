@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/rancherfederal/hauler/cmd/haulerctl/app"
+	"github.com/rancherfederal/hauler/cmd/hauler/app"
 )
 
 func main() {
