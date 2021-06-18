@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/pterm/pterm"
 	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/rancherfederal/hauler/pkg/packager"
 	"github.com/spf13/cobra"
@@ -74,13 +75,17 @@ func (o *relocateImagesOpts) Run(dst string, input string) error {
 		o.logger.Errorf("error creating OCI layout: %v", err)
 	}
 
-	for nm, hash := range oci.ListImages(ly) {
+	imglist := oci.ListImages(ly)
+
+	p, _ := pterm.DefaultProgressbar.WithTotal(len(imglist)).WithTitle("Copying images to registry").Start()
+
+	for nm, hash := range imglist {
 
 		n := strings.SplitN(nm, "/", 2)
 
 		img, err := ly.Image(hash)
 
-		o.logger.Infof("Copy %s to %s", n[1], dst)
+		p.Title = "Copying " + n[1] + " to " + dst
 
 		if err != nil {
 			o.logger.Errorf("error creating image from layout: %v", err)
@@ -97,6 +102,8 @@ func (o *relocateImagesOpts) Run(dst string, input string) error {
 		if err := remote.Write(tag, img); err != nil {
 			o.logger.Errorf("error writing image to destination registry %s: %v", dst, err)
 		}
+
+		p.Increment()
 	}
 
 	return nil
