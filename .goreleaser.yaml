@@ -11,4 +11,6 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -tags=containers_image_openpgp containers_image_ostree
-
+release:
+  extra_files:
+    - glob: ./pkg.tar.zst
