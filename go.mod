@@ -15,7 +15,6 @@ require (
 	github.com/klauspost/compress v1.13.0 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
-	github.com/mitchellh/go-homedir v1.1.0
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
 	github.com/otiai10/copy v1.6.0
 	github.com/pterm/pterm v0.12.24
@@ -24,7 +23,6 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.1.3
-	github.com/spf13/viper v1.7.0
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190809123943-df4f5c81cb3b // indirect
 	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
