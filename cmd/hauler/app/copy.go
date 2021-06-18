@@ -11,8 +11,9 @@ var (
 	copyLong = `hauler copies artifacts stored on a registry to local disk`
 
 	copyExample = `
-		# Run Hauler
-		hauler copy locahost:5000/artifacts:latest`
+# Run Hauler
+hauler copy locahost:5000/artifacts:latest
+`
 )
 
 type copyOpts struct {
@@ -34,7 +35,7 @@ func NewCopyCommand() *cobra.Command {
 		Long:    copyLong,
 		Example: copyExample,
 		Aliases: []string{"c", "cp"},
-		//Args:    cobra.MinimumNArgs(1),
+		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.sourceRef = args[0]
 			return opts.Run(opts.sourceRef)

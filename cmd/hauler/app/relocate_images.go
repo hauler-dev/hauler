@@ -14,12 +14,13 @@ import (
 )
 
 var (
-	relocateImagesLong = `hauler relocate images processes a bundle provides by hauler
-	package build and copies all of the collected images to a registry`
+	relocateImagesLong = `hauler relocate images processes a bundle provides by hauler package build and copies all of 
+the collected images to a registry`
 
 	relocateImagesExample = `
-		# Run Hauler
-		hauler relocate images pkg.tar.zst locahost:5000`
+# Run Hauler
+hauler relocate images pkg.tar.zst locahost:5000
+`
 )
 
 type relocateImagesOpts struct {
@@ -38,6 +39,8 @@ func NewRelocateImagesCommand(relocate *relocateOpts) *cobra.Command {
 		Short:   "Use artifact from bundle images to populate a target registry with the artifact's images",
 		Long:    relocateImagesLong,
 		Example: relocateImagesExample,
+		Args:    cobra.MinimumNArgs(2),
+		Aliases: []string{"i", "img", "imgs"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.inputFile = args[0]
 			opts.destRef = args[1]

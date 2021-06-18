@@ -113,7 +113,7 @@ func (b booter) PostBoot(ctx context.Context, d driver.Driver) error {
 	}
 
 	b.logger.Infof("Installing fleet crds")
-	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", nil,  b.logger)
+	fleetCrdRelease, fleetCrdErr := installChart(cf, fleetCrdChart, "fleet-crd", nil, b.logger)
 	if fleetCrdErr != nil {
 		return fleetCrdErr
 	}

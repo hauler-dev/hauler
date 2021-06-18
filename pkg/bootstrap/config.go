@@ -5,20 +5,20 @@ import (
 )
 
 type BootSettings struct {
-	config    *genericclioptions.ConfigFlags
-	Namespace string
+	config     *genericclioptions.ConfigFlags
+	Namespace  string
 	KubeConfig string
 }
 
 func NewBootConfig(ns, kubepath string) *BootSettings {
 	env := &BootSettings{
-		Namespace:        ns,
-		KubeConfig:	      kubepath,
+		Namespace:  ns,
+		KubeConfig: kubepath,
 	}
 
 	env.config = &genericclioptions.ConfigFlags{
-		Namespace:        &env.Namespace,
-		KubeConfig:       &env.KubeConfig,
+		Namespace:  &env.Namespace,
+		KubeConfig: &env.KubeConfig,
 	}
 	return env
 }
