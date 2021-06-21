@@ -4,6 +4,7 @@ import (
 	"context"
 
 	ctxo "github.com/deislabs/oras/pkg/context"
+	"github.com/pterm/pterm"
 	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/spf13/cobra"
 )
@@ -54,13 +55,22 @@ func (o *copyOpts) Run(src string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	// If loglevel is not set to debug, discard logging directly from ORAS library
 	if loglevel != "debug" {
 		ctx = ctxo.WithLoggerDiscarded(ctx)
 	}
 
-	if err := oci.Get(ctx, src, o.dir, o.logger); err != nil {
+	// Create pterm spinner
+	spinner, _ := pterm.DefaultSpinner.Start("Copying " + src + " to " + o.dir)
+
+	desc, err := oci.Get(ctx, src, o.dir)
+
+	if err != nil {
 		o.logger.Errorf("error copy artifact %s to local directory %s: %v", src, o.dir, err)
 	}
+
+	// Finish spinner and send a success message
+	spinner.Success("Pulled " + src + " to " + o.dir + " with digest " + string(desc.Digest))
 
 	return nil
 }

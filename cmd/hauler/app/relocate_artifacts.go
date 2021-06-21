@@ -4,6 +4,7 @@ import (
 	"context"
 
 	ctxo "github.com/deislabs/oras/pkg/context"
+	"github.com/pterm/pterm"
 	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/spf13/cobra"
 )
@@ -45,18 +46,27 @@ func NewRelocateArtifactsCommand(relocate *relocateOpts) *cobra.Command {
 	return cmd
 }
 
-func (o *relocateArtifactsOpts) Run(dst string, input string) error {
+func (o *relocateArtifactsOpts) Run(dest string, input string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	// If loglevel is not set to debug, discard logging directly from ORAS library
 	if loglevel != "debug" {
 		ctx = ctxo.WithLoggerDiscarded(ctx)
 	}
 
-	if err := oci.Put(ctx, input, dst, o.logger); err != nil {
-		o.logger.Errorf("error pushing artifact to registry %s: %v", dst, err)
+	// Create pterm spinner
+	spinner, _ := pterm.DefaultSpinner.Start("Copying " + input + " to " + dest)
+
+	desc, err := oci.Put(ctx, input, dest)
+
+	if err != nil {
+		o.logger.Errorf("error pushing artifact to registry %s: %v", dest, err)
 	}
+
+	// Finish spinner and send a success message
+	spinner.Success("Pushed " + input + " to " + dest + " with digest " + string(desc.Digest))
 
 	return nil
 }

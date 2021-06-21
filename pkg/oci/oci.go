@@ -10,47 +10,42 @@ import (
 	"github.com/deislabs/oras/pkg/content"
 	"github.com/deislabs/oras/pkg/oras"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 // Get wraps the oras go module to get artifacts from a registry
-func Get(ctx context.Context, src string, dst string, logger log.Logger) error {
+func Get(ctx context.Context, src string, dst string) (ocispec.Descriptor, error) {
 
 	store := content.NewFileStore(dst)
 	defer store.Close()
 
 	resolver, err := resolver()
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	allowedMediaTypes := getAllowedMediaTypes()
 
 	// Pull file(s) from registry and save to disk
-	logger.Infof("Pulling from %s and saving to %s\n", src, dst)
-
 	desc, _, err := oras.Pull(ctx, resolver, src, store, oras.WithAllowedMediaTypes(allowedMediaTypes))
 
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
-	logger.Infof("Pulled from %s with digest %s\n", src, desc.Digest)
-
-	return nil
+	return desc, err
 }
 
 // Put wraps the oras go module to put artifacts into a registry
-func Put(ctx context.Context, src string, dst string, logger log.Logger) error {
+func Put(ctx context.Context, src string, dest string) (ocispec.Descriptor, error) {
 
 	data, err := os.ReadFile(src)
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	resolver, err := resolver()
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	store := content.NewMemoryStore()
@@ -61,14 +56,14 @@ func Put(ctx context.Context, src string, dst string, logger log.Logger) error {
 		store.Add(src, mediaType, data),
 	}
 
-	desc, err := oras.Push(ctx, resolver, dst, store, contents)
+	// Push file(s) to destination registry
+	desc, err := oras.Push(ctx, resolver, dest, store, contents)
+
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
-	logger.Infof("Pushed %s to %s with digest %s\n", src, dst, desc.Digest)
-
-	return nil
+	return desc, err
 }
 
 func resolver() (remotes.Resolver, error) {

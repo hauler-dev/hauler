@@ -52,7 +52,7 @@ func NewRelocateImagesCommand(relocate *relocateOpts) *cobra.Command {
 	return cmd
 }
 
-func (o *relocateImagesOpts) Run(dst string, input string) error {
+func (o *relocateImagesOpts) Run(dest string, input string) error {
 
 	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
@@ -75,36 +75,42 @@ func (o *relocateImagesOpts) Run(dst string, input string) error {
 		o.logger.Errorf("error creating OCI layout: %v", err)
 	}
 
-	imglist := oci.ListImages(ly)
+	// List images from OCI layout
+	imgList := oci.ListImages(ly)
 
-	p, _ := pterm.DefaultProgressbar.WithTotal(len(imglist)).WithTitle("Copying images to registry").Start()
+	// Create a pterm progressbar with style
+	s := pterm.NewStyle(pterm.FgDefault)
+	p, _ := pterm.DefaultProgressbar.WithTotal(len(imgList)).WithBarStyle(s).Start()
 
-	for nm, hash := range imglist {
+	// Loop through images in layout and copy to destination
+	for imgName, imgHash := range imgList {
 
-		n := strings.SplitN(nm, "/", 2)
+		n := strings.SplitN(imgName, "/", 2)
 
-		img, err := ly.Image(hash)
+		img, err := ly.Image(imgHash)
 
-		p.Title = "Copying " + n[1] + " to " + dst
+		o.logger.Infof("Copying %s to %s", n[1], dest)
+		p.Increment()
 
 		if err != nil {
 			o.logger.Errorf("error creating image from layout: %v", err)
 		}
 
-		dstimg := dst + "/" + n[1]
+		destName := dest + "/" + n[1]
 
-		tag, err := name.ParseReference(dstimg)
+		tag, err := name.ParseReference(destName)
 
 		if err != nil {
-			o.logger.Errorf("err parsing destination image %s: %v", dstimg, err)
+			o.logger.Errorf("err parsing destination image %s: %v", destName, err)
 		}
 
 		if err := remote.Write(tag, img); err != nil {
-			o.logger.Errorf("error writing image to destination registry %s: %v", dst, err)
+			o.logger.Errorf("error writing image to destination registry %s: %v", dest, err)
 		}
 
-		p.Increment()
 	}
+
+	o.logger.Successf("Finished copying images to %s", dest)
 
 	return nil
 }
