@@ -24,8 +24,8 @@ then deploy the package into your air-gapped environment.
 hauler pkg build
 hauler pkg run pkg.tar.zst
 
-hauler relocate artifacts artifacts.tar.zst
-hauler relocate images pkg.tar.zst locahost:5000
+hauler relocate artifacts localhost:5000/artifacts:test artifacts.tar.zst
+hauler relocate images localhost:5000 pkg.tar.zst
 
 hauler copy localhost:5000/artifacts:latest
 `
@@ -75,7 +75,7 @@ func NewRootCommand() *cobra.Command {
 }
 
 func setupCliLogger(out io.Writer, level string) (log.Logger, error) {
-	l := log.NewLogger(out)
+	l := log.NewLogger(out, level)
 
 	return l, nil
 }

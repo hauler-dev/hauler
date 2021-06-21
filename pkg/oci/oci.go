@@ -80,7 +80,6 @@ func getAllowedMediaTypes() []string {
 	return []string{
 		"application/vnd.oci.image",
 		"application/vnd.oci.image.manifest.v1+json",
-		"application/vnd.unknown.config.v1+json",
 		"application/vnd.oci.image.layer.v1.tar",
 	}
 }

@@ -20,7 +20,7 @@ the collected images to a registry`
 
 	relocateImagesExample = `
 # Run Hauler
-hauler relocate images pkg.tar.zst locahost:5000
+hauler relocate images locahost:5000 pkg.tar.zst 
 `
 )
 
@@ -43,8 +43,8 @@ func NewRelocateImagesCommand(relocate *relocateOpts) *cobra.Command {
 		Args:    cobra.MinimumNArgs(2),
 		Aliases: []string{"i", "img", "imgs"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.inputFile = args[0]
-			opts.destRef = args[1]
+			opts.destRef = args[0]
+			opts.inputFile = args[1]
 			return opts.Run(opts.destRef, opts.inputFile)
 		},
 	}

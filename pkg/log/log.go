@@ -27,8 +27,8 @@ var (
 	invalidArgMessage = Event{1, "Invalid arg: %s"}
 )
 
-func NewLogger(out io.Writer) *standardLogger {
-	return &standardLogger{}
+func NewLogger(out io.Writer, level string) *standardLogger {
+	return &standardLogger{level}
 }
 
 func (l *standardLogger) Errorf(format string, args ...interface{}) {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 
+	ctxo "github.com/deislabs/oras/pkg/context"
 	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/spf13/cobra"
 )
@@ -17,7 +18,7 @@ var (
 
 	relocateArtifactsExample = `
 # Run Hauler
-hauler relocate artifacts artifacts.tar.zst locahost:5000/artifacts:latest
+hauler relocate artifacts locahost:5000/artifacts:latest artifacts.tar.zst 
 `
 )
 
@@ -35,8 +36,8 @@ func NewRelocateArtifactsCommand(relocate *relocateOpts) *cobra.Command {
 		Args:    cobra.MinimumNArgs(2),
 		Aliases: []string{"a", "art", "af"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.inputFile = args[0]
-			opts.destRef = args[1]
+			opts.destRef = args[0]
+			opts.inputFile = args[1]
 			return opts.Run(opts.destRef, opts.inputFile)
 		},
 	}
@@ -45,8 +46,13 @@ func NewRelocateArtifactsCommand(relocate *relocateOpts) *cobra.Command {
 }
 
 func (o *relocateArtifactsOpts) Run(dst string, input string) error {
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	if loglevel != "debug" {
+		ctx = ctxo.WithLoggerDiscarded(ctx)
+	}
 
 	if err := oci.Put(ctx, input, dst, o.logger); err != nil {
 		o.logger.Errorf("error pushing artifact to registry %s: %v", dst, err)

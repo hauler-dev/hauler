@@ -63,7 +63,7 @@ func Test_Get_Put(t *testing.T) {
 }
 
 func setupTestLogger(out io.Writer, level string) (log.Logger, error) {
-	l := log.NewLogger(out)
+	l := log.NewLogger(out, level)
 
 	return l, nil
 }
