@@ -63,7 +63,7 @@ func (o *relocateImagesOpts) Run(dest string, input string) error {
 	a := packager.NewArchiver()
 
 	if err := packager.Unpackage(a, input, tmpdir); err != nil {
-		o.logger.Errorf("error unpackaging input %s: %v", input, err)
+		return err
 	}
 	o.logger.Debugf("Unpackaged %s", input)
 
@@ -72,7 +72,7 @@ func (o *relocateImagesOpts) Run(dest string, input string) error {
 	ly, err := layout.FromPath(path)
 
 	if err != nil {
-		o.logger.Errorf("error creating OCI layout: %v", err)
+		return err
 	}
 
 	// List images from OCI layout
@@ -93,7 +93,7 @@ func (o *relocateImagesOpts) Run(dest string, input string) error {
 		p.Increment()
 
 		if err != nil {
-			o.logger.Errorf("error creating image from layout: %v", err)
+			return err
 		}
 
 		destName := dest + "/" + n[1]
@@ -101,11 +101,11 @@ func (o *relocateImagesOpts) Run(dest string, input string) error {
 		tag, err := name.ParseReference(destName)
 
 		if err != nil {
-			o.logger.Errorf("err parsing destination image %s: %v", destName, err)
+			return err
 		}
 
 		if err := remote.Write(tag, img); err != nil {
-			o.logger.Errorf("error writing image to destination registry %s: %v", dest, err)
+			return err
 		}
 
 	}
