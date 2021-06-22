@@ -59,7 +59,7 @@ func (o *relocateArtifactsOpts) Run(dest string, input string) error {
 	// Create pterm spinner
 	spinner, _ := pterm.DefaultSpinner.Start("Copying " + input + " to " + dest)
 
-	desc, err := oci.Put(ctx, input, dest)
+	desc, err := oci.Put(ctx, input, dest, o.logger)
 
 	if err != nil {
 		o.logger.Errorf("error pushing artifact to registry %s: %v", dest, err)

@@ -11,11 +11,14 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 const timeout = 1 * time.Minute
 
 func Test_Get_Put(t *testing.T) {
+
+	l := log.NewLogger(os.Stdout, "debug")
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -41,7 +44,7 @@ func Test_Get_Put(t *testing.T) {
 
 	img := fmt.Sprintf("%s/artifact:latest", u.Host)
 
-	if _, err := Put(ctx, file.Name(), img); err != nil {
+	if _, err := Put(ctx, file.Name(), img, l); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,7 +53,7 @@ func Test_Get_Put(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Get(ctx, img, dir); err != nil {
+	if _, err := Get(ctx, img, dir, l); err != nil {
 		t.Fatal(err)
 	}
 

@@ -52,6 +52,9 @@ func NewCopyCommand() *cobra.Command {
 
 // Run performs the operation.
 func (o *copyOpts) Run(src string) error {
+
+	target := o.dir
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -60,17 +63,21 @@ func (o *copyOpts) Run(src string) error {
 		ctx = ctxo.WithLoggerDiscarded(ctx)
 	}
 
-	// Create pterm spinner
-	spinner, _ := pterm.DefaultSpinner.Start("Copying " + src + " to " + o.dir)
+	if o.dir == "." {
+		target = "current directory"
+	}
 
-	desc, err := oci.Get(ctx, src, o.dir)
+	// Create pterm spinner
+	spinner, _ := pterm.DefaultSpinner.Start("Copying " + src + " to " + target)
+
+	desc, err := oci.Get(ctx, src, o.dir, o.logger)
 
 	if err != nil {
 		o.logger.Errorf("error copy artifact %s to local directory %s: %v", src, o.dir, err)
 	}
 
 	// Finish spinner and send a success message
-	spinner.Success("Pulled " + src + " to " + o.dir + " with digest " + string(desc.Digest))
+	spinner.Success("Pulled " + src + " to " + target + " with digest " + string(desc.Digest))
 
 	return nil
 }

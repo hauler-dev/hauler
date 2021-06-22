@@ -10,23 +10,31 @@ import (
 	"github.com/deislabs/oras/pkg/content"
 	"github.com/deislabs/oras/pkg/oras"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 // Get wraps the oras go module to get artifacts from a registry
-func Get(ctx context.Context, src string, dst string) (ocispec.Descriptor, error) {
+func Get(ctx context.Context, src string, dst string, log log.Logger) (ocispec.Descriptor, error) {
 
+	// Create a new file store
 	store := content.NewFileStore(dst)
 	defer store.Close()
 
+	// Create remote resolver
 	resolver, err := resolver()
+
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
 	allowedMediaTypes := getAllowedMediaTypes()
 
+	log.Debugf("Getting allowed media types")
+
 	// Pull file(s) from registry and save to disk
 	desc, _, err := oras.Pull(ctx, resolver, src, store, oras.WithAllowedMediaTypes(allowedMediaTypes))
+
+	log.Debugf("Pulled content %s", src)
 
 	if err != nil {
 		return ocispec.Descriptor{}, err
@@ -36,21 +44,30 @@ func Get(ctx context.Context, src string, dst string) (ocispec.Descriptor, error
 }
 
 // Put wraps the oras go module to put artifacts into a registry
-func Put(ctx context.Context, src string, dest string) (ocispec.Descriptor, error) {
+func Put(ctx context.Context, src string, dest string, log log.Logger) (ocispec.Descriptor, error) {
 
+	// Read data from source
 	data, err := os.ReadFile(src)
+
+	log.Debugf("Reading file from %s", src)
+
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
+	// Creating remote resolver
 	resolver, err := resolver()
+
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
+	// Create a new memory store
 	store := content.NewMemoryStore()
 
 	mediaType := parseFileRef(src, "")
+
+	log.Debugf("Found media type %v", mediaType)
 
 	contents := []ocispec.Descriptor{
 		store.Add(src, mediaType, data),
@@ -58,6 +75,8 @@ func Put(ctx context.Context, src string, dest string) (ocispec.Descriptor, erro
 
 	// Push file(s) to destination registry
 	desc, err := oras.Push(ctx, resolver, dest, store, contents)
+
+	log.Debugf("Pushing contents to %s", dest)
 
 	if err != nil {
 		return ocispec.Descriptor{}, err

@@ -1,8 +1,9 @@
 package log
 
 import (
-	"github.com/pterm/pterm"
 	"io"
+
+	"github.com/pterm/pterm"
 )
 
 type Logger interface {
@@ -54,6 +55,11 @@ func (l *standardLogger) Successf(format string, args ...interface{}) {
 func (l *standardLogger) logf(level string, format string, args ...interface{}) {
 	switch level {
 	case "debug":
+
+		if l.level == "debug" {
+			pterm.EnableDebugMessages()
+		}
+
 		pterm.Debug.Printfln(format, args...)
 	case "info":
 		pterm.Info.Printfln(format, args...)
