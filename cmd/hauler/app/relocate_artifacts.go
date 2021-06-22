@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io/ioutil"
 
 	ctxo "github.com/deislabs/oras/pkg/context"
 	"github.com/pterm/pterm"
@@ -54,6 +55,9 @@ func (o *relocateArtifactsOpts) Run(dest string, input string) error {
 	// If loglevel is not set to debug, discard logging directly from ORAS library
 	if loglevel != "debug" {
 		ctx = ctxo.WithLoggerDiscarded(ctx)
+	} else {
+		// TODO: Route this to a log file or another way that doesn't clash with pterm
+		ctx = ctxo.WithLoggerFromWriter(ctx, ioutil.Discard)
 	}
 
 	// Create pterm spinner
