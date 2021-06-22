@@ -46,8 +46,10 @@ func Get(ctx context.Context, src string, dst string, log log.Logger) (ocispec.D
 // Put wraps the oras go module to put artifacts into a registry
 func Put(ctx context.Context, src string, dest string, log log.Logger) (ocispec.Descriptor, error) {
 
+	ref, mediaType := parseFileRef(src, "")
+
 	// Read data from source
-	data, err := os.ReadFile(src)
+	data, err := os.ReadFile(ref)
 
 	log.Debugf("Reading file from %s", src)
 
@@ -64,8 +66,6 @@ func Put(ctx context.Context, src string, dest string, log log.Logger) (ocispec.
 
 	// Create a new memory store
 	store := content.NewMemoryStore()
-
-	mediaType := parseFileRef(src, "")
 
 	log.Debugf("Found media type %v", mediaType)
 
@@ -98,10 +98,10 @@ func getAllowedMediaTypes() []string {
 	}
 }
 
-func parseFileRef(ref string, mediaType string) string {
+func parseFileRef(ref string, mediaType string) (string, string) {
 	i := strings.LastIndex(ref, ":")
 	if i < 0 {
-		return mediaType
+		return ref, mediaType
 	}
-	return ref[i+1:]
+	return ref[:i], ref[i+1:]
 }
