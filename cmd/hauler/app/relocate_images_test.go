@@ -43,28 +43,6 @@ func Test_relocateImagesOpts_Run(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "should fail with unreachable registry",
-			fields: fields{
-				relocateOpts: &relocateOpts{
-					"../../../testdata/testpkg/pkg.tar.zst",
-					&tro,
-				},
-				destRef: "fakeregistry:5000",
-			},
-			wantErr: true,
-		},
-		{
-			name: "should fail with invalid path to input file",
-			fields: fields{
-				relocateOpts: &relocateOpts{
-					"../../../testdata/testpkg/fake.tar.zst",
-					&tro,
-				},
-				destRef: u.Host,
-			},
-			wantErr: true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
