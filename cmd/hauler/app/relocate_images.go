@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/pterm/pterm"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/oci"
 	"github.com/rancherfederal/hauler/pkg/packager"
 	"github.com/spf13/cobra"
@@ -67,7 +68,7 @@ func (o *relocateImagesOpts) Run(dest string, input string) error {
 	}
 	o.logger.Debugf("Unpackaged %s", input)
 
-	path := filepath.Join(tmpdir, "layout")
+	path := filepath.Join(tmpdir, v1alpha1.LayoutDir)
 
 	ly, err := layout.FromPath(path)
 
