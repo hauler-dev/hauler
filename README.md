@@ -1,10 +1,8 @@
 # Hauler - Kubernetes Air Gap Migration
 
-## WARNING - Work In Progress
+__⚠️ WARNING: This is an experimental, work in progress project.  _Everything_ is subject to change, and it is actively in development, so let us know what you think!__
 
-Hauler is a tool designed to ease the burden of working with containers and kubernetes in an airgap. Several components of hauler are used in unison to provide airgap utilities.
-
-Hauler's utility is split into a few commands intended to solve increasingly complex airgapped use cases.
+Hauler is built to be a one stop shop for simplifying the burden of working with kubernetes in airgapped environments.  Utility is split into a few commands intended to assist with increasingly complex airgapped use cases.
 
 __Portable self contained clusters__:
 
