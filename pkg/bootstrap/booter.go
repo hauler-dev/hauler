@@ -55,19 +55,25 @@ func (b booter) PreBoot(ctx context.Context, d driver.Driver) error {
 		return err
 	}
 
-	if err := b.moveBin(); err != nil {
+	//TODO: Don't hardcode this
+	binPath := filepath.Join("/opt/hauler/bin")
+	if err := b.move(b.fs.Bin(), binPath, os.ModePerm); err != nil {
 		return err
 	}
 
+	bundlesPath := d.DataPath("server/manifests/hauler")
+	if err := b.move(b.fs.Bundle(), bundlesPath, 0700); err != nil {
+		return err
+	}
+
+	chartsPath := d.DataPath("server/static/charts/hauler")
+	if err := b.move(b.fs.Chart(), chartsPath, 0700); err != nil {
+		return err
+	}
+
+	//Images are slightly different b/c we convert before move as well
+	//TODO: refactor this better
 	if err := b.moveImages(d); err != nil {
-		return err
-	}
-
-	if err := b.moveBundles(d); err != nil {
-		return err
-	}
-
-	if err := b.moveCharts(d); err != nil {
 		return err
 	}
 
@@ -139,13 +145,17 @@ func (b booter) PostBoot(ctx context.Context, d driver.Driver) error {
 }
 
 //TODO: Move* will actually just copy. This is more expensive, but is much safer/easier at handling deep merges, should this change?
-func (b booter) moveBin() error {
-	path := filepath.Join("/opt/hauler/bin")
-	if err := os.MkdirAll(path, os.ModePerm); err != nil {
+func (b booter) move(fsys fs.PkgFs, path string, mode os.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
 		return err
 	}
 
-	return copy.Copy(b.fs.Bin().Path(), path)
+	err := copy.Copy(fsys.Path(), path)
+	if !os.IsNotExist(err) && err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (b booter) moveImages(d driver.Driver) error {
@@ -161,20 +171,4 @@ func (b booter) moveImages(d driver.Driver) error {
 	}
 
 	return tarball.MultiRefWriteToFile(filepath.Join(path, "hauler.tar"), refs)
-}
-
-func (b booter) moveBundles(d driver.Driver) error {
-	path := d.DataPath("server/manifests/hauler")
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return err
-	}
-	return copy.Copy(b.fs.Bundle().Path(), path)
-}
-
-func (b booter) moveCharts(d driver.Driver) error {
-	path := d.DataPath("server/static/charts/hauler")
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return err
-	}
-	return copy.Copy(b.fs.Chart().Path(), path)
 }
