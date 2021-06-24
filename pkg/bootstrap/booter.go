@@ -172,19 +172,3 @@ func (b booter) moveImages(d driver.Driver) error {
 
 	return tarball.MultiRefWriteToFile(filepath.Join(path, "hauler.tar"), refs)
 }
-
-func (b booter) moveBundles(d driver.Driver) error {
-	path := d.DataPath("server/manifests/hauler")
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return err
-	}
-	return copy.Copy(b.fs.Bundle().Path(), path)
-}
-
-func (b booter) moveCharts(d driver.Driver) error {
-	path := d.DataPath("server/static/charts/hauler")
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return err
-	}
-	return copy.Copy(b.fs.Chart().Path(), path)
-}
