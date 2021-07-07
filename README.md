@@ -10,6 +10,8 @@ Within the `hauler package` subset of commands, `Packages` (name to be finalized
 
 A `Package` is a hauler specific, configurable, self-contained, compressed archive (`*.tar.zst`) that contains all dependencies needed to 1) create a kubernetes cluster, 2) deploy resources into the cluster.
 
+> **_For more detailed examples,_** take a look at [the examples doc](./EXAMPLES.md).
+
 ```bash
 # Build a minimal portable k8s cluster
 hauler package build
