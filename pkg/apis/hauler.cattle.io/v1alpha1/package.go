@@ -37,7 +37,7 @@ type PackageSpec struct {
 	Images []string `json:"images,omitempty"`
 }
 
-//LoadPackageFromDir will load an existing package from a directory on disk, it fails if no PackageFile is found in dir
+// LoadPackageFromDir will load an existing package from a directory on disk, it fails if no PackageFile is found in dir
 func LoadPackageFromDir(path string) (Package, error) {
 	data, err := os.ReadFile(filepath.Join(path, PackageFile))
 	if err != nil {

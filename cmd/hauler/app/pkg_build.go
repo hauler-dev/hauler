@@ -156,7 +156,7 @@ func (o *pkgBuildOpts) Run() error {
 		return bErr
 	}
 
-	if iErr := pkgr.PackageImages(ctx, o.images...); iErr != nil {
+	if iErr := pkgr.PackageImages(ctx, p.Spec.Images...); iErr != nil {
 		return iErr
 	}
 
