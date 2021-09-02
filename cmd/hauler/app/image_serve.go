@@ -1,10 +1,8 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +12,10 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/registry"
 	"github.com/rancherfederal/hauler/pkg/store"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 type imageServeOpts struct {
@@ -45,44 +47,48 @@ func (o imageServeOpts) Run() {
 		return
 	}
 
-	r := registry.NewRouteHandler(ociLayout)
-
-	server := &http.Server{
-		Addr:        "0.0.0.0:3333",
-		Handler:     r.Setup(),
-		ReadTimeout: 5 * time.Second,
-		IdleTimeout: 15 * time.Second,
+	cfg := store.ProxyConfig{
+		Registries: []store.Registry{
+			{URL: "docker.io"},
+			{URL: "ghcr.io"},
+		},
 	}
+	p := store.NewProxy(cfg)
 
-	serverCtx, serverStopCtx := context.WithCancel(context.Background())
+	// v2Registry := registry.NewRegistryV2Router(ociLayout)
+	v2Registry := registry.NewRegistryV2Router(p)
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	app := fiber.New(fiber.Config{
+		IdleTimeout: 5 * time.Second,
+	})
+
+	app.Use(recover.New())
+	app.Use(logger.New(logger.Config{
+		// TODO: Better structured logging
+		// Format: "{ ${pid}: ${status} }",
+	}))
+
+	app.Mount("/v2", v2Registry.Router())
+
 	go func() {
-		<-sig
-
-		shutdownCtx, _ := context.WithTimeout(serverCtx, 30*time.Second)
-
-		go func() {
-			<-shutdownCtx.Done()
-			if shutdownCtx.Err() == context.DeadlineExceeded {
-				log.Fatal("graceful shutdown timed out... forcing exit")
-			}
-		}()
-
-		err := server.Shutdown(shutdownCtx)
-		if err != nil {
-			log.Fatal(err)
+		if err := app.Listen(":3333"); err != nil {
+			log.Panic(err)
 		}
-		serverStopCtx()
 	}()
 
-	// Run server
-	fmt.Println("server up")
-	err = server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
-	}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	<-serverCtx.Done()
+	_ = <-c
+	fmt.Println("Gracefully shutting down...")
+	_ = app.Shutdown()
+
+	fmt.Println("Running cleanup tasks...")
+
+	fmt.Println("Successfully shut down.")
+
+	_ = ociLayout
+	_ = p
+	_ = app
+	_ = v2Registry
 }

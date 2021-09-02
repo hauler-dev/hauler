@@ -8,11 +8,10 @@ require (
 	github.com/deislabs/oras v0.11.1
 	github.com/docker/docker v20.10.6+incompatible // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
-	github.com/go-chi/chi/v5 v5.0.3
+	github.com/gofiber/fiber/v2 v2.18.0
 	github.com/google/go-containerregistry v0.5.1
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/imdario/mergo v0.3.12
-	github.com/klauspost/compress v1.13.0 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/opencontainers/go-digest v1.0.0
@@ -26,6 +25,7 @@ require (
 	github.com/spf13/cobra v1.1.3
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190809123943-df4f5c81cb3b // indirect
+	go.etcd.io/bbolt v1.3.5
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
 	golang.org/x/tools v0.1.3 // indirect

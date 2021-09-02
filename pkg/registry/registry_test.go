@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
@@ -75,7 +76,11 @@ func (s FakeStore) ImageManifest(ref name.Reference) (v1.Descriptor, io.ReadClos
 
 func TestManifestsHandler(t *testing.T) {
 	s := fakeStoreSetup()
-	rh := registry.NewRouteHandler(s)
+	r := registry.NewRegistryV2Router(s)
+
+	tapp := fiber.New()
+	rts := r.Router()
+	tapp.Mount("/v2", rts)
 
 	tt := []struct {
 		Name   string
@@ -142,17 +147,26 @@ func TestManifestsHandler(t *testing.T) {
 	for _, tc := range tt {
 		req := httptest.NewRequest(tc.Method, tc.URL, nil)
 
-		response := executeRequest(req, rh)
+		response, err := tapp.Test(req)
+		if err != nil {
+			t.Error(err)
+		}
 
-		if response.Code != tc.Status {
-			t.Errorf("got status %d but wanted %d", response.Code, tc.Status)
+		// response := executeRequest(req, rh)
+
+		if response.StatusCode != tc.Status {
+			t.Errorf("got status %d but wanted %d", response.StatusCode, tc.Status)
 		}
 	}
 }
 
 func TestBlobsHandler(t *testing.T) {
 	s := fakeStoreSetup()
-	rh := registry.NewRouteHandler(s)
+	r := registry.NewRegistryV2Router(s)
+
+	tapp := fiber.New()
+	rts := r.Router()
+	tapp.Mount("/v2", rts)
 
 	tt := []struct {
 		Name   string
@@ -213,10 +227,13 @@ func TestBlobsHandler(t *testing.T) {
 	for _, tc := range tt {
 		req := httptest.NewRequest(tc.Method, tc.URL, nil)
 
-		response := executeRequest(req, rh)
+		response, err := tapp.Test(req)
+		if err != nil {
+			t.Error(err)
+		}
 
-		if response.Code != tc.Status {
-			t.Errorf("got status %d but wanted %d", response.Code, tc.Status)
+		if response.StatusCode != tc.Status {
+			t.Errorf("got status %d but wanted %d", response.StatusCode, tc.Status)
 		}
 	}
 }

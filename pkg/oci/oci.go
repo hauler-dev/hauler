@@ -18,7 +18,6 @@ const (
 
 // Get wraps the oras go module to get artifacts from a registry
 func Get(ctx context.Context, src string, dst string) error {
-
 	store := content.NewFileStore(dst)
 	defer store.Close()
 
@@ -46,7 +45,6 @@ func Get(ctx context.Context, src string, dst string) error {
 
 // Put wraps the oras go module to put artifacts into a registry
 func Put(ctx context.Context, src string, dst string) error {
-
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
