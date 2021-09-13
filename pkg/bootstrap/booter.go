@@ -82,7 +82,7 @@ func (b booter) PreBoot(ctx context.Context, d driver.Driver) error {
 		return err
 	}
 
-	b.logger.Successf("Completed pre boot")
+	b.logger.Infof("Completed pre boot")
 	return nil
 }
 
@@ -103,7 +103,7 @@ func (b booter) Boot(ctx context.Context, d driver.Driver) error {
 		return err
 	}
 
-	b.logger.Successf("Completed boot")
+	b.logger.Infof("Completed boot")
 	return nil
 }
 
@@ -140,7 +140,7 @@ func (b booter) PostBoot(ctx context.Context, d driver.Driver) error {
 
 	b.logger.Infof("Installed '%s' to namespace '%s'", fleetRelease.Name, fleetRelease.Namespace)
 
-	b.logger.Successf("Completed post boot")
+	b.logger.Infof("Completed post boot")
 	return nil
 }
 

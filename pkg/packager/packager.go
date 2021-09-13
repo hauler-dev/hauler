@@ -88,7 +88,7 @@ func (p pkg) PackageBundles(ctx context.Context, path ...string) ([]*fleetapi.Bu
 		cImgs += len(imgs)
 	}
 
-	p.logger.Successf("Finished packaging %d bundle(s) along with %d autodetected image(s)", len(path), cImgs)
+	p.logger.Infof("Finished packaging %d bundle(s) along with %d autodetected image(s)", len(path), cImgs)
 	return bundles, nil
 }
 
@@ -117,7 +117,7 @@ func (p pkg) PackageDriver(ctx context.Context, d driver.Driver) error {
 		return err
 	}
 
-	p.logger.Successf("Finished packaging %s components", d.Name())
+	p.logger.Infof("Finished packaging %s components", d.Name())
 	return nil
 }
 
@@ -132,7 +132,7 @@ func (p pkg) PackageImages(ctx context.Context, imgs ...string) error {
 		return err
 	}
 
-	p.logger.Successf("Finished packaging %d user defined images", len(imgs))
+	p.logger.Infof("Finished packaging %d user defined images", len(imgs))
 	return nil
 }
 
@@ -159,7 +159,7 @@ func (p pkg) PackageFleet(ctx context.Context, fl v1alpha1.Fleet) error {
 		return err
 	}
 
-	p.logger.Successf("Finished packaging fleet components")
+	p.logger.Infof("Finished packaging fleet components")
 	return nil
 }
 

@@ -8,12 +8,12 @@ type imageSaveOpts struct {
 	name string
 }
 
-func NewImageSaveCommand() *cobra.Command {
+func NewRegistrySaveCommand() *cobra.Command {
 	opts := imageSaveOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "save",
-		Short: "save the image store as a compressed archive",
+		Short: "save the registry as a compressed archive",
 		Long: `
 Archive and compress a local image store.
 

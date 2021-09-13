@@ -3,10 +3,11 @@ package util
 import (
 	"bufio"
 	"fmt"
-	"github.com/mholt/archiver/v3"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/mholt/archiver/v3"
 )
 
 type dir struct {
@@ -34,7 +35,7 @@ func NewLayout(root string) *FSLayout {
 	}
 }
 
-//Create will create the FSLayout at the FSLayout.Root
+// Create will create the FSLayout at the FSLayout.Root
 func (l FSLayout) Create() error {
 	for _, dir := range l.dirs {
 		fullPath := filepath.Join(l.Root, dir.Path)
@@ -45,7 +46,7 @@ func (l FSLayout) Create() error {
 	return nil
 }
 
-//AddDir will add a folder to the FSLayout
+// AddDir will add a folder to the FSLayout
 func (l *FSLayout) AddDir(relPath string, perm os.FileMode) {
 	l.dirs = append(l.dirs, dir{
 		Path:       relPath,

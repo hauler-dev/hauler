@@ -76,10 +76,10 @@ func (s FakeStore) ImageManifest(ref name.Reference) (v1.Descriptor, io.ReadClos
 
 func TestManifestsHandler(t *testing.T) {
 	s := fakeStoreSetup()
-	r := registry.NewRegistryV2Router(s)
+	r := registry.NewV2Router(s)
 
 	tapp := fiber.New()
-	rts := r.Router()
+	rts := r.Routes()
 	tapp.Mount("/v2", rts)
 
 	tt := []struct {
@@ -162,10 +162,10 @@ func TestManifestsHandler(t *testing.T) {
 
 func TestBlobsHandler(t *testing.T) {
 	s := fakeStoreSetup()
-	r := registry.NewRegistryV2Router(s)
+	r := registry.NewV2Router(s)
 
 	tapp := fiber.New()
-	rts := r.Router()
+	rts := r.Routes()
 	tapp.Mount("/v2", rts)
 
 	tt := []struct {

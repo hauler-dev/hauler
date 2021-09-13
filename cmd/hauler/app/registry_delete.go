@@ -8,12 +8,12 @@ type imageDeleteOpts struct {
 	port int
 }
 
-func NewImageDeleteCommand() *cobra.Command {
+func NewRegistryDeleteCommand() *cobra.Command {
 	opts := imageDeleteOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "delete",
-		Short: "remove an image from the image store",
+		Short: "remove an image from the registry store",
 		Long: `
 Given an image reference, remove it's layers and manifest(s) from the local image store.
 Shared layers (layers used by other images) will be preserved.

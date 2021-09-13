@@ -10,12 +10,12 @@ type imageAddOpts struct {
 	path string
 }
 
-func NewImageAddCommand() *cobra.Command {
+func NewRegistryAddCommand() *cobra.Command {
 	opts := imageAddOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "add",
-		Short: "add an image to the image store",
+		Short: "add an image to the registry store",
 		Long: `
 Given an image reference, add it's layers and manifest(s) to the local image store.
 
@@ -45,7 +45,7 @@ Given an image reference, add it's layers and manifest(s) to the local image sto
 
 func (o imageAddOpts) Run(args []string) error {
 	// Ensure we have a store
-	s, err := store.NewOci(o.path)
+	s, err := store.NewOciLayout(o.path)
 	if err != nil {
 		return err
 	}

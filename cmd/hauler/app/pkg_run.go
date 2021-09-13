@@ -86,6 +86,6 @@ func (o *pkgRunOpts) Run(pkgPath string) error {
 		return postErr
 	}
 
-	o.logger.Successf("Access the cluster with '/opt/hauler/bin/kubectl'")
+	o.logger.Infof("Access the cluster with '/opt/hauler/bin/kubectl'")
 	return nil
 }

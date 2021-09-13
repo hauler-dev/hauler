@@ -173,7 +173,7 @@ func (o *pkgBuildOpts) Run() error {
 		return aErr
 	}
 
-	o.logger.Successf("Finished building package")
+	o.logger.Infof("Finished building package")
 	return nil
 }
 

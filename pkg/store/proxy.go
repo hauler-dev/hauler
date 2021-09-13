@@ -40,7 +40,7 @@ func NewProxy(c ProxyConfig) *Proxy {
 }
 
 // Blob goes through the known upstream remote repos and returns the blob
-func (p Proxy) Blob(repo name.Reference, h v1.Hash) (io.ReadCloser, error) {
+func (p Proxy) GetBlob(repo name.Reference, h v1.Hash) (io.ReadCloser, error) {
 	var err error
 	for _, reg := range p.Registries {
 		full := fmt.Sprintf("%s@%s", repo.String(), h.String())
@@ -61,8 +61,18 @@ func (p Proxy) Blob(repo name.Reference, h v1.Hash) (io.ReadCloser, error) {
 	return nil, err
 }
 
-// ImageManifest goes through the known upstream remote repos
-func (p Proxy) ImageManifest(repo string, ref string) (v1.Descriptor, io.ReadCloser, error) {
+// TODO: Implement local storage
+func (p Proxy) WriteBlob(h v1.Hash, rc io.ReadCloser) error {
+	return nil
+}
+
+// TODO: Implement local storage
+func (p Proxy) WriteManifest(m *v1.Manifest) error {
+	return nil
+}
+
+// GetImageManifest goes through the known upstream remote repos
+func (p Proxy) GetImageManifest(repo string, ref string) (v1.Descriptor, io.ReadCloser, error) {
 	found := false
 	d := v1.Descriptor{}
 	var buf *bytes.Buffer

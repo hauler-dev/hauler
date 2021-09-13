@@ -61,10 +61,11 @@ func NewRootCommand() *cobra.Command {
 
 	cobra.OnInitialize()
 
+	cmd.AddCommand(NewBundleCommand())
 	cmd.AddCommand(NewRelocateCommand())
 	cmd.AddCommand(NewCopyCommand())
 	cmd.AddCommand(NewPkgCommand())
-	cmd.AddCommand(NewImageCommand())
+	cmd.AddCommand(NewRegistryCommand())
 
 	f := cmd.PersistentFlags()
 	f.StringVarP(&loglevel, "loglevel", "l", "debug",

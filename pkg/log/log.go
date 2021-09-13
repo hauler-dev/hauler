@@ -1,8 +1,11 @@
 package log
 
 import (
-	"github.com/pterm/pterm"
 	"io"
+	"os"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type Logger interface {
@@ -10,12 +13,13 @@ type Logger interface {
 	Infof(string, ...interface{})
 	Warnf(string, ...interface{})
 	Debugf(string, ...interface{})
-	Successf(string, ...interface{})
 }
 
-type standardLogger struct {
+type logger struct {
 	//TODO: Actually check this
 	level string
+
+	l zerolog.Logger
 }
 
 type Event struct {
@@ -27,47 +31,33 @@ var (
 	invalidArgMessage = Event{1, "Invalid arg: %s"}
 )
 
-func NewLogger(out io.Writer) *standardLogger {
-	return &standardLogger{}
-}
-
-func (l *standardLogger) Errorf(format string, args ...interface{}) {
-	l.logf("error", format, args...)
-}
-
-func (l *standardLogger) Infof(format string, args ...interface{}) {
-	l.logf("info", format, args...)
-}
-
-func (l *standardLogger) Warnf(format string, args ...interface{}) {
-	l.logf("warn", format, args...)
-}
-
-func (l *standardLogger) Debugf(format string, args ...interface{}) {
-	l.logf("debug", format, args...)
-}
-
-func (l *standardLogger) Successf(format string, args ...interface{}) {
-	l.logf("success", format, args...)
-}
-
-func (l *standardLogger) logf(level string, format string, args ...interface{}) {
-	switch level {
-	case "debug":
-		pterm.Debug.Printfln(format, args...)
-	case "info":
-		pterm.Info.Printfln(format, args...)
-	case "warn":
-		pterm.Warning.Printfln(format, args...)
-	case "success":
-		pterm.Success.Printfln(format, args...)
-	case "error":
-		pterm.Error.Printfln(format, args...)
-	default:
-		pterm.Error.Printfln("%s is not a valid log level", level)
+func NewLogger(out io.Writer) *logger {
+	l := log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	return &logger{
+		l: l.With().Timestamp().Logger(),
 	}
 }
 
-func (l *standardLogger) InvalidArg(arg string) {
+func (l *logger) With() zerolog.Context {
+	return l.l.With()
+}
+
+func (l *logger) Errorf(format string, args ...interface{}) {
+	l.l.Error().Msgf(format, args...)
+}
+
+func (l *logger) Infof(format string, args ...interface{}) {
+	l.l.Info().Msgf(format, args...)
+}
+
+func (l *logger) Warnf(format string, args ...interface{}) {
+	l.l.Warn().Msgf(format, args...)
+}
+
+func (l *logger) Debugf(format string, args ...interface{}) {
+	l.l.Debug().Msgf(format, args...)
+}
+
+func (l *logger) InvalidArg(arg string) {
 	l.Errorf(invalidArgMessage.message, arg)
 }

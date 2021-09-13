@@ -1,10 +1,11 @@
 package kube
 
 import (
+	"path/filepath"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
