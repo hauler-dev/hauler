@@ -21,6 +21,9 @@ var (
 
 type rootOpts struct {
 	logger log.Logger
+
+	datadir string
+	cfgdir  string
 }
 
 var ro rootOpts
@@ -57,11 +60,12 @@ func initConfig() {
 	home, err := os.UserHomeDir()
 	cobra.CheckErr(err)
 
-	err = os.MkdirAll(filepath.Join(home, HaulerDefaultPath), os.ModePerm)
+	ro.datadir = filepath.Join(home, HaulerDefaultPath)
+	err = os.MkdirAll(ro.datadir, os.ModePerm)
 	cobra.CheckErr(err)
 
-	cfgDir, err := os.UserConfigDir()
-	_ = cfgDir
+	cfgdir, err := os.UserConfigDir()
+	ro.cfgdir = cfgdir
 
 	logger := log.NewLogger(os.Stdout, level)
 	ro.logger = logger
