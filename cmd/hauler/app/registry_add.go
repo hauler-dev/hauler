@@ -1,17 +1,22 @@
 package app
 
 import (
-	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"context"
+
 	"github.com/spf13/cobra"
+
+	"github.com/rancherfederal/hauler/pkg/content"
 )
 
-type imageAddOpts struct {
-	path string
+type registryAddOpts struct {
+	*rootOpts
+	*registryOpts
 }
 
 func NewRegistryAddCommand() *cobra.Command {
-	opts := imageAddOpts{}
+	opts := &registryAddOpts{
+		registryOpts: &reo,
+	}
 
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -37,28 +42,46 @@ Given an image reference, add it's layers and manifest(s) to the local image sto
 		},
 	}
 
-	f := cmd.Flags()
-	f.StringVarP(&opts.path, "path", "p", "hauler", "Relative path to OCI store.")
+	// f := cmd.Flags()
 
 	return cmd
 }
 
-func (o imageAddOpts) Run(args []string) error {
-	// Ensure we have a store
-	s, err := store.NewOciLayout(o.path)
+func (o *registryAddOpts) Run(args []string) error {
+	l := ro.Logger()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s, err := o.getStore(ctx, "")
 	if err != nil {
 		return err
 	}
 
-	for _, arg := range args {
-		ref, err := name.ParseReference(arg)
-		if err != nil {
-			return err
-		}
+	s.Start()
+	defer s.Stop()
 
-		if err := s.Add(ref); err != nil {
-			return err
-		}
+	var imgs []content.Oci
+	for _, ref := range args {
+		imgs = append(imgs, content.NewImage(ref))
+	}
+
+	l.Infof("adding images")
+	if err := s.Add(ctx, imgs...); err != nil {
+		return err
+	}
+
+	var generics []content.Oci
+	g, err := content.NewGeneric("", "hauler:v1", "something.hauler", "dist")
+	if err != nil {
+		return err
+	}
+
+	generics = append(generics, g)
+
+	l.Infof("adding generics")
+	if err := s.Add(ctx, generics...); err != nil {
+		return err
 	}
 
 	return nil

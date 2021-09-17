@@ -1,0 +1,10 @@
+apiVersion: hauler.cattle.io/v1alpha1
+kind: Bundle
+metadata:
+  name: raw
+spec:
+  images:
+    - registry:2
+
+  manifests:
+    - testdata/rawmanifests

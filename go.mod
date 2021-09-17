@@ -3,47 +3,42 @@ module github.com/rancherfederal/hauler
 go 1.16
 
 require (
-	github.com/Microsoft/go-winio v0.5.0 // indirect
-	github.com/containerd/containerd v1.5.0-beta.4
-	github.com/deislabs/oras v0.11.1
-	github.com/docker/docker v20.10.6+incompatible // indirect
+	github.com/andybalholm/brotli v1.0.2 // indirect
+	github.com/containerd/containerd v1.5.5
+	github.com/distribution/distribution/v3 v3.0.0-20210826081326-677772e08d64
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
-	github.com/gofiber/fiber/v2 v2.18.0
-	github.com/google/go-containerregistry v0.5.1
-	github.com/google/uuid v1.1.2
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
+	github.com/google/go-containerregistry v0.6.0
+	github.com/hashicorp/go-getter v1.4.1
 	github.com/imdario/mergo v0.3.12
+	github.com/klauspost/compress v1.13.4 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
-	github.com/otiai10/copy v1.6.0
-	github.com/rancher/fleet v0.3.6-rc12
+	github.com/oras-project/artifacts-spec v0.0.0-20210915201034-eea35320297e
+	github.com/rancher/fleet v0.3.6
 	github.com/rancher/fleet/pkg/apis v0.0.0
+	github.com/rancher/wrangler v0.8.4
 	github.com/rs/zerolog v1.24.0
 	github.com/sirupsen/logrus v1.8.1
-	github.com/spf13/afero v1.6.0
-	github.com/spf13/cobra v1.1.3
+	github.com/spf13/cobra v1.2.1
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190809123943-df4f5c81cb3b // indirect
-	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
-	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
-	google.golang.org/genproto v0.0.0-20210524171403-669157292da3 // indirect
-	google.golang.org/grpc v1.38.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
-	helm.sh/helm/v3 v3.5.1
-	k8s.io/apimachinery v0.21.3
-	k8s.io/cli-runtime v0.21.3
+	helm.sh/helm/v3 v3.7.0
+	k8s.io/api v0.22.1
+	k8s.io/apimachinery v0.22.1
+	k8s.io/cli-runtime v0.22.1
 	k8s.io/client-go v11.0.1-0.20190816222228-6d55c1b1f1ca+incompatible
+	oras.land/oras-go v0.4.0
 	sigs.k8s.io/cli-utils v0.23.1
 	sigs.k8s.io/controller-runtime v0.9.0
 	sigs.k8s.io/yaml v1.2.0
 )
 
 replace (
+	github.com/docker/docker => github.com/moby/moby v20.10.8+incompatible
 	github.com/rancher/fleet/pkg/apis v0.0.0 => github.com/rancher/fleet/pkg/apis v0.0.0-20210604212701-3a76c78716ab
-	helm.sh/helm/v3 => github.com/rancher/helm/v3 v3.6.3-fleet1
 	k8s.io/api => k8s.io/api v0.21.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.21.3 // indirect
 	k8s.io/apimachinery => k8s.io/apimachinery v0.21.3 // indirect

@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"io"
 	"os"
 
@@ -9,6 +10,8 @@ import (
 )
 
 type Logger interface {
+	With(Fields) *logger
+	WithContext(context.Context) context.Context
 	Errorf(string, ...interface{})
 	Infof(string, ...interface{})
 	Warnf(string, ...interface{})
@@ -19,8 +22,10 @@ type logger struct {
 	//TODO: Actually check this
 	level string
 
-	l zerolog.Logger
+	zl zerolog.Logger
 }
+
+type Fields map[string]string
 
 type Event struct {
 	id      int
@@ -31,31 +36,56 @@ var (
 	invalidArgMessage = Event{1, "Invalid arg: %s"}
 )
 
-func NewLogger(out io.Writer) *logger {
+func NewLogger(out io.Writer, level string) *logger {
+	lvl, err := zerolog.ParseLevel(level)
+	if err != nil {
+		lvl, _ = zerolog.ParseLevel("info")
+	}
+
+	zerolog.SetGlobalLevel(lvl)
+
 	l := log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	return &logger{
-		l: l.With().Timestamp().Logger(),
+		zl: l.With().Timestamp().Logger(),
 	}
 }
 
-func (l *logger) With() zerolog.Context {
-	return l.l.With()
+func FromContext(ctx context.Context) *logger {
+	zl := zerolog.Ctx(ctx)
+	return &logger{
+		zl: *zl,
+	}
+}
+
+func (l *logger) WithContext(ctx context.Context) context.Context {
+	return l.zl.WithContext(ctx)
+}
+
+func (l *logger) With(fields Fields) *logger {
+	zl := l.zl.With()
+	for k, v := range fields {
+		zl = zl.Str(k, v)
+	}
+
+	return &logger{
+		zl: zl.Logger(),
+	}
 }
 
 func (l *logger) Errorf(format string, args ...interface{}) {
-	l.l.Error().Msgf(format, args...)
+	l.zl.Error().Msgf(format, args...)
 }
 
 func (l *logger) Infof(format string, args ...interface{}) {
-	l.l.Info().Msgf(format, args...)
+	l.zl.Info().Msgf(format, args...)
 }
 
 func (l *logger) Warnf(format string, args ...interface{}) {
-	l.l.Warn().Msgf(format, args...)
+	l.zl.Warn().Msgf(format, args...)
 }
 
 func (l *logger) Debugf(format string, args ...interface{}) {
-	l.l.Debug().Msgf(format, args...)
+	l.zl.Debug().Msgf(format, args...)
 }
 
 func (l *logger) InvalidArg(arg string) {

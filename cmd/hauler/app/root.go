@@ -1,8 +1,8 @@
 package app
 
 import (
-	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/rancherfederal/hauler/pkg/log"
@@ -10,25 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	HaulerDefaultPath = ".local/hauler"
+)
+
 var (
-	loglevel string
-	timeout  time.Duration
-
-	getLong = `hauler provides CLI-based air-gap migration assistance using k3s.
-
-Choose your functionality and new a package when internet access is available,
-then deploy the package into your air-gapped environment.
-`
-
-	getExample = `
-hauler pkg build
-hauler pkg run pkg.tar.zst
-
-hauler relocate artifacts artifacts.tar.zst
-hauler relocate images pkg.tar.zst locahost:5000
-
-hauler copy localhost:5000/artifacts:latest
-`
+	level   string
+	timeout time.Duration
 )
 
 type rootOpts struct {
@@ -42,42 +30,43 @@ func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "hauler",
 		Short:        "hauler provides CLI-based air-gap migration assistance",
-		Long:         getLong,
-		Example:      getExample,
+		Long:         ``,
+		Example:      ``,
 		SilenceUsage: true,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			l, err := setupCliLogger(os.Stdout, loglevel)
-			if err != nil {
-				return err
-			}
-
-			ro.logger = l
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
 
-	cobra.OnInitialize()
+	cobra.OnInitialize(initConfig)
 
-	cmd.AddCommand(NewBundleCommand())
-	cmd.AddCommand(NewRelocateCommand())
-	cmd.AddCommand(NewCopyCommand())
-	cmd.AddCommand(NewPkgCommand())
+	cmd.AddCommand(NewPackageCommand())
+	// cmd.AddCommand(NewPkgCommand())
 	cmd.AddCommand(NewRegistryCommand())
 
 	f := cmd.PersistentFlags()
-	f.StringVarP(&loglevel, "loglevel", "l", "debug",
-		"Log level (debug, info, warn, error, fatal, panic)")
+	f.StringVarP(&level, "level", "l", "debug",
+		"Log level (trace, debug, info: default, warn, error, fatal, panic)")
 	f.DurationVar(&timeout, "timeout", 1*time.Minute,
 		"TODO: timeout for operations")
 
 	return cmd
 }
 
-func setupCliLogger(out io.Writer, level string) (log.Logger, error) {
-	l := log.NewLogger(out)
+func initConfig() {
+	home, err := os.UserHomeDir()
+	cobra.CheckErr(err)
 
-	return l, nil
+	err = os.MkdirAll(filepath.Join(home, HaulerDefaultPath), os.ModePerm)
+	cobra.CheckErr(err)
+
+	cfgDir, err := os.UserConfigDir()
+	_ = cfgDir
+
+	logger := log.NewLogger(os.Stdout, level)
+	ro.logger = logger
+}
+
+func (o *rootOpts) Logger() log.Logger {
+	return o.logger
 }

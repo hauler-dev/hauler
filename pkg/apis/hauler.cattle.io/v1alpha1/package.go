@@ -1,20 +1,12 @@
 package v1alpha1
 
 import (
-	"os"
-	"path/filepath"
+	"encoding/json"
+	"fmt"
+	"path"
 
+	"github.com/opencontainers/go-digest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/yaml"
-)
-
-const (
-	BundlesDir = "bundles"
-	LayoutDir  = "layout"
-	BinDir     = "bin"
-	ChartDir   = "charts"
-
-	PackageFile = "package.json"
 )
 
 type Package struct {
@@ -25,29 +17,27 @@ type Package struct {
 }
 
 type PackageSpec struct {
-	Fleet Fleet `json:"fleet"`
+	Manifests []string `json:"manifests,omitempty"`
+	Images    []string `json:"images,omitempty"`
+	Artifacts []string `json:"artifacts,omitempty"`
 
-	Driver Driver `json:"driver"`
-
-	// Paths is the list of directories relative to the working directory contains all resources to be bundled.
-	// path globbing is supported, for example [ "charts/*" ] will match all folders as a subdirectory of charts/
-	// If empty, "/" is the default
-	Paths []string `json:"paths,omitempty"`
-
-	Images []string `json:"images,omitempty"`
+	DependsOn DependsOn `json:"dependsOn,omitempty"`
 }
 
-//LoadPackageFromDir will load an existing package from a directory on disk, it fails if no PackageFile is found in dir
-func LoadPackageFromDir(path string) (Package, error) {
-	data, err := os.ReadFile(filepath.Join(path, PackageFile))
+type DependsOn struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+func (p Package) Reference(repo string) string {
+	var d digest.Digest
+	data, err := json.Marshal(p)
 	if err != nil {
-		return Package{}, err
+		d = digest.FromBytes([]byte(""))
+	} else {
+		d = digest.FromBytes(data)
 	}
 
-	var p Package
-	if err := yaml.Unmarshal(data, &p); err != nil {
-		return Package{}, err
-	}
-
-	return p, nil
+	name := path.Join(repo, p.Name)
+	return fmt.Sprintf("%s@%s", name, d.String())
 }

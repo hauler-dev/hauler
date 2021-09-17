@@ -2,10 +2,8 @@ package driver
 
 import (
 	"context"
-	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"io"
+
 	"sigs.k8s.io/cli-utils/pkg/object"
 )
 
@@ -15,9 +13,9 @@ type Driver interface {
 	//TODO: Really want this to just return a usable client
 	KubeConfigPath() string
 
-	Images(ctx context.Context) (map[name.Reference]v1.Image, error)
+	Images(ctx context.Context) ([]string, error)
 
-	Binary() (io.ReadCloser, error)
+	BinaryFetchURL() string
 
 	SystemObjects() []object.ObjMetadata
 
@@ -29,13 +27,19 @@ type Driver interface {
 }
 
 //NewDriver will return a new concrete Driver type given a kind
-func NewDriver(driver v1alpha1.Driver) (d Driver) {
-	switch driver.Type {
+// TODO: Add configs
+func NewDriver(driverType string, version string) Driver {
+	var d Driver
+	switch driverType {
 	case "rke2":
 	//		TODO
-	default:
+	case "k3s":
+		if version == "" {
+			version = k3sDefaultVersion
+		}
+
 		d = K3s{
-			Version: driver.Version,
+			Version: version,
 			Config: K3sConfig{
 				DataDir:        "/var/lib/rancher/k3s",
 				KubeConfig:     "/etc/rancher/k3s/k3s.yaml",
@@ -43,7 +47,8 @@ func NewDriver(driver v1alpha1.Driver) (d Driver) {
 				Disable:        nil,
 			},
 		}
+	default:
 	}
 
-	return
+	return d
 }

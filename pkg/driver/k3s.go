@@ -5,23 +5,23 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/imdario/mergo"
-	"github.com/rancherfederal/hauler/pkg/packager/images"
 	"io"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+
+	"github.com/imdario/mergo"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/yaml"
 )
 
 const (
-	k3sReleaseUrl = "https://github.com/k3s-io/k3s/releases/download"
+	k3sReleaseUrl     = "https://github.com/k3s-io/k3s/releases/download"
+	k3sDefaultVersion = "v1.21.4+k3s1"
 )
 
 //go:embed embed/k3s-init.sh
@@ -40,19 +40,6 @@ type K3sConfig struct {
 	KubeConfigMode string `json:"write-kubeconfig-mode,omitempty"`
 
 	Disable []string `json:"disable,omitempty"`
-}
-
-//NewK3s returns a new k3s driver
-func NewK3s() K3s {
-	//TODO: Allow for configuration overrides
-	return K3s{
-		Config: K3sConfig{
-			DataDir:        "/var/lib/rancher/k3s",
-			KubeConfig:     "/etc/rancher/k3s/k3s.yaml",
-			KubeConfigMode: "0644",
-			Disable:        []string{},
-		},
-	}
 }
 
 func (k K3s) Name() string { return "k3s" }
@@ -99,25 +86,22 @@ func (k K3s) WriteConfig() error {
 	return os.WriteFile(path, mergedData, 0644)
 }
 
-func (k K3s) Images(ctx context.Context) (map[name.Reference]v1.Image, error) {
+func (k K3s) Images(ctx context.Context) ([]string, error) {
 	imgs, err := k.listImages()
 	if err != nil {
 		return nil, err
 	}
-	return images.ResolveRemoteRefs(imgs...)
+	return imgs, nil
 }
 
-func (k K3s) Binary() (io.ReadCloser, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/%s/%s", k3sReleaseUrl, k.Version, k.Name()))
+func (k K3s) BinaryFetchURL() string {
+	p := fmt.Sprintf("%s/%s/%s", k3sReleaseUrl, k.Version, k.Name())
+	u, err := url.Parse(p)
 	if err != nil {
-		return nil, err
+		p = path.Join(k3sReleaseUrl, k3sDefaultVersion, k.Name())
+		u, _ = url.Parse(p)
 	}
-
-	resp, err := http.Get(u.String())
-	if err != nil || resp.StatusCode != 200 {
-		return nil, fmt.Errorf("failed to return executable for k3s %s from %s", k.Version, u.String())
-	}
-	return resp.Body, nil
+	return u.String()
 }
 
 //SystemObjects returns a slice of object.ObjMetadata required for driver to be functional and accept new resources
