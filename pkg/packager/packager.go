@@ -28,6 +28,8 @@ func NewPackager(s *store.Store, logger log.Logger) (*packager, error) {
 	}, nil
 }
 
+// Create will create a package on disk by fetching all content referenced by the Package
+// TODO: Refactor driverType into variadic options
 func (r packager) Create(ctx context.Context, driverType string, haulerPackage v1alpha1.Package) error {
 	logger := r.logger.With(log.Fields{"package": haulerPackage.Name})
 	ctx = logger.WithContext(ctx)
@@ -58,6 +60,7 @@ func (r packager) Create(ctx context.Context, driverType string, haulerPackage v
 		}
 	}
 
+	r.logger.Infof("Successfully finished creating package")
 	logger.Debugf("Shutting down content store")
 	return nil
 }

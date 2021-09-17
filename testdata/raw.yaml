@@ -8,3 +8,5 @@ spec:
 
   manifests:
     - testdata/rawmanifests
+#    - http::https://github.com/rancher/fleet/releases/download/v0.3.6/fleet-crd-0.3.6.tgz
+#    - http::https://github.com/rancher/fleet/releases/download/v0.3.6/fleet-0.3.6.tgz

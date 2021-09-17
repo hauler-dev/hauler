@@ -59,7 +59,7 @@ func NewPackage(ctx context.Context, p v1alpha1.Package) (*pkg, error) {
 	opts := &bundle.Options{Compress: true} // TODO: factor this to NewPackage arg
 
 	for _, ref := range p.Spec.Manifests {
-		l.Debugf("Parsing fleet bundle from %s", p.Spec.Manifests)
+		l.Debugf("Parsing fleet bundle from %s", ref)
 		bundleName := filepath.Base(ref)
 		fleetBundleDefinition, err := bundle.Open(ctx, bundleName, ref, "", opts)
 		if err != nil {
@@ -88,6 +88,7 @@ func NewPackage(ctx context.Context, p v1alpha1.Package) (*pkg, error) {
 func (o pkg) Relocate(ctx context.Context, registry string) error {
 	l := log.FromContext(ctx).With(log.Fields{
 		"content": "package",
+		"package": o.config.Name,
 	})
 
 	l.Debugf("Creating temporary directory")
@@ -116,18 +117,21 @@ func (o pkg) Relocate(ctx context.Context, registry string) error {
 	var descriptors []ocispec.Descriptor
 
 	// TODO: This needs to be first since it walks the directory
+	l.Debugf("Building descriptor content for %d artifacts", len(o.config.Spec.Artifacts))
 	artifactDescriptors, err := RefsToDescriptors(ctx, fileStore, o.config.Spec.Artifacts...)
 	if err != nil {
 		return err
 	}
 	descriptors = append(descriptors, artifactDescriptors...)
 
+	l.Debugf("Building descriptor content for %d fleet bundles", len(o.bundles))
 	bundleDescriptors, err := FleetBundleToDescriptors(ctx, fileStore, o.bundles...)
 	if err != nil {
 		return err
 	}
 	descriptors = append(descriptors, bundleDescriptors...)
 
+	l.Debugf("Building descriptor content for manifest config")
 	manifestConfigDescriptor, err := writeToFileStore(fileStore, "config.json", HaulerPackageConfigMediaType, o.config)
 	if err != nil {
 		return err
@@ -138,6 +142,14 @@ func (o pkg) Relocate(ctx context.Context, registry string) error {
 	_, err = oras.Push(ctx, resolver, rRef.Name(), fileStore, descriptors, oras.WithConfig(manifestConfigDescriptor))
 	if err != nil {
 		return err
+	}
+
+	// Push any images found within the package
+	for _, ref := range o.config.Spec.Images {
+		i := NewImage(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+		if err := i.Relocate(ctx, registry); err != nil {
+			return err
+		}
 	}
 
 	// Push any ancillary images found within the package's bundles
