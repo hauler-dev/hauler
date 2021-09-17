@@ -3,7 +3,6 @@ package content
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -39,10 +38,9 @@ func NewImage(reference string, opts ...remote.Option) *Image {
 
 // Relocate docs
 func (o Image) Relocate(ctx context.Context, registry string) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	l := log.FromContext(ctx)
+	l := log.FromContext(ctx).With(log.Fields{
+		"content": "image",
+	})
 
 	// TODO: Factor this out
 	var stripped string

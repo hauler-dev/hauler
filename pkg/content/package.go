@@ -86,12 +86,8 @@ func NewPackage(ctx context.Context, p v1alpha1.Package) (*pkg, error) {
 }
 
 func (o pkg) Relocate(ctx context.Context, registry string) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	l := log.FromContext(ctx).With(log.Fields{
 		"content": "package",
-		"action":  "relocate",
 	})
 
 	l.Debugf("Creating temporary directory")
@@ -147,6 +143,7 @@ func (o pkg) Relocate(ctx context.Context, registry string) error {
 	// Push any ancillary images found within the package's bundles
 	var imagesInPackage []string
 	for _, b := range o.bundles {
+		// TODO: Make image json paths user configurable
 		imgs := ImagesInFleetBundle(b, defaultKnownImagePaths)
 		imagesInPackage = append(imagesInPackage, imgs...)
 
@@ -191,7 +188,7 @@ func ImagesInFleetBundle(fleetBundle *fleetapi.Bundle, imageJsonPaths []string) 
 		return []string{}
 	}
 
-	return ImagesFromObj(defaultKnownImagePaths, objs...)
+	return ImagesFromObj(imageJsonPaths, objs...)
 }
 
 // ImagesFromObj will find images from runtime objects

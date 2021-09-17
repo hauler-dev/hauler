@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
@@ -58,10 +57,9 @@ func NewGeneric(reference string, fileRefs ...string) (*Generic, error) {
 }
 
 func (o Generic) Relocate(ctx context.Context, registry string) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	l := log.FromContext(ctx)
+	l := log.FromContext(ctx).With(log.Fields{
+		"content": "generic",
+	})
 
 	// TODO: We need this because we're using a filesystem store, evaluate if we can use a memorystore, or some hybrid
 	tmpdir, err := os.MkdirTemp("", "hauler-generic-relocate")
