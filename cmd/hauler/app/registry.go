@@ -36,6 +36,7 @@ func NewRegistryCommand() *cobra.Command {
 	cmd.AddCommand(NewRegistryDeleteCommand())
 	cmd.AddCommand(NewRegistryServeCommand())
 	cmd.AddCommand(NewRegistrySaveCommand())
+	cmd.AddCommand(NewRegistryRelocateCommand())
 
 	return cmd
 }

@@ -146,13 +146,13 @@ func (o pkg) Relocate(ctx context.Context, registry string) error {
 
 	// Push any images found within the package
 	for _, ref := range o.config.Spec.Images {
-		i := NewImage(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+		i := NewImage(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain), remote.WithContext(ctx))
 		if err := i.Relocate(ctx, registry); err != nil {
 			return err
 		}
 	}
 
-	// Push any ancillary images found within the package's bundles
+	// Push any ancillary images autodetected from the package's manifests
 	var imagesInPackage []string
 	for _, b := range o.bundles {
 		// TODO: Make image json paths user configurable
@@ -163,7 +163,7 @@ func (o pkg) Relocate(ctx context.Context, registry string) error {
 			l.With(log.Fields{
 				"bundle": b.Name,
 			}).Infof("Identified image from bundle: %s", ref)
-			i := NewImage(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+			i := NewImage(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain), remote.WithContext(ctx))
 			if err = i.Relocate(ctx, registry); err != nil {
 				return err
 			}
@@ -215,6 +215,7 @@ func ImagesFromObj(jsonPaths []string, obj ...runtime.Object) (images []string) 
 
 		var data interface{}
 		if err := json.Unmarshal(objData, &data); err != nil {
+			// TODO: handle err
 		}
 
 		j := jsonpath.New("")

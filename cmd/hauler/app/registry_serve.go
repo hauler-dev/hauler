@@ -48,12 +48,6 @@ func NewRegistryServeCommand() *cobra.Command {
 }
 
 func (o *imageServeOpts) PreRun() error {
-	if o.path == "" {
-		// Convert from human readable to default
-		o.logger.Infof("Registry data path not specified, defaulting to %s", o.datadir)
-		o.path = o.datadir
-	}
-
 	if o.configFile == "" {
 		o.logger.Infof("No config file set, using default values")
 		o.registryCfg = o.defaultRegistryConfig()
@@ -73,7 +67,7 @@ func (o *imageServeOpts) Run() error {
 		return err
 	}
 
-	logger.Infof("Starting registry on broadcasting on :%d", o.port)
+	logger.Infof("Starting registry listening on :%d", o.port)
 	if err = r.ListenAndServe(); err != nil {
 		return err
 	}
@@ -82,11 +76,14 @@ func (o *imageServeOpts) Run() error {
 }
 
 func (o *imageServeOpts) defaultRegistryConfig() *configuration.Configuration {
+	p := o.newStorePath(o.path)
+
+	o.logger.Infof("Setting up registry using directory: %s", p.Path())
 	cfg := &configuration.Configuration{
 		Version: "0.1",
 		Storage: configuration.Storage{
 			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
-			"filesystem": configuration.Parameters{"rootdirectory": o.path},
+			"filesystem": configuration.Parameters{"rootdirectory": p.Path()},
 		},
 	}
 	cfg.Log.Level = "info"

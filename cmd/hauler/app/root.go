@@ -10,14 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	HaulerDefaultPath = ".local/hauler"
-)
-
 var (
 	level   string
 	timeout time.Duration
 )
+
+type storePath string
 
 type rootOpts struct {
 	logger log.Logger
@@ -44,8 +42,8 @@ func NewRootCommand() *cobra.Command {
 	cobra.OnInitialize(initConfig)
 
 	cmd.AddCommand(NewPackageCommand())
-	// cmd.AddCommand(NewPkgCommand())
 	cmd.AddCommand(NewRegistryCommand())
+	cmd.AddCommand(NewDriverCommand())
 
 	f := cmd.PersistentFlags()
 	f.StringVarP(&level, "level", "l", "info",
@@ -56,15 +54,15 @@ func NewRootCommand() *cobra.Command {
 	return cmd
 }
 
+// TODO: Should this be added as a PersistentPreRunE instead?
 func initConfig() {
-	home, err := os.UserHomeDir()
+	// Setup user directories used by hauler
+	datadir, err := getDataDir()
 	cobra.CheckErr(err)
+	ro.datadir = datadir
 
-	ro.datadir = filepath.Join(home, HaulerDefaultPath)
-	err = os.MkdirAll(ro.datadir, os.ModePerm)
+	cfgdir, err := getCfgDir()
 	cobra.CheckErr(err)
-
-	cfgdir, err := os.UserConfigDir()
 	ro.cfgdir = cfgdir
 
 	logger := log.NewLogger(os.Stdout, level)
@@ -73,4 +71,51 @@ func initConfig() {
 
 func (o *rootOpts) Logger() log.Logger {
 	return o.logger
+}
+
+// newStorePath ensures that absolute paths are always used when referring to hauler's storage location
+func (o *rootOpts) newStorePath(path string) storePath {
+	p, err := filepath.Abs(path)
+	if err != nil {
+		o.logger.Warnf("Error converting %s to an absolute path, using default hauler storage path instead")
+	}
+
+	if err != nil || path == "" {
+		o.logger.Debugf("Using users default home directory as store path root")
+		p = filepath.Join(o.datadir, "store")
+	}
+
+	return storePath(p)
+}
+
+func (s storePath) Path() string { return string(s) }
+
+func getDataDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	dir := filepath.Join(home, ".local/hauler")
+
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return "", err
+	}
+
+	return dir, nil
+}
+
+func getCfgDir() (string, error) {
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+
+	dir := filepath.Join(cfg, "hauler")
+
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return "", err
+	}
+
+	return dir, nil
 }

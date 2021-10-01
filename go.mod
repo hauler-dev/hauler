@@ -16,7 +16,6 @@ require (
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
-	github.com/oras-project/artifacts-spec v0.0.0-20210915201034-eea35320297e
 	github.com/rancher/fleet v0.3.6
 	github.com/rancher/fleet/pkg/apis v0.0.0
 	github.com/rancher/wrangler v0.8.4

@@ -74,23 +74,6 @@ func (r *Store) ListReferences() error {
 	return nil
 }
 
-// DefaultConfiguration does
-func DefaultConfiguration(root string, addr string) *configuration.Configuration {
-	cfg := &configuration.Configuration{
-		Version: "0.1",
-		Storage: configuration.Storage{
-			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
-			"filesystem": configuration.Parameters{"rootdirectory": root},
-		},
-	}
-	cfg.Log.Level = "panic"
-	cfg.HTTP.Addr = addr
-	cfg.HTTP.Headers = http.Header{
-		"X-Content-Type-Options": []string{"nosniff"},
-	}
-	return cfg
-}
-
 // NewStore creates a new registry store, designed strictly for use within haulers embedded operations and _not_ for serving
 func NewStore(ctx context.Context, dataDir string) *Store {
 	cfg := &configuration.Configuration{
@@ -111,19 +94,6 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 		config:  cfg,
 		handler: handler,
 	}
-}
-
-func NewRegistry(ctx context.Context, cfg *configuration.Configuration) (*Store, error) {
-	ctx, _ = configureLogging(ctx, cfg)
-
-	app := handlers.NewApp(ctx, cfg)
-	app.RegisterHealthChecks()
-	handler := alive("/", app)
-
-	return &Store{
-		config:  cfg,
-		handler: handler,
-	}, nil
 }
 
 // Start will create a new server and start it, it's up to the consumer to close it

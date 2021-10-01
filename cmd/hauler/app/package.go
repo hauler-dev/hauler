@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -33,7 +31,8 @@ func NewPackageCommand() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(NewBundleCreateCommand())
+	cmd.AddCommand(NewPackageCreateCommand())
+	cmd.AddCommand(NewPackageDeployCommand())
 
 	f := cmd.Flags()
 	_ = f
@@ -44,17 +43,9 @@ func NewPackageCommand() *cobra.Command {
 func (o *rootOpts) getStore(ctx context.Context, path string) (*store.Store, error) {
 	o.logger.Debugf("Creating default store")
 
-	if path == "" {
-		o.logger.Debugf("No path specified, using users default home directory as root")
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
+	p := o.newStorePath(path)
 
-		path = filepath.Join(home, defaultStoreLocation)
-	}
-
-	o.logger.Debugf("Initializing content store at %s", path)
-	s := store.NewStore(ctx, path)
+	o.logger.Debugf("Initializing content store at %s", p.Path())
+	s := store.NewStore(ctx, p.Path())
 	return s, nil
 }

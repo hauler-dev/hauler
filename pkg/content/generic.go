@@ -45,7 +45,7 @@ type Generic struct {
 
 // NewGeneric creates a new generic artifact
 // 	reference: registryless reference to artifact, similar to an images name
-//		ex: _hauler/myartifact
+//		ex: hauler/myartifact
 // 	mediaType: custom media type for artifact, defaults to hauler's default media type
 // 	path: variadic slice of paths of go-getter compatible references to add to store
 // TODO: Bug when filenames are the same
