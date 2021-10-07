@@ -55,7 +55,7 @@ func NewChart(reference string, chartRef string) *chart {
 }
 
 // TODO: We could just use this to wrap NewGeneric, but leaving it separate for when we eventually move to helm's stable lib
-func (o chart) Relocate(ctx context.Context, registry string) error {
+func (o chart) Relocate(ctx context.Context, registry string, option ...Option) error {
 	l := log.FromContext(ctx).With(log.Fields{
 		"content": "chart",
 	})

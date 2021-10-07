@@ -1,0 +1,27 @@
+apiVersion: hauler.cattle.io/v1alpha1
+kind: Store
+metadata:
+  creationTimestamp: null
+  name: a
+spec:
+  charts:
+  - checksum: b4ef9ed74aedd594653e7ee4ce705621d3078f29997ca7faf3d0d2d6c6d2e01e
+    name: loki
+    repo: https://grafana.github.io/helm-charts
+    version: 2.6.0
+  files:
+  - canonical: /Users/joshwolf/repos/gh/rancher/hauler/testdata/store-a.yaml
+    checksum: e57b3897494993faeb0cd882721a0e5208f55b2986ec833285303191a79a657c
+    path: ./testdata/store-a.yaml
+    size: 416
+  https:
+  - checksum: 840c1dba09534d88b68b3d6f2fc2a8a807929106109a6b00a663c9682d9cf742
+    name: get-k3s.sh
+    url: https://get.k3s.io
+  images:
+  - canonical: index.docker.io/library/registry@sha256:b0b8dd398630cbb819d9a9c2fbd50561370856874b5d5d935be2e0af07c0ff4c
+    ref: registry:2.7.1
+  repos:
+  - branch: main
+    commit: 4eb626974bb8dcf467d554a459411476f675206b
+    repo: https://github.com/rancherfederal/hauler.git

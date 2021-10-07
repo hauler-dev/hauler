@@ -85,7 +85,7 @@ func NewPackage(ctx context.Context, p v1alpha1.Package) (*pkg, error) {
 	}, nil
 }
 
-func (o pkg) Relocate(ctx context.Context, registry string) error {
+func (o pkg) Relocate(ctx context.Context, registry string, option ...Option) error {
 	l := log.FromContext(ctx).With(log.Fields{
 		"content": "package",
 		"package": o.config.Name,
@@ -108,7 +108,8 @@ func (o pkg) Relocate(ctx context.Context, registry string) error {
 		resolver = docker.NewResolver(docker.ResolverOptions{})
 	}
 
-	ref := o.config.Reference("hauler")
+	// ref := o.config.Reference("hauler")
+	ref := NewSystemRef(o.config.Name, o.config.Spec.Version)
 	rRef, err := name.ParseReference(ref, name.WithDefaultRegistry(registry))
 	if err != nil {
 		return err
@@ -117,21 +118,21 @@ func (o pkg) Relocate(ctx context.Context, registry string) error {
 	var descriptors []ocispec.Descriptor
 
 	// TODO: This needs to be first since it walks the directory
-	l.Debugf("Building descriptor content for %d artifacts", len(o.config.Spec.Artifacts))
+	l.Debugf("Creating descriptors for %d artifacts", len(o.config.Spec.Artifacts))
 	artifactDescriptors, err := RefsToDescriptors(ctx, fileStore, o.config.Spec.Artifacts...)
 	if err != nil {
 		return err
 	}
 	descriptors = append(descriptors, artifactDescriptors...)
 
-	l.Debugf("Building descriptor content for %d fleet bundles", len(o.bundles))
+	l.Debugf("Creating descriptors for %d fleet bundles", len(o.bundles))
 	bundleDescriptors, err := FleetBundleToDescriptors(ctx, fileStore, o.bundles...)
 	if err != nil {
 		return err
 	}
 	descriptors = append(descriptors, bundleDescriptors...)
 
-	l.Debugf("Building descriptor content for manifest config")
+	l.Debugf("Creating descriptor for manifest config")
 	manifestConfigDescriptor, err := writeToFileStore(fileStore, "config.json", HaulerPackageConfigMediaType, o.config)
 	if err != nil {
 		return err
@@ -181,7 +182,7 @@ func FleetBundleToDescriptors(ctx context.Context, store *content.FileStore, fle
 	var descriptors []ocispec.Descriptor
 
 	for _, fb := range fleetBundle {
-		bundleFileName := fmt.Sprintf("%s-bundle.json", fb.Name)
+		bundleFileName := fmt.Sprintf("%s.bundle.json", fb.Name)
 		fleetDesc, err := writeToFileStore(store, bundleFileName, FleetBundleMediaType, fb)
 		if err != nil {
 			return nil, err

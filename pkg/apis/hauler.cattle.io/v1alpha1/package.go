@@ -17,6 +17,7 @@ type Package struct {
 }
 
 type PackageSpec struct {
+	Version   string   `json:"version"`
 	Manifests []string `json:"manifests,omitempty"`
 	Images    []string `json:"images,omitempty"`
 	Artifacts []string `json:"artifacts,omitempty"`

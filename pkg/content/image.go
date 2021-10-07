@@ -37,7 +37,7 @@ func NewImage(reference string, opts ...remote.Option) *Image {
 }
 
 // Relocate docs
-func (o Image) Relocate(ctx context.Context, registry string) error {
+func (o Image) Relocate(ctx context.Context, registry string, option ...Option) error {
 	l := log.FromContext(ctx).With(log.Fields{
 		"content": "image",
 	})

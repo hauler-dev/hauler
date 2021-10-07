@@ -7,9 +7,9 @@ require (
 	github.com/containerd/containerd v1.5.5
 	github.com/distribution/distribution/v3 v3.0.0-20210826081326-677772e08d64
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
+	github.com/go-git/go-git/v5 v5.2.0
 	github.com/google/go-containerregistry v0.6.0
 	github.com/hashicorp/go-getter v1.4.1
-	github.com/imdario/mergo v0.3.12
 	github.com/klauspost/compress v1.13.4 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
@@ -20,10 +20,14 @@ require (
 	github.com/rancher/fleet/pkg/apis v0.0.0
 	github.com/rancher/wrangler v0.8.4
 	github.com/rs/zerolog v1.24.0
+	github.com/schollz/progressbar/v3 v3.8.3 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.2.1
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190809123943-df4f5c81cb3b // indirect
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
+	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac // indirect
+	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	helm.sh/helm/v3 v3.7.0
 	k8s.io/api v0.22.1
 	k8s.io/apimachinery v0.22.1

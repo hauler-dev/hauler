@@ -1,8 +1,12 @@
 apiVersion: hauler.cattle.io/v1alpha1
-kind: Bundle
+kind: Package
 metadata:
+  # User defined name used to identify the package in a registry
   name: raw
 spec:
+  # User defined version used to tag the package in a registry
+  version: 0.0.1
+
   images:
     - registry:2
 

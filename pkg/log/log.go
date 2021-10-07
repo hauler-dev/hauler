@@ -10,6 +10,7 @@ import (
 )
 
 type Logger interface {
+	SetLevel(string)
 	With(Fields) *logger
 	WithContext(context.Context) context.Context
 	Errorf(string, ...interface{})
@@ -19,9 +20,6 @@ type Logger interface {
 }
 
 type logger struct {
-	//TODO: Actually check this
-	level string
-
 	zl zerolog.Logger
 }
 
@@ -36,25 +34,27 @@ var (
 	invalidArgMessage = Event{1, "Invalid arg: %s"}
 )
 
-func NewLogger(out io.Writer, level string) *logger {
-	lvl, err := zerolog.ParseLevel(level)
-	if err != nil {
-		lvl, _ = zerolog.ParseLevel("info")
-	}
-
-	zerolog.SetGlobalLevel(lvl)
-
+func NewLogger(out io.Writer) Logger {
 	l := log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	return &logger{
 		zl: l.With().Timestamp().Logger(),
 	}
 }
 
-func FromContext(ctx context.Context) *logger {
+func FromContext(ctx context.Context) Logger {
 	zl := zerolog.Ctx(ctx)
 	return &logger{
 		zl: *zl,
 	}
+}
+
+func (l *logger) SetLevel(level string) {
+	lvl, err := zerolog.ParseLevel(level)
+	if err != nil {
+		lvl, _ = zerolog.ParseLevel("info")
+	}
+
+	zerolog.SetGlobalLevel(lvl)
 }
 
 func (l *logger) WithContext(ctx context.Context) context.Context {

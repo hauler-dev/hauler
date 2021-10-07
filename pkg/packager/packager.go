@@ -83,8 +83,13 @@ func (r packager) AddDriver(ctx context.Context, kind string, version string) er
 	}
 	r.logger.Infof("Adding driver (%s) and dependencies to store", d.Name())
 
-	ref := content.NewSystemRef(d.Name(), d.Version())
-	binary, err := content.NewGeneric(ref, d.BinaryFetchURL())
+	var k3s v1alpha1.Getter
+	k3s = v1alpha1.Http{
+		Name: "k3s",
+		Url:  d.BinaryFetchURL(),
+	}
+
+	binary, err := content.NewGeneric(k3s)
 	if err != nil {
 		return err
 	}

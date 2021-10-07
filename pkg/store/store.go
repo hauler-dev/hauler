@@ -12,21 +12,19 @@ import (
 	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/registry/handlers"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sirupsen/logrus"
 
 	"github.com/rancherfederal/hauler/pkg/content"
-)
-
-const (
-	// HaulerRepo is the repository path hauler uses to store oci artifacts
-	HaulerRepo = "hauler"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 var httpRegex = regexp.MustCompile("https?://")
 
 // Store is a simple wrapper around distribution/distribution to enable hauler's use case
 type Store struct {
-	DataDir string
+	DataDir           string
+	DefaultRepository string
 
 	config  *configuration.Configuration
 	handler http.Handler
@@ -34,16 +32,60 @@ type Store struct {
 	server *httptest.Server
 }
 
-// Add will add an oci artifact to the registry store
-func (r *Store) Add(ctx context.Context, ocis ...content.Oci) error {
+func (r *Store) AddImage(ctx context.Context, content content.Oci, ref name.Reference) error {
+	l := log.FromContext(ctx)
+
 	if err := r.precheck(); err != nil {
 		return err
 	}
 
-	for _, o := range ocis {
-		if err := o.Relocate(ctx, r.registryURL()); err != nil {
-			return err
-		}
+	relocatedRef := r.relocateReference(ref)
+
+	l.Infof("Adding %s to store", relocatedRef.Name())
+	if err := content.Copy(ctx, relocatedRef); err != nil {
+		return err
+	}
+
+	// c := make(chan v1.Update, 100)
+	//
+	// l.Infof("Adding %s to store", relocatedRef.Name())
+	// if err := remote.Write(relocatedRef, content, remote.WithProgress(c), remote.WithContext(ctx)); err != nil {
+	// 	return err
+	// }
+
+	// total, _ := content.Size()
+	// fmt.Println(total)
+	// bar := progressbar.DefaultBytes(total, "downloading")
+	// for u := range c {
+	// 	bar.Add(int(u.Complete))
+	// 	l.Infof("%d/%d", u.Complete, u.Total)
+	// }
+
+	return nil
+}
+
+func (r *Store) relocateReference(ref name.Reference) name.Reference {
+	var sep string
+	if _, err := name.NewDigest(ref.Name()); err == nil {
+		sep = "@"
+	} else {
+		sep = ":"
+	}
+	relocatedRef, _ := name.ParseReference(
+		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
+		name.WithDefaultRegistry(r.registryURL()),
+	)
+	return relocatedRef
+}
+
+// Add will add an oci artifact to the registry store
+func (r *Store) Add(ctx context.Context, c content.Content, opts ...content.Option) error {
+	if err := r.precheck(); err != nil {
+		return err
+	}
+
+	if err := c.Relocate(ctx, r.registryURL(), opts...); err != nil {
+		return err
 	}
 
 	return nil
@@ -90,6 +132,9 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 
 	return &Store{
 		DataDir: dataDir,
+
+		// TODO: Opt this
+		DefaultRepository: "hauler",
 
 		config:  cfg,
 		handler: handler,

@@ -3,20 +3,21 @@ package content
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"sync"
 
-	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/hashicorp/go-getter"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
 
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
@@ -35,60 +36,55 @@ const (
 // Generic defines generic things without a concrete MediaType
 // TODO: This name sucks
 type Generic struct {
-	resolver remotes.Resolver
-
-	fileRefs []string
-
-	// reference is the reference to the artifact without the registry
-	reference string
+	fetcher v1alpha1.Getter
 }
 
 // NewGeneric creates a new generic artifact
-// 	reference: registryless reference to artifact, similar to an images name
-//		ex: hauler/myartifact
-// 	mediaType: custom media type for artifact, defaults to hauler's default media type
-// 	path: variadic slice of paths of go-getter compatible references to add to store
-// TODO: Bug when filenames are the same
-func NewGeneric(reference string, fileRefs ...string) (*Generic, error) {
+func NewGeneric(f v1alpha1.Getter) (*Generic, error) {
 	return &Generic{
-		fileRefs:  fileRefs,
-		reference: reference,
+		fetcher: f,
 	}, nil
 }
 
-func (o Generic) Relocate(ctx context.Context, registry string) error {
+// Name determines a suitable name for the generic within a registry (<repository>/<name>)
+func (o Generic) Name() string {
+	// return name.ParseReference(fmt.Sprintf("%s@%s", rawref, digest), name.WithDefaultRegistry(registry))
+	return path.Join()
+}
+
+func (o Generic) Relocate(ctx context.Context, registry string, opts ...Option) error {
 	l := log.FromContext(ctx).With(log.Fields{
 		"content": "generic",
 	})
 
-	// TODO: We need this because we're using a filesystem store, evaluate if we can use a memorystore, or some hybrid
-	tmpdir, err := os.MkdirTemp("", "hauler-generic-relocate")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpdir)
-
-	// Fetch content
-	store := content.NewFileStore(tmpdir)
-	defer store.Close()
-
-	descs, err := RefsToDescriptors(ctx, store, o.fileRefs...)
+	opt, err := makeOptions(opts...)
 	if err != nil {
 		return err
 	}
 
-	var resolver remotes.Resolver
-	if o.resolver == nil {
-		resolver = docker.NewResolver(docker.ResolverOptions{})
-	}
+	// TODO: This might bottleneck...
+	store := content.NewMemoryStore()
 
-	rRef, err := name.ParseReference(o.reference, name.WithDefaultRegistry(registry))
+	rc, err := o.fetcher.Get()
 	if err != nil {
 		return err
 	}
 
-	l.Debugf("Relocating generic from '%s' --> '%s'", o.reference, rRef.Name())
-	_, err = oras.Push(ctx, resolver, rRef.Name(), store, descs)
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return err
+	}
+	rc.Close()
+
+	desc := store.Add("", HaulerDriverLayerMediaType, data)
+
+	ref, err := opt.makeReference(registry, "", desc.Digest.String())
+	if err != nil {
+		return err
+	}
+
+	l.Debugf("Relocating generic from '%s' --> '%s'", ref.String(), ref.Name())
+	_, err = oras.Push(ctx, docker.NewResolver(docker.ResolverOptions{}), ref.Name(), store, []ocispec.Descriptor{desc})
 	return err
 }
 
@@ -97,6 +93,8 @@ func (o Generic) Remove(ctx context.Context, registry string) error {
 }
 
 func RefsToDescriptors(ctx context.Context, store *content.FileStore, refs ...string) ([]ocispec.Descriptor, error) {
+	l := log.FromContext(ctx)
+
 	var opts []getter.ClientOption
 
 	basedir := store.ResolvePath("")
@@ -114,6 +112,7 @@ func RefsToDescriptors(ctx context.Context, store *content.FileStore, refs ...st
 
 		n := filepath.Base(filepath.Clean(path))
 
+		l.With(log.Fields{"mediaType": HaulerGenericLayerMediaType}).Debugf("Adding %s to store as %s", path, n)
 		desc, err := store.Add(n, HaulerGenericLayerMediaType, path)
 		if err != nil {
 			return err
@@ -131,6 +130,8 @@ func RefsToDescriptors(ctx context.Context, store *content.FileStore, refs ...st
 }
 
 func goGet(ctx context.Context, opts []getter.ClientOption, root string, get ...string) error {
+	l := log.FromContext(ctx)
+
 	var wg sync.WaitGroup
 	errchan := make(chan error, len(get))
 
@@ -144,6 +145,7 @@ func goGet(ctx context.Context, opts []getter.ClientOption, root string, get ...
 			Mode:    getter.ClientModeAny,
 			Options: opts,
 		}
+		l.Debugf("Getting %s to %s", g, root)
 		go func() {
 			defer wg.Done()
 			if err := client.Get(); err != nil {
