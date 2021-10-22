@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
@@ -14,8 +15,11 @@ import (
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"k8s.io/client-go/util/jsonpath"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
+
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 const (
@@ -42,7 +46,64 @@ type Chart struct {
 	resolver remotes.Resolver
 }
 
+var defaultKnownImagePaths = []string{
+	// Deployments & DaemonSets
+	"{.spec.template.spec.initContainers[*].image}",
+	"{.spec.template.spec.containers[*].image}",
+
+	// Pods
+	"{.spec.initContainers[*].image}",
+	"{.spec.containers[*].image}",
+}
+
 func NewChart(repo, name, version string) (*Chart, error) {
+	chartdata, err := fetch(repo, name, version)
+	if err != nil {
+		return nil, err
+	}
+
+	ch, err := loader.LoadArchive(bytes.NewBuffer(chartdata))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Chart{
+		chart: ch,
+		data:  chartdata,
+
+		// TODO: Does this ever need to change?
+		resolver: docker.NewResolver(docker.ResolverOptions{}),
+	}, nil
+}
+
+func (c *Chart) Copy(ctx context.Context, reference name.Reference) error {
+	var (
+		s                  = content.NewMemoryStore()
+		l                  = log.FromContext(ctx)
+		contentDescriptors []ocispec.Descriptor
+	)
+
+	chartDescriptor := s.Add("", ChartLayerMediaType, c.data)
+	contentDescriptors = append(contentDescriptors, chartDescriptor)
+
+	configDescriptor := s.Add("", ConfigMediaType, c.configData())
+
+	l.Infof("Copying to %s", reference.Name())
+	_, err := oras.Push(ctx, c.resolver, reference.Name(), s, contentDescriptors,
+		oras.WithConfig(configDescriptor), oras.WithNameValidation(nil))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Chart) configData() []byte {
+	data, _ := json.Marshal(c.chart.Metadata)
+	return data
+}
+
+func fetch(repo, name, version string) ([]byte, error) {
 	cpo := action.ChartPathOptions{
 		RepoURL: repo,
 		Version: version,
@@ -58,40 +119,20 @@ func NewChart(repo, name, version string) (*Chart, error) {
 		return nil, err
 	}
 
-	ch, err := loader.LoadArchive(bytes.NewBuffer(data))
-	if err != nil {
+	return data, nil
+}
+
+func parseJSONPath(data interface{}, parser *jsonpath.JSONPath, template string) ([]string, error) {
+	buf := new(bytes.Buffer)
+	if err := parser.Parse(template); err != nil {
 		return nil, err
 	}
 
-	return &Chart{
-		chart: ch,
-		data:  data,
-
-		// TODO: Does this ever need to change?
-		resolver: docker.NewResolver(docker.ResolverOptions{}),
-	}, nil
-}
-
-func (c *Chart) configData() []byte {
-	data, _ := json.Marshal(c.chart.Metadata)
-	return data
-}
-
-func (c *Chart) Copy(ctx context.Context, reference name.Reference) error {
-	s := content.NewMemoryStore()
-
-	var contentDescriptors []ocispec.Descriptor
-
-	chartDescriptor := s.Add("", ChartLayerMediaType, c.data)
-	contentDescriptors = append(contentDescriptors, chartDescriptor)
-
-	configDescriptor := s.Add("", ConfigMediaType, c.configData())
-
-	_, err := oras.Push(ctx, c.resolver, reference.Name(), s, contentDescriptors,
-		oras.WithConfig(configDescriptor), oras.WithNameValidation(nil))
-	if err != nil {
-		return err
+	if err := parser.Execute(buf, data); err != nil {
+		return nil, err
 	}
 
-	return nil
+	f := func(s rune) bool { return s == ' ' }
+	r := strings.FieldsFunc(buf.String(), f)
+	return r, nil
 }

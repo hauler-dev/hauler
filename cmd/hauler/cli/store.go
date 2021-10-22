@@ -15,18 +15,19 @@ func addStore(parent *cobra.Command) {
 	}
 
 	cmd.AddCommand(
-		addStoreBuild(),
-		addStoreLock(),
+		addStoreSync(),
+		addStoreGet(),
 	)
 
 	parent.AddCommand(cmd)
 }
 
-func addStoreBuild() *cobra.Command {
-	o := &store.BuildOpts{}
+func addStoreGet() *cobra.Command {
+	o := &store.GetOpts{}
 
 	cmd := &cobra.Command{
-		Use: "build",
+		Use:  "get",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -35,23 +36,28 @@ func addStoreBuild() *cobra.Command {
 				return err
 			}
 
-			return store.BuildCmd(ctx, o, s)
+			return store.GetCmd(ctx, o, s, args[0])
 		},
 	}
-	o.AddFlags(cmd)
+	o.AddArgs(cmd)
 
 	return cmd
 }
 
-func addStoreLock() *cobra.Command {
-	o := &store.LockOpts{}
+func addStoreSync() *cobra.Command {
+	o := &store.SyncOpts{}
 
 	cmd := &cobra.Command{
-		Use: "lock",
+		Use: "sync",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			return store.LockCmd(ctx, o)
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.SyncCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)

@@ -7,46 +7,18 @@ import (
 )
 
 func addGet(parent *cobra.Command) {
+	o := &get.Opts{}
+
 	cmd := &cobra.Command{
-		Use: "get",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
+		Use:  "get",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, arg []string) error {
+			ctx := cmd.Context()
+
+			return get.Cmd(ctx, o, arg[0])
 		},
 	}
-
-	cmd.AddCommand(
-		addGetImage(),
-		addGetGeneric(),
-	)
+	o.AddArgs(cmd)
 
 	parent.AddCommand(cmd)
-}
-
-func addGetImage() *cobra.Command {
-	o := &get.ImageOpts{}
-
-	cmd := &cobra.Command{
-		Use: "image",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return get.ImageCmd(cmd.Context(), o)
-		},
-	}
-	o.AddFlags(cmd)
-
-	return cmd
-}
-
-func addGetGeneric() *cobra.Command {
-	o := &get.GenericOpts{}
-
-	cmd := &cobra.Command{
-		Use:  "generic",
-		Args: cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return get.GenericCmd(cmd.Context(), o, args...)
-		},
-	}
-	o.AddFlags(cmd)
-
-	return cmd
 }

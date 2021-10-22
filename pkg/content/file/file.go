@@ -2,42 +2,58 @@ package file
 
 import (
 	"context"
-	"os"
 
+	"github.com/containerd/containerd/remotes/docker"
 	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/types"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/pkg/oras"
 
-	"github.com/rancherfederal/hauler/pkg/content/blob"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/log"
+)
+
+const (
+	LayerMediaType = "application/vnd.hauler.cattle.io-artifact"
 )
 
 type File struct {
-	v1.Image
+	cfg   v1alpha1.Fi
+	store *store
+	descs []ocispec.Descriptor
 }
 
-func NewFile(filename string) (*File, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
+func NewFile(cfg v1alpha1.Fi, root string) (*File, error) {
+	s := newStore(root)
 
-	base := mutate.MediaType(empty.Image, types.OCIManifestSchema1)
-	f, _ := mutate.Append(base, mutate.Addendum{
-		Layer: blob.NewLayer(data),
-	})
+	var descs []ocispec.Descriptor
+	for _, blob := range cfg.Blobs {
+		desc, err := s.Add(blob.Ref)
+		if err != nil {
+			return nil, nil
+		}
+		descs = append(descs, desc)
+	}
+	defer s.Close()
 
 	return &File{
-		Image: f,
+		cfg:   cfg,
+		store: s,
+		descs: descs,
 	}, nil
 }
 
 func (f *File) Copy(ctx context.Context, reference name.Reference) error {
-	if err := remote.Write(reference, f.Image, remote.WithContext(ctx)); err != nil {
+	l := log.FromContext(ctx)
+	_ = l
+
+	resolver := docker.NewResolver(docker.ResolverOptions{})
+
+	l.Infof("Copying to %s", reference.Name())
+	pushedDesc, err := oras.Push(ctx, resolver, reference.Name(), f.store, f.descs)
+	if err != nil {
 		return err
 	}
 
+	l.Infof("Copied with descriptor: %s", pushedDesc.Digest.String())
 	return nil
 }

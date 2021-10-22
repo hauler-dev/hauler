@@ -32,90 +32,6 @@ type Store struct {
 	server *httptest.Server
 }
 
-func (r *Store) AddImage(ctx context.Context, content content.Oci, ref name.Reference) error {
-	l := log.FromContext(ctx)
-
-	if err := r.precheck(); err != nil {
-		return err
-	}
-
-	relocatedRef := r.relocateReference(ref)
-
-	l.Infof("Adding %s to store", relocatedRef.Name())
-	if err := content.Copy(ctx, relocatedRef); err != nil {
-		return err
-	}
-
-	// c := make(chan v1.Update, 100)
-	//
-	// l.Infof("Adding %s to store", relocatedRef.Name())
-	// if err := remote.Write(relocatedRef, content, remote.WithProgress(c), remote.WithContext(ctx)); err != nil {
-	// 	return err
-	// }
-
-	// total, _ := content.Size()
-	// fmt.Println(total)
-	// bar := progressbar.DefaultBytes(total, "downloading")
-	// for u := range c {
-	// 	bar.Add(int(u.Complete))
-	// 	l.Infof("%d/%d", u.Complete, u.Total)
-	// }
-
-	return nil
-}
-
-func (r *Store) relocateReference(ref name.Reference) name.Reference {
-	var sep string
-	if _, err := name.NewDigest(ref.Name()); err == nil {
-		sep = "@"
-	} else {
-		sep = ":"
-	}
-	relocatedRef, _ := name.ParseReference(
-		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		name.WithDefaultRegistry(r.registryURL()),
-	)
-	return relocatedRef
-}
-
-// Add will add an oci artifact to the registry store
-func (r *Store) Add(ctx context.Context, c content.Content, opts ...content.Option) error {
-	if err := r.precheck(); err != nil {
-		return err
-	}
-
-	if err := c.Relocate(ctx, r.registryURL(), opts...); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Remove will remove an oci artifact from the registry store
-func (r *Store) Remove() error {
-	if err := r.precheck(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// ListManifests will list all manifests in the registry store
-func (r *Store) ListManifests() error {
-	if err := r.precheck(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// ListReferences will list all references in the registry store
-func (r *Store) ListReferences() error {
-	if err := r.precheck(); err != nil {
-		return err
-	}
-	return nil
-}
-
 // NewStore creates a new registry store, designed strictly for use within haulers embedded operations and _not_ for serving
 func NewStore(ctx context.Context, dataDir string) *Store {
 	cfg := &configuration.Configuration{
@@ -142,30 +58,69 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 }
 
 // Start will create a new server and start it, it's up to the consumer to close it
-func (r *Store) Start() *httptest.Server {
-	server := httptest.NewServer(r.handler)
-	r.server = server
+func (s *Store) Start() *httptest.Server {
+	server := httptest.NewServer(s.handler)
+	s.server = server
 	return server
 }
 
-func (r *Store) Stop() {
-	r.server.Close()
-	r.server = nil
+func (s *Store) Stop() {
+	s.server.Close()
+	s.server = nil
 	return
+}
+
+func (s *Store) Add(ctx context.Context, oci content.Oci, ref name.Reference) error {
+	l := log.FromContext(ctx)
+
+	if err := s.precheck(); err != nil {
+		return err
+	}
+
+	relocatedRef := s.RelocateReference(ref)
+
+	l.Debugf("Relocating content to store: %s --> %s", ref.Name(), relocatedRef.Name())
+	if err := oci.Copy(ctx, relocatedRef); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Remove will remove an oci artifact from the registry store
+func (s *Store) Remove() error {
+	if err := s.precheck(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) RelocateReference(ref name.Reference) name.Reference {
+	var sep string
+	if _, err := name.NewDigest(ref.Name()); err == nil {
+		sep = "@"
+	} else {
+		sep = ":"
+	}
+	relocatedRef, _ := name.ParseReference(
+		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
+		name.WithDefaultRegistry(s.registryURL()),
+	)
+	return relocatedRef
 }
 
 // precheck checks whether server is appropriately started and errors if it's not
 // 		used to safely run Store operations without fear of panics
-func (r *Store) precheck() error {
-	if r.server == nil || r.server.URL == "" {
+func (s *Store) precheck() error {
+	if s.server == nil || s.server.URL == "" {
 		return fmt.Errorf("server is not started yet")
 	}
 	return nil
 }
 
 // registryURL returns the registries URL without the protocol, suitable for image relocation operations
-func (r *Store) registryURL() string {
-	return httpRegex.ReplaceAllString(r.server.URL, "")
+func (s *Store) registryURL() string {
+	return httpRegex.ReplaceAllString(s.server.URL, "")
 }
 
 func alive(path string, handler http.Handler) http.Handler {

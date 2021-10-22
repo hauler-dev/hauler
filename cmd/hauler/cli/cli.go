@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -15,6 +16,7 @@ import (
 type rootOpts struct {
 	logLevel string
 	dataDir  string
+	cacheDir string
 }
 
 var ro = &rootOpts{}
@@ -34,13 +36,13 @@ func New() *cobra.Command {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
 	pf.StringVar(&ro.dataDir, "content-dir", "", "Location of where to create and store contents (defaults to ~/.local/hauler)")
+	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to XDG_CACHE_DIR/hauler)")
 
 	// Add subcommands
-	// addGet(cmd)
-	// addAdd(cmd)
-	// addSave(cmd)
-	// addLoad(cmd)
-	// addServe(cmd)
+	addGet(cmd)
+	addSave(cmd)
+	addLoad(cmd)
+	addServe(cmd)
 	addStore(cmd)
 
 	return cmd
@@ -80,4 +82,29 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 
 	s := store.NewStore(ctx, dir)
 	return s, nil
+}
+
+func (o *rootOpts) getCache(ctx context.Context) (*cache.BoltDB, error) {
+	dir := o.cacheDir
+
+	if o.cacheDir == "" {
+		ch, err := os.UserCacheDir()
+		if err != nil {
+			return nil, err
+		}
+
+		dir = filepath.Join(ch, "hauler")
+	}
+
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println(abs)
+	if err := os.MkdirAll(abs, os.ModePerm); err != nil {
+		return nil, err
+	}
+
+	return cache.NewBoltDB(abs, "cache")
 }
