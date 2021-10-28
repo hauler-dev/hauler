@@ -8,7 +8,8 @@ import (
 
 func addStore(parent *cobra.Command) {
 	cmd := &cobra.Command{
-		Use: "store",
+		Use:   "store",
+		Short: "Interact with hauler's content store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -26,8 +27,9 @@ func addStoreGet() *cobra.Command {
 	o := &store.GetOpts{}
 
 	cmd := &cobra.Command{
-		Use:  "get",
-		Args: cobra.ExactArgs(1),
+		Use:   "get",
+		Short: "Get content from hauler's embedded content store",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -48,7 +50,8 @@ func addStoreSync() *cobra.Command {
 	o := &store.SyncOpts{}
 
 	cmd := &cobra.Command{
-		Use: "sync",
+		Use:   "sync",
+		Short: "Sync content to hauler's embedded content store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

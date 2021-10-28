@@ -1,15 +1,18 @@
 package store
 
 import (
+	"bufio"
 	"context"
+	"io"
 	"os"
-	"path"
 
-	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/rancher/wrangler/pkg/yaml"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/content"
+	"github.com/rancherfederal/hauler/pkg/content/chart"
+	"github.com/rancherfederal/hauler/pkg/content/driver"
 	"github.com/rancherfederal/hauler/pkg/content/file"
 	"github.com/rancherfederal/hauler/pkg/content/image"
 	"github.com/rancherfederal/hauler/pkg/log"
@@ -17,59 +20,108 @@ import (
 )
 
 type SyncOpts struct {
-	ContentFiles string
+	ContentFiles []string
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.ContentFiles, "files", "f", "", "Path to content files")
+	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
 }
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 	l := log.FromContext(ctx)
 	l.Debugf("running cli command `hauler store sync`")
 
-	s.Start()
-	defer s.Stop()
+	s.Open()
+	defer s.Close()
 
-	var cnt v1alpha1.Content
-	data, err := os.ReadFile(o.ContentFiles)
-	if err != nil {
-		return err
-	}
-
-	if err = yaml.Unmarshal(data, &cnt); err != nil {
-		return err
-	}
-
-	l.Infof("Syncing store with lock: '%s'", cnt.Name)
-
-	for _, c := range cnt.Spec.Files {
-		f, err := file.NewFile(c, "")
+	for _, filename := range o.ContentFiles {
+		l.Debugf("Syncing content file: '%s'", filename)
+		fi, err := os.Open(filename)
 		if err != nil {
 			return err
 		}
 
-		ref, _ := name.ParseReference(path.Join("hauler", c.Name))
-		if err := s.Add(ctx, f, ref); err != nil {
-			return err
-		}
-	}
+		reader := yaml.NewYAMLReader(bufio.NewReader(fi))
 
-	for _, c := range cnt.Spec.Images {
-		i, err := image.NewImage(c.Ref)
-		if err != nil {
-			return err
-		}
+		var docs [][]byte
+		for {
+			raw, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
 
-		ref, err := name.ParseReference(c.Ref)
-		if err != nil {
-			return err
+			docs = append(docs, raw)
 		}
 
-		if err := s.Add(ctx, i, ref); err != nil {
-			return err
+		for _, doc := range docs {
+			gvk, err := content.ValidateType(doc)
+			if err != nil {
+				return err
+			}
+
+			l.Infof("Syncing content from: '%s'", gvk.String())
+
+			switch gvk.Kind {
+			case v1alpha1.FilesContentKind:
+				var cfg v1alpha1.Files
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				for _, f := range cfg.Spec.Files {
+					oci := file.NewFile(f)
+					if err := s.Add(ctx, oci); err != nil {
+						return err
+					}
+				}
+
+			case v1alpha1.ImagesContentKind:
+				var cfg v1alpha1.Images
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				for _, i := range cfg.Spec.Images {
+					oci := image.NewImage(i)
+
+					if err := s.Add(ctx, oci); err != nil {
+						return err
+					}
+				}
+
+			case v1alpha1.ChartsContentKind:
+				var cfg v1alpha1.Charts
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				for _, c := range cfg.Spec.Charts {
+					oci := chart.NewChart(c)
+					if err := s.Add(ctx, oci); err != nil {
+						return err
+					}
+				}
+
+			case v1alpha1.DriverContentKind:
+				var cfg v1alpha1.Driver
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				oci, err := driver.NewK3s(cfg.Spec.Version)
+				if err != nil {
+					return err
+				}
+
+				if err := s.Add(ctx, oci); err != nil {
+					return err
+				}
+			}
 		}
 	}
 

@@ -2,10 +2,14 @@ package get
 
 import (
 	"context"
-	"errors"
-	"strings"
+	"fmt"
 
+	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/remotes/docker"
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
@@ -23,40 +27,48 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 	f.StringVar(&o.DestinationDir, "dir", "", "Directory to save contents to (defaults to current directory)")
 }
 
-func Cmd(ctx context.Context, o *Opts, ref string) error {
+func Cmd(ctx context.Context, o *Opts, reference string) error {
 	l := log.FromContext(ctx)
 	l.Debugf("running command `hauler get`")
 
-	store := content.NewFileStore("")
-	defer store.Close()
+	cs := content.NewFileStore(o.DestinationDir)
+	defer cs.Close()
 
-	resolver := docker.NewResolver(docker.ResolverOptions{})
-
-	if !hasRegistry(ref) {
-		// Assume we're trying to get something from the local store
-		return errors.New("no registry detected in reference. If you're trying to fetch content from hauler's embedded store, please use `hauler store get`")
-	}
-
-	l.Infof("Getting %s", ref)
-	desc, _, err := oras.Pull(ctx, resolver, ref, store)
+	ref, err := name.ParseReference(reference)
 	if err != nil {
 		return err
 	}
 
-	l.Infof("Fetched '%s' of type '%s'", desc.Digest.String(), desc.MediaType)
+	resolver := docker.NewResolver(docker.ResolverOptions{})
 
-	return nil
-}
-
-func hasRegistry(name string) bool {
-	var registry string
-	parts := strings.SplitN(name, "/", 2)
-	if len(parts) == 2 && (strings.ContainsRune(parts[0], '.') || strings.ContainsRune(parts[0], ':')) {
-		// The first part of the repository is treated as the registry domain
-		// iff it contains a '.' or ':' character, otherwise it is all repository
-		// and the domain defaults to Docker Hub.
-		registry = parts[0]
+	desc, err := remote.Get(ref)
+	if err != nil {
+		return err
 	}
 
-	return registry != ""
+	l.Debugf("Getting content of media type: %s", desc.MediaType)
+	switch desc.MediaType {
+	case ocispec.MediaTypeImageManifest:
+		desc, artifacts, err := oras.Pull(ctx, resolver, ref.Name(), cs, oras.WithPullBaseHandler())
+		if err != nil {
+			return err
+		}
+
+		// TODO: Better logging
+		_ = desc
+		_ = artifacts
+		// l.Infof("Downloaded %d artifacts: %s", len(artifacts), content.ResolveName(desc))
+
+	case images.MediaTypeDockerSchema2Manifest:
+		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+		if err != nil {
+			return err
+		}
+
+		_ = img
+	default:
+		return fmt.Errorf("unknown media type: %s", desc.MediaType)
+	}
+
+	return nil
 }

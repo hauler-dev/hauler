@@ -10,7 +10,8 @@ func addServe(parent *cobra.Command) {
 	o := &serve.Opts{}
 
 	cmd := &cobra.Command{
-		Use: "serve",
+		Use:   "serve",
+		Short: "Serve artifacts in hauler's embedded store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

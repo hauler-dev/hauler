@@ -20,10 +20,10 @@ import (
 )
 
 // ImagesInChart will render a chart and identify all dependent images from it
-func ImagesInChart(c *chart.Chart) ([]v1alpha1.Im, error) {
+func ImagesInChart(c *chart.Chart) (v1alpha1.Images, error) {
 	objs, err := template(c)
 	if err != nil {
-		return nil, err
+		return v1alpha1.Images{}, err
 	}
 
 	var imageRefs []string
@@ -52,12 +52,14 @@ func ImagesInChart(c *chart.Chart) ([]v1alpha1.Im, error) {
 		}
 	}
 
-	var ims []v1alpha1.Im
+	ims := v1alpha1.Images{
+		Spec: v1alpha1.ImageSpec{
+			Images: []v1alpha1.Image{},
+		},
+	}
+
 	for _, ref := range imageRefs {
-		i := v1alpha1.Im{
-			Ref: ref,
-		}
-		ims = append(ims, i)
+		ims.Spec.Images = append(ims.Spec.Images, v1alpha1.Image{Ref: ref})
 	}
 	return ims, nil
 }

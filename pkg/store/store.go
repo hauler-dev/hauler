@@ -14,12 +14,16 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sirupsen/logrus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/rancherfederal/hauler/pkg/content"
-	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-var httpRegex = regexp.MustCompile("https?://")
+var (
+	httpRegex = regexp.MustCompile("https?://")
+
+	contents = make(map[metav1.TypeMeta]content.Oci)
+)
 
 // Store is a simple wrapper around distribution/distribution to enable hauler's use case
 type Store struct {
@@ -57,42 +61,49 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 	}
 }
 
-// Start will create a new server and start it, it's up to the consumer to close it
-func (s *Store) Start() *httptest.Server {
+// TODO: Refactor to a feature register model for content types
+func Register(gvk metav1.TypeMeta, oci content.Oci) {
+	if oci == nil {
+		panic("store: Register content is nil")
+	}
+	if _, dup := contents[gvk]; dup {
+		panic("store: Register called twice for content " + gvk.String())
+	}
+	contents[gvk] = oci
+}
+
+// Open will create a new server and start it, it's up to the consumer to close it
+func (s *Store) Open() *httptest.Server {
 	server := httptest.NewServer(s.handler)
 	s.server = server
 	return server
 }
 
-func (s *Store) Stop() {
+func (s *Store) Close() {
 	s.server.Close()
 	s.server = nil
 	return
 }
 
-func (s *Store) Add(ctx context.Context, oci content.Oci, ref name.Reference) error {
-	l := log.FromContext(ctx)
-
-	if err := s.precheck(); err != nil {
-		return err
-	}
-
-	relocatedRef := s.RelocateReference(ref)
-
-	l.Debugf("Relocating content to store: %s --> %s", ref.Name(), relocatedRef.Name())
-	if err := oci.Copy(ctx, relocatedRef); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Remove will remove an oci artifact from the registry store
+// Remove TODO: will remove an oci artifact from the registry store
 func (s *Store) Remove() error {
 	if err := s.precheck(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func RelocateReference(ref name.Reference, registry string) (name.Reference, error) {
+	var sep string
+	if _, err := name.NewDigest(ref.Name()); err == nil {
+		sep = "@"
+	} else {
+		sep = ":"
+	}
+	return name.ParseReference(
+		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
+		name.WithDefaultRegistry(registry),
+	)
 }
 
 func (s *Store) RelocateReference(ref name.Reference) name.Reference {

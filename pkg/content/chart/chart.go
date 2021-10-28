@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 
@@ -12,13 +13,13 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"k8s.io/client-go/util/jsonpath"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
 
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
@@ -40,8 +41,7 @@ const (
 )
 
 type Chart struct {
-	chart *chart.Chart
-	data  []byte
+	cfg v1alpha1.Chart
 
 	resolver remotes.Resolver
 }
@@ -56,54 +56,56 @@ var defaultKnownImagePaths = []string{
 	"{.spec.containers[*].image}",
 }
 
-func NewChart(repo, name, version string) (*Chart, error) {
-	chartdata, err := fetch(repo, name, version)
-	if err != nil {
-		return nil, err
-	}
+func NewChart(cfg v1alpha1.Chart) Chart {
+	return Chart{
+		cfg: cfg,
 
-	ch, err := loader.LoadArchive(bytes.NewBuffer(chartdata))
-	if err != nil {
-		return nil, err
-	}
-
-	return &Chart{
-		chart: ch,
-		data:  chartdata,
-
-		// TODO: Does this ever need to change?
+		// TODO:
 		resolver: docker.NewResolver(docker.ResolverOptions{}),
-	}, nil
+	}
 }
 
-func (c *Chart) Copy(ctx context.Context, reference name.Reference) error {
+func (c Chart) Copy(ctx context.Context, registry string) error {
 	var (
 		s                  = content.NewMemoryStore()
 		l                  = log.FromContext(ctx)
 		contentDescriptors []ocispec.Descriptor
 	)
 
-	chartDescriptor := s.Add("", ChartLayerMediaType, c.data)
+	chartdata, err := fetch(c.cfg.Name, c.cfg.RepoURL, c.cfg.Version)
+	if err != nil {
+		return err
+	}
+
+	ch, err := loader.LoadArchive(bytes.NewBuffer(chartdata))
+	if err != nil {
+		return err
+	}
+
+	chartDescriptor := s.Add("", ChartLayerMediaType, chartdata)
 	contentDescriptors = append(contentDescriptors, chartDescriptor)
 
-	configDescriptor := s.Add("", ConfigMediaType, c.configData())
+	configData, _ := json.Marshal(ch.Metadata)
+	configDescriptor := s.Add("", ConfigMediaType, configData)
 
-	l.Infof("Copying to %s", reference.Name())
-	_, err := oras.Push(ctx, c.resolver, reference.Name(), s, contentDescriptors,
+	// TODO: Clean this up
+	ref, err := name.ParseReference(fmt.Sprintf("hauler/%s:%s", c.cfg.Name, c.cfg.Version), name.WithDefaultRegistry(registry))
+	if err != nil {
+		return err
+	}
+
+	l.Infof("Copying chart to: '%s'", ref.Name())
+	pushedDesc, err := oras.Push(ctx, c.resolver, ref.Name(), s, contentDescriptors,
 		oras.WithConfig(configDescriptor), oras.WithNameValidation(nil))
 	if err != nil {
 		return err
 	}
 
+	l.Debugf("Copied with descriptor: '%s'", pushedDesc.Digest.String())
 	return nil
 }
 
-func (c *Chart) configData() []byte {
-	data, _ := json.Marshal(c.chart.Metadata)
-	return data
-}
-
-func fetch(repo, name, version string) ([]byte, error) {
+func fetch(name, repo, version string) ([]byte, error) {
 	cpo := action.ChartPathOptions{
 		RepoURL: repo,
 		Version: version,

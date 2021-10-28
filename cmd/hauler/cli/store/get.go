@@ -4,11 +4,9 @@ import (
 	"context"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/spf13/cobra"
-	"oras.land/oras-go/pkg/content"
 
+	"github.com/rancherfederal/hauler/cmd/hauler/cli/get"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -27,13 +25,8 @@ func GetCmd(ctx context.Context, o *GetOpts, s *store.Store, reference string) e
 	l := log.FromContext(ctx)
 	l.Debugf("running command `hauler store get`")
 
-	s.Start()
-	defer s.Stop()
-
-	cs := content.NewFileStore("")
-	defer cs.Close()
-
-	// resolver := docker.NewResolver(docker.ResolverOptions{})
+	s.Open()
+	defer s.Close()
 
 	ref, err := name.ParseReference(reference)
 	if err != nil {
@@ -42,22 +35,9 @@ func GetCmd(ctx context.Context, o *GetOpts, s *store.Store, reference string) e
 
 	eref := s.RelocateReference(ref)
 
-	l.Infof("Getting %s", eref.Name())
-	// desc, _, err := oras.Pull(ctx, resolver, eref.Name(), cs)
-	// if err != nil {
-	// 	return err
-	// }
-	//
-	// l.Infof("Fetched '%s' of type '%s' with digest '%s'", eref.Name(), desc.MediaType, desc.Digest.String())
-
-	i, err := remote.Image(eref)
-	if err != nil {
-		return err
+	gopts := &get.Opts{
+		DestinationDir: o.DestinationDir,
 	}
 
-	if err := tarball.WriteToFile("wut.tar", eref, i); err != nil {
-		return err
-	}
-
-	return nil
+	return get.Cmd(ctx, gopts, eref.Name())
 }

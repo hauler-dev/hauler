@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -23,7 +22,8 @@ var ro = &rootOpts{}
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "hauler",
+		Use:   "hauler",
+		Short: "",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			log.FromContext(cmd.Context()).SetLevel(ro.logLevel)
 			return nil
@@ -82,29 +82,4 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 
 	s := store.NewStore(ctx, dir)
 	return s, nil
-}
-
-func (o *rootOpts) getCache(ctx context.Context) (*cache.BoltDB, error) {
-	dir := o.cacheDir
-
-	if o.cacheDir == "" {
-		ch, err := os.UserCacheDir()
-		if err != nil {
-			return nil, err
-		}
-
-		dir = filepath.Join(ch, "hauler")
-	}
-
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Println(abs)
-	if err := os.MkdirAll(abs, os.ModePerm); err != nil {
-		return nil, err
-	}
-
-	return cache.NewBoltDB(abs, "cache")
 }

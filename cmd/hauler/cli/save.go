@@ -10,8 +10,9 @@ func addSave(parent *cobra.Command) {
 	o := &save.Opts{}
 
 	cmd := &cobra.Command{
-		Use:  "save",
-		Args: cobra.ExactArgs(0),
+		Use:   "save",
+		Short: "Save hauler's store into a transportable compressed archive",
+		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

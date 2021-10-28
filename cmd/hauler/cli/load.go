@@ -10,8 +10,9 @@ func addLoad(parent *cobra.Command) {
 	o := &load.Opts{}
 
 	cmd := &cobra.Command{
-		Use:  "load",
-		Args: cobra.MinimumNArgs(1),
+		Use:   "load",
+		Short: "Load archived content into hauler's store",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

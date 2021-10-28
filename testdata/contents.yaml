@@ -1,0 +1,54 @@
+apiVersion: content.hauler.cattle.io/v1alpha1
+kind: Files
+metadata:
+  name: myfile
+spec:
+  files:
+    # hauler can save/redistribute files on disk
+    - ref: testdata/content-a.yaml
+
+    # when directories are specified, they will be archived and stored as a file
+    - ref: testdata/
+
+    # hauler can also fetch remote content, and will "smartly" identify filenames _when possible_
+    #   filename below = "k3s-airgap-images-arm64.tar.zst"
+    - ref: "https://github.com/k3s-io/k3s/releases/download/v1.22.2%2Bk3s2/k3s-airgap-images-arm64.tar.zst"
+
+    # when not possible to identify a filename from remote content, a name should be specified
+    - ref: https://get.k3s.io
+      name: get-k3s.sh
+
+---
+apiVersion: content.hauler.cattle.io/v1alpha1
+kind: Images
+metadata:
+  name: myimage
+spec:
+  images:
+    # images can be referenced by their tag
+    - ref: rancher/k3s:v1.22.2-k3s2
+
+    # or by their digest:
+    - ref: registry@sha256:42043edfae481178f07aa077fa872fcc242e276d302f4ac2026d9d2eb65b955f
+
+---
+apiVersion: content.hauler.cattle.io/v1alpha1
+kind: Charts
+metadata:
+  name: mychart
+spec:
+  charts:
+    # charts are also fetched and served as OCI content (currently experimental in helm)
+    #   HELM_EXPERIMENTAL_OCI=1 helm chart pull <hauler-registry>/hauler/rancher:2.6.2
+    - name: rancher
+      repoURL: https://releases.rancher.com/server-charts/latest
+      version: 2.6.2
+
+---
+apiVersion: content.hauler.cattle.io/v1alpha1
+kind: Driver
+metadata:
+  name: mydriver
+spec:
+  type: k3s
+  version: v1.22.2+k3s2
