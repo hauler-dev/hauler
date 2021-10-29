@@ -1,22 +1,29 @@
 package log
 
 import (
-	"github.com/pterm/pterm"
+	"context"
 	"io"
+	"os"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type Logger interface {
+	SetLevel(string)
+	With(Fields) *logger
+	WithContext(context.Context) context.Context
 	Errorf(string, ...interface{})
 	Infof(string, ...interface{})
 	Warnf(string, ...interface{})
 	Debugf(string, ...interface{})
-	Successf(string, ...interface{})
 }
 
-type standardLogger struct {
-	//TODO: Actually check this
-	level string
+type logger struct {
+	zl zerolog.Logger
 }
+
+type Fields map[string]string
 
 type Event struct {
 	id      int
@@ -27,47 +34,60 @@ var (
 	invalidArgMessage = Event{1, "Invalid arg: %s"}
 )
 
-func NewLogger(out io.Writer) *standardLogger {
-	return &standardLogger{}
-}
-
-func (l *standardLogger) Errorf(format string, args ...interface{}) {
-	l.logf("error", format, args...)
-}
-
-func (l *standardLogger) Infof(format string, args ...interface{}) {
-	l.logf("info", format, args...)
-}
-
-func (l *standardLogger) Warnf(format string, args ...interface{}) {
-	l.logf("warn", format, args...)
-}
-
-func (l *standardLogger) Debugf(format string, args ...interface{}) {
-	l.logf("debug", format, args...)
-}
-
-func (l *standardLogger) Successf(format string, args ...interface{}) {
-	l.logf("success", format, args...)
-}
-
-func (l *standardLogger) logf(level string, format string, args ...interface{}) {
-	switch level {
-	case "debug":
-		pterm.Debug.Printfln(format, args...)
-	case "info":
-		pterm.Info.Printfln(format, args...)
-	case "warn":
-		pterm.Warning.Printfln(format, args...)
-	case "success":
-		pterm.Success.Printfln(format, args...)
-	case "error":
-		pterm.Error.Printfln(format, args...)
-	default:
-		pterm.Error.Printfln("%s is not a valid log level", level)
+func NewLogger(out io.Writer) Logger {
+	l := log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	return &logger{
+		zl: l.With().Timestamp().Logger(),
 	}
 }
 
-func (l *standardLogger) InvalidArg(arg string) {
+func FromContext(ctx context.Context) Logger {
+	zl := zerolog.Ctx(ctx)
+	return &logger{
+		zl: *zl,
+	}
+}
+
+func (l *logger) SetLevel(level string) {
+	lvl, err := zerolog.ParseLevel(level)
+	if err != nil {
+		lvl, _ = zerolog.ParseLevel("info")
+	}
+
+	zerolog.SetGlobalLevel(lvl)
+}
+
+func (l *logger) WithContext(ctx context.Context) context.Context {
+	return l.zl.WithContext(ctx)
+}
+
+func (l *logger) With(fields Fields) *logger {
+	zl := l.zl.With()
+	for k, v := range fields {
+		zl = zl.Str(k, v)
+	}
+
+	return &logger{
+		zl: zl.Logger(),
+	}
+}
+
+func (l *logger) Errorf(format string, args ...interface{}) {
+	l.zl.Error().Msgf(format, args...)
+}
+
+func (l *logger) Infof(format string, args ...interface{}) {
+	l.zl.Info().Msgf(format, args...)
+}
+
+func (l *logger) Warnf(format string, args ...interface{}) {
+	l.zl.Warn().Msgf(format, args...)
+}
+
+func (l *logger) Debugf(format string, args ...interface{}) {
+	l.zl.Debug().Msgf(format, args...)
+}
+
+func (l *logger) InvalidArg(arg string) {
 	l.Errorf(invalidArgMessage.message, arg)
 }

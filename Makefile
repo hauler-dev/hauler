@@ -12,6 +12,9 @@ all: fmt vet install test
 build:
 	mkdir bin;\
 	$(GO_BUILD_ENV) go build -o bin ./cmd/...;\
+
+build-all: fmt vet
+	goreleaser build --rm-dist --snapshot
 	
 install:
 	$(GO_BUILD_ENV) go install

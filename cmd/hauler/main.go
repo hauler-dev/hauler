@@ -1,15 +1,21 @@
 package main
 
 import (
-	"log"
+	"context"
+	"os"
 
-	"github.com/rancherfederal/hauler/cmd/hauler/app"
+	"github.com/rancherfederal/hauler/cmd/hauler/cli"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 func main() {
-	root := app.NewRootCommand()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	if err := root.Execute(); err != nil {
-		log.Fatalln(err)
+	logger := log.NewLogger(os.Stdout)
+	ctx = logger.WithContext(ctx)
+
+	if err := cli.New().ExecuteContext(ctx); err != nil {
+		logger.Errorf("%v", err)
 	}
 }
