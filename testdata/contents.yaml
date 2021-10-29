@@ -5,7 +5,7 @@ metadata:
 spec:
   files:
     # hauler can save/redistribute files on disk
-    - ref: testdata/content-a.yaml
+    - ref: testdata/contents.yaml
 
     # when directories are specified, they will be archived and stored as a file
     - ref: testdata/
@@ -52,3 +52,13 @@ metadata:
 spec:
   type: k3s
   version: v1.22.2+k3s2
+
+
+---
+apiVersion: collection.hauler.cattle.io/v1alpha1
+kind: K3s
+metadata:
+  name: mycollection
+spec:
+  version: 0.1.0
+
