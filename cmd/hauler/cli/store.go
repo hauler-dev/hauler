@@ -109,7 +109,7 @@ func addStoreServe() *cobra.Command {
 				return err
 			}
 
-			return store.ServeCmd(ctx, o, s.DataDir)
+			return store.ServeCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)
