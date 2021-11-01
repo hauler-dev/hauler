@@ -21,6 +21,9 @@ func addStore(parent *cobra.Command) {
 		addStoreLoad(),
 		addStoreSave(),
 		addStoreServe(),
+
+		// TODO: Remove this in favor of sync only
+		addStoreAdd(),
 	)
 
 	parent.AddCommand(cmd)
@@ -136,6 +139,104 @@ func addStoreSave() *cobra.Command {
 		},
 	}
 	o.AddArgs(cmd)
+
+	return cmd
+}
+
+func addStoreAdd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "add",
+		Short: "Add content to store",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+
+	cmd.AddCommand(
+		addStoreAddFile(),
+		addStoreAddImage(),
+		addStoreAddChart(),
+	)
+
+	return cmd
+}
+
+func addStoreAddFile() *cobra.Command {
+	o := &store.AddFileOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "file",
+		Short: "Add a file to the content store",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			ref := args[0]
+
+			return store.AddFileCmd(ctx, o, s, ref)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreAddImage() *cobra.Command {
+	o := &store.AddImageOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "image",
+		Short: "Add an image to the content store",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			ref := args[0]
+
+			return store.AddImageCmd(ctx, o, s, ref)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreAddChart() *cobra.Command {
+	o := &store.AddChartOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "chart",
+		Short: "Add a chart to the content store",
+		Example: `
+# add a chart
+hauler store add longhorn --repo "https://charts.longhorn.io"
+
+# add a specific version of a chart
+hauler store add chart rancher --repo "https://releases.rancher.com/server-charts/latest" --version "2.6.2"
+`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.AddChartCmd(ctx, o, s, args[0])
+		},
+	}
+	o.AddFlags(cmd)
 
 	return cmd
 }
