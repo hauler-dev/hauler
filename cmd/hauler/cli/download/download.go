@@ -1,4 +1,4 @@
-package get
+package download
 
 import (
 	"context"
@@ -29,7 +29,7 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 
 func Cmd(ctx context.Context, o *Opts, reference string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler get`")
+	l.Debugf("running command `hauler download`")
 
 	cs := content.NewFileStore(o.DestinationDir)
 	defer cs.Close()

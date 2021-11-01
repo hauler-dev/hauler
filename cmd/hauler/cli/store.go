@@ -9,7 +9,7 @@ import (
 func addStore(parent *cobra.Command) {
 	cmd := &cobra.Command{
 		Use:   "store",
-		Short: "Interact with hauler's content store",
+		Short: "Interact with hauler's embedded content store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -30,9 +30,10 @@ func addStoreExtract() *cobra.Command {
 	o := &store.ExtractOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "extract",
-		Short: "Extract content from the embedded content store",
-		Args:  cobra.ExactArgs(1),
+		Use:     "extract",
+		Short:   "Extract content from the store to disk",
+		Aliases: []string{"x"},
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -76,7 +77,7 @@ func addStoreLoad() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "load",
-		Short: "Load archived content into the embedded content store",
+		Short: "Load a content store from a store archive",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -99,7 +100,7 @@ func addStoreServe() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Serve artifacts from the embedded content store",
+		Short: "Expose the content of a local store through an OCI compliant server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -121,7 +122,7 @@ func addStoreSave() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "save",
-		Short: "Save the embedded content store into a transportable compressed archive",
+		Short: "Save a content store to a store archive",
 		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

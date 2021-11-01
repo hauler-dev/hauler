@@ -39,10 +39,7 @@ func New() *cobra.Command {
 	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to XDG_CACHE_DIR/hauler)")
 
 	// Add subcommands
-	addGet(cmd)
-	addStoreSave(cmd)
-	addStoreLoad(cmd)
-	addStoreServe(cmd)
+	addDownload(cmd)
 	addStore(cmd)
 
 	return cmd

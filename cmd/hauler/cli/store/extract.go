@@ -6,7 +6,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/cmd/hauler/cli/get"
+	"github.com/rancherfederal/hauler/cmd/hauler/cli/download"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -35,9 +35,9 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, reference s
 
 	eref := s.RelocateReference(ref)
 
-	gopts := &get.Opts{
+	gopts := &download.Opts{
 		DestinationDir: o.DestinationDir,
 	}
 
-	return get.Cmd(ctx, gopts, eref.Name())
+	return download.Cmd(ctx, gopts, eref.Name())
 }
