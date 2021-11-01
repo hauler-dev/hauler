@@ -1,4 +1,4 @@
-package serve
+package store
 
 import (
 	"context"
@@ -12,21 +12,21 @@ import (
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-type Opts struct {
+type ServeOpts struct {
 	Port       int
 	configFile string
 }
 
-func (o *Opts) AddFlags(cmd *cobra.Command) {
+func (o *ServeOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on")
 }
 
-// Cmd does
-func Cmd(ctx context.Context, o *Opts, dir string) error {
+// ServeCmd does
+func ServeCmd(ctx context.Context, o *ServeOpts, dir string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler serve`")
+	l.Debugf("running command `hauler store serve`")
 
 	cfg := &configuration.Configuration{
 		Version: "0.1",

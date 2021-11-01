@@ -17,18 +17,21 @@ func addStore(parent *cobra.Command) {
 
 	cmd.AddCommand(
 		addStoreSync(),
-		addStoreGet(),
+		addStoreExtract(),
+		addStoreLoad(),
+		addStoreSave(),
+		addStoreServe(),
 	)
 
 	parent.AddCommand(cmd)
 }
 
-func addStoreGet() *cobra.Command {
-	o := &store.GetOpts{}
+func addStoreExtract() *cobra.Command {
+	o := &store.ExtractOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "get",
-		Short: "Get content from hauler's embedded content store",
+		Use:   "extract",
+		Short: "Extract content from the embedded content store",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -38,7 +41,7 @@ func addStoreGet() *cobra.Command {
 				return err
 			}
 
-			return store.GetCmd(ctx, o, s, args[0])
+			return store.ExtractCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddArgs(cmd)
@@ -51,7 +54,7 @@ func addStoreSync() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Sync content to hauler's embedded content store",
+		Short: "Sync content to the embedded content store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -64,6 +67,74 @@ func addStoreSync() *cobra.Command {
 		},
 	}
 	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreLoad() *cobra.Command {
+	o := &store.LoadOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "load",
+		Short: "Load archived content into the embedded content store",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.LoadCmd(ctx, o, s.DataDir, args...)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreServe() *cobra.Command {
+	o := &store.ServeOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Serve artifacts from the embedded content store",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.ServeCmd(ctx, o, s.DataDir)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreSave() *cobra.Command {
+	o := &store.SaveOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "save",
+		Short: "Save the embedded content store into a transportable compressed archive",
+		Args:  cobra.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.SaveCmd(ctx, o, o.FileName, s.DataDir)
+		},
+	}
+	o.AddArgs(cmd)
 
 	return cmd
 }

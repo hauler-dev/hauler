@@ -11,19 +11,19 @@ import (
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type GetOpts struct {
+type ExtractOpts struct {
 	DestinationDir string
 }
 
-func (o *GetOpts) AddArgs(cmd *cobra.Command) {
+func (o *ExtractOpts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVar(&o.DestinationDir, "dir", "", "Directory to save contents to (defaults to current directory)")
 }
 
-func GetCmd(ctx context.Context, o *GetOpts, s *store.Store, reference string) error {
+func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, reference string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler store get`")
+	l.Debugf("running command `hauler store extract`")
 
 	s.Open()
 	defer s.Close()

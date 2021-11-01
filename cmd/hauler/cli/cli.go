@@ -40,9 +40,9 @@ func New() *cobra.Command {
 
 	// Add subcommands
 	addGet(cmd)
-	addSave(cmd)
-	addLoad(cmd)
-	addServe(cmd)
+	addStoreSave(cmd)
+	addStoreLoad(cmd)
+	addStoreServe(cmd)
 	addStore(cmd)
 
 	return cmd

@@ -1,20 +1,26 @@
-package load
+package store
 
 import (
 	"context"
 
 	"github.com/mholt/archiver/v3"
+	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-type Opts struct{}
+type LoadOpts struct{}
 
-// Cmd
+func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+	_ = f
+}
+
+// LoadCmd
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
-func Cmd(ctx context.Context, o *Opts, dir string, archiveRefs ...string) error {
+func LoadCmd(ctx context.Context, o *LoadOpts, dir string, archiveRefs ...string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler load`")
+	l.Debugf("running command `hauler store load`")
 
 	// TODO: Support more formats?
 	a := archiver.NewTarZstd()
