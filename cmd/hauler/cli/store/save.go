@@ -1,4 +1,4 @@
-package save
+package store
 
 import (
 	"context"
@@ -11,21 +11,21 @@ import (
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-type Opts struct {
+type SaveOpts struct {
 	FileName string
 }
 
-func (o *Opts) AddArgs(cmd *cobra.Command) {
+func (o *SaveOpts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVarP(&o.FileName, "filename", "f", "pkg.tar.zst", "Name of archive")
 }
 
-// Cmd
+// SaveCmd
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
-func Cmd(ctx context.Context, o *Opts, outputFile string, dir string) error {
+func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler save`")
+	l.Debugf("running command `hauler store save`")
 
 	// TODO: Support more formats?
 	a := archiver.NewTarZstd()

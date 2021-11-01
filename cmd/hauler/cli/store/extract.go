@@ -6,24 +6,24 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/cmd/hauler/cli/get"
+	"github.com/rancherfederal/hauler/cmd/hauler/cli/download"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type GetOpts struct {
+type ExtractOpts struct {
 	DestinationDir string
 }
 
-func (o *GetOpts) AddArgs(cmd *cobra.Command) {
+func (o *ExtractOpts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVar(&o.DestinationDir, "dir", "", "Directory to save contents to (defaults to current directory)")
 }
 
-func GetCmd(ctx context.Context, o *GetOpts, s *store.Store, reference string) error {
+func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, reference string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler store get`")
+	l.Debugf("running command `hauler store extract`")
 
 	s.Open()
 	defer s.Close()
@@ -35,9 +35,9 @@ func GetCmd(ctx context.Context, o *GetOpts, s *store.Store, reference string) e
 
 	eref := s.RelocateReference(ref)
 
-	gopts := &get.Opts{
+	gopts := &download.Opts{
 		DestinationDir: o.DestinationDir,
 	}
 
-	return get.Cmd(ctx, gopts, eref.Name())
+	return download.Cmd(ctx, gopts, eref.Name())
 }
