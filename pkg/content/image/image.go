@@ -21,16 +21,6 @@ func NewImage(cfg v1alpha1.Image) Image {
 	}
 }
 
-func (i Image) Ref(opts ...name.Option) (name.Reference, error) {
-	return name.ParseReference(i.cfg.Ref, opts...)
-}
-
-// Repo returns the repository component of the image
-func (i Image) Repo() string {
-	ref, _ := name.ParseReference(i.cfg.Ref)
-	return ref.Context().RepositoryStr()
-}
-
 func (i Image) Copy(ctx context.Context, registry string) error {
 	l := log.FromContext(ctx)
 

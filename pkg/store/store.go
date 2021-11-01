@@ -115,7 +115,7 @@ func (s *Store) RelocateReference(ref name.Reference) name.Reference {
 	}
 	relocatedRef, _ := name.ParseReference(
 		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		name.WithDefaultRegistry(s.registryURL()),
+		name.WithDefaultRegistry(s.RegistryURL()),
 	)
 	return relocatedRef
 }
@@ -129,8 +129,8 @@ func (s *Store) precheck() error {
 	return nil
 }
 
-// registryURL returns the registries URL without the protocol, suitable for image relocation operations
-func (s *Store) registryURL() string {
+// RegistryURL returns the registries URL without the protocol, suitable for image relocation operations
+func (s *Store) RegistryURL() string {
 	return httpRegex.ReplaceAllString(s.server.URL, "")
 }
 
