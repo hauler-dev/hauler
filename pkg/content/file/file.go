@@ -2,7 +2,6 @@ package file
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -25,9 +24,6 @@ const (
 )
 
 type File struct {
-	name string
-	raw  string
-
 	cfg v1alpha1.File
 
 	content getter
@@ -54,27 +50,6 @@ func NewFile(cfg v1alpha1.File) File {
 	}
 }
 
-func (f *File) Ref(opts ...name.Option) (name.Reference, error) {
-	cname := f.content.name()
-	if f.name != "" {
-		cname = f.name
-	}
-
-	if cname == "" {
-		return nil, fmt.Errorf("cannot identify name from %s", f.raw)
-	}
-
-	return name.ParseReference(cname, opts...)
-}
-
-func (f *File) Repo() string {
-	cname := f.content.name()
-	if f.name != "" {
-		cname = f.name
-	}
-	return path.Join("hauler", cname)
-}
-
 func (f File) Copy(ctx context.Context, registry string) error {
 	l := log.FromContext(ctx)
 
@@ -88,8 +63,8 @@ func (f File) Copy(ctx context.Context, registry string) error {
 	}
 
 	cname := f.content.name()
-	if f.name != "" {
-		cname = f.name
+	if f.cfg.Name != "" {
+		cname = f.cfg.Name
 	}
 
 	desc := fs.Add(cname, f.content.mediaType(), data)

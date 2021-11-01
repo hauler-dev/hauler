@@ -12,9 +12,9 @@ import (
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
-	"github.com/rancherfederal/hauler/pkg/content/driver"
 	"github.com/rancherfederal/hauler/pkg/content/file"
 	"github.com/rancherfederal/hauler/pkg/content/image"
+	"github.com/rancherfederal/hauler/pkg/content/k3s"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -113,7 +113,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 					return err
 				}
 
-				oci, err := driver.NewK3s(cfg.Spec.Version)
+				oci, err := k3s.NewK3s(cfg.Spec.Version)
 				if err != nil {
 					return err
 				}

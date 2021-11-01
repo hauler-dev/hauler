@@ -32,7 +32,7 @@ func (s *Store) Add(ctx context.Context, oci content.Oci, opts ...AddOption) err
 	if opt.repo == "" {
 	}
 
-	if err := oci.Copy(ctx, s.registryURL()); err != nil {
+	if err := oci.Copy(ctx, s.RegistryURL()); err != nil {
 		return err
 	}
 
