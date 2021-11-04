@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"strings"
 
 	"github.com/rancher/wrangler/pkg/yaml"
 	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
+	helmchart "helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/kube/fake"
 	"helm.sh/helm/v3/pkg/storage"
@@ -19,8 +20,18 @@ import (
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 )
 
+var defaultKnownImagePaths = []string{
+	// Deployments & DaemonSets
+	"{.spec.template.spec.initContainers[*].image}",
+	"{.spec.template.spec.containers[*].image}",
+
+	// Pods
+	"{.spec.initContainers[*].image}",
+	"{.spec.containers[*].image}",
+}
+
 // ImagesInChart will render a chart and identify all dependent images from it
-func ImagesInChart(c *chart.Chart) (v1alpha1.Images, error) {
+func ImagesInChart(c *helmchart.Chart) (v1alpha1.Images, error) {
 	objs, err := template(c)
 	if err != nil {
 		return v1alpha1.Images{}, err
@@ -64,7 +75,7 @@ func ImagesInChart(c *chart.Chart) (v1alpha1.Images, error) {
 	return ims, nil
 }
 
-func template(c *chart.Chart) ([]runtime.Object, error) {
+func template(c *helmchart.Chart) ([]runtime.Object, error) {
 	s := storage.Init(driver.NewMemory())
 
 	templateCfg := &action.Configuration{
@@ -92,4 +103,19 @@ func template(c *chart.Chart) ([]runtime.Object, error) {
 	}
 
 	return yaml.ToObjects(bytes.NewBufferString(release.Manifest))
+}
+
+func parseJSONPath(data interface{}, parser *jsonpath.JSONPath, template string) ([]string, error) {
+	buf := new(bytes.Buffer)
+	if err := parser.Parse(template); err != nil {
+		return nil, err
+	}
+
+	if err := parser.Execute(buf, data); err != nil {
+		return nil, err
+	}
+
+	f := func(s rune) bool { return s == ' ' }
+	r := strings.FieldsFunc(buf.String(), f)
+	return r, nil
 }

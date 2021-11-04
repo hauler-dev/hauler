@@ -16,13 +16,13 @@ import (
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/rancherfederal/hauler/pkg/content"
+	"github.com/rancherfederal/hauler/pkg/artifact/v1"
 )
 
 var (
 	httpRegex = regexp.MustCompile("https?://")
 
-	contents = make(map[metav1.TypeMeta]content.Oci)
+	contents = make(map[metav1.TypeMeta]v1.Oci)
 )
 
 // Store is a simple wrapper around distribution/distribution to enable hauler's use case
@@ -62,7 +62,7 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 }
 
 // TODO: Refactor to a feature register model for content types
-func Register(gvk metav1.TypeMeta, oci content.Oci) {
+func Register(gvk metav1.TypeMeta, oci v1.Oci) {
 	if oci == nil {
 		panic("store: Register content is nil")
 	}
@@ -93,16 +93,18 @@ func (s *Store) Remove() error {
 	return nil
 }
 
-func RelocateReference(ref name.Reference, registry string) (name.Reference, error) {
+func RelocateReference(ref name.Reference, registry string, opts ...name.Option) (name.Reference, error) {
 	var sep string
-	if _, err := name.NewDigest(ref.Name()); err == nil {
+	if _, err := name.NewDigest(ref.Name(), opts...); err == nil {
 		sep = "@"
 	} else {
 		sep = ":"
 	}
+
+	opts = append(opts, name.WithDefaultRegistry(registry))
 	return name.ParseReference(
 		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		name.WithDefaultRegistry(registry),
+		opts...,
 	)
 }
 

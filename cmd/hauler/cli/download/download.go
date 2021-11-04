@@ -4,15 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/containerd/containerd/images"
-	"github.com/containerd/containerd/remotes/docker"
-	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/oras"
 
 	"github.com/rancherfederal/hauler/pkg/log"
 )
@@ -39,36 +35,63 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 		return err
 	}
 
-	resolver := docker.NewResolver(docker.ResolverOptions{})
+	// resolver := docker.NewResolver(docker.ResolverOptions{})
 
 	desc, err := remote.Get(ref)
 	if err != nil {
 		return err
 	}
 
-	l.Debugf("Getting content of media type: %s", desc.MediaType)
-	switch desc.MediaType {
-	case ocispec.MediaTypeImageManifest:
-		desc, artifacts, err := oras.Pull(ctx, resolver, ref.Name(), cs, oras.WithPullBaseHandler())
-		if err != nil {
-			return err
-		}
+	l.Debugf("Got manifest of type: %s", desc.MediaType)
 
-		// TODO: Better logging
-		_ = desc
-		_ = artifacts
-		// l.Infof("Downloaded %d artifacts: %s", len(artifacts), content.ResolveName(desc))
+	// switch desc.MediaType {
+	// case ocispec.MediaTypeImageManifest:
+	// 	desc, artifacts, err := oras.Pull(ctx, resolver, ref.Name(), cs, oras.WithPullBaseHandler())
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	//
+	// 	// TODO: Better logging
+	// 	_ = desc
+	// 	_ = artifacts
+	// 	// l.Infof("Downloaded %d artifacts: %s", len(artifacts), content.ResolveName(desc))
+	//
+	// case images.MediaTypeDockerSchema2Manifest:
+	// 	img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	//
+	// 	_ = img
+	// default:
+	// 	return fmt.Errorf("unknown media type: %s", desc.MediaType)
+	// }
 
-	case images.MediaTypeDockerSchema2Manifest:
-		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
-		if err != nil {
-			return err
-		}
+	fmt.Println("media type: ", desc.MediaType.IsImage())
+	fmt.Print(string(desc.Manifest))
 
-		_ = img
-	default:
-		return fmt.Errorf("unknown media type: %s", desc.MediaType)
+	img, err := remote.Image(ref)
+	if err != nil {
+		return err
+	}
+
+	if err := tarball.WriteToFile("wut.tar", ref, img); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func getManifest(ctx context.Context, ref string) (*remote.Descriptor, error) {
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		return nil, fmt.Errorf("parsing reference %q: %v", ref, err)
+	}
+
+	desc, err := remote.Get(r, remote.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	return desc, nil
 }

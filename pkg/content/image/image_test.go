@@ -1,4 +1,4 @@
-package image
+package image_test
 
 import (
 	"context"
@@ -6,8 +6,9 @@ import (
 	"testing"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/content/image"
+	"github.com/rancherfederal/hauler/pkg/layout"
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 func TestImage_Copy(t *testing.T) {
@@ -21,9 +22,14 @@ func TestImage_Copy(t *testing.T) {
 	}
 	defer os.Remove(tmpdir)
 
-	s := store.NewStore(ctx, tmpdir)
-	s.Open()
-	defer s.Close()
+	p, err := layout.FromPath(tmpdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// s := store.NewStore(ctx, tmpdir)
+	// s.Open()
+	// defer s.Close()
 
 	type args struct {
 		ctx      context.Context
@@ -43,7 +49,7 @@ func TestImage_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				// registry: s.RegistryURL(),
 			},
 			wantErr: false,
 		},
@@ -54,18 +60,25 @@ func TestImage_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				// registry: s.RegistryURL(),
 			},
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			i := NewImage(tt.cfg)
-
-			if err := i.Copy(tt.args.ctx, tt.args.registry); (err != nil) != tt.wantErr {
-				t.Errorf("Copy() error = %v, wantErr %v", err, tt.wantErr)
+			i, err := image.NewImage(tt.cfg.Ref)
+			if err != nil {
+				t.Error(err)
 			}
+
+			if err := p.WriteOci(i); err != nil {
+				t.Error(err)
+			}
+
+			// if err := s.Add(tt.args.ctx, i, ref); (err != nil) != tt.wantErr {
+			// 	t.Errorf("Copy() error = %v, wantErr %v", err, tt.wantErr)
+			// }
 		})
 	}
 }

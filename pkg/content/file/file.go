@@ -1,157 +1,167 @@
 package file
 
 import (
-	"context"
+	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"path"
-	"path/filepath"
+	"strings"
 
-	"github.com/containerd/containerd/remotes/docker"
-	"github.com/google/go-containerregistry/pkg/name"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	orascontent "oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/oras"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/artifact/v1"
+	"github.com/rancherfederal/hauler/pkg/artifact/v1/types"
 )
 
 const (
 	LayerMediaType = "application/vnd.hauler.cattle.io-artifact"
 )
 
-type File struct {
-	cfg v1alpha1.File
+var _ v1.OCICore = (*file)(nil)
 
-	content getter
+// func (f *file) MediaType() types.MediaType {
+// 	return f.mediaType
+// }
+//
+// func (f *file) RawManifest() ([]byte, error) {
+// 	if err := f.compute(); err != nil {
+// 		return nil, err
+// 	}
+// 	return json.Marshal(f.manifest)
+// }
+//
+// func (f *file) RawConfig() ([]byte, error) {
+// 	if err := f.compute(); err != nil {
+// 		return nil, err
+// 	}
+// 	return json.Marshal(f.config)
+// }
+//
+// func (f *file) Layers() ([]gv1.Layer, error) {
+// 	if err := f.compute(); err != nil {
+// 		return nil, nil
+// 	}
+// 	return f.layers, nil
+// }
+//
+// func (f *file) compute() error {
+// 	if f.computed {
+// 		return nil
+// 	}
+//
+// 	c := &fileConfig{Sup: "mom"}
+//
+// 	digestMap := make(map[gv1.Hash]gv1.Layer)
+//
+// 	if f.manifest == nil {
+// 		ann := make(map[string]string, 0)
+// 		ann["donkey"] = "butt"
+// 		f.manifest = &gv1.Manifest{
+// 			SchemaVersion: 2,
+// 			MediaType:     "donkeybutt",
+// 			Annotations:   ann,
+// 		}
+// 	}
+//
+// 	manifest := f.manifest.DeepCopy()
+// 	manifestLayers := manifest.Layers
+//
+// 	for _, l := range f.layers {
+// 		if l == nil {
+// 			continue
+// 		}
+//
+// 		desc, err := partial.Descriptor(l)
+// 		if err != nil {
+// 			return err
+// 		}
+//
+// 		manifestLayers = append(manifestLayers, *desc)
+// 		digestMap[desc.Digest] = l
+// 	}
+//
+// 	manifest.Layers = manifestLayers
+//
+// 	f.manifest = manifest
+// 	f.config = c
+// 	f.digestMap = digestMap
+// 	f.computed = true
+// 	return nil
+// }
+
+type file struct {
+	v1.OCICore
+
+	computed bool
+	// manifest  *gv1.Manifest
+	// mediaType types.MediaType
+	config    *fileConfig
+	// layers    []gv1.Layer
+	// digestMap map[gv1.Hash]gv1.Layer
 }
 
-func NewFile(cfg v1alpha1.File) File {
-	u, err := url.Parse(cfg.Ref)
-	if err != nil {
-		return File{content: local(cfg.Ref)}
-	}
-
-	var g getter
-	switch u.Scheme {
-	case "http", "https":
-		g = https{u}
-
-	default:
-		g = local(cfg.Ref)
-	}
-
-	return File{
-		cfg:     cfg,
-		content: g,
-	}
+type fileConfig struct {
+	Sup string `json:"sup"`
 }
 
-func (f File) Copy(ctx context.Context, registry string) error {
-	l := log.FromContext(ctx)
-
-	resolver := docker.NewResolver(docker.ResolverOptions{})
-
-	// TODO: Should use a hybrid store that can mock out filenames
-	fs := orascontent.NewMemoryStore()
-	data, err := f.content.load()
-	if err != nil {
-		return err
-	}
-
-	cname := f.content.name()
-	if f.cfg.Name != "" {
-		cname = f.cfg.Name
-	}
-
-	desc := fs.Add(cname, f.content.mediaType(), data)
-
-	ref, err := name.ParseReference(path.Join("hauler", cname), name.WithDefaultRegistry(registry))
-	if err != nil {
-		return err
-	}
-
-	l.Infof("Copying file to: %s", ref.Name())
-	pushedDesc, err := oras.Push(ctx, resolver, ref.Name(), fs, []ocispec.Descriptor{desc})
-	if err != nil {
-		return err
-	}
-
-	l.Debugf("Copied with descriptor: %s", pushedDesc.Digest.String())
-	return nil
+func (c *fileConfig) Raw() ([]byte, error) {
+	return json.Marshal(c)
 }
 
-type getter interface {
-	load() ([]byte, error)
-	name() string
-	mediaType() string
-}
+func NewFile(ref string) (v1.OCICore, error) {
+	var getter v1.Getter
+	if strings.HasPrefix(ref, "http") || strings.HasPrefix(ref, "https") {
+		getter = remoteGetter(ref)
+	} else {
+		getter = localFileGetter(ref)
+	}
 
-type local string
-
-func (f local) load() ([]byte, error) {
-	fi, err := os.Stat(string(f))
+	var layers []gv1.Layer
+	layer, err := newLayer(getter)
 	if err != nil {
 		return nil, err
 	}
 
-	var data []byte
-	if fi.IsDir() {
-		data = []byte("")
-	} else {
-		data, err = os.ReadFile(string(f))
+	layers = append(layers, layer)
+
+	c, err := v1.Core(types.UnknownManifest, &fileConfig{}, layers)
+	if err != nil {
+		return nil, err
+	}
+
+	return &file{
+		OCICore: c,
+	}, nil
+}
+
+type layer struct {
+	*v1.Layer
+}
+
+func (l *layer) MediaType() (types.MediaType, error) {
+	return LayerMediaType, nil
+}
+
+func newLayer(getter v1.Getter) (gv1.Layer, error) {
+	ll, err := v1.NewLayer(getter)
+	if err != nil {
+		return nil, err
+	}
+	return ll, nil
+}
+
+func localFileGetter(path string) v1.Getter {
+	return func() (io.ReadCloser, error) {
+		return os.Open(path)
+	}
+}
+
+func remoteGetter(url string) v1.Getter {
+	return func() (io.ReadCloser, error) {
+		resp, err := http.Get(url)
 		if err != nil {
 			return nil, err
 		}
+		return resp.Body, nil
 	}
-
-	return data, nil
-}
-
-func (f local) name() string {
-	return filepath.Base(string(f))
-}
-
-func (f local) mediaType() string {
-	return "some-media-type"
-}
-
-type https struct {
-	url *url.URL
-}
-
-// TODO: Support auth
-func (f https) load() ([]byte, error) {
-	resp, err := http.Get(f.url.String())
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
-}
-
-func (f https) name() string {
-	resp, err := http.Get(f.url.String())
-	if err != nil {
-		return ""
-	}
-
-	switch resp.Header {
-
-	default:
-		return path.Base(f.url.String())
-	}
-}
-
-func (f https) mediaType() string {
-	return "some-remote-media-type"
 }

@@ -1,26 +1,18 @@
 package chart
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
+	"io"
 	"os"
-	"strings"
 
-	"github.com/containerd/containerd/remotes"
-	"github.com/containerd/containerd/remotes/docker"
-	"github.com/google/go-containerregistry/pkg/name"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	gmutate "github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
-	"k8s.io/client-go/util/jsonpath"
-	"oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/oras"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/artifact/v1"
+	"github.com/rancherfederal/hauler/pkg/artifact/v1/empty"
+	"github.com/rancherfederal/hauler/pkg/artifact/v1/mutate"
 )
 
 const (
@@ -40,101 +32,57 @@ const (
 	ProvLayerMediaType = "application/vnd.cncf.helm.chart.provenance.v1.prov"
 )
 
-type Chart struct {
-	cfg v1alpha1.Chart
 
-	resolver remotes.Resolver
-}
 
-var defaultKnownImagePaths = []string{
-	// Deployments & DaemonSets
-	"{.spec.template.spec.initContainers[*].image}",
-	"{.spec.template.spec.containers[*].image}",
-
-	// Pods
-	"{.spec.initContainers[*].image}",
-	"{.spec.containers[*].image}",
-}
-
-func NewChart(cfg v1alpha1.Chart) Chart {
-	return Chart{
-		cfg: cfg,
-
-		// TODO:
-		resolver: docker.NewResolver(docker.ResolverOptions{}),
-	}
-}
-
-func (c Chart) Copy(ctx context.Context, registry string) error {
-	var (
-		s                  = content.NewMemoryStore()
-		l                  = log.FromContext(ctx)
-		contentDescriptors []ocispec.Descriptor
-	)
-
-	chartdata, err := fetch(c.cfg.Name, c.cfg.RepoURL, c.cfg.Version)
-	if err != nil {
-		return err
-	}
-
-	ch, err := loader.LoadArchive(bytes.NewBuffer(chartdata))
-	if err != nil {
-		return err
-	}
-
-	chartDescriptor := s.Add("", ChartLayerMediaType, chartdata)
-	contentDescriptors = append(contentDescriptors, chartDescriptor)
-
-	configData, _ := json.Marshal(ch.Metadata)
-	configDescriptor := s.Add("", ConfigMediaType, configData)
-
-	// TODO: Clean this up
-	ref, err := name.ParseReference(fmt.Sprintf("hauler/%s:%s", c.cfg.Name, c.cfg.Version), name.WithDefaultRegistry(registry))
-	if err != nil {
-		return err
-	}
-
-	l.Infof("Copying chart to: '%s'", ref.Name())
-	pushedDesc, err := oras.Push(ctx, c.resolver, ref.Name(), s, contentDescriptors,
-		oras.WithConfig(configDescriptor), oras.WithNameValidation(nil))
-	if err != nil {
-		return err
-	}
-
-	l.Debugf("Copied with descriptor: '%s'", pushedDesc.Digest.String())
-	return nil
-}
-
-func fetch(name, repo, version string) ([]byte, error) {
-	cpo := action.ChartPathOptions{
-		RepoURL: repo,
-		Version: version,
-	}
-
-	cp, err := cpo.LocateChart(name, cli.New())
+func NewChart(name, repo, version string) (Chart, error) {
+	cg := chartGetter(name, repo, version)
+	chartDataLayer, err := newLayer(cg)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(cp)
+	base := mutate.MediaType(empty.Artifact, ConfigMediaType)
+	base, err = mutate.Append(base, gmutate.Addendum{
+		Layer: chartDataLayer,
+		MediaType: ChartLayerMediaType,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return data, nil
+	// TODO: Handle charts provenance if it exists
+
+	return base, nil
 }
 
-func parseJSONPath(data interface{}, parser *jsonpath.JSONPath, template string) ([]string, error) {
-	buf := new(bytes.Buffer)
-	if err := parser.Parse(template); err != nil {
+type layer struct {
+	*v1.Layer
+}
+
+func (l *layer) MediaType() (types.MediaType, error) {
+	return ChartLayerMediaType, nil
+}
+
+func newLayer(getter v1.Getter) (gv1.Layer, error) {
+	ll, err := v1.NewLayer(getter)
+	if err != nil {
 		return nil, err
 	}
+	return &layer{ll}, nil
+}
 
-	if err := parser.Execute(buf, data); err != nil {
-		return nil, err
+func chartGetter(name, repoUrl, version string) v1.Getter {
+	return func() (io.ReadCloser, error) {
+		cpo := action.ChartPathOptions{
+			RepoURL: repoUrl,
+			Version: version,
+		}
+
+		cp, err := cpo.LocateChart(name, cli.New())
+		if err != nil {
+			return nil, err
+		}
+
+		return os.Open(cp)
 	}
-
-	f := func(s rune) bool { return s == ' ' }
-	r := strings.FieldsFunc(buf.String(), f)
-	return r, nil
 }

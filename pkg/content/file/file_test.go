@@ -1,4 +1,4 @@
-package file
+package file_test
 
 import (
 	"context"
@@ -10,8 +10,9 @@ import (
 	"testing"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/content/file"
+	"github.com/rancherfederal/hauler/pkg/layout"
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 func TestFile_Copy(t *testing.T) {
@@ -34,9 +35,14 @@ func TestFile_Copy(t *testing.T) {
 	fs.Start()
 	defer fs.Stop()
 
-	s := store.NewStore(ctx, tmpdir)
-	s.Open()
-	defer s.Close()
+	// s := store.NewStore(ctx, tmpdir)
+	// s.Open()
+	// defer s.Close()
+	//
+	p, err := layout.FromPath(tmpdir)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	type args struct {
 		ctx      context.Context
@@ -56,7 +62,7 @@ func TestFile_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				// registry: s.RegistryURL(),
 			},
 		},
 		{
@@ -67,7 +73,7 @@ func TestFile_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				// registry: s.RegistryURL(),
 			},
 		},
 		{
@@ -78,7 +84,7 @@ func TestFile_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				// registry: s.RegistryURL(),
 			},
 			wantErr: true,
 		},
@@ -89,7 +95,7 @@ func TestFile_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				// registry: s.RegistryURL(),
 			},
 		},
 		{
@@ -100,17 +106,36 @@ func TestFile_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				// registry: s.RegistryURL(),
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l.Debugf("doing: %s", tt.cfg.Ref)
-			f := NewFile(tt.cfg)
-			if err := f.Copy(tt.args.ctx, tt.args.registry); (err != nil) != tt.wantErr {
-				t.Errorf("Copy() error = %v, wantErr %v", err, tt.wantErr)
+			// f := file.NewFile(tt.cfg)
+			f, err := file.NewFile(tt.cfg.Ref)
+			if err != nil {
+				t.Fatal(err)
 			}
+
+			err = p.WriteOci(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// ref, err := name.ParseReference(path.Join("hauler", filepath.Base(tt.cfg.Ref)))
+			// if err != nil {
+			// 	t.Fatal(err)
+			// }
+			//
+			// if err := s.Add(ctx, f, ref); (err != nil) != tt.wantErr {
+			// 	t.Error(err)
+			// }
+
+			// if err := f.Copy(tt.args.ctx, tt.args.registry); (err != nil) != tt.wantErr {
+			// 	t.Errorf("Copy() error = %v, wantErr %v", err, tt.wantErr)
+			// }
 		})
 	}
 }
