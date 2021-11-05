@@ -6,13 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/name"
+
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/content/file"
-	"github.com/rancherfederal/hauler/pkg/layout"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 func TestFile_Copy(t *testing.T) {
@@ -35,14 +38,9 @@ func TestFile_Copy(t *testing.T) {
 	fs.Start()
 	defer fs.Stop()
 
-	// s := store.NewStore(ctx, tmpdir)
-	// s.Open()
-	// defer s.Close()
-	//
-	p, err := layout.FromPath(tmpdir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := store.NewStore(ctx, tmpdir)
+	s.Open()
+	defer s.Close()
 
 	type args struct {
 		ctx      context.Context
@@ -61,7 +59,7 @@ func TestFile_Copy(t *testing.T) {
 				Ref: f.Name(),
 			},
 			args: args{
-				ctx:      ctx,
+				ctx: ctx,
 				// registry: s.RegistryURL(),
 			},
 		},
@@ -72,7 +70,7 @@ func TestFile_Copy(t *testing.T) {
 				Name: "my-other-file",
 			},
 			args: args{
-				ctx:      ctx,
+				ctx: ctx,
 				// registry: s.RegistryURL(),
 			},
 		},
@@ -83,7 +81,7 @@ func TestFile_Copy(t *testing.T) {
 				Name: "my!invalid~@file",
 			},
 			args: args{
-				ctx:      ctx,
+				ctx: ctx,
 				// registry: s.RegistryURL(),
 			},
 			wantErr: true,
@@ -94,7 +92,7 @@ func TestFile_Copy(t *testing.T) {
 				Ref: fmt.Sprintf("%s/%s", fs.server.URL, filepath.Base(f.Name())),
 			},
 			args: args{
-				ctx:      ctx,
+				ctx: ctx,
 				// registry: s.RegistryURL(),
 			},
 		},
@@ -105,33 +103,26 @@ func TestFile_Copy(t *testing.T) {
 				Name: "my-other-file",
 			},
 			args: args{
-				ctx:      ctx,
+				ctx: ctx,
 				// registry: s.RegistryURL(),
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l.Debugf("doing: %s", tt.cfg.Ref)
-			// f := file.NewFile(tt.cfg)
 			f, err := file.NewFile(tt.cfg.Ref)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			err = p.WriteOci(f)
+			ref, err := name.ParseReference(path.Join("hauler", filepath.Base(tt.cfg.Ref)))
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			// ref, err := name.ParseReference(path.Join("hauler", filepath.Base(tt.cfg.Ref)))
-			// if err != nil {
-			// 	t.Fatal(err)
-			// }
-			//
-			// if err := s.Add(ctx, f, ref); (err != nil) != tt.wantErr {
-			// 	t.Error(err)
-			// }
+			if err := s.Add(ctx, f, ref); (err != nil) != tt.wantErr {
+				t.Error(err)
+			}
 
 			// if err := f.Copy(tt.args.ctx, tt.args.registry); (err != nil) != tt.wantErr {
 			// 	t.Errorf("Copy() error = %v, wantErr %v", err, tt.wantErr)

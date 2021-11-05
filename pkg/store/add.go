@@ -2,71 +2,61 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"os"
 
-	"github.com/containerd/containerd/remotes/docker"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
-	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	content2 "oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/oras"
 
-	"github.com/rancherfederal/hauler/pkg/artifact/v1"
+	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/layout"
 )
 
-func (s *Store) Add(ctx context.Context, oci v1.Oci, ref name.Reference) error {
+// Add will add an artifact.OCI to the store
+//  The method to achieve this is to save artifact.OCI to a temporary directory in an OCI layout compatible form.  Once
+//  saved, the entirety of the layout is copied to the store (which is just a registry).  This allows us to not only use
+//  strict types to define generic content, but provides a processing pipeline suitable for extensability.  In the
+//  future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
+func (s *Store) Add(ctx context.Context, oci artifact.OCI, locationRef name.Reference) error {
 	if err := s.precheck(); err != nil {
 		return err
 	}
 
-	relocated, err := RelocateReference(ref, s.RegistryURL())
+	relocated, err := RelocateReference(locationRef, s.RegistryURL())
 	if err != nil {
 		return err
 	}
 
-	if err := remote.Write(relocated, oci, remote.WithContext(ctx)); err != nil {
-		return err
-	}
-
-	// TODO: For eventual support of user defined content, ensure all content transferring is done through oci layouts
 	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		return err
 	}
-	// defer os.RemoveAll(tmpdir)
-	fmt.Println(tmpdir)
+	defer os.RemoveAll(tmpdir)
 
 	l, err := layout.FromPath(tmpdir)
-	if os.IsNotExist(err) {
-		l, err = layout.Write(tmpdir, empty.Index)
-		if err != nil {
-			return err
-		}
-	} else {
-		return err
-	}
-
-	err = l.AppendImage(oci)
 	if err != nil {
 		return err
 	}
 
-	st, err := content2.NewOCIStore(tmpdir)
-	if err != nil {
+	if err = l.WriteOci(oci, relocated.Name()); err != nil {
 		return err
 	}
 
-	var descs []ocispec.Descriptor
-	for d, desc := range st.ListReferences() {
-		fmt.Println(d, desc)
-		descs = append(descs, desc)
+	if err := s.AddFromLayout(ctx, tmpdir); err != nil {
+		return err
 	}
-
-	resolver := docker.NewResolver(docker.ResolverOptions{})
-	_, err = oras.Push(ctx, resolver, relocated.Name(), st, descs)
 
 	return nil
+}
+
+// AddFromLayout will read an oci-layout and add all manifests referenced in index.json to the store
+func (s *Store) AddFromLayout(ctx context.Context, layoutPath string) error {
+	if err := s.precheck(); err != nil {
+		return err
+	}
+
+	ociStore, err := layout.NewOCIStore(layoutPath)
+	if err != nil {
+		return err
+	}
+
+	return layout.Copy(ctx, ociStore, s.RegistryURL())
 }

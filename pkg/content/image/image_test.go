@@ -3,12 +3,16 @@ package image_test
 import (
 	"context"
 	"os"
+	"path"
+	"path/filepath"
 	"testing"
+
+	"github.com/google/go-containerregistry/pkg/name"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/content/image"
-	"github.com/rancherfederal/hauler/pkg/layout"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 func TestImage_Copy(t *testing.T) {
@@ -22,14 +26,9 @@ func TestImage_Copy(t *testing.T) {
 	}
 	defer os.Remove(tmpdir)
 
-	p, err := layout.FromPath(tmpdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// s := store.NewStore(ctx, tmpdir)
-	// s.Open()
-	// defer s.Close()
+	s := store.NewStore(ctx, tmpdir)
+	s.Open()
+	defer s.Close()
 
 	type args struct {
 		ctx      context.Context
@@ -48,7 +47,7 @@ func TestImage_Copy(t *testing.T) {
 				Ref: "busybox:1.34.1",
 			},
 			args: args{
-				ctx:      ctx,
+				ctx: ctx,
 				// registry: s.RegistryURL(),
 			},
 			wantErr: false,
@@ -59,7 +58,18 @@ func TestImage_Copy(t *testing.T) {
 				Ref: "busybox@sha256:6066ca124f8c2686b7ae71aa1d6583b28c6dc3df3bdc386f2c89b92162c597d9",
 			},
 			args: args{
-				ctx:      ctx,
+				ctx: ctx,
+				// registry: s.RegistryURL(),
+			},
+			wantErr: false,
+		},
+		{
+			name: "should work with tagged image",
+			cfg: v1alpha1.Image{
+				Ref: "registry:2",
+			},
+			args: args{
+				ctx: ctx,
 				// registry: s.RegistryURL(),
 			},
 			wantErr: false,
@@ -72,7 +82,12 @@ func TestImage_Copy(t *testing.T) {
 				t.Error(err)
 			}
 
-			if err := p.WriteOci(i); err != nil {
+			ref, err := name.ParseReference(path.Join("hauler", filepath.Base(tt.cfg.Ref)))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := s.Add(ctx, i, ref); (err != nil) != tt.wantErr {
 				t.Error(err)
 			}
 

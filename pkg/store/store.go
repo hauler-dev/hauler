@@ -14,15 +14,10 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sirupsen/logrus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/rancherfederal/hauler/pkg/artifact/v1"
 )
 
 var (
 	httpRegex = regexp.MustCompile("https?://")
-
-	contents = make(map[metav1.TypeMeta]v1.Oci)
 )
 
 // Store is a simple wrapper around distribution/distribution to enable hauler's use case
@@ -59,17 +54,6 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 		config:  cfg,
 		handler: handler,
 	}
-}
-
-// TODO: Refactor to a feature register model for content types
-func Register(gvk metav1.TypeMeta, oci v1.Oci) {
-	if oci == nil {
-		panic("store: Register content is nil")
-	}
-	if _, dup := contents[gvk]; dup {
-		panic("store: Register called twice for content " + gvk.String())
-	}
-	contents[gvk] = oci
 }
 
 // Open will create a new server and start it, it's up to the consumer to close it

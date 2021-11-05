@@ -1,38 +1,20 @@
-package v1
+package artifact
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
-	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 
-	"github.com/rancherfederal/hauler/pkg/artifact/v1/types"
+	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
+// OCI is the bare minimum we need to represent an artifact in an OCI layout
 // Oci is a general form of v1.Image that conforms to the OCI artifacts-spec instead of the images-spec
 //  At a high level, it is not constrained by an Image's config, manifests, and layer ordinality
 //  This specific implementation fully encapsulates v1.Layer's within a more generic form
-type Oci interface {
-	Layers() ([]v1.Layer, error)
-
-	MediaType() (gtypes.MediaType, error)
-
-	LayerByDigest(v1.Hash) (v1.Layer, error)
-
-	Digest() (v1.Hash, error)
-
-	Manifest() (*v1.Manifest, error)
-
-	RawManifest() ([]byte, error)
-
-	ConfigName() (v1.Hash, error)
-
-	RawConfigFile() ([]byte, error)
-}
-
-// OCICore is the bare minimum we need to represent an artifact in an OCI layout
-type OCICore interface {
+type OCI interface {
 	MediaType() types.MediaType
 
 	RawManifest() ([]byte, error)
@@ -42,38 +24,28 @@ type OCICore interface {
 	Layers() ([]v1.Layer, error)
 }
 
-type Artifact interface {
-	Oci
-
-	Config() (*Config, error)
-}
-
-type Config interface {
-	Raw() ([]byte, error)
-}
-
 type core struct {
 	computed bool
 
 	manifest  *v1.Manifest
 	mediaType types.MediaType
 	layers    []v1.Layer
-	config Config
+	config    Config
 	digestMap map[v1.Hash]v1.Layer
 }
 
-func Core(mt types.MediaType, c Config, layers []v1.Layer) (OCICore, error) {
+func Core(mt types.MediaType, c Config, layers []v1.Layer) (OCI, error) {
 	return &core{
 		mediaType: mt,
-		config: c,
-		layers: layers,
+		config:    c,
+		layers:    layers,
 	}, nil
 }
 
 func (b *core) Manifest() (*v1.Manifest, error) {
 	return &v1.Manifest{
 		SchemaVersion: 2,
-		MediaType:     gtypes.OCIManifestSchema1,
+		// MediaType:     gtypes.OCIManifestSchema1,
 	}, nil
 }
 
@@ -98,6 +70,24 @@ func (b *core) RawConfig() ([]byte, error) {
 	return b.config.Raw()
 }
 
+func (b *core) ToDescriptor(data []byte) (v1.Descriptor, error) {
+	h, size, err := v1.SHA256(bytes.NewBuffer(data))
+	if err != nil {
+		return v1.Descriptor{}, err
+	}
+
+	return v1.Descriptor{
+		MediaType: "",
+		Size:      size,
+		Digest:    h,
+
+		// Data:        nil,
+		// URLs:        nil,
+		// Annotations: nil,
+		// Platform:    nil,
+	}, nil
+}
+
 func (b *core) Layers() ([]v1.Layer, error) {
 	if err := b.compute(); err != nil {
 		return nil, err
@@ -118,6 +108,16 @@ func (b *core) compute() error {
 	manifest := m.DeepCopy()
 	manifestLayers := manifest.Layers
 
+	data, err := b.config.Raw()
+	if err != nil {
+		return err
+	}
+
+	configDesc, err := b.ToDescriptor(data)
+	if err != nil {
+		return err
+	}
+
 	for _, layer := range b.layers {
 		if layer == nil {
 			continue
@@ -131,6 +131,7 @@ func (b *core) compute() error {
 		manifestLayers = append(manifestLayers, *desc)
 	}
 
+	manifest.Config = configDesc
 	manifest.Layers = manifestLayers
 
 	b.manifest = manifest
