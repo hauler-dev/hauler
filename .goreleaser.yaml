@@ -4,13 +4,21 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
     env:
       - CGO_ENABLED=0
-#    flags:
-#      - -tags=containers_image_openpgp containers_image_ostree
-#release:
-#  extra_files:
-#    - glob: ./pkg.tar.zst
+
+universal_binaries:
+  - replace: true
+
+brews:
+  - name: hauler
+    tap:
+      owner: rancherfederal
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    folder: Formula
+    description: "Hauler CLI"
