@@ -11,7 +11,7 @@ import (
 
 var _ v1.OCI = (*image)(nil)
 
-func (i *image) MediaType() types.MediaType {
+func (i *image) MediaType() string {
 	return types.DockerManifestSchema2
 }
 

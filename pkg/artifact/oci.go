@@ -15,7 +15,7 @@ import (
 //  At a high level, it is not constrained by an Image's config, manifests, and layer ordinality
 //  This specific implementation fully encapsulates v1.Layer's within a more generic form
 type OCI interface {
-	MediaType() types.MediaType
+	MediaType() string
 
 	RawManifest() ([]byte, error)
 
@@ -28,13 +28,13 @@ type core struct {
 	computed bool
 
 	manifest  *v1.Manifest
-	mediaType types.MediaType
+	mediaType string
 	layers    []v1.Layer
 	config    Config
 	digestMap map[v1.Hash]v1.Layer
 }
 
-func Core(mt types.MediaType, c Config, layers []v1.Layer) (OCI, error) {
+func Core(mt string, c Config, layers []v1.Layer) (OCI, error) {
 	return &core{
 		mediaType: mt,
 		config:    c,
@@ -49,7 +49,7 @@ func (b *core) Manifest() (*v1.Manifest, error) {
 	}, nil
 }
 
-func (b *core) MediaType() types.MediaType {
+func (b *core) MediaType() string {
 	if err := b.compute(); err != nil {
 		return types.UnknownManifest
 	}

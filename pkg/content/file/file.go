@@ -22,7 +22,7 @@ type file struct {
 type fileConfig struct {
 	Sup string `json:"sup"`
 
-	MediaType   types.MediaType   `json:"mediaType"`
+	MediaType   string            `json:"mediaType"`
 	Annotations map[string]string `json:"annotations"`
 }
 
@@ -62,7 +62,7 @@ type layer struct {
 	*artifact.Layer
 }
 
-func (l *layer) MediaType() (types.MediaType, error) {
+func (l *layer) MediaType() (string, error) {
 	return types.FileLayerMediaType, nil
 }
 
