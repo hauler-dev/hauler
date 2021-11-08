@@ -69,7 +69,7 @@ func (l Path) WriteOci(o artifact.OCI, name string) error {
 	}
 
 	desc := ocispec.Descriptor{
-		MediaType: string(o.MediaType()),
+		MediaType: o.MediaType(),
 		Size:      int64(len(manifest)),
 		Digest:    digest.FromBytes(manifest),
 		Annotations: map[string]string{

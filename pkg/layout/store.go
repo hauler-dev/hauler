@@ -47,7 +47,7 @@ func Copy(ctx context.Context, s *OCIStore, registry string) error {
 		}
 
 		manifestDescriptor := ocispec.Descriptor{
-			MediaType: ocispec.MediaTypeImageManifest,
+			MediaType: types.DockerManifestSchema2,
 			Digest:    digest.FromBytes(manifestData),
 			Size:      int64(len(manifestData)),
 		}

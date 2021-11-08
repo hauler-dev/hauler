@@ -1,6 +1,7 @@
 package chart
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -42,6 +43,30 @@ func (c *helmConfig) Raw() ([]byte, error) {
 	}
 
 	return json.Marshal(ch.Metadata)
+}
+
+func (c *helmConfig) Descriptor() (gv1.Descriptor, error) {
+	data, err := c.Raw()
+	if err != nil {
+		return gv1.Descriptor{}, err
+	}
+
+	h, size, err := gv1.SHA256(bytes.NewBuffer(data))
+	if err != nil {
+		return gv1.Descriptor{}, err
+	}
+
+	return gv1.Descriptor{
+		MediaType: types.DockerManifestSchema2,
+		Size:      size,
+		Digest:    h,
+
+		// TODO:
+		Data:        nil,
+		URLs:        nil,
+		Annotations: nil,
+		Platform:    nil,
+	}, nil
 }
 
 func NewChart(name, repo, version string) (artifact.OCI, error) {

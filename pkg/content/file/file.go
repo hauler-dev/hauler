@@ -1,6 +1,7 @@
 package file
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -28,6 +29,24 @@ type fileConfig struct {
 
 func (c *fileConfig) Raw() ([]byte, error) {
 	return json.Marshal(c)
+}
+
+func (c *fileConfig) Descriptor() (gv1.Descriptor, error) {
+	data, err := c.Raw()
+	if err != nil {
+		return gv1.Descriptor{}, err
+	}
+
+	h, size, err := gv1.SHA256(bytes.NewBuffer(data))
+	if err != nil {
+		return gv1.Descriptor{}, err
+	}
+
+	return gv1.Descriptor{
+		MediaType: types.UnknownManifest,
+		Size:      size,
+		Digest:    h,
+	}, nil
 }
 
 func NewFile(ref string) (artifact.OCI, error) {

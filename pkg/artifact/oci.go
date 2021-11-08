@@ -1,7 +1,6 @@
 package artifact
 
 import (
-	"bytes"
 	"encoding/json"
 
 	"github.com/google/go-containerregistry/pkg/v1"
@@ -45,7 +44,7 @@ func Core(mt string, c Config, layers []v1.Layer) (OCI, error) {
 func (b *core) Manifest() (*v1.Manifest, error) {
 	return &v1.Manifest{
 		SchemaVersion: 2,
-		// MediaType:     gtypes.OCIManifestSchema1,
+		MediaType:     types.DockerManifestSchema2,
 	}, nil
 }
 
@@ -70,24 +69,6 @@ func (b *core) RawConfig() ([]byte, error) {
 	return b.config.Raw()
 }
 
-func (b *core) ToDescriptor(data []byte) (v1.Descriptor, error) {
-	h, size, err := v1.SHA256(bytes.NewBuffer(data))
-	if err != nil {
-		return v1.Descriptor{}, err
-	}
-
-	return v1.Descriptor{
-		MediaType: "",
-		Size:      size,
-		Digest:    h,
-
-		// Data:        nil,
-		// URLs:        nil,
-		// Annotations: nil,
-		// Platform:    nil,
-	}, nil
-}
-
 func (b *core) Layers() ([]v1.Layer, error) {
 	if err := b.compute(); err != nil {
 		return nil, err
@@ -108,12 +89,7 @@ func (b *core) compute() error {
 	manifest := m.DeepCopy()
 	manifestLayers := manifest.Layers
 
-	data, err := b.config.Raw()
-	if err != nil {
-		return err
-	}
-
-	configDesc, err := b.ToDescriptor(data)
+	configDesc, err := b.config.Descriptor()
 	if err != nil {
 		return err
 	}
