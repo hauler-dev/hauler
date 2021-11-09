@@ -32,10 +32,10 @@ func FromPath(path string) (Path, error) {
 	return Path{Path: p}, err
 }
 
-func (l Path) WriteOci(o artifact.OCI, name string) error {
+func (l Path) WriteOci(o artifact.OCI, name string) (ocispec.Descriptor, error) {
 	layers, err := o.Layers()
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	// Write layers concurrently
@@ -47,31 +47,31 @@ func (l Path) WriteOci(o artifact.OCI, name string) error {
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	// Write the config
 	cfgBlob, err := o.RawConfig()
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	if err = l.writeBlob(cfgBlob); err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	m, err := o.Manifest()
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	manifest, err := json.Marshal(m)
 	if err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	if err := l.writeBlob(manifest); err != nil {
-		return err
+		return ocispec.Descriptor{}, err
 	}
 
 	desc := ocispec.Descriptor{
@@ -83,7 +83,11 @@ func (l Path) WriteOci(o artifact.OCI, name string) error {
 		},
 	}
 
-	return l.appendDescriptor(desc)
+	if err := l.appendDescriptor(desc); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+
+	return desc, nil
 }
 
 // writeBlob differs from layer.WriteBlob in that it requires data instead

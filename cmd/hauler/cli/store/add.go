@@ -26,8 +26,8 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, c cache.Cache, reference string) error {
-	l := log.FromContext(ctx)
-	l.Debugf("running cli command `hauler store add`")
+	lgr := log.FromContext(ctx)
+	lgr.Debugf("running cli command `hauler store add`")
 
 	s.Open()
 	defer s.Close()
@@ -36,7 +36,7 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, c cache.Cac
 	if o.Name == "" {
 		base := filepath.Base(reference)
 		// TODO: Warnings for this feel a little bashful...
-		l.Warnf("no name specified for file reference [%s], using base filepath: [%s]", reference, base)
+		lgr.Warnf("no name specified for file reference [%s], using base filepath: [%s]", reference, base)
 		fname = base
 	}
 
@@ -55,10 +55,12 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, c cache.Cac
 		f = cf
 	}
 
-	if err := s.Add(ctx, f, ref); err != nil {
+	m, err := s.Add(ctx, f, ref)
+	if err != nil {
 		return err
 	}
 
+	lgr.Infof("added file [%s] to store at [%s] with manifest digest [%s]", reference, ref.Context().RepositoryStr(), m.Digest.String())
 	return nil
 }
 
@@ -72,8 +74,8 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, c cache.Cache, reference string) error {
-	l := log.FromContext(ctx)
-	l.Debugf("running cli command `hauler store add image`")
+	lgr := log.FromContext(ctx)
+	lgr.Debugf("running cli command `hauler store add image`")
 
 	s.Open()
 	defer s.Close()
@@ -97,9 +99,11 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, c cache.C
 		i = ci
 	}
 
-	if err := s.Add(ctx, i, ref); err != nil {
+	m, err := s.Add(ctx, i, ref)
+	if err != nil {
 		return err
 	}
+	lgr.Infof("added image [%s] to store at [%s] with manifest digest [%s]", reference, ref.Context().RepositoryStr(), m.Digest.String())
 
 	return nil
 }
@@ -128,8 +132,8 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, c cache.Cache, chartName string) error {
-	l := log.FromContext(ctx)
-	l.Debugf("running cli command `hauler store add chart`")
+	lgr := log.FromContext(ctx)
+	lgr.Debugf("running cli command `hauler store add chart`")
 
 	s.Open()
 	defer s.Close()
@@ -148,7 +152,7 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, c cache.C
 		return err
 	}
 
-	l.Infof("Adding chart [%s:%s] (%s) store at [%s:%s]",
+	lgr.Infof("Adding chart [%s:%s] (%s) store at [%s:%s]",
 		chartName, ref.Identifier(), o.RepoURL, ref.Context().RepositoryStr(), ref.Identifier())
 
 	if c != nil {
@@ -156,9 +160,11 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, c cache.C
 		ch = cch
 	}
 
-	if err := s.Add(ctx, ch, ref); err != nil {
+	m, err := s.Add(ctx, ch, ref)
+	if err != nil {
 		return err
 	}
+	lgr.Infof("added chart [%s] to store at [%s] with manifest digest [%s]", chartName, ref.Context().RepositoryStr(), m.Digest.String())
 
 	return nil
 }

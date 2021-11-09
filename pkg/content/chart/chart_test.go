@@ -64,7 +64,7 @@ func TestChart_Copy(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err := s.Add(ctx, c, ref); (err != nil) != tt.wantErr {
+			if _, err := s.Add(ctx, c, ref); (err != nil) != tt.wantErr {
 				t.Error(err)
 			}
 		})
