@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -66,4 +68,25 @@ func (s *Store) AddFromLayout(ctx context.Context, layoutPath string) error {
 	}
 
 	return layout.Copy(ctx, ociStore, s.RegistryURL())
+}
+
+// Flush is a fancy name for delete-all-the-things, in this case it's as trivial as deleting everything in the underlying store directory
+// 	This can be a highly destructive operation if the store's directory happens to be inline with other non-store contents
+// 	To reduce the blast radius and likelihood of deleting things we don't own, Flush explicitly includes docker/registry/v2
+// 	in the search dir
+func (s *Store) Flush(ctx context.Context) error {
+	contentDir := filepath.Join(s.DataDir, "docker", "registry", "v2")
+	fs, err := ioutil.ReadDir(contentDir)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range fs {
+		err := os.RemoveAll(filepath.Join(contentDir, f.Name()))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

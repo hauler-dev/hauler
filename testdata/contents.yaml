@@ -8,7 +8,7 @@ spec:
     - ref: testdata/contents.yaml
 
     # when directories are specified, they will be archived and stored as a file
-    - ref: testdata/
+#    - ref: testdata/
 
     # hauler can also fetch remote content, and will "smartly" identify filenames _when possible_
     #   filename below = "k3s-airgap-images-arm64.tar.zst"
@@ -39,26 +39,6 @@ metadata:
 spec:
   charts:
     # charts are also fetched and served as OCI content (currently experimental in helm)
-    #   HELM_EXPERIMENTAL_OCI=1 helm chart pull <hauler-registry>/hauler/rancher:2.6.2
-    - name: rancher
-      repoURL: https://releases.rancher.com/server-charts/latest
-      version: 2.6.2
-
----
-apiVersion: content.hauler.cattle.io/v1alpha1
-kind: Driver
-metadata:
-  name: mydriver
-spec:
-  type: k3s
-  version: v1.22.2+k3s2
-
-
----
-apiVersion: collection.hauler.cattle.io/v1alpha1
-kind: K3s
-metadata:
-  name: mycollection
-spec:
-  version: 0.1.0
-
+    #   HELM_EXPERIMENTAL_OCI=1 helm chart pull <hauler-registry>/loki:2.6.2
+    - name: loki
+      repoURL: https://grafana.github.io/helm-charts

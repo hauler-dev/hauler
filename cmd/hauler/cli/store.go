@@ -67,7 +67,12 @@ func addStoreSync() *cobra.Command {
 				return err
 			}
 
-			return store.SyncCmd(ctx, o, s)
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.SyncCmd(ctx, o, s, c)
 		},
 	}
 	o.AddFlags(cmd)
