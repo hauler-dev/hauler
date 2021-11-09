@@ -22,7 +22,7 @@ func addStore(parent *cobra.Command) {
 		addStoreSave(),
 		addStoreServe(),
 
-		// TODO: Remove this in favor of sync only
+		// TODO: Remove this in favor of sync?
 		addStoreAdd(),
 	)
 
@@ -176,9 +176,12 @@ func addStoreAddFile() *cobra.Command {
 				return err
 			}
 
-			ref := args[0]
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
 
-			return store.AddFileCmd(ctx, o, s, ref)
+			return store.AddFileCmd(ctx, o, s, c, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -201,9 +204,12 @@ func addStoreAddImage() *cobra.Command {
 				return err
 			}
 
-			ref := args[0]
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
 
-			return store.AddImageCmd(ctx, o, s, ref)
+			return store.AddImageCmd(ctx, o, s, c, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -233,7 +239,12 @@ hauler store add chart rancher --repo "https://releases.rancher.com/server-chart
 				return err
 			}
 
-			return store.AddChartCmd(ctx, o, s, args[0])
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.AddChartCmd(ctx, o, s, c, args[0])
 		},
 	}
 	o.AddFlags(cmd)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/layout"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 // Add will add an artifact.OCI to the store
@@ -16,6 +17,8 @@ import (
 //  strict types to define generic content, but provides a processing pipeline suitable for extensability.  In the
 //  future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
 func (s *Store) Add(ctx context.Context, oci artifact.OCI, locationRef name.Reference) error {
+	lgr := log.FromContext(ctx)
+
 	if err := s.precheck(); err != nil {
 		return err
 	}
@@ -24,6 +27,8 @@ func (s *Store) Add(ctx context.Context, oci artifact.OCI, locationRef name.Refe
 	if err != nil {
 		return err
 	}
+
+	lgr.Debugf("adding %s to store", relocated.Name())
 
 	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {

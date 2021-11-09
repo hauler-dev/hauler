@@ -2,13 +2,13 @@ package store
 
 import (
 	"context"
-	"path"
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 	"github.com/rancherfederal/hauler/pkg/content/file"
 	"github.com/rancherfederal/hauler/pkg/content/image"
@@ -25,29 +25,41 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Name, "name", "n", "", "(Optional) Name to assign to file in store")
 }
 
-func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, reference string) error {
+func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, c cache.Cache, reference string) error {
 	l := log.FromContext(ctx)
 	l.Debugf("running cli command `hauler store add`")
 
 	s.Open()
 	defer s.Close()
 
-	cfg := v1alpha1.File{
-		Ref:  reference,
-		Name: o.Name,
+	fname := o.Name
+	if o.Name == "" {
+		base := filepath.Base(reference)
+		// TODO: Warnings for this feel a little bashful...
+		l.Warnf("no name specified for file reference [%s], using base filepath: [%s]", reference, base)
+		fname = base
 	}
 
-	f, err := file.NewFile(cfg.Ref)
+	f, err := file.NewFile(reference, fname)
 	if err != nil {
 		return err
 	}
 
-	// TODO: Better way of identifying file content references
-	ref, err := name.ParseReference(path.Join("hauler", filepath.Base(reference)))
+	ref, err := name.ParseReference(fname)
 	if err != nil {
 		return err
 	}
-	return s.Add(ctx, f, ref)
+
+	if c != nil {
+		cf := cache.Oci(f, c)
+		f = cf
+	}
+
+	if err := s.Add(ctx, f, ref); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type AddImageOpts struct {
@@ -59,7 +71,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	_ = f
 }
 
-func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference string) error {
+func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, c cache.Cache, reference string) error {
 	l := log.FromContext(ctx)
 	l.Debugf("running cli command `hauler store add image`")
 
@@ -80,11 +92,19 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference
 		return err
 	}
 
-	return s.Add(ctx, i, ref)
+	if c != nil {
+		ci := cache.Oci(i, c)
+		i = ci
+	}
+
+	if err := s.Add(ctx, i, ref); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type AddChartOpts struct {
-	Name    string
 	Version string
 	RepoURL string
 
@@ -107,35 +127,38 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.Version, "version", "", "(Optional) Version of the chart to download, defaults to latest if not specified")
 }
 
-func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, chartName string) error {
+func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, c cache.Cache, chartName string) error {
 	l := log.FromContext(ctx)
 	l.Debugf("running cli command `hauler store add chart`")
 
 	s.Open()
 	defer s.Close()
 
-	cfg := v1alpha1.Chart{
-		Name:    chartName,
-		RepoURL: o.RepoURL,
-		Version: o.Version,
-	}
-
-	c, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+	ch, err := chart.NewChart(chartName, o.RepoURL, o.Version)
 	if err != nil {
 		return err
 	}
 
-	ref, err := name.ParseReference(path.Join("hauler", chartName))
+	tag := o.Version
+	if tag == "" {
+		tag = name.DefaultTag
+	}
+	ref, err := name.ParseReference(chartName, name.WithDefaultTag(tag))
 	if err != nil {
 		return err
 	}
 
-	l.Infof("Adding chart from [%s>%s:%s] to store at [%s:%s]",
-		cfg.RepoURL, cfg.Name, cfg.Version, ref.Context().RepositoryStr(), ref.Identifier())
+	l.Infof("Adding chart [%s:%s] (%s) store at [%s:%s]",
+		chartName, ref.Identifier(), o.RepoURL, ref.Context().RepositoryStr(), ref.Identifier())
 
-	if err := s.Add(ctx, c, ref); err != nil {
+	if c != nil {
+		cch := cache.Oci(ch, c)
+		ch = cch
+	}
+
+	if err := s.Add(ctx, ch, ref); err != nil {
 		return err
 	}
 
-	return s.Add(ctx, c, ref)
+	return nil
 }

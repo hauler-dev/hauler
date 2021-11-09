@@ -1,105 +1,102 @@
 package file
 
 import (
-	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
+	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/artifact/local"
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
 var _ artifact.OCI = (*file)(nil)
 
 type file struct {
-	artifact.OCI
+	blob    gv1.Layer
+	config  config
+	blobMap map[gv1.Hash]gv1.Layer
+
+	annotations map[string]string
 }
 
-type fileConfig struct {
-	Sup string `json:"sup"`
-
-	MediaType   string            `json:"mediaType"`
-	Annotations map[string]string `json:"annotations"`
-}
-
-func (c *fileConfig) Raw() ([]byte, error) {
-	return json.Marshal(c)
-}
-
-func (c *fileConfig) Descriptor() (gv1.Descriptor, error) {
-	data, err := c.Raw()
-	if err != nil {
-		return gv1.Descriptor{}, err
-	}
-
-	h, size, err := gv1.SHA256(bytes.NewBuffer(data))
-	if err != nil {
-		return gv1.Descriptor{}, err
-	}
-
-	return gv1.Descriptor{
-		MediaType: types.UnknownManifest,
-		Size:      size,
-		Digest:    h,
-	}, nil
-}
-
-func NewFile(ref string) (artifact.OCI, error) {
-	var getter artifact.Getter
+func NewFile(ref string, filename string) (artifact.OCI, error) {
+	var getter local.Opener
 	if strings.HasPrefix(ref, "http") || strings.HasPrefix(ref, "https") {
-		getter = remoteGetter(ref)
+		getter = remoteOpener(ref)
 	} else {
-		getter = localFileGetter(ref)
+		getter = localOpener(ref)
 	}
 
+	annotations := make(map[string]string)
+	annotations[ocispec.AnnotationTitle] = filename // For oras FileStore to recognize
+	annotations[ocispec.AnnotationSource] = ref
+
+	blob, err := local.LayerFromOpener(getter,
+		local.WithMediaType(types.FileLayerMediaType),
+		local.WithAnnotations(annotations))
+	if err != nil {
+		return nil, err
+	}
+
+	f := &file{
+		blob: blob,
+		config: config{
+			Reference: ref,
+			Name:      filename,
+		},
+	}
+	return f, nil
+}
+
+func (f *file) MediaType() string {
+	return types.OCIManifestSchema1
+}
+
+func (f *file) RawConfig() ([]byte, error) {
+	return f.config.Raw()
+}
+
+func (f *file) Layers() ([]gv1.Layer, error) {
 	var layers []gv1.Layer
-	layer, err := newLayer(getter)
+	layers = append(layers, f.blob)
+	return layers, nil
+}
+
+func (f *file) Manifest() (*gv1.Manifest, error) {
+	desc, err := partial.Descriptor(f.blob)
+	if err != nil {
+		return nil, err
+	}
+	layerDescs := []gv1.Descriptor{*desc}
+
+	cfgDesc, err := f.config.Descriptor()
 	if err != nil {
 		return nil, err
 	}
 
-	layers = append(layers, layer)
-
-	c, err := artifact.Core(types.UnknownManifest, &fileConfig{
-		Sup: "hi guys",
-	}, layers)
-	if err != nil {
-		return nil, err
-	}
-
-	return &file{
-		OCI: c,
+	return &gv1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     gtypes.MediaType(f.MediaType()),
+		Config:        cfgDesc,
+		Layers:        layerDescs,
+		Annotations:   f.annotations,
 	}, nil
 }
 
-type layer struct {
-	*artifact.Layer
-}
-
-func (l *layer) MediaType() (string, error) {
-	return types.FileLayerMediaType, nil
-}
-
-func newLayer(getter artifact.Getter) (gv1.Layer, error) {
-	ll, err := artifact.NewLayer(getter)
-	if err != nil {
-		return nil, err
-	}
-	return ll, nil
-}
-
-func localFileGetter(path string) artifact.Getter {
+func localOpener(path string) local.Opener {
 	return func() (io.ReadCloser, error) {
 		return os.Open(path)
 	}
 }
 
-func remoteGetter(url string) artifact.Getter {
+func remoteOpener(url string) local.Opener {
 	return func() (io.ReadCloser, error) {
 		resp, err := http.Get(url)
 		if err != nil {

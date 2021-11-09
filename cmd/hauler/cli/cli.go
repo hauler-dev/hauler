@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -36,7 +37,7 @@ func New() *cobra.Command {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
 	pf.StringVar(&ro.dataDir, "content-dir", "", "Location of where to create and store contents (defaults to ~/.local/hauler)")
-	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to XDG_CACHE_DIR/hauler)")
+	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to $XDG_CACHE_DIR/hauler)")
 
 	// Add subcommands
 	addDownload(cmd)
@@ -79,4 +80,26 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 
 	s := store.NewStore(ctx, dir)
 	return s, nil
+}
+
+func (o *rootOpts) getCache(ctx context.Context) (cache.Cache, error) {
+	dir := o.cacheDir
+
+	if dir == "" {
+		// Default to $XDG_CACHE_DIR
+		cachedir, err := os.UserCacheDir()
+		if err != nil {
+			return nil, err
+		}
+
+		abs, _ := filepath.Abs(filepath.Join(cachedir, "hauler"))
+		if err := os.MkdirAll(abs, os.ModePerm); err != nil {
+			return nil, err
+		}
+
+		dir = abs
+	}
+
+	c := cache.NewFilesystem(dir)
+	return c, nil
 }

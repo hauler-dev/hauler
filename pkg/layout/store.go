@@ -41,15 +41,9 @@ func Copy(ctx context.Context, s *OCIStore, registry string) error {
 			return err
 		}
 
-		var m ocispec.Manifest
-		if err := json.Unmarshal(manifestData, &m); err != nil {
+		m, mdesc, err := loadManifest(manifestData)
+		if err != nil {
 			return err
-		}
-
-		manifestDescriptor := ocispec.Descriptor{
-			MediaType: types.DockerManifestSchema2,
-			Digest:    digest.FromBytes(manifestData),
-			Size:      int64(len(manifestData)),
 		}
 
 		refName, ok := desc.Annotations[ocispec.AnnotationRefName]
@@ -64,7 +58,7 @@ func Copy(ctx context.Context, s *OCIStore, registry string) error {
 
 		resolver := docker.NewResolver(docker.ResolverOptions{})
 		_, err = oras.Push(ctx, resolver, ref.Name(), s, m.Layers,
-			oras.WithConfig(m.Config), oras.WithNameValidation(nil), oras.WithManifest(manifestDescriptor))
+			oras.WithConfig(m.Config), oras.WithNameValidation(nil), oras.WithManifest(mdesc))
 
 		if err != nil {
 			return err
@@ -145,4 +139,27 @@ func (s *OCIStore) blobPath(d digest.Digest) (string, error) {
 	}
 
 	return filepath.Join(s.root, "blobs", d.Algorithm().String(), d.Hex()), nil
+}
+
+// manifest is a field wrapper around ocispec.Manifest that contains the mediaType field
+type manifest struct {
+	ocispec.Manifest `json:",inline"`
+
+	MediaType string `json:"mediaType"`
+}
+
+// loadManifest
+func loadManifest(data []byte) (ocispec.Manifest, ocispec.Descriptor, error) {
+	var m manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return ocispec.Manifest{}, ocispec.Descriptor{}, err
+	}
+
+	desc := ocispec.Descriptor{
+		MediaType: m.MediaType,
+		Digest:    digest.FromBytes(data),
+		Size:      int64(len(data)),
+	}
+
+	return m.Manifest, desc, nil
 }

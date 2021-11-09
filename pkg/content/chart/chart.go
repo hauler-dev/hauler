@@ -5,14 +5,18 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 
 	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/artifact/local"
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
@@ -21,102 +25,112 @@ const (
 	ChartLayerMediaType = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
 )
 
-type helmChart struct {
-	artifact.OCI
+var _ artifact.OCI = (*chrt)(nil)
 
-	config *helmConfig
+type chrt struct {
+	path string
+
+	annotations map[string]string
 }
 
-type helmConfig struct {
-	get artifact.Getter
-}
+func NewChart(name, repo, version string) (artifact.OCI, error) {
+	cpo := action.ChartPathOptions{
+		RepoURL: repo,
+		Version: version,
+	}
 
-func (c *helmConfig) Raw() ([]byte, error) {
-	rc, err := c.get()
+	cp, err := cpo.LocateChart(name, cli.New())
 	if err != nil {
 		return nil, err
 	}
 
-	ch, err := loader.LoadArchive(rc)
+	return &chrt{
+		path: cp,
+	}, nil
+}
+
+func (h *chrt) MediaType() string {
+	return types.OCIManifestSchema1
+}
+
+func (h *chrt) Manifest() (*gv1.Manifest, error) {
+	cfgDesc, err := h.configDescriptor()
 	if err != nil {
 		return nil, err
 	}
 
+	var layerDescs []gv1.Descriptor
+	ls, err := h.Layers()
+	for _, l := range ls {
+		desc, err := partial.Descriptor(l)
+		if err != nil {
+			return nil, err
+		}
+		layerDescs = append(layerDescs, *desc)
+	}
+
+	return &gv1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     gtypes.MediaType(h.MediaType()),
+		Config:        cfgDesc,
+		Layers:        layerDescs,
+		Annotations:   h.annotations,
+	}, nil
+}
+
+func (h *chrt) RawConfig() ([]byte, error) {
+	ch, err := loader.Load(h.path)
+	if err != nil {
+		return nil, err
+	}
 	return json.Marshal(ch.Metadata)
 }
 
-func (c *helmConfig) Descriptor() (gv1.Descriptor, error) {
-	data, err := c.Raw()
+func (h *chrt) configDescriptor() (gv1.Descriptor, error) {
+	data, err := h.RawConfig()
 	if err != nil {
 		return gv1.Descriptor{}, err
 	}
 
-	h, size, err := gv1.SHA256(bytes.NewBuffer(data))
+	hash, size, err := gv1.SHA256(bytes.NewBuffer(data))
 	if err != nil {
 		return gv1.Descriptor{}, err
 	}
 
 	return gv1.Descriptor{
-		MediaType: types.DockerManifestSchema2,
+		MediaType: types.ChartConfigMediaType,
 		Size:      size,
-		Digest:    h,
-
-		// TODO:
-		Data:        nil,
-		URLs:        nil,
-		Annotations: nil,
-		Platform:    nil,
+		Digest:    hash,
 	}, nil
 }
 
-func NewChart(name, repo, version string) (artifact.OCI, error) {
-	cg := chartGetter(name, repo, version)
-	chartDataLayer, err := newLayer(cg)
+func (h *chrt) Layers() ([]gv1.Layer, error) {
+	chartDataLayer, err := h.chartDataLayer()
 	if err != nil {
 		return nil, err
 	}
 
-	var layers []gv1.Layer
-	layers = append(layers, chartDataLayer)
-
-	c, err := artifact.Core(types.UnknownManifest, &helmConfig{cg}, layers)
-	if err != nil {
-		return nil, err
-	}
-
-	return &helmChart{
-		OCI: c,
+	return []gv1.Layer{
+		chartDataLayer,
+		// TODO: Add provenance
 	}, nil
 }
 
-type layer struct {
-	*artifact.Layer
+func (h *chrt) RawChartData() ([]byte, error) {
+	return os.ReadFile(h.path)
 }
 
-func (l *layer) MediaType() (gtypes.MediaType, error) {
-	return ChartLayerMediaType, nil
+func (h *chrt) chartDataLayer() (gv1.Layer, error) {
+	annotations := make(map[string]string)
+	annotations[ocispec.AnnotationTitle] = filepath.Base(h.path)
+
+	return local.LayerFromOpener(chartOpener(h.path),
+		local.WithMediaType(types.ChartLayerMediaType),
+		local.WithAnnotations(annotations))
 }
 
-func newLayer(getter artifact.Getter) (gv1.Layer, error) {
-	ll, err := artifact.NewLayer(getter)
-	if err != nil {
-		return nil, err
-	}
-	return &layer{ll}, nil
-}
-
-func chartGetter(name, repoUrl, version string) artifact.Getter {
+func chartOpener(path string) local.Opener {
 	return func() (io.ReadCloser, error) {
-		cpo := action.ChartPathOptions{
-			RepoURL: repoUrl,
-			Version: version,
-		}
-
-		cp, err := cpo.LocateChart(name, cli.New())
-		if err != nil {
-			return nil, err
-		}
-
-		return os.Open(cp)
+		return os.Open(path)
 	}
 }

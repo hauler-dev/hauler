@@ -110,7 +110,7 @@ func TestFile_Copy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f, err := file.NewFile(tt.cfg.Ref)
+			f, err := file.NewFile(tt.cfg.Ref, tt.cfg.Name)
 			if err != nil {
 				t.Fatal(err)
 			}

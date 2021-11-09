@@ -5,14 +5,17 @@ import (
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	v1 "github.com/rancherfederal/hauler/pkg/artifact"
-	"github.com/rancherfederal/hauler/pkg/artifact/types"
+	"github.com/rancherfederal/hauler/pkg/artifact"
 )
 
-var _ v1.OCI = (*image)(nil)
+var _ artifact.OCI = (*image)(nil)
 
 func (i *image) MediaType() string {
-	return types.DockerManifestSchema2
+	mt, err := i.Image.MediaType()
+	if err != nil {
+		return ""
+	}
+	return string(mt)
 }
 
 func (i *image) RawConfig() ([]byte, error) {
@@ -23,7 +26,7 @@ type image struct {
 	gv1.Image
 }
 
-func NewImage(ref string) (v1.OCI, error) {
+func NewImage(ref string) (artifact.OCI, error) {
 	r, err := name.ParseReference(ref)
 	if err != nil {
 		return nil, err

@@ -41,11 +41,10 @@ func TestChart_Copy(t *testing.T) {
 	}{
 		// TODO: This test isn't self-contained
 		{
-			name: "should work",
+			name: "should work with unversioned chart",
 			cfg: v1alpha1.Chart{
-				Name:    "rancher",
-				RepoURL: "https://releases.rancher.com/server-charts/latest",
-				Version: "2.6.2",
+				Name:    "loki",
+				RepoURL: "https://grafana.github.io/helm-charts",
 			},
 			args: args{
 				ctx:      ctx,

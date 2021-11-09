@@ -2,6 +2,7 @@ package layout
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 
@@ -59,7 +60,12 @@ func (l Path) WriteOci(o artifact.OCI, name string) error {
 		return err
 	}
 
-	manifest, err := o.RawManifest()
+	m, err := o.Manifest()
+	if err != nil {
+		return err
+	}
+
+	manifest, err := json.Marshal(m)
 	if err != nil {
 		return err
 	}
@@ -108,7 +114,7 @@ func (l Path) writeLayer(layer gv1.Layer) error {
 // appendDescriptor is a helper that translates a ocispec.Descriptor into a gv1.Descriptor
 func (l Path) appendDescriptor(desc ocispec.Descriptor) error {
 	gdesc := gv1.Descriptor{
-		MediaType: gtypes.OCIManifestSchema1,
+		MediaType: gtypes.MediaType(desc.MediaType),
 		Size:      desc.Size,
 		Digest: gv1.Hash{
 			Algorithm: desc.Digest.Algorithm().String(),
