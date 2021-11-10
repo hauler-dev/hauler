@@ -1,4 +1,4 @@
-package file
+package file_test
 
 import (
 	"context"
@@ -7,9 +7,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/artifact/types"
+	"github.com/rancherfederal/hauler/pkg/content/file"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -52,11 +60,11 @@ func TestFile_Copy(t *testing.T) {
 		{
 			name: "should copy a local file successfully without an explicit name",
 			cfg: v1alpha1.File{
-				Ref: f.Name(),
+				Ref:  f.Name(),
+				Name: filepath.Base(f.Name()),
 			},
 			args: args{
-				ctx:      ctx,
-				registry: s.RegistryURL(),
+				ctx: ctx,
 			},
 		},
 		{
@@ -66,8 +74,7 @@ func TestFile_Copy(t *testing.T) {
 				Name: "my-other-file",
 			},
 			args: args{
-				ctx:      ctx,
-				registry: s.RegistryURL(),
+				ctx: ctx,
 			},
 		},
 		{
@@ -77,8 +84,7 @@ func TestFile_Copy(t *testing.T) {
 				Name: "my!invalid~@file",
 			},
 			args: args{
-				ctx:      ctx,
-				registry: s.RegistryURL(),
+				ctx: ctx,
 			},
 			wantErr: true,
 		},
@@ -88,8 +94,7 @@ func TestFile_Copy(t *testing.T) {
 				Ref: fmt.Sprintf("%s/%s", fs.server.URL, filepath.Base(f.Name())),
 			},
 			args: args{
-				ctx:      ctx,
-				registry: s.RegistryURL(),
+				ctx: ctx,
 			},
 		},
 		{
@@ -99,18 +104,30 @@ func TestFile_Copy(t *testing.T) {
 				Name: "my-other-file",
 			},
 			args: args{
-				ctx:      ctx,
-				registry: s.RegistryURL(),
+				ctx: ctx,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l.Debugf("doing: %s", tt.cfg.Ref)
-			f := NewFile(tt.cfg)
-			if err := f.Copy(tt.args.ctx, tt.args.registry); (err != nil) != tt.wantErr {
-				t.Errorf("Copy() error = %v, wantErr %v", err, tt.wantErr)
+			f, err := file.NewFile(tt.cfg.Ref, tt.cfg.Name)
+			if err != nil {
+				t.Fatal(err)
 			}
+
+			ref, err := name.ParseReference(filepath.Base(tt.cfg.Ref))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = s.Add(ctx, f, ref)
+			if (err != nil) != tt.wantErr {
+				t.Error(err)
+			}
+
+			// if err := validate(tt.cfg.Ref, tt.cfg.Name, m); err != nil {
+			// 	t.Error(err)
+			// }
 		})
 	}
 }
@@ -131,4 +148,41 @@ func (s *testFileServer) Start() *httptest.Server {
 
 func (s *testFileServer) Stop() {
 	s.server.Close()
+}
+
+// validate ensure
+func validate(ref string, name string, got *v1.Manifest) error {
+	data, err := os.ReadFile(ref)
+	if err != nil {
+		return err
+	}
+
+	d := digest.FromBytes(data)
+
+	annotations := make(map[string]string)
+	annotations[ocispec.AnnotationTitle] = name
+	annotations[ocispec.AnnotationSource] = ref
+
+	want := &v1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     types.OCIManifestSchema1,
+		Config:        v1.Descriptor{},
+		Layers: []v1.Descriptor{
+			{
+				MediaType: types.FileLayerMediaType,
+				Size:      int64(len(data)),
+				Digest: v1.Hash{
+					Algorithm: d.Algorithm().String(),
+					Hex:       d.Hex(),
+				},
+				Annotations: annotations,
+			},
+		},
+		Annotations: nil,
+	}
+
+	if !reflect.DeepEqual(want.Layers, got.Layers) {
+		return fmt.Errorf("want = (%v) | got = (%v)", want, got)
+	}
+	return nil
 }

@@ -21,8 +21,10 @@ func addStore(parent *cobra.Command) {
 		addStoreLoad(),
 		addStoreSave(),
 		addStoreServe(),
+		addStoreList(),
+		addStoreCopy(),
 
-		// TODO: Remove this in favor of sync only
+		// TODO: Remove this in favor of sync?
 		addStoreAdd(),
 	)
 
@@ -67,7 +69,12 @@ func addStoreSync() *cobra.Command {
 				return err
 			}
 
-			return store.SyncCmd(ctx, o, s)
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.SyncCmd(ctx, o, s, c)
 		},
 	}
 	o.AddFlags(cmd)
@@ -143,6 +150,52 @@ func addStoreSave() *cobra.Command {
 	return cmd
 }
 
+func addStoreList() *cobra.Command {
+	o := &store.ListOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all content references in a store",
+		Args:  cobra.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.ListCmd(ctx, o, s)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreCopy() *cobra.Command {
+	o := &store.CopyOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "copy",
+		Short: "Copy all store contents to another OCI registry",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.CopyCmd(ctx, o, s, args[0])
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
 func addStoreAdd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -176,9 +229,12 @@ func addStoreAddFile() *cobra.Command {
 				return err
 			}
 
-			ref := args[0]
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
 
-			return store.AddFileCmd(ctx, o, s, ref)
+			return store.AddFileCmd(ctx, o, s, c, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -201,9 +257,12 @@ func addStoreAddImage() *cobra.Command {
 				return err
 			}
 
-			ref := args[0]
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
 
-			return store.AddImageCmd(ctx, o, s, ref)
+			return store.AddImageCmd(ctx, o, s, c, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -233,7 +292,12 @@ hauler store add chart rancher --repo "https://releases.rancher.com/server-chart
 				return err
 			}
 
-			return store.AddChartCmd(ctx, o, s, args[0])
+			c, err := ro.getCache(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.AddChartCmd(ctx, o, s, c, args[0])
 		},
 	}
 	o.AddFlags(cmd)

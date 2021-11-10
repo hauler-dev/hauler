@@ -2,110 +2,38 @@ package chart
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
+	"io"
 	"os"
-	"strings"
+	"path/filepath"
 
-	"github.com/containerd/containerd/remotes"
-	"github.com/containerd/containerd/remotes/docker"
-	"github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
+	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
-	"k8s.io/client-go/util/jsonpath"
-	"oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/oras"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/artifact/local"
+	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
 const (
-	// OCIScheme is the URL scheme for OCI-based requests
-	OCIScheme = "oci"
-
-	// CredentialsFileBasename is the filename for auth credentials file
-	CredentialsFileBasename = "config.json"
-
-	// ConfigMediaType is the reserved media type for the Helm chart manifest config
-	ConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
-
 	// ChartLayerMediaType is the reserved media type for Helm chart package content
 	ChartLayerMediaType = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
-
-	// ProvLayerMediaType is the reserved media type for Helm chart provenance files
-	ProvLayerMediaType = "application/vnd.cncf.helm.chart.provenance.v1.prov"
 )
 
-type Chart struct {
-	cfg v1alpha1.Chart
+var _ artifact.OCI = (*chrt)(nil)
 
-	resolver remotes.Resolver
+type chrt struct {
+	path string
+
+	annotations map[string]string
 }
 
-var defaultKnownImagePaths = []string{
-	// Deployments & DaemonSets
-	"{.spec.template.spec.initContainers[*].image}",
-	"{.spec.template.spec.containers[*].image}",
-
-	// Pods
-	"{.spec.initContainers[*].image}",
-	"{.spec.containers[*].image}",
-}
-
-func NewChart(cfg v1alpha1.Chart) Chart {
-	return Chart{
-		cfg: cfg,
-
-		// TODO:
-		resolver: docker.NewResolver(docker.ResolverOptions{}),
-	}
-}
-
-func (c Chart) Copy(ctx context.Context, registry string) error {
-	var (
-		s                  = content.NewMemoryStore()
-		l                  = log.FromContext(ctx)
-		contentDescriptors []ocispec.Descriptor
-	)
-
-	chartdata, err := fetch(c.cfg.Name, c.cfg.RepoURL, c.cfg.Version)
-	if err != nil {
-		return err
-	}
-
-	ch, err := loader.LoadArchive(bytes.NewBuffer(chartdata))
-	if err != nil {
-		return err
-	}
-
-	chartDescriptor := s.Add("", ChartLayerMediaType, chartdata)
-	contentDescriptors = append(contentDescriptors, chartDescriptor)
-
-	configData, _ := json.Marshal(ch.Metadata)
-	configDescriptor := s.Add("", ConfigMediaType, configData)
-
-	// TODO: Clean this up
-	ref, err := name.ParseReference(fmt.Sprintf("hauler/%s:%s", c.cfg.Name, c.cfg.Version), name.WithDefaultRegistry(registry))
-	if err != nil {
-		return err
-	}
-
-	l.Infof("Copying chart to: '%s'", ref.Name())
-	pushedDesc, err := oras.Push(ctx, c.resolver, ref.Name(), s, contentDescriptors,
-		oras.WithConfig(configDescriptor), oras.WithNameValidation(nil))
-	if err != nil {
-		return err
-	}
-
-	l.Debugf("Copied with descriptor: '%s'", pushedDesc.Digest.String())
-	return nil
-}
-
-func fetch(name, repo, version string) ([]byte, error) {
+func NewChart(name, repo, version string) (artifact.OCI, error) {
 	cpo := action.ChartPathOptions{
 		RepoURL: repo,
 		Version: version,
@@ -116,25 +44,93 @@ func fetch(name, repo, version string) ([]byte, error) {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(cp)
+	return &chrt{
+		path: cp,
+	}, nil
+}
+
+func (h *chrt) MediaType() string {
+	return types.OCIManifestSchema1
+}
+
+func (h *chrt) Manifest() (*gv1.Manifest, error) {
+	cfgDesc, err := h.configDescriptor()
 	if err != nil {
 		return nil, err
 	}
 
-	return data, nil
+	var layerDescs []gv1.Descriptor
+	ls, err := h.Layers()
+	for _, l := range ls {
+		desc, err := partial.Descriptor(l)
+		if err != nil {
+			return nil, err
+		}
+		layerDescs = append(layerDescs, *desc)
+	}
+
+	return &gv1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     gtypes.MediaType(h.MediaType()),
+		Config:        cfgDesc,
+		Layers:        layerDescs,
+		Annotations:   h.annotations,
+	}, nil
 }
 
-func parseJSONPath(data interface{}, parser *jsonpath.JSONPath, template string) ([]string, error) {
-	buf := new(bytes.Buffer)
-	if err := parser.Parse(template); err != nil {
+func (h *chrt) RawConfig() ([]byte, error) {
+	ch, err := loader.Load(h.path)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(ch.Metadata)
+}
+
+func (h *chrt) configDescriptor() (gv1.Descriptor, error) {
+	data, err := h.RawConfig()
+	if err != nil {
+		return gv1.Descriptor{}, err
+	}
+
+	hash, size, err := gv1.SHA256(bytes.NewBuffer(data))
+	if err != nil {
+		return gv1.Descriptor{}, err
+	}
+
+	return gv1.Descriptor{
+		MediaType: types.ChartConfigMediaType,
+		Size:      size,
+		Digest:    hash,
+	}, nil
+}
+
+func (h *chrt) Layers() ([]gv1.Layer, error) {
+	chartDataLayer, err := h.chartDataLayer()
+	if err != nil {
 		return nil, err
 	}
 
-	if err := parser.Execute(buf, data); err != nil {
-		return nil, err
-	}
+	return []gv1.Layer{
+		chartDataLayer,
+		// TODO: Add provenance
+	}, nil
+}
 
-	f := func(s rune) bool { return s == ' ' }
-	r := strings.FieldsFunc(buf.String(), f)
-	return r, nil
+func (h *chrt) RawChartData() ([]byte, error) {
+	return os.ReadFile(h.path)
+}
+
+func (h *chrt) chartDataLayer() (gv1.Layer, error) {
+	annotations := make(map[string]string)
+	annotations[ocispec.AnnotationTitle] = filepath.Base(h.path)
+
+	return local.LayerFromOpener(chartOpener(h.path),
+		local.WithMediaType(types.ChartLayerMediaType),
+		local.WithAnnotations(annotations))
+}
+
+func chartOpener(path string) local.Opener {
+	return func() (io.ReadCloser, error) {
+		return os.Open(path)
+	}
 }

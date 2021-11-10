@@ -27,3 +27,4 @@ dist/
 tmp/
 bin/
 pkg.yaml
+store/

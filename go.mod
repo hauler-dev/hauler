@@ -13,7 +13,6 @@ require (
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
-	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
 	github.com/rancher/fleet v0.3.6
 	github.com/rancher/fleet/pkg/apis v0.0.0
@@ -23,7 +22,6 @@ require (
 	github.com/spf13/cobra v1.2.1
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190809123943-df4f5c81cb3b // indirect
-	go.etcd.io/bbolt v1.3.6
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
 	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
@@ -33,7 +31,6 @@ require (
 	k8s.io/cli-runtime v0.22.1
 	k8s.io/client-go v11.0.1-0.20190816222228-6d55c1b1f1ca+incompatible
 	oras.land/oras-go v0.4.0
-	sigs.k8s.io/cli-utils v0.23.1
 	sigs.k8s.io/controller-runtime v0.9.0
 )
 
@@ -173,6 +170,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mozilla-services/yaml v0.0.0-20191106225358-5c216288813c // indirect
 	github.com/nwaples/rardecode v1.1.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/pierrec/lz4/v4 v4.0.3 // indirect
@@ -240,6 +238,7 @@ require (
 	k8s.io/kubectl v0.22.1 // indirect
 	k8s.io/kubernetes v1.21.3 // indirect
 	k8s.io/utils v0.0.0-20210527160623-6fdb442a123b // indirect
+	sigs.k8s.io/cli-utils v0.23.1 // indirect
 	sigs.k8s.io/kustomize/api v0.8.8 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.10.17 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.1.2 // indirect

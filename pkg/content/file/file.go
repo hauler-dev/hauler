@@ -1,157 +1,107 @@
 package file
 
 import (
-	"context"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"path"
-	"path/filepath"
+	"strings"
 
-	"github.com/containerd/containerd/remotes/docker"
-	"github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
+	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	orascontent "oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/oras"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/artifact/local"
+	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
-const (
-	LayerMediaType = "application/vnd.hauler.cattle.io-artifact"
-)
+var _ artifact.OCI = (*file)(nil)
 
-type File struct {
-	cfg v1alpha1.File
+type file struct {
+	blob    gv1.Layer
+	config  config
+	blobMap map[gv1.Hash]gv1.Layer
 
-	content getter
+	annotations map[string]string
 }
 
-func NewFile(cfg v1alpha1.File) File {
-	u, err := url.Parse(cfg.Ref)
-	if err != nil {
-		return File{content: local(cfg.Ref)}
+func NewFile(ref string, filename string) (artifact.OCI, error) {
+	var getter local.Opener
+	if strings.HasPrefix(ref, "http") || strings.HasPrefix(ref, "https") {
+		getter = remoteOpener(ref)
+	} else {
+		getter = localOpener(ref)
 	}
 
-	var g getter
-	switch u.Scheme {
-	case "http", "https":
-		g = https{u}
+	annotations := make(map[string]string)
+	annotations[ocispec.AnnotationTitle] = filename // For oras FileStore to recognize
+	annotations[ocispec.AnnotationSource] = ref
 
-	default:
-		g = local(cfg.Ref)
-	}
-
-	return File{
-		cfg:     cfg,
-		content: g,
-	}
-}
-
-func (f File) Copy(ctx context.Context, registry string) error {
-	l := log.FromContext(ctx)
-
-	resolver := docker.NewResolver(docker.ResolverOptions{})
-
-	// TODO: Should use a hybrid store that can mock out filenames
-	fs := orascontent.NewMemoryStore()
-	data, err := f.content.load()
-	if err != nil {
-		return err
-	}
-
-	cname := f.content.name()
-	if f.cfg.Name != "" {
-		cname = f.cfg.Name
-	}
-
-	desc := fs.Add(cname, f.content.mediaType(), data)
-
-	ref, err := name.ParseReference(path.Join("hauler", cname), name.WithDefaultRegistry(registry))
-	if err != nil {
-		return err
-	}
-
-	l.Infof("Copying file to: %s", ref.Name())
-	pushedDesc, err := oras.Push(ctx, resolver, ref.Name(), fs, []ocispec.Descriptor{desc})
-	if err != nil {
-		return err
-	}
-
-	l.Debugf("Copied with descriptor: %s", pushedDesc.Digest.String())
-	return nil
-}
-
-type getter interface {
-	load() ([]byte, error)
-	name() string
-	mediaType() string
-}
-
-type local string
-
-func (f local) load() ([]byte, error) {
-	fi, err := os.Stat(string(f))
+	blob, err := local.LayerFromOpener(getter,
+		local.WithMediaType(types.FileLayerMediaType),
+		local.WithAnnotations(annotations))
 	if err != nil {
 		return nil, err
 	}
 
-	var data []byte
-	if fi.IsDir() {
-		data = []byte("")
-	} else {
-		data, err = os.ReadFile(string(f))
+	f := &file{
+		blob: blob,
+		config: config{
+			Reference: ref,
+			Name:      filename,
+		},
+	}
+	return f, nil
+}
+
+func (f *file) MediaType() string {
+	return types.OCIManifestSchema1
+}
+
+func (f *file) RawConfig() ([]byte, error) {
+	return f.config.Raw()
+}
+
+func (f *file) Layers() ([]gv1.Layer, error) {
+	var layers []gv1.Layer
+	layers = append(layers, f.blob)
+	return layers, nil
+}
+
+func (f *file) Manifest() (*gv1.Manifest, error) {
+	desc, err := partial.Descriptor(f.blob)
+	if err != nil {
+		return nil, err
+	}
+	layerDescs := []gv1.Descriptor{*desc}
+
+	cfgDesc, err := f.config.Descriptor()
+	if err != nil {
+		return nil, err
+	}
+
+	return &gv1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     gtypes.MediaType(f.MediaType()),
+		Config:        cfgDesc,
+		Layers:        layerDescs,
+		Annotations:   f.annotations,
+	}, nil
+}
+
+func localOpener(path string) local.Opener {
+	return func() (io.ReadCloser, error) {
+		return os.Open(path)
+	}
+}
+
+func remoteOpener(url string) local.Opener {
+	return func() (io.ReadCloser, error) {
+		resp, err := http.Get(url)
 		if err != nil {
 			return nil, err
 		}
+		return resp.Body, nil
 	}
-
-	return data, nil
-}
-
-func (f local) name() string {
-	return filepath.Base(string(f))
-}
-
-func (f local) mediaType() string {
-	return "some-media-type"
-}
-
-type https struct {
-	url *url.URL
-}
-
-// TODO: Support auth
-func (f https) load() ([]byte, error) {
-	resp, err := http.Get(f.url.String())
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
-}
-
-func (f https) name() string {
-	resp, err := http.Get(f.url.String())
-	if err != nil {
-		return ""
-	}
-
-	switch resp.Header {
-
-	default:
-		return path.Base(f.url.String())
-	}
-}
-
-func (f https) mediaType() string {
-	return "some-remote-media-type"
 }

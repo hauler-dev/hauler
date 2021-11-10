@@ -1,48 +1,43 @@
 package image
 
 import (
-	"context"
-
 	"github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/artifact"
 )
 
-type Image struct {
-	cfg v1alpha1.Image
+var _ artifact.OCI = (*image)(nil)
+
+func (i *image) MediaType() string {
+	mt, err := i.Image.MediaType()
+	if err != nil {
+		return ""
+	}
+	return string(mt)
 }
 
-func NewImage(cfg v1alpha1.Image) Image {
-	return Image{
-		cfg: cfg,
-	}
+func (i *image) RawConfig() ([]byte, error) {
+	return i.RawConfigFile()
 }
 
-func (i Image) Copy(ctx context.Context, registry string) error {
-	l := log.FromContext(ctx)
+type image struct {
+	gv1.Image
+}
 
-	srcRef, err := name.ParseReference(i.cfg.Ref)
+func NewImage(ref string) (artifact.OCI, error) {
+	r, err := name.ParseReference(ref)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	img, err := remote.Image(srcRef)
+	img, err := remote.Image(r)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	dstRef, err := store.RelocateReference(srcRef, registry)
-	if err != nil {
-		return err
-	}
-
-	l.Infof("Copying image to: '%s'", dstRef.Name())
-	if err := remote.Write(dstRef, img, remote.WithContext(ctx)); err != nil {
-		return err
-	}
-
-	return nil
+	return &image{
+		Image: img,
+	}, nil
 }
