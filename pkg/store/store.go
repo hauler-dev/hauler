@@ -3,13 +3,17 @@ package store
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/distribution/distribution/v3/configuration"
 	dcontext "github.com/distribution/distribution/v3/context"
+	"github.com/distribution/distribution/v3/reference"
+	"github.com/distribution/distribution/v3/registry/client"
 	"github.com/distribution/distribution/v3/registry/handlers"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -101,9 +105,66 @@ func (s *Store) RelocateReference(ref name.Reference) name.Reference {
 	}
 	relocatedRef, _ := name.ParseReference(
 		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		name.WithDefaultRegistry(s.RegistryURL()),
+		name.WithDefaultRegistry(s.Registry()),
 	)
 	return relocatedRef
+}
+
+// List will list all known content tags in the registry
+// TODO: This fn is messy and needs cleanup, this is arguably easier with the catalog api as well
+func (s *Store) List(ctx context.Context) ([]string, error) {
+	reg, err := client.NewRegistry(s.RegistryURL(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make(map[string]reference.Named)
+	last := ""
+	for {
+		chunk := make([]string, 20) // randomly chosen number...
+		nf, err := reg.Repositories(ctx, chunk, last)
+		last = strconv.Itoa(nf)
+
+		for _, e := range chunk {
+			if e == "" {
+				continue
+			}
+
+			ref, err := reference.WithName(e)
+			if err != nil {
+				return nil, err
+			}
+			entries[e] = ref
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+
+	var refs []string
+	for ref, named := range entries {
+		repo, err := client.NewRepository(named, s.RegistryURL(), nil)
+		if err != nil {
+			return nil, err
+		}
+
+		tsvc := repo.Tags(ctx)
+
+		ts, err := tsvc.All(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, t := range ts {
+			ref, err := name.ParseReference(ref, name.WithDefaultRegistry(""), name.WithDefaultTag(t))
+			if err != nil {
+				return nil, err
+			}
+			refs = append(refs, ref.Name())
+		}
+	}
+
+	return refs, nil
 }
 
 // precheck checks whether server is appropriately started and errors if it's not
@@ -115,9 +176,14 @@ func (s *Store) precheck() error {
 	return nil
 }
 
-// RegistryURL returns the registries URL without the protocol, suitable for image relocation operations
-func (s *Store) RegistryURL() string {
+// Registry returns the registries URL without the protocol, suitable for image relocation operations
+func (s *Store) Registry() string {
 	return httpRegex.ReplaceAllString(s.server.URL, "")
+}
+
+// RegistryURL returns the registries URL
+func (s *Store) RegistryURL() string {
+	return s.server.URL
 }
 
 func alive(path string, handler http.Handler) http.Handler {

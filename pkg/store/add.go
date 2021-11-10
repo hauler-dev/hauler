@@ -26,7 +26,7 @@ func (s *Store) Add(ctx context.Context, oci artifact.OCI, locationRef name.Refe
 		return ocispec.Descriptor{}, err
 	}
 
-	relocated, err := RelocateReference(locationRef, s.RegistryURL())
+	relocated, err := RelocateReference(locationRef, s.Registry())
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
@@ -67,7 +67,7 @@ func (s *Store) AddFromLayout(ctx context.Context, layoutPath string) error {
 		return err
 	}
 
-	return layout.Copy(ctx, ociStore, s.RegistryURL())
+	return layout.Copy(ctx, ociStore, s.Registry())
 }
 
 // Flush is a fancy name for delete-all-the-things, in this case it's as trivial as deleting everything in the underlying store directory

@@ -48,7 +48,7 @@ func TestChart_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx:      ctx,
-				registry: s.RegistryURL(),
+				registry: s.Registry(),
 			},
 			wantErr: false,
 		},

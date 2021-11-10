@@ -21,6 +21,8 @@ func addStore(parent *cobra.Command) {
 		addStoreLoad(),
 		addStoreSave(),
 		addStoreServe(),
+		addStoreList(),
+		addStoreCopy(),
 
 		// TODO: Remove this in favor of sync?
 		addStoreAdd(),
@@ -144,6 +146,52 @@ func addStoreSave() *cobra.Command {
 		},
 	}
 	o.AddArgs(cmd)
+
+	return cmd
+}
+
+func addStoreList() *cobra.Command {
+	o := &store.ListOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all content references in a store",
+		Args:  cobra.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.ListCmd(ctx, o, s)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreCopy() *cobra.Command {
+	o := &store.CopyOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "copy",
+		Short: "Copy all store contents to another OCI registry",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := ro.getStore(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.CopyCmd(ctx, o, s, args[0])
+		},
+	}
+	o.AddFlags(cmd)
 
 	return cmd
 }

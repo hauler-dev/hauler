@@ -48,7 +48,7 @@ func TestImage_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx: ctx,
-				// registry: s.RegistryURL(),
+				// registry: s.Registry(),
 			},
 			wantErr: false,
 		},
@@ -59,7 +59,7 @@ func TestImage_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx: ctx,
-				// registry: s.RegistryURL(),
+				// registry: s.Registry(),
 			},
 			wantErr: false,
 		},
@@ -70,7 +70,7 @@ func TestImage_Copy(t *testing.T) {
 			},
 			args: args{
 				ctx: ctx,
-				// registry: s.RegistryURL(),
+				// registry: s.Registry(),
 			},
 			wantErr: false,
 		},
