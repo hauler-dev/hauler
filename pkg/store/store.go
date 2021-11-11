@@ -15,9 +15,11 @@ import (
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/client"
 	"github.com/distribution/distribution/v3/registry/handlers"
-	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sirupsen/logrus"
+
+	// Init filesystem distribution storage driver
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 
 	"github.com/rancherfederal/hauler/pkg/cache"
 )
@@ -71,6 +73,7 @@ func (s *Store) Open() *httptest.Server {
 	return server
 }
 
+// Close stops the server
 func (s *Store) Close() {
 	s.server.Close()
 	s.server = nil

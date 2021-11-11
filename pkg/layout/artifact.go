@@ -18,10 +18,12 @@ import (
 	"github.com/rancherfederal/hauler/pkg/artifact"
 )
 
+// Path is a wrapper around layout.Path
 type Path struct {
 	layout.Path
 }
 
+// FromPath returns a new Path or creates one if one doesn't exist
 func FromPath(path string) (Path, error) {
 	p, err := layout.FromPath(path)
 	if os.IsNotExist(err) {
@@ -33,6 +35,7 @@ func FromPath(path string) (Path, error) {
 	return Path{Path: p}, err
 }
 
+// WriteOci will write oci content (artifact.OCI) to the given Path
 func (l Path) WriteOci(o artifact.OCI, reference name.Reference) (ocispec.Descriptor, error) {
 	layers, err := o.Layers()
 	if err != nil {

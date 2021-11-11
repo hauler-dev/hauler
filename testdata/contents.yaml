@@ -7,14 +7,15 @@ spec:
     # hauler can save/redistribute files on disk
     - ref: testdata/contents.yaml
 
-    # when directories are specified, they will be archived and stored as a file
+    # TODO: when directories are specified, they will be archived and stored as a file
 #    - ref: testdata/
 
     # hauler can also fetch remote content, and will "smartly" identify filenames _when possible_
-    #   filename below = "k3s-airgap-images-arm64.tar.zst"
-    - ref: "https://github.com/k3s-io/k3s/releases/download/v1.22.2%2Bk3s2/k3s-airgap-images-arm64.tar.zst"
+    #   filename below = "k3s-images.txt"
+    - ref: "https://github.com/k3s-io/k3s/releases/download/v1.22.2%2Bk3s2/k3s-images.txt"
 
-    # when not possible to identify a filename from remote content, a name should be specified
+    # when filenames are not appropriate, a name should be specified
+    #   this will still work, but default to a filename of "get.k3s.io"
     - ref: https://get.k3s.io
       name: get-k3s.sh
 
@@ -42,3 +43,9 @@ spec:
     #   HELM_EXPERIMENTAL_OCI=1 helm chart pull <hauler-registry>/loki:2.6.2
     - name: loki
       repoURL: https://grafana.github.io/helm-charts
+#      version: latest  # the latest version will be used when version is empty
+
+    # specific versions can also be used
+    - name: rancher
+      repoURL: https://releases.rancher.com/server-charts/latest
+      version: 2.6.2

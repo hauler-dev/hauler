@@ -27,4 +27,4 @@ dist/
 tmp/
 bin/
 pkg.yaml
-store/
+haul/

@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Logger provides an interface for all used logger features regardless of logging backend
 type Logger interface {
 	SetLevel(string)
 	With(Fields) *logger
@@ -23,17 +24,10 @@ type logger struct {
 	zl zerolog.Logger
 }
 
+// Fields defines fields to attach to log msgs
 type Fields map[string]string
 
-type Event struct {
-	id      int
-	message string
-}
-
-var (
-	invalidArgMessage = Event{1, "Invalid arg: %s"}
-)
-
+// NewLogger returns a new Logger
 func NewLogger(out io.Writer) Logger {
 	l := log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	return &logger{
@@ -41,6 +35,7 @@ func NewLogger(out io.Writer) Logger {
 	}
 }
 
+// FromContext returns a Logger from a context if it exists
 func FromContext(ctx context.Context) Logger {
 	zl := zerolog.Ctx(ctx)
 	return &logger{
@@ -48,6 +43,7 @@ func FromContext(ctx context.Context) Logger {
 	}
 }
 
+// SetLevel sets the global log level
 func (l *logger) SetLevel(level string) {
 	lvl, err := zerolog.ParseLevel(level)
 	if err != nil {
@@ -57,10 +53,12 @@ func (l *logger) SetLevel(level string) {
 	zerolog.SetGlobalLevel(lvl)
 }
 
+// WithContext stores the Logger in the given context and returns it
 func (l *logger) WithContext(ctx context.Context) context.Context {
 	return l.zl.WithContext(ctx)
 }
 
+// With attaches Fields to a Logger
 func (l *logger) With(fields Fields) *logger {
 	zl := l.zl.With()
 	for k, v := range fields {
@@ -72,22 +70,22 @@ func (l *logger) With(fields Fields) *logger {
 	}
 }
 
+// Errorf prints a formatted ERR message
 func (l *logger) Errorf(format string, args ...interface{}) {
 	l.zl.Error().Msgf(format, args...)
 }
 
+// Infof prints a formatted INFO message
 func (l *logger) Infof(format string, args ...interface{}) {
 	l.zl.Info().Msgf(format, args...)
 }
 
+// Warnf prints a formatted WARN message
 func (l *logger) Warnf(format string, args ...interface{}) {
 	l.zl.Warn().Msgf(format, args...)
 }
 
+// Debugf prints a formatted DBG message
 func (l *logger) Debugf(format string, args ...interface{}) {
 	l.zl.Debug().Msgf(format, args...)
-}
-
-func (l *logger) InvalidArg(arg string) {
-	l.Errorf(invalidArgMessage.message, arg)
 }

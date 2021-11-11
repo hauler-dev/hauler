@@ -20,8 +20,9 @@ import (
 var _ artifact.Collection = (*k3s)(nil)
 
 const (
-	releaseUrl = "https://github.com/k3s-io/k3s/releases/download"
-	channelUrl = "https://update.k3s.io/v1-release/channels"
+	releaseUrl   = "https://github.com/k3s-io/k3s/releases/download"
+	channelUrl   = "https://update.k3s.io/v1-release/channels"
+	bootstrapUrl = "https://get.k3s.io"
 )
 
 var (
@@ -73,6 +74,10 @@ func (k *k3s) compute() error {
 		return err
 	}
 
+	if err := k.bootstrap(); err != nil {
+		return err
+	}
+
 	k.computed = true
 	return nil
 }
@@ -95,6 +100,21 @@ func (k *k3s) executable() error {
 	}
 
 	ref, err := name.ParseReference("hauler/k3s", name.WithDefaultTag(k.dnsCompliantVersion()), name.WithDefaultRegistry(""))
+	if err != nil {
+		return err
+	}
+
+	k.contents[ref] = f
+	return nil
+}
+
+func (k *k3s) bootstrap() error {
+	f, err := file.NewFile(bootstrapUrl, "get-k3s.io")
+	if err != nil {
+		return err
+	}
+
+	ref, err := name.ParseReference("hauler/get-k3s.io", name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
 	if err != nil {
 		return err
 	}
