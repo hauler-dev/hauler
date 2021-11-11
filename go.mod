@@ -35,6 +35,11 @@ require (
 )
 
 require (
+	github.com/opencontainers/go-digest v1.0.0
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+)
+
+require (
 	cloud.google.com/go v0.83.0 // indirect
 	cloud.google.com/go/storage v1.10.0 // indirect
 	github.com/Azure/azure-sdk-for-go v56.3.0+incompatible // indirect
@@ -170,7 +175,6 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mozilla-services/yaml v0.0.0-20191106225358-5c216288813c // indirect
 	github.com/nwaples/rardecode v1.1.0 // indirect
-	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/pierrec/lz4/v4 v4.0.3 // indirect
@@ -208,7 +212,6 @@ require (
 	golang.org/x/mod v0.4.2 // indirect
 	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
 	golang.org/x/oauth2 v0.0.0-20210514164344-f6687ab2804c // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/text v0.3.6 // indirect
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
 	golang.org/x/tools v0.1.5 // indirect
