@@ -3,6 +3,10 @@ before:
   hooks:
     - go mod tidy
     - go mod download
+
+env:
+  - vpkg=github.com/rancherfederal/hauler/pkg/version
+
 builds:
   - main: cmd/hauler/main.go
     goos:
@@ -12,6 +16,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    ldflags:
+      - -s -w -X {{ .Env.vpkg }}.GitVersion={{ .Version }} -X {{ .Env.vpkg }}.commit={{ .ShortCommit }} -X {{ .Env.vpkg }}.buildDate={{ .Date }}
     env:
       - CGO_ENABLED=0
 

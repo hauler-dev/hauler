@@ -81,7 +81,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 
 		lgr.Infof("downloaded [%s] to [%s]", ref.Name(), outputFile)
 
-	case types.FileMediaType:
+	case types.FileConfigMediaType:
 		lgr.Infof("identified [file] (%s) content", manifest.Config.MediaType)
 
 		fs := content.NewFileStore(o.DestinationDir)
