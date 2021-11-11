@@ -174,6 +174,6 @@ func storeChart(ctx context.Context, s *store.Store, ch v1alpha1.Chart) error {
 		return err
 	}
 
-	lgr.Infof("added chart [%s] to store at [%s] with manifest digest [%s]", ch.Name, ref.Context().RepositoryStr(), desc.Digest.String())
+	lgr.Infof("added chart [%s] to store at [%s:%s] with manifest digest [%s]", ch.Name, ref.Context().RepositoryStr(), ref.Identifier(), desc.Digest.String())
 	return nil
 }
