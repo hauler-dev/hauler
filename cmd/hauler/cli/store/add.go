@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 	"github.com/rancherfederal/hauler/pkg/content/file"
@@ -54,9 +55,10 @@ func storeFile(ctx context.Context, s *store.Store, c cache.Cache, fi v1alpha1.F
 		return err
 	}
 
+	var oci artifact.OCI
 	if c != nil {
-		cf := cache.Oci(f, c)
-		f = cf
+		cached := cache.Oci(f, c)
+		oci = cached
 	}
 
 	ref, err := name.ParseReference(fi.Name, name.WithDefaultRegistry(""))
@@ -64,7 +66,7 @@ func storeFile(ctx context.Context, s *store.Store, c cache.Cache, fi v1alpha1.F
 		return err
 	}
 
-	desc, err := s.AddArtifact(ctx, f, ref)
+	desc, err := s.AddArtifact(ctx, oci, ref)
 	if err != nil {
 		return err
 	}
@@ -109,12 +111,13 @@ func storeImage(ctx context.Context, s *store.Store, c cache.Cache, i v1alpha1.I
 		return err
 	}
 
+	var oci artifact.OCI
 	if c != nil {
-		ci := cache.Oci(img, c)
-		img = ci
+		cached := cache.Oci(img, c)
+		oci = cached
 	}
 
-	desc, err := s.AddArtifact(ctx, img, ref)
+	desc, err := s.AddArtifact(ctx, oci, ref)
 	if err != nil {
 		return err
 	}
@@ -180,12 +183,13 @@ func storeChart(ctx context.Context, s *store.Store, c cache.Cache, ch v1alpha1.
 		return err
 	}
 
+	var oci artifact.OCI
 	if c != nil {
-		cch := cache.Oci(chrt, c)
-		chrt = cch
+		cached := cache.Oci(chrt, c)
+		oci = cached
 	}
 
-	desc, err := s.AddArtifact(ctx, chrt, ref)
+	desc, err := s.AddArtifact(ctx, oci, ref)
 	if err != nil {
 		return err
 	}

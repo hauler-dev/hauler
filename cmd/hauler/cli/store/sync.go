@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/cache"
+	"github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
@@ -125,6 +126,23 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 
 				if _, err := s.AddCollection(ctx, k); err != nil {
 					return err
+				}
+
+			case v1alpha1.ChartsCollectionKind:
+				var cfg v1alpha1.ThickCharts
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				for _, cfg := range cfg.Spec.Charts {
+					tc, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+					if err != nil {
+						return err
+					}
+
+					if _, err := s.AddCollection(ctx, tc); err != nil {
+						return err
+					}
 				}
 
 			default:

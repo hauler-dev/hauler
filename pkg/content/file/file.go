@@ -26,7 +26,7 @@ type file struct {
 	annotations map[string]string
 }
 
-func NewFile(ref string, filename string) (artifact.OCI, error) {
+func NewFile(ref string, filename string) (*file, error) {
 	var getter local.Opener
 	if strings.HasPrefix(ref, "http") || strings.HasPrefix(ref, "https") {
 		getter = remoteOpener(ref)

@@ -35,15 +35,15 @@ type k3s struct {
 	version string
 	arch    string
 
-	computed   bool
-	components map[name.Reference]artifact.OCI
-	channels   map[string]string
+	computed bool
+	contents map[name.Reference]artifact.OCI
+	channels map[string]string
 }
 
 func NewK3s(version string) (artifact.Collection, error) {
 	return &k3s{
-		version:    version,
-		components: make(map[name.Reference]artifact.OCI),
+		version:  version,
+		contents: make(map[name.Reference]artifact.OCI),
 	}, nil
 }
 
@@ -51,7 +51,7 @@ func (k *k3s) Contents() (map[name.Reference]artifact.OCI, error) {
 	if err := k.compute(); err != nil {
 		return nil, err
 	}
-	return k.components, nil
+	return k.contents, nil
 }
 
 func (k *k3s) compute() error {
@@ -99,7 +99,7 @@ func (k *k3s) executable() error {
 		return err
 	}
 
-	k.components[ref] = f
+	k.contents[ref] = f
 	return nil
 }
 
@@ -124,7 +124,7 @@ func (k *k3s) images() error {
 			return err
 		}
 
-		k.components[ref] = o
+		k.contents[ref] = o
 	}
 	return nil
 }
