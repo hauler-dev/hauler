@@ -19,6 +19,7 @@ import (
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
+// OCIStore represents a content compatible store adhering by the oci-layout spec
 type OCIStore struct {
 	content.Store
 
@@ -68,8 +69,9 @@ func Copy(ctx context.Context, s *OCIStore, registry string) error {
 	return nil
 }
 
-func NewOCIStore(rootPath string) (*OCIStore, error) {
-	fs, err := local.NewStore(rootPath)
+// NewOCIStore will return a new OCIStore given a path to an oci-layout compatible directory
+func NewOCIStore(path string) (*OCIStore, error) {
+	fs, err := local.NewStore(path)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +79,7 @@ func NewOCIStore(rootPath string) (*OCIStore, error) {
 	store := &OCIStore{
 		Store: fs,
 
-		root: rootPath,
+		root: path,
 	}
 
 	if err := store.validateOCILayout(); err != nil {
@@ -90,6 +92,7 @@ func NewOCIStore(rootPath string) (*OCIStore, error) {
 	return store, nil
 }
 
+// LoadIndex will load an oci-layout compatible directory
 func (s *OCIStore) LoadIndex() error {
 	path := filepath.Join(s.root, types.OCIImageIndexFile)
 	indexFile, err := os.Open(path)
@@ -164,6 +167,7 @@ func loadManifest(data []byte) (ocispec.Manifest, ocispec.Descriptor, error) {
 	return m.Manifest, desc, nil
 }
 
+// RelocateReference returns a name.Reference given a reference and registry
 func RelocateReference(reference string, registry string) (name.Reference, error) {
 	ref, err := name.ParseReference(reference)
 	if err != nil {

@@ -26,7 +26,6 @@ jobs:
       run: |
         go get -u golang.org/x/lint/golint
         go mod tidy
-        golint ./...
         go vet ./...
     
   create-release:

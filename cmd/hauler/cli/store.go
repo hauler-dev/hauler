@@ -3,7 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/cmd/hauler/cli/store"
+	cstore "github.com/rancherfederal/hauler/cmd/hauler/cli/str"
 )
 
 func addStore(parent *cobra.Command) {
@@ -32,7 +32,7 @@ func addStore(parent *cobra.Command) {
 }
 
 func addStoreExtract() *cobra.Command {
-	o := &store.ExtractOpts{}
+	o := &cstore.ExtractOpts{}
 
 	cmd := &cobra.Command{
 		Use:     "extract",
@@ -47,7 +47,7 @@ func addStoreExtract() *cobra.Command {
 				return err
 			}
 
-			return store.ExtractCmd(ctx, o, s, args[0])
+			return cstore.ExtractCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddArgs(cmd)
@@ -56,7 +56,7 @@ func addStoreExtract() *cobra.Command {
 }
 
 func addStoreSync() *cobra.Command {
-	o := &store.SyncOpts{}
+	o := &cstore.SyncOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "sync",
@@ -69,7 +69,7 @@ func addStoreSync() *cobra.Command {
 				return err
 			}
 
-			return store.SyncCmd(ctx, o, s)
+			return cstore.SyncCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)
@@ -78,7 +78,7 @@ func addStoreSync() *cobra.Command {
 }
 
 func addStoreLoad() *cobra.Command {
-	o := &store.LoadOpts{}
+	o := &cstore.LoadOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "load",
@@ -92,7 +92,7 @@ func addStoreLoad() *cobra.Command {
 				return err
 			}
 
-			return store.LoadCmd(ctx, o, s.DataDir, args...)
+			return cstore.LoadCmd(ctx, o, s.DataDir, args...)
 		},
 	}
 	o.AddFlags(cmd)
@@ -101,7 +101,7 @@ func addStoreLoad() *cobra.Command {
 }
 
 func addStoreServe() *cobra.Command {
-	o := &store.ServeOpts{}
+	o := &cstore.ServeOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -114,7 +114,7 @@ func addStoreServe() *cobra.Command {
 				return err
 			}
 
-			return store.ServeCmd(ctx, o, s)
+			return cstore.ServeCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)
@@ -123,7 +123,7 @@ func addStoreServe() *cobra.Command {
 }
 
 func addStoreSave() *cobra.Command {
-	o := &store.SaveOpts{}
+	o := &cstore.SaveOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "save",
@@ -137,7 +137,7 @@ func addStoreSave() *cobra.Command {
 				return err
 			}
 
-			return store.SaveCmd(ctx, o, o.FileName, s.DataDir)
+			return cstore.SaveCmd(ctx, o, o.FileName, s.DataDir)
 		},
 	}
 	o.AddArgs(cmd)
@@ -146,7 +146,7 @@ func addStoreSave() *cobra.Command {
 }
 
 func addStoreList() *cobra.Command {
-	o := &store.ListOpts{}
+	o := &cstore.ListOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -160,7 +160,7 @@ func addStoreList() *cobra.Command {
 				return err
 			}
 
-			return store.ListCmd(ctx, o, s)
+			return cstore.ListCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)
@@ -169,7 +169,7 @@ func addStoreList() *cobra.Command {
 }
 
 func addStoreCopy() *cobra.Command {
-	o := &store.CopyOpts{}
+	o := &cstore.CopyOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "copy",
@@ -183,7 +183,7 @@ func addStoreCopy() *cobra.Command {
 				return err
 			}
 
-			return store.CopyCmd(ctx, o, s, args[0])
+			return cstore.CopyCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -210,7 +210,7 @@ func addStoreAdd() *cobra.Command {
 }
 
 func addStoreAddFile() *cobra.Command {
-	o := &store.AddFileOpts{}
+	o := &cstore.AddFileOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "file",
@@ -224,7 +224,7 @@ func addStoreAddFile() *cobra.Command {
 				return err
 			}
 
-			return store.AddFileCmd(ctx, o, s, args[0])
+			return cstore.AddFileCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -233,7 +233,7 @@ func addStoreAddFile() *cobra.Command {
 }
 
 func addStoreAddImage() *cobra.Command {
-	o := &store.AddImageOpts{}
+	o := &cstore.AddImageOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "image",
@@ -247,7 +247,7 @@ func addStoreAddImage() *cobra.Command {
 				return err
 			}
 
-			return store.AddImageCmd(ctx, o, s, args[0])
+			return cstore.AddImageCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -256,7 +256,7 @@ func addStoreAddImage() *cobra.Command {
 }
 
 func addStoreAddChart() *cobra.Command {
-	o := &store.AddChartOpts{}
+	o := &cstore.AddChartOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "chart",
@@ -277,7 +277,7 @@ hauler store add chart rancher --repo "https://releases.rancher.com/server-chart
 				return err
 			}
 
-			return store.AddChartCmd(ctx, o, s, args[0])
+			return cstore.AddChartCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddFlags(cmd)

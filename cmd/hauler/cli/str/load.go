@@ -1,4 +1,4 @@
-package store
+package str
 
 import (
 	"context"
