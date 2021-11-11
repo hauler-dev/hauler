@@ -18,6 +18,8 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sirupsen/logrus"
+
+	"github.com/rancherfederal/hauler/pkg/cache"
 )
 
 var (
@@ -31,12 +33,12 @@ type Store struct {
 
 	config  *configuration.Configuration
 	handler http.Handler
-
-	server *httptest.Server
+	server  *httptest.Server
+	cache   cache.Cache
 }
 
 // NewStore creates a new registry store, designed strictly for use within haulers embedded operations and _not_ for serving
-func NewStore(ctx context.Context, dataDir string) *Store {
+func NewStore(ctx context.Context, dataDir string, opts ...Options) *Store {
 	cfg := &configuration.Configuration{
 		Version: "0.1",
 		Storage: configuration.Storage{
@@ -49,15 +51,17 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 
 	handler := setupHandler(ctx, cfg)
 
-	return &Store{
+	s := &Store{
 		DataDir: dataDir,
-
-		// TODO: Opt this
-		DefaultRepository: "hauler",
-
 		config:  cfg,
 		handler: handler,
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // Open will create a new server and start it, it's up to the consumer to close it

@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
@@ -29,7 +28,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
 }
 
-func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) error {
+func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 	l := log.FromContext(ctx)
 	l.Debugf("running cli command `hauler store sync`")
 
@@ -81,7 +80,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 				}
 
 				for _, f := range cfg.Spec.Files {
-					err := storeFile(ctx, s, c, f)
+					err := storeFile(ctx, s, f)
 					if err != nil {
 						return err
 					}
@@ -94,7 +93,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 				}
 
 				for _, i := range cfg.Spec.Images {
-					err := storeImage(ctx, s, c, i)
+					err := storeImage(ctx, s, i)
 					if err != nil {
 						return err
 					}
@@ -107,7 +106,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 				}
 
 				for _, ch := range cfg.Spec.Charts {
-					err := storeChart(ctx, s, c, ch)
+					err := storeChart(ctx, s, ch)
 					if err != nil {
 						return err
 					}

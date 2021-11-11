@@ -10,6 +10,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/layout"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
@@ -29,6 +30,11 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference nam
 	stg, err := newOciStage()
 	if err != nil {
 		return ocispec.Descriptor{}, err
+	}
+
+	if s.cache != nil {
+		cached := cache.Oci(oci, s.cache)
+		oci = cached
 	}
 
 	lgr.Debugf("staging %s", reference.Name())
