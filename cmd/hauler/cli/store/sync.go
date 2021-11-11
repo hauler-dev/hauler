@@ -3,6 +3,7 @@ package store
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/cache"
+	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
@@ -62,14 +64,15 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 		}
 
 		for _, doc := range docs {
-			gvk, err := content.ValidateType(doc)
+			obj, err := content.Load(doc)
 			if err != nil {
 				return err
 			}
 
-			l.Infof("syncing [%s/%s] to [%s]", gvk.APIVersion, gvk.Kind, s.DataDir)
+			l.Infof("syncing [%s] to [%s]", obj.GroupVersionKind().String(), s.DataDir)
 
-			switch gvk.Kind {
+			// TODO: Should type switch instead...
+			switch obj.GroupVersionKind().Kind {
 			case v1alpha1.FilesContentKind:
 				var cfg v1alpha1.Files
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
@@ -108,6 +111,24 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 						return err
 					}
 				}
+
+			case v1alpha1.K3sCollectionKind:
+				var cfg v1alpha1.K3s
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				k, err := k3s.NewK3s(cfg.Spec.Version)
+				if err != nil {
+					return err
+				}
+
+				if _, err := s.AddCollection(ctx, k); err != nil {
+					return err
+				}
+
+			default:
+				return fmt.Errorf("unrecognized content/collection type: %s", obj.GroupVersionKind().String())
 			}
 		}
 	}

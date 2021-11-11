@@ -7,7 +7,7 @@ import (
 const ImagesContentKind = "Images"
 
 type Images struct {
-	metav1.TypeMeta   `json:",inline"`
+	*metav1.TypeMeta  `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec ImageSpec `json:"spec,omitempty"`

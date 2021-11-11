@@ -115,12 +115,12 @@ func TestFile_Copy(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			ref, err := name.ParseReference(filepath.Base(tt.cfg.Ref))
+			ref, err := name.ParseReference("myfile")
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			_, err = s.Add(ctx, f, ref)
+			_, err = s.AddArtifact(ctx, f, ref)
 			if (err != nil) != tt.wantErr {
 				t.Error(err)
 			}

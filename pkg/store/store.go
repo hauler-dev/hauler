@@ -73,43 +73,6 @@ func (s *Store) Close() {
 	return
 }
 
-// Remove TODO: will remove an oci artifact from the registry store
-func (s *Store) Remove() error {
-	if err := s.precheck(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func RelocateReference(ref name.Reference, registry string, opts ...name.Option) (name.Reference, error) {
-	var sep string
-	if _, err := name.NewDigest(ref.Name(), opts...); err == nil {
-		sep = "@"
-	} else {
-		sep = ":"
-	}
-
-	opts = append(opts, name.WithDefaultRegistry(registry))
-	return name.ParseReference(
-		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		opts...,
-	)
-}
-
-func (s *Store) RelocateReference(ref name.Reference) name.Reference {
-	var sep string
-	if _, err := name.NewDigest(ref.Name()); err == nil {
-		sep = "@"
-	} else {
-		sep = ":"
-	}
-	relocatedRef, _ := name.ParseReference(
-		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		name.WithDefaultRegistry(s.Registry()),
-	)
-	return relocatedRef
-}
-
 // List will list all known content tags in the registry
 // TODO: This fn is messy and needs cleanup, this is arguably easier with the catalog api as well
 func (s *Store) List(ctx context.Context) ([]string, error) {

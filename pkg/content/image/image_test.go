@@ -87,7 +87,7 @@ func TestImage_Copy(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if _, err := s.Add(ctx, i, ref); (err != nil) != tt.wantErr {
+			if _, err := s.AddArtifact(ctx, i, ref); (err != nil) != tt.wantErr {
 				t.Error(err)
 			}
 

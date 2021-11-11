@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
@@ -32,7 +33,7 @@ func FromPath(path string) (Path, error) {
 	return Path{Path: p}, err
 }
 
-func (l Path) WriteOci(o artifact.OCI, name string) (ocispec.Descriptor, error) {
+func (l Path) WriteOci(o artifact.OCI, reference name.Reference) (ocispec.Descriptor, error) {
 	layers, err := o.Layers()
 	if err != nil {
 		return ocispec.Descriptor{}, err
@@ -79,7 +80,7 @@ func (l Path) WriteOci(o artifact.OCI, name string) (ocispec.Descriptor, error) 
 		Size:      int64(len(manifest)),
 		Digest:    digest.FromBytes(manifest),
 		Annotations: map[string]string{
-			ocispec.AnnotationRefName: name,
+			ocispec.AnnotationRefName: reference.Name(),
 		},
 	}
 

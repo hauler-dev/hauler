@@ -54,22 +54,22 @@ func storeFile(ctx context.Context, s *store.Store, c cache.Cache, fi v1alpha1.F
 		return err
 	}
 
-	ref, err := name.ParseReference(fi.Name)
-	if err != nil {
-		return err
-	}
-
 	if c != nil {
 		cf := cache.Oci(f, c)
 		f = cf
 	}
 
-	desc, err := s.Add(ctx, f, ref)
+	ref, err := name.ParseReference(fi.Name, name.WithDefaultRegistry(""))
 	if err != nil {
 		return err
 	}
 
-	lgr.Infof("added file [%s] to store at [%s] with manifest digest [%s]", fi.Ref, ref.Context().RepositoryStr(), desc.Digest.String())
+	desc, err := s.AddArtifact(ctx, f, ref)
+	if err != nil {
+		return err
+	}
+
+	lgr.Infof("added file [%s] to store at [%s] with manifest digest [%s]", fi.Ref, ref.Name(), desc.Digest.String())
 	return nil
 }
 
@@ -114,7 +114,7 @@ func storeImage(ctx context.Context, s *store.Store, c cache.Cache, i v1alpha1.I
 		img = ci
 	}
 
-	desc, err := s.Add(ctx, img, ref)
+	desc, err := s.AddArtifact(ctx, img, ref)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func storeChart(ctx context.Context, s *store.Store, c cache.Cache, ch v1alpha1.
 		tag = name.DefaultTag
 	}
 
-	ref, err := name.ParseReference(ch.Name, name.WithDefaultTag(tag))
+	ref, err := name.ParseReference(ch.Name, name.WithDefaultRegistry(""), name.WithDefaultTag(tag))
 	if err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ func storeChart(ctx context.Context, s *store.Store, c cache.Cache, ch v1alpha1.
 		chrt = cch
 	}
 
-	desc, err := s.Add(ctx, chrt, ref)
+	desc, err := s.AddArtifact(ctx, chrt, ref)
 	if err != nil {
 		return err
 	}
