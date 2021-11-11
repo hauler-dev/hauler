@@ -1,4 +1,8 @@
 project_name: hauler
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
 builds:
   - main: cmd/hauler/main.go
     goos:
@@ -13,6 +17,10 @@ builds:
 
 universal_binaries:
   - replace: true
+
+changelog:
+  skip: false
+  use: git
 
 brews:
   - name: hauler
