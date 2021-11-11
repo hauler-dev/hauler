@@ -30,7 +30,7 @@ func (c config) Descriptor() (gv1.Descriptor, error) {
 	}
 
 	return gv1.Descriptor{
-		MediaType:   types.FileMediaType,
+		MediaType:   types.FileConfigMediaType,
 		Size:        c.size,
 		Digest:      c.hash,
 		URLs:        c.URLs,
@@ -47,7 +47,7 @@ func (c config) Digest() (gv1.Hash, error) {
 }
 
 func (c config) MediaType() (gtypes.MediaType, error) {
-	return types.FileMediaType, nil
+	return types.FileConfigMediaType, nil
 }
 
 func (c config) Size() (int64, error) {
