@@ -3,10 +3,10 @@ package store
 import (
 	"context"
 
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/cmd/hauler/cli/download"
+	"github.com/rancherfederal/hauler/pkg/layout"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -28,12 +28,10 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, reference s
 	s.Open()
 	defer s.Close()
 
-	ref, err := name.ParseReference(reference)
+	eref, err := layout.RelocateReference(reference, s.Registry())
 	if err != nil {
 		return err
 	}
-
-	eref := s.RelocateReference(ref)
 
 	gopts := &download.Opts{
 		DestinationDir: o.DestinationDir,

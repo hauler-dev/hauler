@@ -18,6 +18,8 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sirupsen/logrus"
+
+	"github.com/rancherfederal/hauler/pkg/cache"
 )
 
 var (
@@ -31,12 +33,12 @@ type Store struct {
 
 	config  *configuration.Configuration
 	handler http.Handler
-
-	server *httptest.Server
+	server  *httptest.Server
+	cache   cache.Cache
 }
 
 // NewStore creates a new registry store, designed strictly for use within haulers embedded operations and _not_ for serving
-func NewStore(ctx context.Context, dataDir string) *Store {
+func NewStore(ctx context.Context, dataDir string, opts ...Options) *Store {
 	cfg := &configuration.Configuration{
 		Version: "0.1",
 		Storage: configuration.Storage{
@@ -49,15 +51,17 @@ func NewStore(ctx context.Context, dataDir string) *Store {
 
 	handler := setupHandler(ctx, cfg)
 
-	return &Store{
+	s := &Store{
 		DataDir: dataDir,
-
-		// TODO: Opt this
-		DefaultRepository: "hauler",
-
 		config:  cfg,
 		handler: handler,
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // Open will create a new server and start it, it's up to the consumer to close it
@@ -71,43 +75,6 @@ func (s *Store) Close() {
 	s.server.Close()
 	s.server = nil
 	return
-}
-
-// Remove TODO: will remove an oci artifact from the registry store
-func (s *Store) Remove() error {
-	if err := s.precheck(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func RelocateReference(ref name.Reference, registry string, opts ...name.Option) (name.Reference, error) {
-	var sep string
-	if _, err := name.NewDigest(ref.Name(), opts...); err == nil {
-		sep = "@"
-	} else {
-		sep = ":"
-	}
-
-	opts = append(opts, name.WithDefaultRegistry(registry))
-	return name.ParseReference(
-		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		opts...,
-	)
-}
-
-func (s *Store) RelocateReference(ref name.Reference) name.Reference {
-	var sep string
-	if _, err := name.NewDigest(ref.Name()); err == nil {
-		sep = "@"
-	} else {
-		sep = ":"
-	}
-	relocatedRef, _ := name.ParseReference(
-		fmt.Sprintf("%s%s%s", ref.Context().RepositoryStr(), sep, ref.Identifier()),
-		name.WithDefaultRegistry(s.Registry()),
-	)
-	return relocatedRef
 }
 
 // List will list all known content tags in the registry

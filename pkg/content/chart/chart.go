@@ -12,6 +12,7 @@ import (
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 
@@ -20,20 +21,15 @@ import (
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
-const (
-	// ChartLayerMediaType is the reserved media type for Helm chart package content
-	ChartLayerMediaType = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
-)
+var _ artifact.OCI = (*Chart)(nil)
 
-var _ artifact.OCI = (*chrt)(nil)
-
-type chrt struct {
+type Chart struct {
 	path string
 
 	annotations map[string]string
 }
 
-func NewChart(name, repo, version string) (artifact.OCI, error) {
+func NewChart(name, repo, version string) (*Chart, error) {
 	cpo := action.ChartPathOptions{
 		RepoURL: repo,
 		Version: version,
@@ -44,16 +40,16 @@ func NewChart(name, repo, version string) (artifact.OCI, error) {
 		return nil, err
 	}
 
-	return &chrt{
+	return &Chart{
 		path: cp,
 	}, nil
 }
 
-func (h *chrt) MediaType() string {
+func (h *Chart) MediaType() string {
 	return types.OCIManifestSchema1
 }
 
-func (h *chrt) Manifest() (*gv1.Manifest, error) {
+func (h *Chart) Manifest() (*gv1.Manifest, error) {
 	cfgDesc, err := h.configDescriptor()
 	if err != nil {
 		return nil, err
@@ -78,7 +74,7 @@ func (h *chrt) Manifest() (*gv1.Manifest, error) {
 	}, nil
 }
 
-func (h *chrt) RawConfig() ([]byte, error) {
+func (h *Chart) RawConfig() ([]byte, error) {
 	ch, err := loader.Load(h.path)
 	if err != nil {
 		return nil, err
@@ -86,7 +82,7 @@ func (h *chrt) RawConfig() ([]byte, error) {
 	return json.Marshal(ch.Metadata)
 }
 
-func (h *chrt) configDescriptor() (gv1.Descriptor, error) {
+func (h *Chart) configDescriptor() (gv1.Descriptor, error) {
 	data, err := h.RawConfig()
 	if err != nil {
 		return gv1.Descriptor{}, err
@@ -104,7 +100,16 @@ func (h *chrt) configDescriptor() (gv1.Descriptor, error) {
 	}, nil
 }
 
-func (h *chrt) Layers() ([]gv1.Layer, error) {
+func (h *Chart) Load() (*chart.Chart, error) {
+	rc, err := chartOpener(h.path)()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return loader.LoadArchive(rc)
+}
+
+func (h *Chart) Layers() ([]gv1.Layer, error) {
 	chartDataLayer, err := h.chartDataLayer()
 	if err != nil {
 		return nil, err
@@ -116,11 +121,11 @@ func (h *chrt) Layers() ([]gv1.Layer, error) {
 	}, nil
 }
 
-func (h *chrt) RawChartData() ([]byte, error) {
+func (h *Chart) RawChartData() ([]byte, error) {
 	return os.ReadFile(h.path)
 }
 
-func (h *chrt) chartDataLayer() (gv1.Layer, error) {
+func (h *Chart) chartDataLayer() (gv1.Layer, error) {
 	annotations := make(map[string]string)
 	annotations[ocispec.AnnotationTitle] = filepath.Base(h.path)
 

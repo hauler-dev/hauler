@@ -75,7 +75,13 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 		return nil, err
 	}
 
-	s := store.NewStore(ctx, abs)
+	// TODO: Do we want this to be configurable?
+	c, err := o.getCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	s := store.NewStore(ctx, abs, store.WithCache(c))
 	return s, nil
 }
 

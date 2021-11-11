@@ -26,7 +26,7 @@ type image struct {
 	gv1.Image
 }
 
-func NewImage(ref string) (artifact.OCI, error) {
+func NewImage(ref string) (*image, error) {
 	r, err := name.ParseReference(ref)
 	if err != nil {
 		return nil, err

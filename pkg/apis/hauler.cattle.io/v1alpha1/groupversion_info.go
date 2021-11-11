@@ -6,11 +6,14 @@ import (
 )
 
 const (
-	ContentGroup = "content.hauler.cattle.io"
+	Version         = "v1alpha1"
+	ContentGroup    = "content.hauler.cattle.io"
+	CollectionGroup = "collection.hauler.cattle.io"
 )
 
 var (
-	GroupVersion = schema.GroupVersion{Group: ContentGroup, Version: "v1alpha1"}
+	ContentGroupVersion = schema.GroupVersion{Group: ContentGroup, Version: Version}
+	SchemeBuilder       = &scheme.Builder{GroupVersion: ContentGroupVersion}
 
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
+	CollectionGroupVersion = schema.GroupVersion{Group: CollectionGroup, Version: Version}
 )

@@ -3,6 +3,7 @@ package store
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -10,7 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/cache"
+	"github.com/rancherfederal/hauler/pkg/collection/chart"
+	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
@@ -26,7 +28,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
 }
 
-func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) error {
+func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 	l := log.FromContext(ctx)
 	l.Debugf("running cli command `hauler store sync`")
 
@@ -62,14 +64,15 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 		}
 
 		for _, doc := range docs {
-			gvk, err := content.ValidateType(doc)
+			obj, err := content.Load(doc)
 			if err != nil {
 				return err
 			}
 
-			l.Infof("syncing [%s/%s] to [%s]", gvk.APIVersion, gvk.Kind, s.DataDir)
+			l.Infof("syncing [%s] to [%s]", obj.GroupVersionKind().String(), s.DataDir)
 
-			switch gvk.Kind {
+			// TODO: Should type switch instead...
+			switch obj.GroupVersionKind().Kind {
 			case v1alpha1.FilesContentKind:
 				var cfg v1alpha1.Files
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
@@ -77,7 +80,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 				}
 
 				for _, f := range cfg.Spec.Files {
-					err := storeFile(ctx, s, c, f)
+					err := storeFile(ctx, s, f)
 					if err != nil {
 						return err
 					}
@@ -90,7 +93,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 				}
 
 				for _, i := range cfg.Spec.Images {
-					err := storeImage(ctx, s, c, i)
+					err := storeImage(ctx, s, i)
 					if err != nil {
 						return err
 					}
@@ -103,11 +106,46 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store, c cache.Cache) er
 				}
 
 				for _, ch := range cfg.Spec.Charts {
-					err := storeChart(ctx, s, c, ch)
+					err := storeChart(ctx, s, ch)
 					if err != nil {
 						return err
 					}
 				}
+
+			case v1alpha1.K3sCollectionKind:
+				var cfg v1alpha1.K3s
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				k, err := k3s.NewK3s(cfg.Spec.Version)
+				if err != nil {
+					return err
+				}
+
+				if _, err := s.AddCollection(ctx, k); err != nil {
+					return err
+				}
+
+			case v1alpha1.ChartsCollectionKind:
+				var cfg v1alpha1.ThickCharts
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				for _, cfg := range cfg.Spec.Charts {
+					tc, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+					if err != nil {
+						return err
+					}
+
+					if _, err := s.AddCollection(ctx, tc); err != nil {
+						return err
+					}
+				}
+
+			default:
+				return fmt.Errorf("unrecognized content/collection type: %s", obj.GroupVersionKind().String())
 			}
 		}
 	}

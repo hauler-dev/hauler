@@ -51,13 +51,13 @@ func Copy(ctx context.Context, s *OCIStore, registry string) error {
 			return fmt.Errorf("no name found to push image")
 		}
 
-		ref, err := name.ParseReference(refName, name.WithDefaultRegistry(registry))
+		rref, err := RelocateReference(refName, registry)
 		if err != nil {
 			return err
 		}
 
 		resolver := docker.NewResolver(docker.ResolverOptions{})
-		_, err = oras.Push(ctx, resolver, ref.Name(), s, m.Layers,
+		_, err = oras.Push(ctx, resolver, rref.Name(), s, m.Layers,
 			oras.WithConfig(m.Config), oras.WithNameValidation(nil), oras.WithManifest(mdesc))
 
 		if err != nil {
@@ -162,4 +162,21 @@ func loadManifest(data []byte) (ocispec.Manifest, ocispec.Descriptor, error) {
 	}
 
 	return m.Manifest, desc, nil
+}
+
+func RelocateReference(reference string, registry string) (name.Reference, error) {
+	ref, err := name.ParseReference(reference)
+	if err != nil {
+		return nil, err
+	}
+
+	relocated, err := name.ParseReference(ref.Context().RepositoryStr(), name.WithDefaultRegistry(registry))
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := name.NewDigest(ref.Name()); err == nil {
+		return relocated.Context().Digest(ref.Identifier()), nil
+	}
+	return relocated.Context().Tag(ref.Identifier()), nil
 }

@@ -1,0 +1,11 @@
+---
+apiVersion: collection.hauler.cattle.io/v1alpha1
+kind: ThickCharts
+metadata:
+  name: mythickchart
+spec:
+  charts:
+    # charts are also fetched and served as OCI content (currently experimental in helm)
+    #   HELM_EXPERIMENTAL_OCI=1 helm chart pull <hauler-registry>/loki:2.6.2
+    - name: loki
+      repoURL: https://grafana.github.io/helm-charts
