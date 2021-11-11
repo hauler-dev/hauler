@@ -19,6 +19,8 @@ type rootOpts struct {
 	storeDir string
 }
 
+const defaultStoreLocation = "haul"
+
 var ro = &rootOpts{}
 
 func New() *cobra.Command {
@@ -57,7 +59,7 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 			return nil, err
 		}
 
-		dir = filepath.Join(pwd, "store")
+		dir = filepath.Join(pwd, defaultStoreLocation)
 	}
 
 	abs, err := filepath.Abs(dir)
