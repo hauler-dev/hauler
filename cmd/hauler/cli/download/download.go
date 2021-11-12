@@ -79,7 +79,12 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 			return err
 		}
 
-		lgr.Infof("downloaded [%s] to [%s]", ref.Name(), outputFile)
+		d, err := img.Digest()
+		if err != nil {
+			return err
+		}
+
+		lgr.Infof("downloaded image [%s] to [%s] with digest [%s]", ref.Name(), outputFile, d.String())
 
 	case types.FileConfigMediaType:
 		lgr.Infof("identified [file] (%s) content", manifest.Config.MediaType)
@@ -92,7 +97,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 			return err
 		}
 
-		lgr.Infof("downloaded [%d] files with digest [%s]", len(descs), mdesc)
+		lgr.Infof("downloaded [%d] file(s) with digest [%s]", len(descs), mdesc)
 
 	case types.ChartLayerMediaType, types.ChartConfigMediaType:
 		lgr.Infof("identified [chart] (%s) content", manifest.Config.MediaType)
@@ -100,12 +105,19 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 		fs := content.NewFileStore(o.DestinationDir)
 
 		resolver := docker.NewResolver(docker.ResolverOptions{})
-		mdesc, _, err := oras.Pull(ctx, resolver, ref.Name(), fs)
+		mdesc, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
 		if err != nil {
 			return err
 		}
 
-		lgr.Infof("downloaded chart [%s] with digest [%s]", "donkey", mdesc.Digest.String())
+		cn := path.Base(ref.Name())
+		for _, d := range descs {
+			if n, ok := d.Annotations[ocispec.AnnotationTitle]; ok {
+				cn = n
+			}
+		}
+
+		lgr.Infof("downloaded chart [%s] to [%s] with digest [%s]", ref.String(), cn, mdesc.Digest.String())
 
 	default:
 		return fmt.Errorf("unrecognized content type: %s", manifest.Config.MediaType)

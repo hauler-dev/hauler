@@ -1,10 +1,29 @@
 # Hauler Roadmap
 
-## v0.0.x
+## \> v0.2.0
 
-- Install single-node k3s cluster into an Ubuntu machine using the tarball installation method
+- Leverage `referrers` api to robustly link content/collection
+- Support signing for all `artifact.OCI` contents
+- Support encryption for `artifact.OCI` layers
+- Safely embed container runtime for user created `collections` creation and transformation
+- Better defaults/configuration/security around for long-lived embedded registry
+- Better support multi-platform content
+- Better leverage `oras` (`>=0.5.0`) for content relocation
+- Store git repos as CAS in OCI format
 
-## v0.1.0
+## v0.2.0 - MVP 2
+
+- Re-focus on cli and framework for oci content fetching and delivery
+- Focus on initial key contents
+  - Files (local/remote)
+  - Charts (local/remote)
+  - Images
+- Establish framework for `content` and `collections`
+- Define initial `content` types (`file`, `chart`, `image`)
+- Define initial `collection` types (`thickchart`, `k3s`)
+- Define framework for manipulating OCI content (`artifact.OCI`, `artifact.Collection`)
+
+## v0.1.0 - MVP 1
 
 - Install single-node k3s cluster
   - Support tarball and rpm installation methods
@@ -25,18 +44,6 @@
   - NOTE: "generic" option - most other use cases can be satisfied by a specially crafted file
     server directory
 
+## v0.0.x
 
-## Potential future features
-
-- Helm charts
-  - Pull charts, migrate chart artifacts
-  - Analyze required container images, add to dependency list
-- Yum repo
-  - Provide package list, collect all dependencies
-  - Deploy fully configured yum repo into file server
-- Deploy Minio for S3 API
-  - MVP: backed by HA storage solution (e.g. AWS S3, Azure Blob Storage)
-  - Stable: backed by local storage, including backups
-- Split archives into chunks of chosen size
-  - Enables easier transfer via physical media
-  - Allows smaller network transfers, losing less progress on failed upload (or working around timeouts)
+- Install single-node k3s cluster into an Ubuntu machine using the tarball installation method

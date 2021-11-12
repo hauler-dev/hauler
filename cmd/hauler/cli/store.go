@@ -8,8 +8,9 @@ import (
 
 func addStore(parent *cobra.Command) {
 	cmd := &cobra.Command{
-		Use:   "store",
-		Short: "Interact with hauler's embedded content store",
+		Use:     "store",
+		Aliases: []string{"s"},
+		Short:   "Interact with hauler's embedded content store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -149,9 +150,10 @@ func addStoreList() *cobra.Command {
 	o := &store.ListOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List all content references in a store",
-		Args:  cobra.ExactArgs(0),
+		Use:     "list",
+		Short:   "List all content references in a store",
+		Args:    cobra.ExactArgs(0),
+		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -263,7 +265,7 @@ func addStoreAddChart() *cobra.Command {
 		Short: "Add a chart to the content store",
 		Example: `
 # add a chart
-hauler store add longhorn --repo "https://charts.longhorn.io"
+hauler store add chart longhorn --repo "https://charts.longhorn.io"
 
 # add a specific version of a chart
 hauler store add chart rancher --repo "https://releases.rancher.com/server-charts/latest" --version "2.6.2"
