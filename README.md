@@ -11,11 +11,7 @@ To accomplish this, it focuses strictly on two of the biggest airgap pain points
 
 As OCI registries have become ubiquitous nowadays for storing and distributing containers.  Their success and widespread adoption has led many projects to expand beyond containers.
 
-`hauler` capitalizes on this, and leverages the [`oci`]() spec to be a simple, zero dependency tool to collect, transport, and distribute your artifacts.
-
-## Installation
-
-`hauler` 
+`hauler` capitalizes on this, and leverages the [`oci`](https://github.com/opencontainers) spec to be a simple, zero dependency tool to collect, transport, and distribute your artifacts.
 
 ## Getting started
 
