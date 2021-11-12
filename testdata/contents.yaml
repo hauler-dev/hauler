@@ -5,7 +5,7 @@ metadata:
 spec:
   files:
     # hauler can save/redistribute files on disk (be careful! paths are relative)
-    - ref: ttestdata/contents.yaml
+    - ref: testdata/contents.yaml
 
     # TODO: when directories are specified, they will be archived and stored as a file
 #    - ref: testdata/
