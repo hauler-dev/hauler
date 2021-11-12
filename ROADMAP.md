@@ -5,6 +5,7 @@
 - Leverage `referrers` api to robustly link content/collection
 - Support signing for all `artifact.OCI` contents
 - Support encryption for `artifact.OCI` layers
+- Support incremental updates to stores (some implementation of layer diffing)
 - Safely embed container runtime for user created `collections` creation and transformation
 - Better defaults/configuration/security around for long-lived embedded registry
 - Better support multi-platform content
