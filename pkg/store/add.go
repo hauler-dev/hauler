@@ -38,11 +38,16 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference nam
 	}
 
 	lgr.Debugf("staging %s", reference.Name())
-	if err := stg.add(ctx, oci, reference); err != nil {
+	pdesc, err := stg.add(ctx, oci, reference)
+	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
-	return stg.commit(ctx, s)
+	if err := stg.commit(ctx, s); err != nil {
+		return ocispec.Descriptor{}, nil
+	}
+
+	return pdesc, nil
 }
 
 // Flush is a fancy name for delete-all-the-things, in this case it's as trivial as deleting everything in the underlying store directory
@@ -105,25 +110,25 @@ type oci struct {
 	root   string
 }
 
-func (o *oci) add(ctx context.Context, oci artifact.OCI, reference name.Reference) error {
+func (o *oci) add(ctx context.Context, oci artifact.OCI, reference name.Reference) (ocispec.Descriptor, error) {
 	mdesc, err := o.layout.WriteOci(oci, reference)
-	if err != nil {
-		return err
-	}
-	_ = mdesc
-	return nil
-}
-
-func (o *oci) commit(ctx context.Context, s *Store) (ocispec.Descriptor, error) {
-	ts, err := layout.NewOCIStore(o.root)
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
+	return mdesc, err
+}
 
-	err = layout.Copy(ctx, ts, s.Registry())
-
+func (o *oci) commit(ctx context.Context, s *Store) error {
 	defer o.close()
-	return ocispec.Descriptor{}, err
+	ts, err := layout.NewOCIStore(o.root)
+	if err != nil {
+		return err
+	}
+
+	if err = layout.Copy(ctx, ts, s.Registry()); err != nil {
+		return err
+	}
+	return err
 }
 
 func (o *oci) close() error {

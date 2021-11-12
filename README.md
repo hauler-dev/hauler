@@ -1,11 +1,28 @@
 # Hauler: Airgap Assistant
 
-__⚠️ WARNING: This is an experimental, work in progress project.  _Everything_ is subject to change, and it is actively in development, so let us know what you think!__
+> ⚠️ This project is still in active development and _not_ GA.  While a lot of the core features are ready, we're still adding a _ton_, and we may make breaking api and feature changes version to version.
 
-`hauler` is a command line tool for that aims to simplify the painpoints that exist around airgapped Kubernetes deployments.
-It remains as unopinionated as possible, and does _not_ attempt to enforce a specific cluster type or application deployment model.
-Instead, it focuses solely on simplifying the primary airgap pain points:
-* artifact collection
-* artifact distribution
+`hauler` simplifies the airgap experience without forcing you to adopt a specific workflow for your infrastructure or application.  
 
-`hauler` achieves this by leaning heavily on the [oci spec](https://github.com/opencontainers), and the vast ecosystem of tooling available for fetching and distributing oci content.
+To accomplish this, it focuses strictly on two of the biggest airgap pain points:
+
+* content collection
+* content distribution
+
+As OCI registries have become ubiquitous nowadays for storing and distributing containers.  Their success and widespread adoption has led many projects to expand beyond containers.
+
+`hauler` capitalizes on this, and leverages the [`oci`](https://github.com/opencontainers) spec to be a simple, zero dependency tool to collect, transport, and distribute your artifacts.
+
+## Getting started
+
+See the [quickstart](docs/walkthrough.md#Quickstart) for a quick way to get started with some of `haulers` capabilities.
+
+For a guided example of all of `haulers` capabilities, check out the [guided example](docs/walkthrough.md#guided-examples).
+
+## Acknowledgements
+
+`hauler` wouldn't be possible without the open source community, but there are a few dependent projects that stand out:
+
+* [go-containerregistry](https://github.com/google/go-containerregistry)
+* [oras](https://github.com/oras-project/oras)
+* [cosign](https://github.com/sigstore/cosign)

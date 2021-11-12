@@ -36,7 +36,6 @@ func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) er
 		return err
 	}
 
-	l.Infof("Saving data dir (%s) as compressed archive to %s", dir, absOutputfile)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -51,5 +50,6 @@ func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) er
 		return err
 	}
 
+	l.Infof("saved haul [%s] -> [%s]", dir, absOutputfile)
 	return nil
 }

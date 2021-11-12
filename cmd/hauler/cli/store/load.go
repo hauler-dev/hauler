@@ -9,11 +9,14 @@ import (
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-type LoadOpts struct{}
+type LoadOpts struct {
+	OutputDir string
+}
 
 func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	_ = f
+
+	f.StringVarP(&o.OutputDir, "output", "o", "", "Directory to unload archived contents to (defaults to $PWD/haul)")
 }
 
 // LoadCmd
@@ -26,9 +29,14 @@ func LoadCmd(ctx context.Context, o *LoadOpts, dir string, archiveRefs ...string
 	a := archiver.NewTarZstd()
 	a.OverwriteExisting = true
 
+	odir := dir
+	if o.OutputDir != "" {
+		odir = o.OutputDir
+	}
+
 	for _, archiveRef := range archiveRefs {
-		l.Infof("Loading content from %s to %s", archiveRef, dir)
-		err := a.Unarchive(archiveRef, dir)
+		l.Infof("loading content from [%s] to [%s]", archiveRef, odir)
+		err := a.Unarchive(archiveRef, odir)
 		if err != nil {
 			return err
 		}
