@@ -4,7 +4,7 @@ metadata:
   name: myfile
 spec:
   files:
-    # hauler can save/redistribute files on disk
+    # hauler can save/redistribute files on disk (be careful! paths are relative)
     - ref: testdata/contents.yaml
 
     # TODO: when directories are specified, they will be archived and stored as a file
@@ -26,11 +26,17 @@ metadata:
   name: myimage
 spec:
   images:
-    # images can be referenced by their tag
-    - ref: rancher/k3s:v1.22.2-k3s2
+    # images can be referenced shorthanded without a tag
+    - ref: hello-world
+
+    # or namespaced with a tag
+    - ref: rancher/cowsay:latest
 
     # or by their digest:
-    - ref: registry@sha256:42043edfae481178f07aa077fa872fcc242e276d302f4ac2026d9d2eb65b955f
+#    - ref: registry@sha256:42043edfae481178f07aa077fa872fcc242e276d302f4ac2026d9d2eb65b955f
+
+    # or fully qualified from any OCI compliant registry registry
+    - ref: ghcr.io/fluxcd/flux-cli:v0.22.0
 
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1

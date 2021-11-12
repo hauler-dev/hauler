@@ -119,10 +119,9 @@ func (s *Store) List(ctx context.Context) ([]string, error) {
 		}
 
 		tsvc := repo.Tags(ctx)
-
 		ts, err := tsvc.All(ctx)
 		if err != nil {
-			return nil, err
+			continue
 		}
 
 		for _, t := range ts {
