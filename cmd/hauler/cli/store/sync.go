@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/collection/chart"
+	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
@@ -134,7 +134,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 				}
 
 				for _, cfg := range cfg.Spec.Charts {
-					tc, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+					tc, err := tchart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
 					if err != nil {
 						return err
 					}

@@ -12,7 +12,10 @@ var _ artifact.Collection = (*tchart)(nil)
 
 // tchart is a thick chart that includes all the dependent images as well as the chart itself
 type tchart struct {
-	chart *chart.Chart
+	name    string
+	repo    string
+	version string
+	chart   *chart.Chart
 
 	computed bool
 	contents map[gname.Reference]artifact.OCI
@@ -25,6 +28,9 @@ func NewChart(name, repo, version string) (artifact.Collection, error) {
 	}
 
 	return &tchart{
+		name:     name,
+		repo:     repo,
+		version:  version,
 		chart:    o,
 		contents: make(map[gname.Reference]artifact.OCI),
 	}, nil
@@ -46,7 +52,31 @@ func (c *tchart) compute() error {
 		return err
 	}
 
+	if err := c.chartContents(); err != nil {
+		return err
+	}
+
 	c.computed = true
+	return nil
+}
+
+func (c *tchart) chartContents() error {
+	oci, err := chart.NewChart(c.name, c.repo, c.version)
+	if err != nil {
+		return err
+	}
+
+	tag := c.version
+	if tag == "" {
+		tag = gname.DefaultTag
+	}
+
+	ref, err := gname.ParseReference(c.name, gname.WithDefaultRegistry(""), gname.WithDefaultTag(tag))
+	if err != nil {
+		return err
+	}
+
+	c.contents[ref] = oci
 	return nil
 }
 
