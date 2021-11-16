@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -25,9 +26,6 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, reference string) error {
-	lgr := log.FromContext(ctx)
-	lgr.Debugf("running cli command `hauler store add`")
-
 	s.Open()
 	defer s.Close()
 
@@ -40,12 +38,12 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, reference s
 }
 
 func storeFile(ctx context.Context, s *store.Store, fi v1alpha1.File) error {
-	lgr := log.FromContext(ctx)
+	l := log.FromContext(ctx)
 
 	if fi.Name == "" {
 		base := filepath.Base(fi.Ref)
 		fi.Name = filepath.Base(fi.Ref)
-		lgr.Warnf("no name specified for file reference [%s], using base filepath: [%s]", fi.Ref, base)
+		l.Warnf("no name specified for file reference [%s], using base filepath: [%s]", fi.Ref, base)
 	}
 
 	oci, err := file.NewFile(fi.Ref, fi.Name)
@@ -63,7 +61,7 @@ func storeFile(ctx context.Context, s *store.Store, fi v1alpha1.File) error {
 		return err
 	}
 
-	lgr.Infof("added file [%s] to store at [%s] with manifest digest [%s]", fi.Ref, ref.Name(), desc.Digest.String())
+	l.Infof("file [%s] added at: [%s]", ref.Name(), desc.Annotations[ocispec.AnnotationTitle])
 	return nil
 }
 
@@ -77,9 +75,6 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference string) error {
-	lgr := log.FromContext(ctx)
-	lgr.Debugf("running cli command `hauler store add image`")
-
 	s.Open()
 	defer s.Close()
 
@@ -91,7 +86,7 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference
 }
 
 func storeImage(ctx context.Context, s *store.Store, i v1alpha1.Image) error {
-	lgr := log.FromContext(ctx)
+	l := log.FromContext(ctx)
 
 	oci, err := image.NewImage(i.Ref)
 	if err != nil {
@@ -108,7 +103,7 @@ func storeImage(ctx context.Context, s *store.Store, i v1alpha1.Image) error {
 		return err
 	}
 
-	lgr.Infof("added image [%s] to store at [%s] with manifest digest [%s]", i.Ref, ref.Context().RepositoryStr(), desc.Digest.String())
+	l.Infof("image [%s] added at: [%s]", ref.Name(), desc.Annotations[ocispec.AnnotationTitle])
 	return nil
 }
 
@@ -136,9 +131,6 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, chartName string) error {
-	lgr := log.FromContext(ctx)
-	lgr.Debugf("running cli command `hauler store add chart`")
-
 	s.Open()
 	defer s.Close()
 
@@ -152,7 +144,7 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, chartName
 }
 
 func storeChart(ctx context.Context, s *store.Store, ch v1alpha1.Chart) error {
-	lgr := log.FromContext(ctx)
+	l := log.FromContext(ctx)
 
 	oci, err := chart.NewChart(ch.Name, ch.RepoURL, ch.Version)
 	if err != nil {
@@ -174,6 +166,6 @@ func storeChart(ctx context.Context, s *store.Store, ch v1alpha1.Chart) error {
 		return err
 	}
 
-	lgr.Infof("added chart [%s] to store at [%s:%s] with manifest digest [%s]", ch.Name, ref.Context().RepositoryStr(), ref.Identifier(), desc.Digest.String())
+	l.Infof("chart [%s] added at: [%s]", ref.Name(), desc.Annotations[ocispec.AnnotationTitle])
 	return nil
 }

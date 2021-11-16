@@ -25,7 +25,6 @@ func (o *SaveOpts) AddArgs(cmd *cobra.Command) {
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
 func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler store save`")
 
 	// TODO: Support more formats?
 	a := archiver.NewTarZstd()

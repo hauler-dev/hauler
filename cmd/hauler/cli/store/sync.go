@@ -30,7 +30,6 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running cli command `hauler store sync`")
 
 	// Start from an empty store (contents are cached elsewhere)
 	l.Debugf("flushing any existing content in store: %s", s.DataDir)

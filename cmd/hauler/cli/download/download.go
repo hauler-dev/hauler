@@ -33,8 +33,7 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 }
 
 func Cmd(ctx context.Context, o *Opts, reference string) error {
-	lgr := log.FromContext(ctx)
-	lgr.Debugf("running command `hauler download`")
+	l := log.FromContext(ctx)
 
 	cs := content.NewFileStore(o.DestinationDir)
 	defer cs.Close()
@@ -43,8 +42,6 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 	if err != nil {
 		return err
 	}
-
-	// resolver := docker.NewResolver(docker.ResolverOptions{})
 
 	desc, err := remote.Get(ref)
 	if err != nil {
@@ -64,7 +61,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 	// TODO: These need to be factored out into each of the contents own logic
 	switch manifest.Config.MediaType {
 	case types.DockerConfigJSON, types.OCIManifestSchema1:
-		lgr.Infof("identified [image] (%s) content", manifest.Config.MediaType)
+		l.Debugf("identified [image] (%s) content", manifest.Config.MediaType)
 		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
 		if err != nil {
 			return err
@@ -79,33 +76,32 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 			return err
 		}
 
-		d, err := img.Digest()
-		if err != nil {
-			return err
-		}
-
-		lgr.Infof("downloaded image [%s] to [%s] with digest [%s]", ref.Name(), outputFile, d.String())
+		l.Infof("downloaded image [%s] to [%s]", ref.Name(), outputFile)
 
 	case types.FileConfigMediaType:
-		lgr.Infof("identified [file] (%s) content", manifest.Config.MediaType)
+		l.Debugf("identified [file] (%s) content", manifest.Config.MediaType)
 
 		fs := content.NewFileStore(o.DestinationDir)
 
 		resolver := docker.NewResolver(docker.ResolverOptions{})
-		mdesc, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
+		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
 		if err != nil {
 			return err
 		}
 
-		lgr.Infof("downloaded [%d] file(s) with digest [%s]", len(descs), mdesc)
+		ldescs := len(descs)
+		for i, desc := range descs {
+			// NOTE: This is safe without a map key check b/c we're not allowing unnamed content from oras.Pull
+			l.Infof("downloaded (%d/%d) files to [%s]", i+1, ldescs, desc.Annotations[ocispec.AnnotationTitle])
+		}
 
 	case types.ChartLayerMediaType, types.ChartConfigMediaType:
-		lgr.Infof("identified [chart] (%s) content", manifest.Config.MediaType)
+		l.Debugf("identified [chart] (%s) content", manifest.Config.MediaType)
 
 		fs := content.NewFileStore(o.DestinationDir)
 
 		resolver := docker.NewResolver(docker.ResolverOptions{})
-		mdesc, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
+		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
 		if err != nil {
 			return err
 		}
@@ -117,25 +113,11 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 			}
 		}
 
-		lgr.Infof("downloaded chart [%s] to [%s] with digest [%s]", ref.String(), cn, mdesc.Digest.String())
+		l.Infof("downloaded chart [%s] to [%s]", ref.String(), cn)
 
 	default:
 		return fmt.Errorf("unrecognized content type: %s", manifest.Config.MediaType)
 	}
 
 	return nil
-}
-
-func getManifest(ctx context.Context, ref string) (*remote.Descriptor, error) {
-	r, err := name.ParseReference(ref)
-	if err != nil {
-		return nil, fmt.Errorf("parsing reference %q: %v", ref, err)
-	}
-
-	desc, err := remote.Get(r, remote.WithContext(ctx))
-	if err != nil {
-		return nil, err
-	}
-
-	return desc, nil
 }

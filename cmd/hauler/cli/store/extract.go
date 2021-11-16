@@ -7,7 +7,6 @@ import (
 
 	"github.com/rancherfederal/hauler/cmd/hauler/cli/download"
 	"github.com/rancherfederal/hauler/pkg/layout"
-	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
@@ -22,9 +21,6 @@ func (o *ExtractOpts) AddArgs(cmd *cobra.Command) {
 }
 
 func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, reference string) error {
-	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler store extract`")
-
 	s.Open()
 	defer s.Close()
 
