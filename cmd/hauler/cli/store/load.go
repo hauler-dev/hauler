@@ -23,7 +23,6 @@ func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
 func LoadCmd(ctx context.Context, o *LoadOpts, dir string, archiveRefs ...string) error {
 	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler store load`")
 
 	// TODO: Support more formats?
 	a := archiver.NewTarZstd()

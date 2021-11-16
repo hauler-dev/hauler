@@ -10,13 +10,13 @@ import (
 	"github.com/distribution/distribution/v3/registry"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type ServeOpts struct {
 	Port       int
 	ConfigFile string
+	Daemon     bool
 
 	storedir string
 }
@@ -26,13 +26,11 @@ func (o *ServeOpts) AddFlags(cmd *cobra.Command) {
 
 	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to a config file, will override all other configs")
+	f.BoolVarP(&o.Daemon, "daemon", "d", false, "Toggle serving as a daemon")
 }
 
 // ServeCmd does
 func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Store) error {
-	l := log.FromContext(ctx)
-	l.Debugf("running command `hauler store serve`")
-
 	cfg := o.defaultConfig(s)
 	if o.ConfigFile != "" {
 		ucfg, err := loadConfig(o.ConfigFile)
@@ -47,7 +45,6 @@ func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Store) error {
 		return err
 	}
 
-	l.Infof("Starting registry listening on :%d", o.Port)
 	if err = r.ListenAndServe(); err != nil {
 		return err
 	}

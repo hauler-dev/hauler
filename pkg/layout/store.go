@@ -19,6 +19,12 @@ import (
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
+// interface guards
+var (
+	_ content.Provider = (*OCIStore)(nil)
+	_ content.Ingester = (*OCIStore)(nil)
+)
+
 // OCIStore represents a content compatible store adhering by the oci-layout spec
 type OCIStore struct {
 	content.Store
@@ -60,7 +66,6 @@ func Copy(ctx context.Context, s *OCIStore, registry string) error {
 		resolver := docker.NewResolver(docker.ResolverOptions{})
 		_, err = oras.Push(ctx, resolver, rref.Name(), s, m.Layers,
 			oras.WithConfig(m.Config), oras.WithNameValidation(nil), oras.WithManifest(mdesc))
-
 		if err != nil {
 			return err
 		}

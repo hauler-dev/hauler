@@ -28,7 +28,9 @@ func New() *cobra.Command {
 		Use:   "hauler",
 		Short: "",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			log.FromContext(cmd.Context()).SetLevel(ro.logLevel)
+			l := log.FromContext(cmd.Context())
+			l.SetLevel(ro.logLevel)
+			l.Debugf("running cli command [%s]", cmd.CommandPath())
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,11 +52,11 @@ func New() *cobra.Command {
 }
 
 func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
-	lgr := log.FromContext(ctx)
+	l := log.FromContext(ctx)
 	dir := o.storeDir
 
 	if dir == "" {
-		lgr.Debugf("no store path specified, defaulting to $PWD/store")
+		l.Debugf("no store path specified, defaulting to $PWD/store")
 		pwd, err := os.Getwd()
 		if err != nil {
 			return nil, err
@@ -68,7 +70,7 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 		return nil, err
 	}
 
-	lgr.Debugf("using store at %s", abs)
+	l.Debugf("using store at %s", abs)
 	if _, err := os.Stat(abs); errors.Is(err, os.ErrNotExist) {
 		err := os.Mkdir(abs, os.ModePerm)
 		if err != nil {

@@ -21,8 +21,7 @@ func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, registry string) error {
-	lgr := log.FromContext(ctx)
-	lgr.Debugf("running cli command `hauler store copy`")
+	l := log.FromContext(ctx)
 
 	s.Open()
 	defer s.Close()
@@ -48,7 +47,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, registry string) 
 			return err
 		}
 
-		lgr.Infof("relocating [%s] -> [%s]", ref.Name(), rref.Name())
+		l.Infof("copying [%s] -> [%s]", ref.Name(), rref.Name())
 		if err := remote.Write(rref, o); err != nil {
 			return err
 		}

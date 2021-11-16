@@ -9,7 +9,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
@@ -23,9 +22,6 @@ func (o *ListOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func ListCmd(ctx context.Context, o *ListOpts, s *store.Store) error {
-	lgr := log.FromContext(ctx)
-	lgr.Debugf("running cli command `hauler store list`")
-
 	s.Open()
 	defer s.Close()
 
@@ -34,18 +30,17 @@ func ListCmd(ctx context.Context, o *ListOpts, s *store.Store) error {
 		return err
 	}
 
-	// TODO: Just use a tabler library
-	tw := tabwriter.NewWriter(os.Stdout, 8, 12, 4, '\t', 0)
+	tw := tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0)
 	defer tw.Flush()
 
-	fmt.Fprintf(tw, "#\tReference\tIdentifier\n")
-	for i, r := range refs {
+	fmt.Fprintf(tw, "Reference\tTag/Digest\n")
+	for _, r := range refs {
 		ref, err := name.ParseReference(r, name.WithDefaultRegistry(""))
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprintf(tw, "%d\t%s\t%s\n", i, ref.Context().String(), ref.Identifier())
+		fmt.Fprintf(tw, "%s\t%s\n", ref.Context().String(), ref.Identifier())
 	}
 
 	return nil

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
@@ -84,6 +85,7 @@ func (l Path) WriteOci(o artifact.OCI, reference name.Reference) (ocispec.Descri
 		Digest:    digest.FromBytes(manifest),
 		Annotations: map[string]string{
 			ocispec.AnnotationRefName: reference.Name(),
+			ocispec.AnnotationTitle:   deregistry(reference).Name(),
 		},
 	}
 
@@ -133,4 +135,12 @@ func (l Path) appendDescriptor(desc ocispec.Descriptor) error {
 	}
 
 	return l.AppendDescriptor(gdesc)
+}
+
+// deregistry removes the registry content from a name.Reference
+func deregistry(ref name.Reference) name.Reference {
+	// No error checking b/c at this point we're already assumed to have a valid enough reference
+	dereg := strings.TrimLeft(strings.ReplaceAll(ref.Name(), ref.Context().RegistryStr(), ""), "/")
+	deref, _ := name.ParseReference(dereg, name.WithDefaultRegistry(""))
+	return deref
 }

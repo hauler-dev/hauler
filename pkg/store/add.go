@@ -12,7 +12,6 @@ import (
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/cache"
 	"github.com/rancherfederal/hauler/pkg/layout"
-	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 // AddArtifact will add an artifact.OCI to the store
@@ -21,8 +20,6 @@ import (
 //  strict types to define generic content, but provides a processing pipeline suitable for extensibility.  In the
 //  future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
 func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference name.Reference) (ocispec.Descriptor, error) {
-	lgr := log.FromContext(ctx)
-
 	if err := s.precheck(); err != nil {
 		return ocispec.Descriptor{}, err
 	}
@@ -37,7 +34,6 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference nam
 		oci = cached
 	}
 
-	lgr.Debugf("staging %s", reference.Name())
 	pdesc, err := stg.add(ctx, oci, reference)
 	if err != nil {
 		return ocispec.Descriptor{}, err
@@ -73,9 +69,6 @@ func (s *Store) Flush(ctx context.Context) error {
 
 // AddCollection .
 func (s *Store) AddCollection(ctx context.Context, coll artifact.Collection) ([]ocispec.Descriptor, error) {
-	lgr := log.FromContext(ctx)
-	_ = lgr
-
 	if err := s.precheck(); err != nil {
 		return nil, err
 	}

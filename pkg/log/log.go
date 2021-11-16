@@ -29,7 +29,8 @@ type Fields map[string]string
 
 // NewLogger returns a new Logger
 func NewLogger(out io.Writer) Logger {
-	l := log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	output := zerolog.ConsoleWriter{Out: os.Stdout}
+	l := log.Output(output)
 	return &logger{
 		zl: l.With().Timestamp().Logger(),
 	}
