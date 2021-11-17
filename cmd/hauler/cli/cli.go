@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/cache"
+	cache2 "github.com/rancherfederal/hauler/internal/cache"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
@@ -19,9 +19,12 @@ type rootOpts struct {
 	storeDir string
 }
 
-const defaultStoreLocation = "haul"
-
 var ro = &rootOpts{}
+
+const (
+	DefaultStoreName = "store"
+	DefaultCacheDir  = "hauler"
+)
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
@@ -41,11 +44,12 @@ func New() *cobra.Command {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
 	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to $XDG_CACHE_DIR/hauler)")
-	pf.StringVarP(&ro.storeDir, "store", "s", "", "Location to create store at (defaults to $PWD/store)")
+	pf.StringVarP(&ro.storeDir, "store", "s", DefaultStoreName, "Location to create store at")
 
 	// Add subcommands
 	addDownload(cmd)
 	addStore(cmd)
+	addServe(cmd)
 	addVersion(cmd)
 
 	return cmd
@@ -54,16 +58,6 @@ func New() *cobra.Command {
 func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 	l := log.FromContext(ctx)
 	dir := o.storeDir
-
-	if dir == "" {
-		l.Debugf("no store path specified, defaulting to $PWD/store")
-		pwd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-
-		dir = filepath.Join(pwd, defaultStoreLocation)
-	}
 
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -86,11 +80,14 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 		return nil, err
 	}
 
-	s := store.NewStore(ctx, abs, store.WithCache(c))
+	s, err := store.NewStore(abs, store.WithCache(c))
+	if err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
-func (o *rootOpts) getCache(ctx context.Context) (cache.Cache, error) {
+func (o *rootOpts) getCache(ctx context.Context) (cache2.Cache, error) {
 	dir := o.cacheDir
 
 	if dir == "" {
@@ -100,7 +97,7 @@ func (o *rootOpts) getCache(ctx context.Context) (cache.Cache, error) {
 			return nil, err
 		}
 
-		abs, _ := filepath.Abs(filepath.Join(cachedir, "hauler"))
+		abs, _ := filepath.Abs(filepath.Join(cachedir, DefaultCacheDir))
 		if err := os.MkdirAll(abs, os.ModePerm); err != nil {
 			return nil, err
 		}
@@ -108,6 +105,6 @@ func (o *rootOpts) getCache(ctx context.Context) (cache.Cache, error) {
 		dir = abs
 	}
 
-	c := cache.NewFilesystem(dir)
+	c := cache2.NewFilesystem(dir)
 	return c, nil
 }

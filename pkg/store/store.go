@@ -2,212 +2,183 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"regexp"
-	"strconv"
-	"time"
+	"os"
+	"path/filepath"
 
-	"github.com/distribution/distribution/v3/configuration"
-	dcontext "github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/reference"
-	"github.com/distribution/distribution/v3/registry/client"
-	"github.com/distribution/distribution/v3/registry/handlers"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/sirupsen/logrus"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/pkg/content"
+	"oras.land/oras-go/pkg/oras"
+	"oras.land/oras-go/pkg/target"
 
-	// Init filesystem distribution storage driver
-	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
-
-	"github.com/rancherfederal/hauler/pkg/cache"
+	"github.com/rancherfederal/hauler/internal/cache"
+	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
-var (
-	httpRegex = regexp.MustCompile("https?://")
-)
-
-// Store is a simple wrapper around distribution/distribution to enable hauler's use case
 type Store struct {
-	DataDir           string
-	DefaultRepository string
-
-	config  *configuration.Configuration
-	handler http.Handler
-	server  *httptest.Server
-	cache   cache.Cache
+	root  string
+	store *content.OCI
+	cache cache.Cache
 }
 
-// NewStore creates a new registry store, designed strictly for use within haulers embedded operations and _not_ for serving
-func NewStore(ctx context.Context, dataDir string, opts ...Options) *Store {
-	cfg := &configuration.Configuration{
-		Version: "0.1",
-		Storage: configuration.Storage{
-			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
-			"filesystem": configuration.Parameters{"rootdirectory": dataDir},
-		},
-	}
-	cfg.Log.Level = "panic"
-	cfg.HTTP.Headers = http.Header{"X-Content-Type-Options": []string{"nosniff"}}
-
-	handler := setupHandler(ctx, cfg)
-
-	s := &Store{
-		DataDir: dataDir,
-		config:  cfg,
-		handler: handler,
-	}
-
-	for _, opt := range opts {
-		opt(s)
-	}
-
-	return s
-}
-
-// Open will create a new server and start it, it's up to the consumer to close it
-func (s *Store) Open() *httptest.Server {
-	server := httptest.NewServer(s.handler)
-	s.server = server
-	return server
-}
-
-// Close stops the server
-func (s *Store) Close() {
-	s.server.Close()
-	s.server = nil
-	return
-}
-
-// List will list all known content tags in the registry
-// TODO: This fn is messy and needs cleanup, this is arguably easier with the catalog api as well
-func (s *Store) List(ctx context.Context) ([]string, error) {
-	reg, err := client.NewRegistry(s.RegistryURL(), nil)
+func NewStore(rootdir string, opts ...Options) (*Store, error) {
+	ociStore, err := content.NewOCI(rootdir)
 	if err != nil {
 		return nil, err
 	}
 
-	entries := make(map[string]reference.Named)
-	last := ""
-	for {
-		chunk := make([]string, 20) // randomly chosen number...
-		nf, err := reg.Repositories(ctx, chunk, last)
-		last = strconv.Itoa(nf)
-
-		for _, e := range chunk {
-			if e == "" {
-				continue
-			}
-
-			ref, err := reference.WithName(e)
-			if err != nil {
-				return nil, err
-			}
-			entries[e] = ref
-		}
-		if err == io.EOF {
-			break
-		}
+	b := &Store{
+		root:  rootdir,
+		store: ociStore,
 	}
 
-	var refs []string
-	for ref, named := range entries {
-		repo, err := client.NewRepository(named, s.RegistryURL(), nil)
+	for _, opt := range opts {
+		opt(b)
+	}
+	return b, nil
+}
+
+// AddArtifact will add an artifact.OCI to the store
+//  The method to achieve this is to save artifact.OCI to a temporary directory in an OCI layout compatible form.  Once
+//  saved, the entirety of the layout is copied to the store (which is just a registry).  This allows us to not only use
+//  strict types to define generic content, but provides a processing pipeline suitable for extensibility.  In the
+//  future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
+func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference name.Reference) (ocispec.Descriptor, error) {
+	stage, err := newLayout()
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+
+	if s.cache != nil {
+		cached := cache.Oci(oci, s.cache)
+		oci = cached
+	}
+
+	if err := stage.add(ctx, oci, reference); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	return stage.commit(ctx, s)
+}
+
+// AddCollection .
+func (s *Store) AddCollection(ctx context.Context, coll artifact.Collection) ([]ocispec.Descriptor, error) {
+	cnts, err := coll.Contents()
+	if err != nil {
+		return nil, err
+	}
+
+	var descs []ocispec.Descriptor
+	for ref, oci := range cnts {
+		ds, err := s.AddArtifact(ctx, oci, ref)
 		if err != nil {
 			return nil, err
 		}
-
-		tsvc := repo.Tags(ctx)
-		ts, err := tsvc.All(ctx)
-		if err != nil {
-			continue
-		}
-
-		for _, t := range ts {
-			ref, err := name.ParseReference(ref, name.WithDefaultRegistry(""), name.WithDefaultTag(t))
-			if err != nil {
-				return nil, err
-			}
-			refs = append(refs, ref.Name())
-		}
+		descs = append(descs, ds)
 	}
 
-	return refs, nil
+	return descs, nil
 }
 
-// precheck checks whether server is appropriately started and errors if it's not
-// 		used to safely run Store operations without fear of panics
-func (s *Store) precheck() error {
-	if s.server == nil || s.server.URL == "" {
-		return fmt.Errorf("server is not started yet")
+// Flush is a fancy name for delete-all-the-things, in this case it's as trivial as deleting oci-layout content
+// 	This can be a highly destructive operation if the store's directory happens to be inline with other non-store contents
+// 	To reduce the blast radius and likelihood of deleting things we don't own, Flush explicitly deletes oci-layout content only
+func (s *Store) Flush(ctx context.Context) error {
+	blobs := filepath.Join(s.root, "blobs")
+	if err := os.RemoveAll(blobs); err != nil {
+		return err
+	}
+
+	index := filepath.Join(s.root, "index.json")
+	if err := os.RemoveAll(index); err != nil {
+		return err
+	}
+
+	layout := filepath.Join(s.root, "oci-layout")
+	if err := os.RemoveAll(layout); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Store) List(ctx context.Context) ([]ocispec.Descriptor, error) {
+	refs := s.store.ListReferences()
+
+	var descs []ocispec.Descriptor
+	for _, desc := range refs {
+		descs = append(descs, desc)
+	}
+	return descs, nil
+}
+
+func (s *Store) Get(ctx context.Context, to target.Target, reference string) error {
+	_, err := oras.Copy(ctx, s.store, reference, to, "",
+		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
-// Registry returns the registries URL without the protocol, suitable for image relocation operations
-func (s *Store) Registry() string {
-	return httpRegex.ReplaceAllString(s.server.URL, "")
-}
-
-// RegistryURL returns the registries URL
-func (s *Store) RegistryURL() string {
-	return s.server.URL
-}
-
-func alive(path string, handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == path {
-			w.Header().Set("Cache-Control", "no-cache")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		handler.ServeHTTP(w, r)
-	})
-}
-
-// setupHandler will set up the registry handler
-func setupHandler(ctx context.Context, config *configuration.Configuration) http.Handler {
-	ctx, _ = configureLogging(ctx, config)
-
-	app := handlers.NewApp(ctx, config)
-	app.RegisterHealthChecks()
-	handler := alive("/", app)
-
-	return handler
-}
-
-func configureLogging(ctx context.Context, cfg *configuration.Configuration) (context.Context, context.CancelFunc) {
-	logrus.SetLevel(logLevel(cfg.Log.Level))
-
-	formatter := cfg.Log.Formatter
-	if formatter == "" {
-		formatter = "text"
-	}
-
-	logrus.SetFormatter(&logrus.TextFormatter{
-		TimestampFormat: time.RFC3339Nano,
-	})
-
-	if len(cfg.Log.Fields) > 0 {
-		var fields []interface{}
-		for k := range cfg.Log.Fields {
-			fields = append(fields, k)
+// Copy performs bulk copy operations on the stores oci layout to a provided target.Target
+func (s *Store) Copy(ctx context.Context, to target.Target, toMapper func(string) (string, error)) error {
+	for ref := range s.store.ListReferences() {
+		toRef := ""
+		if toMapper != nil {
+			tr, err := toMapper(ref)
+			if err != nil {
+				return err
+			}
+			toRef = tr
 		}
 
-		ctx = dcontext.WithValues(ctx, cfg.Log.Fields)
-		ctx = dcontext.WithLogger(ctx, dcontext.GetLogger(ctx, fields...))
+		fmt.Println("copying to: ", toRef)
+		_, err := oras.Copy(ctx, s.store, ref, to, toRef,
+			oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
+		if err != nil {
+			return err
+		}
 	}
-
-	dcontext.SetDefaultLogger(dcontext.GetLogger(ctx))
-	return context.WithCancel(ctx)
+	return nil
 }
 
-func logLevel(level configuration.Loglevel) logrus.Level {
-	l, err := logrus.ParseLevel(string(level))
+// Identify is a helper function that will identify the content type given a descriptor
+func (s *Store) Identify(ctx context.Context, desc ocispec.Descriptor) string {
+	rc, err := s.store.Fetch(ctx, desc)
 	if err != nil {
-		l = logrus.InfoLevel
-		logrus.Warnf("error parsing log level %q: %v, using %q", level, err, l)
+		return ""
 	}
-	return l
+	defer rc.Close()
+
+	m := struct {
+		Config struct {
+			MediaType string `json:"mediaType"`
+		} `json:"config"`
+	}{}
+	if err := json.NewDecoder(rc).Decode(&m); err != nil {
+		return ""
+	}
+
+	return m.Config.MediaType
+}
+
+// RelocateReference returns a name.Reference given a reference and registry
+func RelocateReference(reference string, registry string) (name.Reference, error) {
+	ref, err := name.ParseReference(reference)
+	if err != nil {
+		return nil, err
+	}
+
+	relocated, err := name.ParseReference(ref.Context().RepositoryStr(), name.WithDefaultRegistry(registry))
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := name.NewDigest(ref.Name()); err == nil {
+		return relocated.Context().Digest(ref.Identifier()), nil
+	}
+	return relocated.Context().Tag(ref.Identifier()), nil
 }

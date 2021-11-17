@@ -2,56 +2,62 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
-	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"oras.land/oras-go/pkg/content"
 
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type CopyOpts struct{}
-
-func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-	_ = f
-
-	// TODO: Regex matching
+type CopyOpts struct {
+	Target string
 }
 
-func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, registry string) error {
+func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
+	_ = cmd.Flags()
+}
+
+func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string) error {
 	l := log.FromContext(ctx)
+	_ = l
 
-	s.Open()
-	defer s.Close()
+	components := strings.SplitN(targetRef, "://", 2)
+	switch components[0] {
+	case "dir":
+		fs := content.NewFile(components[1])
+		defer fs.Close()
 
-	refs, err := s.List(ctx)
-	if err != nil {
-		return err
+		if err := s.Copy(ctx, fs, nil); err != nil {
+			return err
+		}
+
+	case "registry":
+		r, err := content.NewRegistry(content.RegistryOptions{})
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(components[1])
+
+		mapperFn := func(reference string) (string, error) {
+			ref, err := store.RelocateReference(reference, components[1])
+			if err != nil {
+				return "", err
+			}
+			return ref.Name(), nil
+		}
+
+		if err := s.Copy(ctx, r, mapperFn); err != nil {
+			return err
+		}
+
+	default:
+		return errors.Errorf("determining target protocol from: [%s]", targetRef)
+
 	}
-
-	for _, r := range refs {
-		ref, err := name.ParseReference(r, name.WithDefaultRegistry(s.Registry()))
-		if err != nil {
-			return err
-		}
-
-		o, err := remote.Image(ref)
-		if err != nil {
-			return err
-		}
-
-		rref, err := name.ParseReference(r, name.WithDefaultRegistry(registry))
-		if err != nil {
-			return err
-		}
-
-		l.Infof("copying [%s] -> [%s]", ref.Name(), rref.Name())
-		if err := remote.Write(rref, o); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }

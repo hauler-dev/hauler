@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/version"
+	"github.com/rancherfederal/hauler/internal/version"
 )
 
 func addVersion(parent *cobra.Command) {
@@ -13,8 +13,7 @@ func addVersion(parent *cobra.Command) {
 
 	cmd := &cobra.Command{
 		Use:     "version",
-		Short:   "Print current hauler version",
-		Long:    "Print current hauler version",
+		Short:   "Print the current version",
 		Aliases: []string{"v"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			v := version.GetVersionInfo()

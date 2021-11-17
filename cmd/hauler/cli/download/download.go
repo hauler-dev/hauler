@@ -6,17 +6,19 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/containerd/containerd/remotes/docker"
-	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
+	"oras.land/oras-go/pkg/target"
 
-	"github.com/rancherfederal/hauler/pkg/artifact/types"
+	"github.com/rancherfederal/hauler/internal/mapper"
+	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/content/chart"
+	"github.com/rancherfederal/hauler/pkg/content/file"
+	"github.com/rancherfederal/hauler/pkg/content/image"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
@@ -35,8 +37,13 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 func Cmd(ctx context.Context, o *Opts, reference string) error {
 	l := log.FromContext(ctx)
 
-	cs := content.NewFileStore(o.DestinationDir)
-	defer cs.Close()
+	fs := content.NewFile(o.DestinationDir)
+	defer fs.Close()
+
+	rs, err := content.NewRegistry(content.RegistryOptions{})
+	if err != nil {
+		return err
+	}
 
 	ref, err := name.ParseReference(reference)
 	if err != nil {
@@ -58,66 +65,76 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 		return err
 	}
 
+	var ms target.Target
 	// TODO: These need to be factored out into each of the contents own logic
 	switch manifest.Config.MediaType {
-	case types.DockerConfigJSON, types.OCIManifestSchema1:
+	case consts.DockerConfigJSON, consts.OCIManifestSchema1:
 		l.Debugf("identified [image] (%s) content", manifest.Config.MediaType)
-		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
-		if err != nil {
-			return err
-		}
 
 		outputFile := o.OutputFile
 		if outputFile == "" {
 			outputFile = fmt.Sprintf("%s:%s.tar", path.Base(ref.Context().RepositoryStr()), ref.Identifier())
 		}
 
-		if err := tarball.WriteToFile(outputFile, ref, img); err != nil {
-			return err
-		}
+		is := mapper.NewStore(o.DestinationDir, image.Mapper())
+		defer is.Close()
 
-		l.Infof("downloaded image [%s] to [%s]", ref.Name(), outputFile)
+		ms = is
 
-	case types.FileConfigMediaType:
+		// l.Infof("downloaded image [%s] to [%s]", ref.Name(), outputFile)
+
+	case consts.FileConfigMediaType:
 		l.Debugf("identified [file] (%s) content", manifest.Config.MediaType)
 
-		fs := content.NewFileStore(o.DestinationDir)
+		fs := mapper.NewStore(o.DestinationDir, file.Mapper())
+		defer fs.Close()
 
-		resolver := docker.NewResolver(docker.ResolverOptions{})
-		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
-		if err != nil {
-			return err
-		}
+		ms = fs
 
-		ldescs := len(descs)
-		for i, desc := range descs {
-			// NOTE: This is safe without a map key check b/c we're not allowing unnamed content from oras.Pull
-			l.Infof("downloaded (%d/%d) files to [%s]", i+1, ldescs, desc.Annotations[ocispec.AnnotationTitle])
-		}
+		// _, err := oras.Copy(ctx, rs, ref.Name(), fs, "",
+		// 	oras.WithLayerDescriptors(func(descriptors []ocispec.Descriptor) {
+		// 		for _, desc := range descriptors {
+		// 			if _, ok := desc.Annotations[ocispec.AnnotationTitle]; !ok {
+		// 				continue
+		// 			}
+		// 			descs = append(descs, desc)
+		// 		}
+		// 	}))
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// ldescs := len(descs)
+		// for i, desc := range descs {
+		// 	// NOTE: This is safe without a map key check b/c we're not allowing unnamed content from oras.Pull
+		// 	l.Infof("downloaded (%d/%d) files to [%s]", i+1, ldescs, desc.Annotations[ocispec.AnnotationTitle])
+		// }
 
-	case types.ChartLayerMediaType, types.ChartConfigMediaType:
+	case consts.ChartLayerMediaType, consts.ChartConfigMediaType:
 		l.Debugf("identified [chart] (%s) content", manifest.Config.MediaType)
 
-		fs := content.NewFileStore(o.DestinationDir)
+		cs := mapper.NewStore(o.DestinationDir, chart.Mapper())
+		defer cs.Close()
 
-		resolver := docker.NewResolver(docker.ResolverOptions{})
-		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
-		if err != nil {
-			return err
-		}
-
-		cn := path.Base(ref.Name())
-		for _, d := range descs {
-			if n, ok := d.Annotations[ocispec.AnnotationTitle]; ok {
-				cn = n
-			}
-		}
-
-		l.Infof("downloaded chart [%s] to [%s]", ref.String(), cn)
+		ms = cs
+		// desc, err := oras.Copy(ctx, rs, ref.Name(), fs, "")
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// l.Infof("downloaded chart [%s] to [%s]", ref.String(), desc.Annotations[ocispec.AnnotationTitle])
 
 	default:
 		return fmt.Errorf("unrecognized content type: %s", manifest.Config.MediaType)
 	}
+
+	pushedDesc, err := oras.Copy(ctx, rs, ref.Name(), ms, "",
+		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
+	if err != nil {
+		return err
+	}
+
+	l.Infof("downloaded [%s] with digest [%s]", pushedDesc.MediaType, pushedDesc.Digest.String())
 
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 
+	"github.com/rancherfederal/hauler/internal/getter"
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/content/file"
 	"github.com/rancherfederal/hauler/pkg/content/image"
@@ -39,6 +40,7 @@ type k3s struct {
 	computed bool
 	contents map[name.Reference]artifact.OCI
 	channels map[string]string
+	client   *getter.Client
 }
 
 func NewK3s(version string) (artifact.Collection, error) {
@@ -94,12 +96,9 @@ func (k *k3s) executable() error {
 		return ErrExecutableNotfound
 	}
 
-	f, err := file.NewFile(fref, "k3s")
-	if err != nil {
-		return err
-	}
+	f := file.NewFile(fref)
 
-	ref, err := name.ParseReference("hauler/k3s", name.WithDefaultTag(k.dnsCompliantVersion()), name.WithDefaultRegistry(""))
+	ref, err := name.ParseReference("k3s", name.WithDefaultTag(k.dnsCompliantVersion()), name.WithDefaultRegistry(""))
 	if err != nil {
 		return err
 	}
@@ -109,12 +108,10 @@ func (k *k3s) executable() error {
 }
 
 func (k *k3s) bootstrap() error {
-	f, err := file.NewFile(bootstrapUrl, "get-k3s.io")
-	if err != nil {
-		return err
-	}
+	namedBootstrapUrl := fmt.Sprintf("%s?filename=%s", bootstrapUrl, "k3s-init.sh")
+	f := file.NewFile(namedBootstrapUrl)
 
-	ref, err := name.ParseReference("hauler/get-k3s.io", name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
+	ref, err := name.ParseReference("k3s-init.sh", name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
 	if err != nil {
 		return err
 	}

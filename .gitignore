@@ -23,8 +23,7 @@ airgap-scp.sh
 
 # generated
 dist/
-./bundle/
 tmp/
 bin/
-pkg.yaml
-haul/
+/store/
+/registry/

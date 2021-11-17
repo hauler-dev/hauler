@@ -1,87 +1,68 @@
-package store
+package store_test
 
 import (
 	"context"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/random"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/content/image"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-func TestStore_List(t *testing.T) {
+func TestStore_AddArtifact(t *testing.T) {
 	ctx := context.Background()
 
-	s, err := testStore(ctx)
+	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	s.Open()
-	defer s.Close()
+	s, err := store.NewStore(tmpdir)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	r := randomImage(t)
-	addImageToStore(t, s, r, "hauler/tester:latest")
-	addImageToStore(t, s, r, "hauler/tester:non")
-	addImageToStore(t, s, r, "other/ns:more")
-	addImageToStore(t, s, r, "unique/donkey:v1.2.2")
+	img, _ := image.NewImage("ghcr.io/stefanprodan/podinfo:6.0.3")
+	ref, _ := name.ParseReference("ghcr.io/stephanprodan/podinfo:6.0.3")
 
 	type args struct {
-		ctx context.Context
+		ctx       context.Context
+		oci       artifact.OCI
+		reference name.Reference
 	}
 	tests := []struct {
 		name    string
 		args    args
+		want    v1.Descriptor
 		wantErr bool
 	}{
 		{
-			name:    "should list",
-			args:    args{},
+			name: "should add artifact",
+			args: args{
+				ctx:       ctx,
+				oci:       img,
+				reference: ref,
+			},
+			want:    v1.Descriptor{},
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			refs, err := s.List(ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("List() error = %v, wantErr %v", err, tt.wantErr)
-			}
 
-			// TODO: Make this more robust
-			if len(refs) != 4 {
-				t.Errorf("Expected 4, got %d", len(refs))
+			got, err := s.AddArtifact(tt.args.ctx, tt.args.oci, tt.args.reference)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("AddArtifact() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("AddArtifact() got = %v, want %v", got, tt.want)
 			}
 		})
-	}
-}
-
-func testStore(ctx context.Context) (*Store, error) {
-	tmpdir, err := os.MkdirTemp("", "hauler")
-	if err != nil {
-		return nil, err
-	}
-
-	s := NewStore(ctx, tmpdir)
-	return s, nil
-}
-
-func randomImage(t *testing.T) v1.Image {
-	r, err := random.Image(1024, 3)
-	if err != nil {
-		t.Fatalf("random.Image() = %v", err)
-	}
-	return r
-}
-
-func addImageToStore(t *testing.T, s *Store, image v1.Image, reference string) {
-	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(s.Registry()))
-	if err != nil {
-		t.Error(err)
-	}
-
-	if err := remote.Write(ref, image); err != nil {
-		t.Error(err)
 	}
 }

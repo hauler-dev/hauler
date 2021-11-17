@@ -16,9 +16,10 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 
+	"github.com/rancherfederal/hauler/internal/layer"
+	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/artifact"
-	"github.com/rancherfederal/hauler/pkg/artifact/local"
-	"github.com/rancherfederal/hauler/pkg/artifact/types"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
 var _ artifact.OCI = (*Chart)(nil)
@@ -46,7 +47,7 @@ func NewChart(name, repo, version string) (*Chart, error) {
 }
 
 func (h *Chart) MediaType() string {
-	return types.OCIManifestSchema1
+	return consts.OCIManifestSchema1
 }
 
 func (h *Chart) Manifest() (*gv1.Manifest, error) {
@@ -94,7 +95,7 @@ func (h *Chart) configDescriptor() (gv1.Descriptor, error) {
 	}
 
 	return gv1.Descriptor{
-		MediaType: types.ChartConfigMediaType,
+		MediaType: consts.ChartConfigMediaType,
 		Size:      size,
 		Digest:    hash,
 	}, nil
@@ -129,13 +130,30 @@ func (h *Chart) chartDataLayer() (gv1.Layer, error) {
 	annotations := make(map[string]string)
 	annotations[ocispec.AnnotationTitle] = filepath.Base(h.path)
 
-	return local.LayerFromOpener(chartOpener(h.path),
-		local.WithMediaType(types.ChartLayerMediaType),
-		local.WithAnnotations(annotations))
+	return layer.FromOpener(chartOpener(h.path),
+		layer.WithMediaType(consts.ChartLayerMediaType),
+		layer.WithAnnotations(annotations))
 }
 
-func chartOpener(path string) local.Opener {
+func chartOpener(path string) layer.Opener {
 	return func() (io.ReadCloser, error) {
 		return os.Open(path)
 	}
+}
+
+func Mapper() map[string]mapper.Fn {
+	m := make(map[string]mapper.Fn)
+
+	chartMapperFn := mapper.Fn(func(desc ocispec.Descriptor) (*os.File, error) {
+		// TODO: Fix this
+		return os.Create("chart.tar.gz")
+	})
+
+	provMapperFn := mapper.Fn(func(desc ocispec.Descriptor) (*os.File, error) {
+		return os.Create("prov.json")
+	})
+
+	m[consts.ChartLayerMediaType] = chartMapperFn
+	m[consts.ProvLayerMediaType] = provMapperFn
+	return m
 }

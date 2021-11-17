@@ -15,9 +15,7 @@ spec:
     - ref: "https://github.com/k3s-io/k3s/releases/download/v1.22.2%2Bk3s2/k3s-images.txt"
 
     # when filenames are not appropriate, a name should be specified
-    #   this will still work, but default to a filename of "get.k3s.io"
-    - ref: https://get.k3s.io
-      name: get-k3s.sh
+    - ref: https://get.k3s.io?filename=get-k3s.sh
 
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1

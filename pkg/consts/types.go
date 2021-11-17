@@ -1,10 +1,14 @@
-package types
+package consts
 
 const (
 	OCIManifestSchema1    = "application/vnd.oci.image.manifest.v1+json"
 	DockerManifestSchema2 = "application/vnd.docker.distribution.manifest.v2+json"
 
-	DockerConfigJSON = "application/vnd.docker.container.image.v1+json"
+	DockerConfigJSON        = "application/vnd.docker.container.image.v1+json"
+	DockerLayer             = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+	DockerForeignLayer      = "application/vnd.docker.image.rootfs.foreign.diff.tar.gzip"
+	DockerUncompressedLayer = "application/vnd.docker.image.rootfs.diff.tar"
+	OCILayer                = "application/vnd.oci.image.layer.v1.tar+gzip"
 
 	// ChartConfigMediaType is the reserved media type for the Helm chart manifest config
 	ChartConfigMediaType = "application/vnd.cncf.helm.config.v1+json"

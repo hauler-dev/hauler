@@ -22,9 +22,10 @@ func TestNewK3s(t *testing.T) {
 	}
 	defer os.Remove(tmpdir)
 
-	s := store.NewStore(ctx, tmpdir)
-	s.Open()
-	defer s.Close()
+	s, err := store.NewStore(tmpdir)
+	if err != nil {
+		t.Error(err)
+	}
 
 	type args struct {
 		version string

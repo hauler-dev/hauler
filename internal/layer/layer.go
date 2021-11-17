@@ -1,4 +1,4 @@
-package local
+package layer
 
 import (
 	"io"
@@ -6,16 +6,16 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 
-	"github.com/rancherfederal/hauler/pkg/artifact/types"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
 type Opener func() (io.ReadCloser, error)
 
-func LayerFromOpener(opener Opener, opts ...LayerOption) (v1.Layer, error) {
+func FromOpener(opener Opener, opts ...Option) (v1.Layer, error) {
 	var err error
 
 	layer := &layer{
-		mediaType:   types.UnknownLayer,
+		mediaType:   consts.UnknownLayer,
 		annotations: make(map[string]string, 1),
 	}
 
@@ -25,7 +25,7 @@ func LayerFromOpener(opener Opener, opts ...LayerOption) (v1.Layer, error) {
 		if err != nil {
 			return nil, err
 		}
-		// TODO: actually compress this
+
 		return rc, nil
 	}
 
@@ -53,15 +53,15 @@ func compute(opener Opener) (v1.Hash, int64, error) {
 	return v1.SHA256(rc)
 }
 
-type LayerOption func(*layer)
+type Option func(*layer)
 
-func WithMediaType(mt string) LayerOption {
+func WithMediaType(mt string) Option {
 	return func(l *layer) {
 		l.mediaType = mt
 	}
 }
 
-func WithAnnotations(annotations map[string]string) LayerOption {
+func WithAnnotations(annotations map[string]string) Option {
 	return func(l *layer) {
 		if l.annotations == nil {
 			l.annotations = make(map[string]string)

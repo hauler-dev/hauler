@@ -26,9 +26,10 @@ func TestImage_Copy(t *testing.T) {
 	}
 	defer os.Remove(tmpdir)
 
-	s := store.NewStore(ctx, tmpdir)
-	s.Open()
-	defer s.Close()
+	s, err := store.NewStore(tmpdir)
+	if err != nil {
+		t.Error(err)
+	}
 
 	type args struct {
 		ctx      context.Context
