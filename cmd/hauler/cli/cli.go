@@ -40,7 +40,7 @@ func New() *cobra.Command {
 
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
-	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to $XDG_CACHE_DIR/hauler)")
+	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to $XDG_CACHE_HOME/hauler)")
 	pf.StringVarP(&ro.storeDir, "store", "s", "", "Location to create store at (defaults to $PWD/store)")
 
 	// Add subcommands
@@ -94,7 +94,7 @@ func (o *rootOpts) getCache(ctx context.Context) (cache.Cache, error) {
 	dir := o.cacheDir
 
 	if dir == "" {
-		// Default to $XDG_CACHE_DIR
+		// Default to $XDG_CACHE_HOME
 		cachedir, err := os.UserCacheDir()
 		if err != nil {
 			return nil, err
