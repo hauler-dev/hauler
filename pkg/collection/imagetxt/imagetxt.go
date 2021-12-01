@@ -3,9 +3,9 @@ package imagetxt
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 
@@ -22,8 +22,10 @@ type ImageTxt struct {
 	IncludeSources map[string]bool
 	ExcludeSources map[string]bool
 
+	lock *sync.Mutex
+	ctx  context.Context
+
 	getter   local.Opener
-	lock     *sync.Mutex
 	computed bool
 	contents map[name.Reference]artifact.OCI
 }
@@ -83,6 +85,20 @@ func WithExcludeSources(exclude ...string) Option {
 	return withExcludeSources(exclude)
 }
 
+// TODO - pass in context in a better way
+// TODO - maybe Collection interface needs redefinition?
+
+type withContext struct{ context.Context }
+
+func (o withContext) Apply(it *ImageTxt) error {
+	it.ctx = o.Context
+	return nil
+}
+
+func WithContext(ctx context.Context) Option {
+	return withContext{Context: ctx}
+}
+
 func New(opts ...Option) (*ImageTxt, error) {
 	it := &ImageTxt{
 		lock: &sync.Mutex{},
@@ -110,8 +126,7 @@ func (it *ImageTxt) Contents() (map[name.Reference]artifact.OCI, error) {
 }
 
 func (it *ImageTxt) compute() error {
-	// TODO - pass in logger from context
-	l := log.NewLogger(os.Stdout)
+	l := log.FromContext(it.ctx)
 
 	it.contents = make(map[name.Reference]artifact.OCI)
 
@@ -173,18 +188,18 @@ func (it *ImageTxt) compute() error {
 		for s := range targetSources {
 			targetSourcesArr = append(targetSourcesArr, s)
 		}
-		l.Infof("pulling images covering sources %s", strings.Join(targetSourcesArr, ", "))
+		l.Infof("including images covering sources %s", strings.Join(targetSourcesArr, ", "))
 	}
 
 	for _, e := range entries {
 		var matchesSourceFilter bool
 		if pullAll {
-			l.Infof("pulling image %s", e.Reference)
+			l.Infof("marked image %s for pull", e.Reference)
 		} else {
 			for s := range e.Sources {
 				if targetSources[s] {
 					matchesSourceFilter = true
-					l.Infof("pulling image %s (matched source %s)", e.Reference, s)
+					l.Infof("marked image %s for pull, matched source %s", e.Reference, s)
 					break
 				}
 			}
