@@ -91,7 +91,7 @@ func (o *rootOpts) getCache(ctx context.Context) (cache2.Cache, error) {
 	dir := o.cacheDir
 
 	if dir == "" {
-		// Default to $XDG_CACHE_DIR
+		// Default to $XDG_CACHE_HOME
 		cachedir, err := os.UserCacheDir()
 		if err != nil {
 			return nil, err
