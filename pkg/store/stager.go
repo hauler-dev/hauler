@@ -97,16 +97,9 @@ func (l *layout) commit(ctx context.Context, b *Store) (ocispec.Descriptor, erro
 	if err := src.LoadIndex(); err != nil {
 		return ocispec.Descriptor{}, err
 	}
-	ref := src.index.Manifests[0].Annotations[ocispec.AnnotationRefName]
-	// refs := src.ListReferences()
-	// if len(refs) > 1 {
-	// 	return ocispec.Descriptor{}, errors.Errorf("expected 1 reference to commit, got %d", len(refs))
-	// }
-	//
-	// var ref string
-	// for r := range refs {
-	// 	ref = r
-	// }
+
+	m := src.index.Manifests[0]
+	ref := m.Annotations[ocispec.AnnotationRefName]
 
 	desc, err := oras.Copy(ctx, src, ref, dst, "",
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))

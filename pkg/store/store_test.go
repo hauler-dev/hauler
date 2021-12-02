@@ -1,16 +1,20 @@
 package store_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"reflect"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
+	"github.com/google/go-containerregistry/pkg/v1/random"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/rancherfederal/hauler/pkg/artifact"
-	"github.com/rancherfederal/hauler/pkg/content/image"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
@@ -27,42 +31,88 @@ func TestStore_AddArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	img, _ := image.NewImage("ghcr.io/stefanprodan/podinfo:6.0.3")
-	ref, _ := name.ParseReference("ghcr.io/stephanprodan/podinfo:6.0.3")
-
 	type args struct {
 		ctx       context.Context
-		oci       artifact.OCI
-		reference name.Reference
+		reference string
 	}
 	tests := []struct {
 		name    string
 		args    args
-		want    v1.Descriptor
 		wantErr bool
 	}{
 		{
-			name: "should add artifact",
+			name: "should add artifact with a valid reference",
 			args: args{
 				ctx:       ctx,
-				oci:       img,
-				reference: ref,
+				reference: "random:v1",
 			},
-			want:    v1.Descriptor{},
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ref, err := name.ParseReference(tt.args.reference)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-			got, err := s.AddArtifact(tt.args.ctx, tt.args.oci, tt.args.reference)
+			oci, want := genArtifact(t, ref.Name())
+
+			got, err := s.AddArtifact(tt.args.ctx, oci, ref)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddArtifact() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("AddArtifact() got = %v, want %v", got, tt.want)
+
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("AddArtifact() got = %v, want %v", got, want)
 			}
 		})
 	}
+}
+
+type testImage struct {
+	gv1.Image
+}
+
+func (i *testImage) MediaType() string {
+	mt, err := i.Image.MediaType()
+	if err != nil {
+		return ""
+	}
+	return string(mt)
+}
+
+func (i *testImage) RawConfig() ([]byte, error) {
+	return i.RawConfigFile()
+}
+
+func genArtifact(t *testing.T, ref string) (artifact.OCI, ocispec.Descriptor) {
+	img, err := random.Image(1024, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	desc, err := partial.Descriptor(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc.Annotations = make(map[string]string)
+	desc.Annotations[ocispec.AnnotationRefName] = ref
+
+	// gm, err := img.Manifest()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	//
+	data, err := json.Marshal(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m ocispec.Descriptor
+	if err := json.NewDecoder(bytes.NewBuffer(data)).Decode(&m); err != nil {
+		t.Fatal(err)
+	}
+	return &testImage{Image: img}, m
 }

@@ -201,7 +201,7 @@ type ociPusher struct {
 // by the descriptor.
 func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Writer, error) {
 	switch d.MediaType {
-	case ocispec.MediaTypeImageManifest, ocispec.MediaTypeImageIndex:
+	case ocispec.MediaTypeImageManifest, ocispec.MediaTypeImageIndex, consts.DockerManifestSchema2:
 		// if the hash of the content matches that which was provided as the hash for the root, mark it
 		if p.digest != "" && p.digest == d.Digest.String() {
 			if err := p.oci.LoadIndex(); err != nil {
