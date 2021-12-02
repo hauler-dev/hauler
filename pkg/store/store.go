@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
-	"strconv"
 	"time"
 
 	"github.com/distribution/distribution/v3/configuration"
@@ -93,7 +92,9 @@ func (s *Store) List(ctx context.Context) ([]string, error) {
 	for {
 		chunk := make([]string, 20) // randomly chosen number...
 		nf, err := reg.Repositories(ctx, chunk, last)
-		last = strconv.Itoa(nf)
+		if nf > 0 {
+			last = chunk[nf-1]
+		}
 
 		for _, e := range chunk {
 			if e == "" {
