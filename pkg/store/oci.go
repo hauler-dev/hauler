@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	ccontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/content/local"
 	"github.com/containerd/containerd/remotes"
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -25,22 +24,13 @@ import (
 var _ target.Target = (*oci)(nil)
 
 type oci struct {
-	ccontent.Store
-
 	root    string
 	index   *ocispec.Index
 	nameMap *sync.Map // map[string]ocispec.Descriptor
 }
 
 func NewOCI(root string) (*oci, error) {
-	fs, err := local.NewStore(root)
-	if err != nil {
-		return nil, err
-	}
-
 	return &oci{
-		Store: fs,
-
 		root:    root,
 		nameMap: &sync.Map{},
 	}, nil

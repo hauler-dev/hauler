@@ -16,6 +16,7 @@ require (
 	github.com/rancher/wrangler v0.8.4
 	github.com/rs/zerolog v1.26.0
 	github.com/sirupsen/logrus v1.8.1
+	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.2.1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	helm.sh/helm/v3 v3.6.1-0.20211119214113-6a1daecd0c29

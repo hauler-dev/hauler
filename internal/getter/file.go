@@ -7,39 +7,53 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/go-containerregistry/pkg/v1/types"
+
 	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
-type file struct{}
+type File struct{}
 
-func (f file) Name(u *url.URL) string {
+func NewFile() *File {
+	return &File{}
+}
+
+func (f File) Name(u *url.URL) string {
 	return filepath.Base(f.path(u))
 }
 
-func (f file) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
+func (f File) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
 	return os.Open(f.path(u))
 }
 
-func (f file) Detect(u *url.URL) bool {
+func (f File) Detect(u *url.URL) bool {
 	if len(f.path(u)) == 0 {
 		return false
 	}
 
-	if fi, err := os.Stat(f.path(u)); err != nil {
-		return false
-	} else if fi.IsDir() {
+	fi, err := os.Stat(f.path(u))
+	if err != nil {
 		return false
 	}
-	return true
+	return !fi.IsDir()
 }
 
-func (f file) path(u *url.URL) string {
+func (f File) path(u *url.URL) string {
 	return filepath.Join(u.Host, u.Path)
 }
 
-func (f file) Config(u *url.URL) artifact.Config {
-	c := &config{
-		Reference: u.String(),
+func (f File) Config(u *url.URL) artifact.Config {
+	c := &fileConfig{
+		config{Reference: u.String()},
 	}
 	return artifact.ToConfig(c)
+}
+
+type fileConfig struct {
+	config `json:",inline,omitempty"`
+}
+
+func (c *fileConfig) MediaType() (types.MediaType, error) {
+	return consts.FileLocalConfigMediaType, nil
 }

@@ -65,7 +65,7 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference str
 	// Ensure that index.docker.io isn't prepended
 	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
 	if err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, errors.Wrap(err, "adding artifact")
 	}
 
 	if err := stage.add(ctx, oci, ref); err != nil {

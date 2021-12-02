@@ -15,7 +15,11 @@ import (
 )
 
 type directory struct {
-	file
+	*File
+}
+
+func NewDirectory() *directory {
+	return &directory{File: NewFile()}
 }
 
 func (d directory) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
@@ -57,12 +61,11 @@ func (d directory) Detect(u *url.URL) bool {
 		return false
 	}
 
-	if fi, err := os.Stat(d.path(u)); err != nil {
-		return false
-	} else if !fi.IsDir() {
+	fi, err := os.Stat(d.path(u))
+	if err != nil {
 		return false
 	}
-	return true
+	return fi.IsDir()
 }
 
 func tarDir(root string, prefix string, w io.Writer, stripTimes bool) error {

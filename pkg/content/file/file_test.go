@@ -1,167 +1,107 @@
 package file_test
 
-// func TestFile_Copy(t *testing.T) {
-// 	ctx := context.Background()
-// 	l := log.NewLogger(os.Stdout)
-// 	ctx = l.WithContext(ctx)
-//
-// 	tmpdir, err := os.MkdirTemp("", "hauler")
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-// 	defer os.Remove(tmpdir)
-//
-// 	// Make a temp file
-// 	f, err := os.CreateTemp(tmpdir, "tmp")
-// 	f.Write([]byte("content"))
-// 	defer f.Close()
-//
-// 	fs := newTestFileServer(tmpdir)
-// 	fs.Start()
-// 	defer fs.Stop()
-//
-// 	s, err := store.NewBundle(tmpdir)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-//
-// 	type args struct {
-// 		ctx      context.Context
-// 		registry string
-// 	}
-//
-// 	tests := []struct {
-// 		name    string
-// 		cfg     v1alpha1.File
-// 		args    args
-// 		wantErr bool
-// 	}{
-// 		{
-// 			name: "should copy a local file successfully without an explicit name",
-// 			cfg: v1alpha1.File{
-// 				Ref:  f.Name(),
-// 				Name: filepath.Base(f.Name()),
-// 			},
-// 			args: args{
-// 				ctx: ctx,
-// 			},
-// 		},
-// 		{
-// 			name: "should copy a local file successfully with an explicit name",
-// 			cfg: v1alpha1.File{
-// 				Ref:  f.Name(),
-// 				Name: "my-other-file",
-// 			},
-// 			args: args{
-// 				ctx: ctx,
-// 			},
-// 		},
-// 		{
-// 			name: "should fail to copy a local file successfully with a malformed explicit name",
-// 			cfg: v1alpha1.File{
-// 				Ref:  f.Name(),
-// 				Name: "my!invalid~@file",
-// 			},
-// 			args: args{
-// 				ctx: ctx,
-// 			},
-// 			wantErr: true,
-// 		},
-// 		{
-// 			name: "should copy a remote file successfully without an explicit name",
-// 			cfg: v1alpha1.File{
-// 				Ref: fmt.Sprintf("%s/%s", fs.server.URL, filepath.Base(f.Name())),
-// 			},
-// 			args: args{
-// 				ctx: ctx,
-// 			},
-// 		},
-// 		{
-// 			name: "should copy a remote file successfully with an explicit name",
-// 			cfg: v1alpha1.File{
-// 				Ref:  fmt.Sprintf("%s/%s", fs.server.URL, filepath.Base(f.Name())),
-// 				Name: "my-other-file",
-// 			},
-// 			args: args{
-// 				ctx: ctx,
-// 			},
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			f, err := file.NewFile(tt.cfg.Ref, tt.cfg.Name)
-// 			if err != nil {
-// 				t.Fatal(err)
-// 			}
-//
-// 			ref, err := name.ParseReference("myfile")
-// 			if err != nil {
-// 				t.Fatal(err)
-// 			}
-//
-// 			_, err = s.AddArtifact(ctx, f, ref)
-// 			if (err != nil) != tt.wantErr {
-// 				t.Error(err)
-// 			}
-//
-// 			// if err := validate(tt.cfg.Ref, tt.cfg.Name, m); err != nil {
-// 			// 	t.Error(err)
-// 			// }
-// 		})
-// 	}
-// }
-//
-// type testFileServer struct {
-// 	server *httptest.Server
-// }
-//
-// func newTestFileServer(path string) *testFileServer {
-// 	s := httptest.NewUnstartedServer(http.FileServer(http.Dir(path)))
-// 	return &testFileServer{server: s}
-// }
-//
-// func (s *testFileServer) Start() *httptest.Server {
-// 	s.server.Start()
-// 	return s.server
-// }
-//
-// func (s *testFileServer) Stop() {
-// 	s.server.Close()
-// }
-//
-// // validate ensure
-// func validate(ref string, name string, got *v1.Manifest) error {
-// 	data, err := os.ReadFile(ref)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	d := digest.FromBytes(data)
-//
-// 	annotations := make(map[string]string)
-// 	annotations[ocispec.AnnotationTitle] = name
-// 	annotations[ocispec.AnnotationSource] = ref
-//
-// 	want := &v1.Manifest{
-// 		SchemaVersion: 2,
-// 		MediaType:     types.OCIManifestSchema1,
-// 		Config:        v1.Descriptor{},
-// 		Layers: []v1.Descriptor{
-// 			{
-// 				MediaType: types.FileLayerMediaType,
-// 				Size:      int64(len(data)),
-// 				Digest: v1.Hash{
-// 					Algorithm: d.Algorithm().String(),
-// 					Hex:       d.Hex(),
-// 				},
-// 				Annotations: annotations,
-// 			},
-// 		},
-// 		Annotations: nil,
-// 	}
-//
-// 	if !reflect.DeepEqual(want.Layers, got.Layers) {
-// 		return fmt.Errorf("want = (%v) | got = (%v)", want, got)
-// 	}
-// 	return nil
-// }
+import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"path/filepath"
+	"testing"
+
+	"github.com/spf13/afero"
+
+	"github.com/rancherfederal/hauler/internal/getter"
+	"github.com/rancherfederal/hauler/pkg/content/file"
+)
+
+func Test_file_Layers(t *testing.T) {
+	filename := "myfile.yaml"
+	data := []byte(`data`)
+
+	mfs := afero.NewMemMapFs()
+	afero.WriteFile(mfs, filename, data, 0644)
+
+	mf := &mockFile{File: getter.NewFile(), fs: mfs}
+
+	mockHttp := getter.NewHttp()
+
+	mhttp := afero.NewHttpFs(mfs)
+	fileserver := http.FileServer(mhttp.Dir("."))
+	http.Handle("/", fileserver)
+
+	s := httptest.NewServer(fileserver)
+	defer s.Close()
+
+	mc := &getter.Client{
+		Options: getter.ClientOptions{},
+		Getters: map[string]getter.Getter{
+			"file": mf,
+			"http": mockHttp,
+		},
+	}
+
+	tests := []struct {
+		name    string
+		ref     string
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name:    "should load a local file and preserve contents",
+			ref:     filename,
+			want:    data,
+			wantErr: false,
+		},
+		{
+			name:    "should load a remote file and preserve contents",
+			ref:     s.URL + "/" + filename,
+			want:    data,
+			wantErr: false,
+		},
+		// TODO: Add directory test
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := file.NewFile(tt.ref, file.WithClient(mc))
+
+			layers, err := f.Layers()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Layers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			rc, err := layers[0].Compressed()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("Layers() got = %v, want %v", layers, tt.want)
+			}
+		})
+	}
+}
+
+type mockFile struct {
+	*getter.File
+	fs afero.Fs
+}
+
+func (m mockFile) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
+	return m.fs.Open(filepath.Join(u.Host, u.Path))
+}
+
+func (m mockFile) Detect(u *url.URL) bool {
+	fi, err := m.fs.Stat(filepath.Join(u.Host, u.Path))
+	if err != nil {
+		return false
+	}
+	return !fi.IsDir()
+}

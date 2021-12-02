@@ -20,8 +20,9 @@ import (
 var _ artifact.OCI = (*file)(nil)
 
 type file struct {
-	ref         string
-	client      *getter.Client
+	ref    string
+	client *getter.Client
+
 	computed    bool
 	config      artifact.Config
 	blob        gv1.Layer
@@ -29,14 +30,18 @@ type file struct {
 	annotations map[string]string
 }
 
-func NewFile(ref string) *file {
-	// TODO: Allow user to configure this
+func NewFile(ref string, opts ...Option) *file {
 	client := getter.NewClient(getter.ClientOptions{})
 
-	return &file{
+	f := &file{
 		client: client,
 		ref:    ref,
 	}
+
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
 }
 
 func (f *file) Name(ref string) string {

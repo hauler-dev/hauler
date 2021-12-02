@@ -6,14 +6,12 @@ import (
 	"net/url"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"oras.land/oras-go/pkg/content"
 
 	"github.com/rancherfederal/hauler/internal/layer"
 	"github.com/rancherfederal/hauler/pkg/artifact"
-	htypes "github.com/rancherfederal/hauler/pkg/consts"
 )
 
 type Client struct {
@@ -40,10 +38,9 @@ type Getter interface {
 
 func NewClient(opts ClientOptions) *Client {
 	defaults := map[string]Getter{
-		"file":      new(file),
-		"directory": new(directory),
-		"http":      new(https),
-		"https":     new(https),
+		"file":      NewFile(),
+		"directory": NewDirectory(),
+		"http":      NewHttp(),
 	}
 
 	c := &Client{
@@ -95,7 +92,9 @@ func (c *Client) Name(source string) string {
 		return source
 	}
 	for _, g := range c.Getters {
-		return g.Name(u)
+		if g.Detect(u) {
+			return g.Name(u)
+		}
 	}
 	return source
 }
@@ -106,7 +105,9 @@ func (c *Client) Config(source string) artifact.Config {
 		return nil
 	}
 	for _, g := range c.Getters {
-		return g.Config(u)
+		if g.Detect(u) {
+			return g.Config(u)
+		}
 	}
 	return nil
 }
@@ -114,8 +115,4 @@ func (c *Client) Config(source string) artifact.Config {
 type config struct {
 	Reference   string            `json:"reference"`
 	Annotations map[string]string `json:"annotations,omitempty"`
-}
-
-func (c *config) MediaType() (types.MediaType, error) {
-	return htypes.FileConfigMediaType, nil
 }

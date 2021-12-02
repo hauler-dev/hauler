@@ -83,7 +83,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 
 		// l.Infof("downloaded image [%s] to [%s]", ref.Name(), outputFile)
 
-	case consts.FileConfigMediaType:
+	case consts.FileLocalConfigMediaType:
 		l.Debugf("identified [file] (%s) content", manifest.Config.MediaType)
 
 		fs := mapper.NewStore(o.DestinationDir, file.Mapper())

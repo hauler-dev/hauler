@@ -9,12 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/v1/types"
+
 	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
-type https struct{}
+type Http struct{}
 
-func (h https) Name(u *url.URL) string {
+func NewHttp() *Http {
+	return &Http{}
+}
+
+func (h Http) Name(u *url.URL) string {
 	resp, err := http.Head(u.String())
 	if err != nil {
 		return ""
@@ -34,7 +41,7 @@ func (h https) Name(u *url.URL) string {
 	return filepath.Base(u.String())
 }
 
-func (h https) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
+func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
 	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err
@@ -42,7 +49,7 @@ func (h https) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (h https) Detect(u *url.URL) bool {
+func (h Http) Detect(u *url.URL) bool {
 	switch u.Scheme {
 	case "http", "https":
 		return true
@@ -50,9 +57,17 @@ func (h https) Detect(u *url.URL) bool {
 	return false
 }
 
-func (h https) Config(u *url.URL) artifact.Config {
-	c := &config{
-		Reference: u.String(),
+func (h *Http) Config(u *url.URL) artifact.Config {
+	c := &httpConfig{
+		config{Reference: u.String()},
 	}
 	return artifact.ToConfig(c)
+}
+
+type httpConfig struct {
+	config `json:",inline,omitempty"`
+}
+
+func (c *httpConfig) MediaType() (types.MediaType, error) {
+	return consts.FileHttpConfigMediaType, nil
 }
