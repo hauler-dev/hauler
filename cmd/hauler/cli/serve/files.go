@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/server"
+	"github.com/rancherfederal/hauler/internal/server"
 )
 
 type FilesOpts struct {
