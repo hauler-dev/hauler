@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/random"
@@ -41,24 +40,27 @@ func TestStore_AddArtifact(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "should add artifact with a valid reference",
+			name: "should add artifact with a valid tagged reference",
 			args: args{
 				ctx:       ctx,
 				reference: "random:v1",
 			},
 			wantErr: false,
 		},
+		{
+			name: "should fail with ErrInvalidReference when an invalid reference is provided",
+			args: args{
+				ctx:       ctx,
+				reference: "n0tV@l!d:v1",
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ref, err := name.ParseReference(tt.args.reference)
-			if err != nil {
-				t.Fatal(err)
-			}
+			oci, want := genArtifact(t, tt.args.reference)
 
-			oci, want := genArtifact(t, ref.Name())
-
-			got, err := s.AddArtifact(tt.args.ctx, oci, ref)
+			got, err := s.AddArtifact(tt.args.ctx, oci, tt.args.reference)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddArtifact() error = %v, wantErr %v", err, tt.wantErr)
 				return

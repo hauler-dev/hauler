@@ -17,7 +17,7 @@ type tchart struct {
 	config v1alpha1.ThickChart
 
 	computed bool
-	contents map[gname.Reference]artifact.OCI
+	contents map[string]artifact.OCI
 }
 
 func NewChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
@@ -29,11 +29,11 @@ func NewChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
 	return &tchart{
 		chart:    o,
 		config:   cfg,
-		contents: make(map[gname.Reference]artifact.OCI),
+		contents: make(map[string]artifact.OCI),
 	}, nil
 }
 
-func (c *tchart) Contents() (map[gname.Reference]artifact.OCI, error) {
+func (c *tchart) Contents() (map[string]artifact.OCI, error) {
 	if err := c.compute(); err != nil {
 		return nil, err
 	}
@@ -70,12 +70,7 @@ func (c *tchart) chartContents() error {
 		tag = gname.DefaultTag
 	}
 
-	ref, err := gname.ParseReference(c.config.Name, gname.WithDefaultRegistry(""), gname.WithDefaultTag(tag))
-	if err != nil {
-		return err
-	}
-
-	c.contents[ref] = oci
+	c.contents[c.config.Name] = oci
 	return nil
 }
 
@@ -91,32 +86,22 @@ func (c *tchart) dependentImages() error {
 	}
 
 	for _, img := range imgs.Spec.Images {
-		ref, err := gname.ParseReference(img.Ref)
-		if err != nil {
-			return err
-		}
-
 		i, err := image.NewImage(img.Ref)
 		if err != nil {
 			return err
 		}
-		c.contents[ref] = i
+		c.contents[img.Ref] = i
 	}
 	return nil
 }
 
 func (c *tchart) extraImages() error {
 	for _, img := range c.config.ExtraImages {
-		ref, err := gname.ParseReference(img.Reference)
-		if err != nil {
-			return err
-		}
-
 		i, err := image.NewImage(img.Reference)
 		if err != nil {
 			return err
 		}
-		c.contents[ref] = i
+		c.contents[img.Reference] = i
 	}
 	return nil
 }

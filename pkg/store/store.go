@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
 	"oras.land/oras-go/pkg/target"
@@ -23,6 +24,10 @@ type Store struct {
 	store *content.OCI
 	cache cache.Cache
 }
+
+var (
+	ErrInvalidReference = errors.New("invalid reference")
+)
 
 func NewStore(rootdir string, opts ...Options) (*Store, error) {
 	ociStore, err := content.NewOCI(rootdir)
@@ -46,7 +51,7 @@ func NewStore(rootdir string, opts ...Options) (*Store, error) {
 //  saved, the entirety of the layout is copied to the store (which is just a registry).  This allows us to not only use
 //  strict types to define generic content, but provides a processing pipeline suitable for extensibility.  In the
 //  future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
-func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference name.Reference) (ocispec.Descriptor, error) {
+func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference string) (ocispec.Descriptor, error) {
 	stage, err := newLayout()
 	if err != nil {
 		return ocispec.Descriptor{}, err
@@ -57,7 +62,13 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference nam
 		oci = cached
 	}
 
-	if err := stage.add(ctx, oci, reference); err != nil {
+	// Ensure that index.docker.io isn't prepended
+	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+
+	if err := stage.add(ctx, oci, ref); err != nil {
 		return ocispec.Descriptor{}, err
 	}
 	return stage.commit(ctx, s)

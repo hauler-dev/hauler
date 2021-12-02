@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -94,17 +96,13 @@ func storeFile(ctx context.Context, s *store.Store, fi v1alpha1.File) error {
 	l := log.FromContext(ctx)
 
 	f := file.NewFile(fi.Ref)
-	ref, err := name.ParseReference(f.Name(fi.Ref), name.WithDefaultRegistry(""))
+
+	desc, err := s.AddArtifact(ctx, f, f.Name(fi.Ref))
 	if err != nil {
 		return err
 	}
 
-	desc, err := s.AddArtifact(ctx, f, ref)
-	if err != nil {
-		return err
-	}
-
-	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", ref.Name())
+	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", desc.Annotations[ocispec.AnnotationRefName])
 	return nil
 }
 
@@ -133,17 +131,12 @@ func storeImage(ctx context.Context, s *store.Store, i v1alpha1.Image) error {
 		return err
 	}
 
-	ref, err := name.ParseReference(i.Ref)
+	desc, err := s.AddArtifact(ctx, oci, i.Ref)
 	if err != nil {
 		return err
 	}
 
-	desc, err := s.AddArtifact(ctx, oci, ref)
-	if err != nil {
-		return err
-	}
-
-	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", ref.Name())
+	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", i.Ref)
 	return nil
 }
 
@@ -171,29 +164,25 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, chartName
 	return storeChart(ctx, s, cfg)
 }
 
-func storeChart(ctx context.Context, s *store.Store, ch v1alpha1.Chart) error {
+func storeChart(ctx context.Context, s *store.Store, cfg v1alpha1.Chart) error {
 	l := log.FromContext(ctx)
 
-	oci, err := chart.NewChart(ch.Name, ch.RepoURL, ch.Version)
+	oci, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
 	if err != nil {
 		return err
 	}
 
-	tag := ch.Version
+	tag := cfg.Version
 	if tag == "" {
 		tag = name.DefaultTag
 	}
 
-	ref, err := name.ParseReference(ch.Name, name.WithDefaultRegistry(""), name.WithDefaultTag(tag))
-	if err != nil {
-		return err
-	}
-
+	ref := fmt.Sprintf("%s:%s", cfg.Name, tag)
 	desc, err := s.AddArtifact(ctx, oci, ref)
 	if err != nil {
 		return err
 	}
 
-	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", ref.Name())
+	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", ref)
 	return nil
 }

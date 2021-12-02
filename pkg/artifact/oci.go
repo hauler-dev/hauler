@@ -1,7 +1,6 @@
 package artifact
 
 import (
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1"
 )
 
@@ -20,5 +19,5 @@ type OCI interface {
 
 type Collection interface {
 	// Contents returns the list of contents in the collection
-	Contents() (map[name.Reference]OCI, error)
+	Contents() (map[string]OCI, error)
 }
