@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -17,7 +18,9 @@ import (
 	"oras.land/oras-go/pkg/content"
 )
 
-func NewStore(root string, mapper map[string]Fn) *store {
+// NewMapperFileStore creates a new file store that uses mapper functions for each detected descriptor.
+// 		This extends content.File, and differs in that it allows much more functionality into how each descriptor is written.
+func NewMapperFileStore(root string, mapper map[string]Fn) *store {
 	fs := content.NewFile(root)
 	return &store{
 		File:   fs,
