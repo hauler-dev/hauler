@@ -28,6 +28,5 @@ func FilesCmd(ctx context.Context, o *FilesOpts) error {
 	if err := s.ListenAndServe(); err != nil {
 		return err
 	}
-
 	return nil
 }

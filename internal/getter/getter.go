@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancherfederal/hauler/internal/layer"
 	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
 type Client struct {
@@ -60,11 +61,6 @@ func (c *Client) LayerFrom(ctx context.Context, source string) (v1.Layer, error)
 			opener := func() (io.ReadCloser, error) {
 				return g.Open(ctx, u)
 			}
-			cfg := g.Config(u)
-			mt, err := cfg.MediaType()
-			if err != nil {
-				return nil, err
-			}
 
 			annotations := make(map[string]string)
 			annotations[ocispec.AnnotationTitle] = g.Name(u)
@@ -75,7 +71,7 @@ func (c *Client) LayerFrom(ctx context.Context, source string) (v1.Layer, error)
 			}
 
 			l, err := layer.FromOpener(opener,
-				layer.WithMediaType(string(mt)),
+				layer.WithMediaType(consts.FileLayerMediaType),
 				layer.WithAnnotations(annotations))
 			if err != nil {
 				return nil, err

@@ -16,9 +16,6 @@ import (
 
 	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/content/chart"
-	"github.com/rancherfederal/hauler/pkg/content/file"
-	"github.com/rancherfederal/hauler/pkg/content/image"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
@@ -36,9 +33,6 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 
 func Cmd(ctx context.Context, o *Opts, reference string) error {
 	l := log.FromContext(ctx)
-
-	fs := content.NewFile(o.DestinationDir)
-	defer fs.Close()
 
 	rs, err := content.NewRegistry(content.RegistryOptions{})
 	if err != nil {
@@ -76,53 +70,23 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 			outputFile = fmt.Sprintf("%s:%s.tar", path.Base(ref.Context().RepositoryStr()), ref.Identifier())
 		}
 
-		is := mapper.NewStore(o.DestinationDir, image.Mapper())
-		defer is.Close()
-
-		ms = is
-
-		// l.Infof("downloaded image [%s] to [%s]", ref.Name(), outputFile)
+		s := mapper.NewMapperFileStore(o.DestinationDir, mapper.Images())
+		defer s.Close()
+		ms = s
 
 	case consts.FileLocalConfigMediaType:
 		l.Debugf("identified [file] (%s) content", manifest.Config.MediaType)
 
-		fs := mapper.NewStore(o.DestinationDir, file.Mapper())
-		defer fs.Close()
-
-		ms = fs
-
-		// _, err := oras.Copy(ctx, rs, ref.Name(), fs, "",
-		// 	oras.WithLayerDescriptors(func(descriptors []ocispec.Descriptor) {
-		// 		for _, desc := range descriptors {
-		// 			if _, ok := desc.Annotations[ocispec.AnnotationTitle]; !ok {
-		// 				continue
-		// 			}
-		// 			descs = append(descs, desc)
-		// 		}
-		// 	}))
-		// if err != nil {
-		// 	return err
-		// }
-		//
-		// ldescs := len(descs)
-		// for i, desc := range descs {
-		// 	// NOTE: This is safe without a map key check b/c we're not allowing unnamed content from oras.Pull
-		// 	l.Infof("downloaded (%d/%d) files to [%s]", i+1, ldescs, desc.Annotations[ocispec.AnnotationTitle])
-		// }
+		s := mapper.NewMapperFileStore(o.DestinationDir, nil)
+		defer s.Close()
+		ms = s
 
 	case consts.ChartLayerMediaType, consts.ChartConfigMediaType:
 		l.Debugf("identified [chart] (%s) content", manifest.Config.MediaType)
 
-		cs := mapper.NewStore(o.DestinationDir, chart.Mapper())
-		defer cs.Close()
-
-		ms = cs
-		// desc, err := oras.Copy(ctx, rs, ref.Name(), fs, "")
-		// if err != nil {
-		// 	return err
-		// }
-		//
-		// l.Infof("downloaded chart [%s] to [%s]", ref.String(), desc.Annotations[ocispec.AnnotationTitle])
+		s := mapper.NewMapperFileStore(o.DestinationDir, mapper.Chart())
+		defer s.Close()
+		ms = s
 
 	default:
 		return fmt.Errorf("unrecognized content type: %s", manifest.Config.MediaType)

@@ -17,7 +17,6 @@ import (
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/target"
 
-	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
@@ -214,10 +213,11 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 		return content.NewIoContentWriter(ioutil.Discard, content.WithOutputHash(d.Digest)), nil
 	}
 
-	writer, err := mapper.NewFileWriter(blobPath, 0644, d.Size)
+	f, err := os.Create(blobPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return writer, nil
+	w := content.NewIoContentWriter(f, content.WithInputHash(d.Digest), content.WithOutputHash(d.Digest))
+	return w, nil
 }

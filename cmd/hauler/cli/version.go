@@ -29,7 +29,6 @@ func addVersion(parent *cobra.Command) {
 			return nil
 		},
 	}
-
 	cmd.Flags().BoolVar(&json, "json", false, "toggle output in JSON")
 
 	parent.AddCommand(cmd)

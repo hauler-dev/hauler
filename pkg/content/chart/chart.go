@@ -17,7 +17,6 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 
 	"github.com/rancherfederal/hauler/internal/layer"
-	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
@@ -139,21 +138,4 @@ func chartOpener(path string) layer.Opener {
 	return func() (io.ReadCloser, error) {
 		return os.Open(path)
 	}
-}
-
-func Mapper() map[string]mapper.Fn {
-	m := make(map[string]mapper.Fn)
-
-	chartMapperFn := mapper.Fn(func(desc ocispec.Descriptor) (*os.File, error) {
-		// TODO: Fix this
-		return os.Create("chart.tar.gz")
-	})
-
-	provMapperFn := mapper.Fn(func(desc ocispec.Descriptor) (*os.File, error) {
-		return os.Create("prov.json")
-	})
-
-	m[consts.ChartLayerMediaType] = chartMapperFn
-	m[consts.ProvLayerMediaType] = provMapperFn
-	return m
 }

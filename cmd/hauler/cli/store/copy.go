@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -40,8 +39,6 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string)
 		if err != nil {
 			return err
 		}
-
-		fmt.Println(components[1])
 
 		mapperFn := func(reference string) (string, error) {
 			ref, err := store.RelocateReference(reference, components[1])

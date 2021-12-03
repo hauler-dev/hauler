@@ -102,11 +102,6 @@ func genArtifact(t *testing.T, ref string) (artifact.OCI, ocispec.Descriptor) {
 	desc.Annotations = make(map[string]string)
 	desc.Annotations[ocispec.AnnotationRefName] = ref
 
-	// gm, err := img.Manifest()
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	//
 	data, err := json.Marshal(desc)
 	if err != nil {
 		t.Fatal(err)

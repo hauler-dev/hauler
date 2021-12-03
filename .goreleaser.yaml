@@ -22,7 +22,7 @@ builds:
       - CGO_ENABLED=0
 
 universal_binaries:
-  - replace: true
+  - replace: false
 
 changelog:
   skip: false

@@ -15,10 +15,8 @@ import (
 type InfoOpts struct{}
 
 func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-	_ = f
-
-	// TODO: Regex matching
+	_ = cmd.Flags()
+	// TODO: Regex/globbing
 }
 
 func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Store) error {

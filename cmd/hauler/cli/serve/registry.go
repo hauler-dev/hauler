@@ -47,9 +47,6 @@ func RegistryCmd(ctx context.Context, o *RegistryOpts) error {
 	if err := s.ListenAndServe(); err != nil {
 		return err
 	}
-
-	// TODO: Graceful cancelling
-
 	return nil
 }
 

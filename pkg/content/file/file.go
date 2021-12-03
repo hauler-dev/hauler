@@ -2,16 +2,12 @@ package file
 
 import (
 	"context"
-	"os"
 
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 
 	"github.com/rancherfederal/hauler/internal/getter"
-	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
@@ -110,18 +106,4 @@ func (f *file) compute() error {
 	f.blob = blob
 	f.computed = true
 	return nil
-}
-
-func Mapper() map[string]mapper.Fn {
-	m := make(map[string]mapper.Fn)
-
-	blobMapperFn := mapper.Fn(func(desc ocispec.Descriptor) (*os.File, error) {
-		if _, ok := desc.Annotations[ocispec.AnnotationTitle]; !ok {
-			return nil, errors.Errorf("unkown file name")
-		}
-		return os.Create(desc.Annotations[ocispec.AnnotationTitle])
-	})
-
-	m[consts.FileLayerMediaType] = blobMapperFn
-	return m
 }

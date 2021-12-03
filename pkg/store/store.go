@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -146,7 +145,6 @@ func (s *Store) Copy(ctx context.Context, to target.Target, toMapper func(string
 			toRef = tr
 		}
 
-		fmt.Println("copying to: ", toRef)
 		_, err := oras.Copy(ctx, s.store, ref, to, toRef,
 			oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
 		if err != nil {
