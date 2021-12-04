@@ -130,7 +130,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 				}
 
 				for _, cfg := range cfg.Spec.Charts {
-					tc, err := tchart.NewChart(cfg)
+					tc, err := tchart.NewThickChart(cfg)
 					if err != nil {
 						return err
 					}

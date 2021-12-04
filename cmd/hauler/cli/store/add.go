@@ -41,7 +41,7 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 // 		loc = f.Name(reference)
 //
 // 	case "chart":
-// 		oci, err := chart.NewChart(ch.Name, ch.RepoURL, ch.Version)
+// 		oci, err := chart.NewThickChart(ch.Name, ch.RepoURL, ch.Version)
 // 		if err != nil {
 // 			return err
 // 		}

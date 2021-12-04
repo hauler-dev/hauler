@@ -20,7 +20,7 @@ type tchart struct {
 	contents map[string]artifact.OCI
 }
 
-func NewChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
+func NewThickChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
 	o, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
 	if err != nil {
 		return nil, err
