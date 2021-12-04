@@ -4,11 +4,33 @@ import (
 	"fmt"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/pkg/target"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
 type Fn func(desc ocispec.Descriptor) (string, error)
+
+// FromManifest will return the appropriate content store given a reference and source type adequate for storing the results on disk
+func FromManifest(manifest ocispec.Manifest, root string) (target.Target, error) {
+	switch manifest.Config.MediaType {
+	case consts.DockerConfigJSON, consts.OCIManifestSchema1:
+		s := NewMapperFileStore(root, Images())
+		defer s.Close()
+		return s, nil
+
+	case consts.FileLocalConfigMediaType:
+		s := NewMapperFileStore(root, nil)
+		defer s.Close()
+		return s, nil
+
+	case consts.ChartLayerMediaType, consts.ChartConfigMediaType:
+		s := NewMapperFileStore(root, Chart())
+		defer s.Close()
+		return s, nil
+	}
+	return nil, fmt.Errorf("could not identify mapper from manifest with media type [%s]", manifest.MediaType)
+}
 
 func Images() map[string]Fn {
 	m := make(map[string]Fn)

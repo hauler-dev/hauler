@@ -124,13 +124,10 @@ func (s *Store) List(ctx context.Context) ([]ocispec.Descriptor, error) {
 	return descs, nil
 }
 
-func (s *Store) Get(ctx context.Context, to target.Target, reference string) error {
-	_, err := oras.Copy(ctx, s.store, reference, to, "",
+// Get given a reference,
+func (s *Store) Get(ctx context.Context, to target.Target, reference string) (ocispec.Descriptor, error) {
+	return oras.Copy(ctx, s.store, reference, to, "",
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // Copy performs bulk copy operations on the stores oci layout to a provided target.Target

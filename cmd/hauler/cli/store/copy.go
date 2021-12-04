@@ -22,11 +22,11 @@ func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 
 func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string) error {
 	l := log.FromContext(ctx)
-	_ = l
 
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
 	case "dir":
+		l.Debugf("identified directory target reference")
 		fs := content.NewFile(components[1])
 		defer fs.Close()
 
@@ -35,6 +35,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string)
 		}
 
 	case "registry":
+		l.Debugf("identified registry target reference")
 		r, err := content.NewRegistry(content.RegistryOptions{})
 		if err != nil {
 			return err
@@ -54,7 +55,6 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string)
 
 	default:
 		return errors.Errorf("determining target protocol from: [%s]", targetRef)
-
 	}
 	return nil
 }
