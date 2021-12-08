@@ -15,6 +15,8 @@ import (
 // interface guard
 var _ artifact.OCI = (*File)(nil)
 
+// File implements the OCI interface for File API objects. API spec information is
+// stored into the Ref field.
 type File struct {
 	Ref string
 

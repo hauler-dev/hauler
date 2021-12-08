@@ -23,6 +23,8 @@ import (
 
 var _ artifact.OCI = (*Chart)(nil)
 
+// Chart implements the  OCI interface for Chart API objects. API spec values are
+// stored into the Repo, Name, and Version fields.
 type Chart struct {
 	Repo    string
 	Name    string

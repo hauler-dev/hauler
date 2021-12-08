@@ -23,6 +23,8 @@ func (i *Image) RawConfig() ([]byte, error) {
 	return i.RawConfigFile()
 }
 
+// Image implements the OCI interface for Image API objects. API spec information
+// is stored into the Ref field.
 type Image struct {
 	Ref string
 	gv1.Image
