@@ -24,6 +24,7 @@ func (i *Image) RawConfig() ([]byte, error) {
 }
 
 type Image struct {
+	Ref string
 	gv1.Image
 }
 
@@ -44,6 +45,7 @@ func NewImage(ref string, opts ...remote.Option) (*Image, error) {
 	}
 
 	return &Image{
+		Ref:   ref,
 		Image: img,
 	}, nil
 }
