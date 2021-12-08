@@ -13,9 +13,9 @@ import (
 )
 
 // interface guard
-var _ artifact.OCI = (*file)(nil)
+var _ artifact.OCI = (*File)(nil)
 
-type file struct {
+type File struct {
 	ref    string
 	client *getter.Client
 
@@ -26,10 +26,10 @@ type file struct {
 	annotations map[string]string
 }
 
-func NewFile(ref string, opts ...Option) *file {
+func NewFile(ref string, opts ...Option) *File {
 	client := getter.NewClient(getter.ClientOptions{})
 
-	f := &file{
+	f := &File{
 		client: client,
 		ref:    ref,
 	}
@@ -40,22 +40,22 @@ func NewFile(ref string, opts ...Option) *file {
 	return f
 }
 
-func (f *file) Name(ref string) string {
+func (f *File) Name(ref string) string {
 	return f.client.Name(ref)
 }
 
-func (f *file) MediaType() string {
+func (f *File) MediaType() string {
 	return consts.OCIManifestSchema1
 }
 
-func (f *file) RawConfig() ([]byte, error) {
+func (f *File) RawConfig() ([]byte, error) {
 	if err := f.compute(); err != nil {
 		return nil, err
 	}
 	return f.config.Raw()
 }
 
-func (f *file) Layers() ([]gv1.Layer, error) {
+func (f *File) Layers() ([]gv1.Layer, error) {
 	if err := f.compute(); err != nil {
 		return nil, err
 	}
@@ -64,14 +64,14 @@ func (f *file) Layers() ([]gv1.Layer, error) {
 	return layers, nil
 }
 
-func (f *file) Manifest() (*gv1.Manifest, error) {
+func (f *File) Manifest() (*gv1.Manifest, error) {
 	if err := f.compute(); err != nil {
 		return nil, err
 	}
 	return f.manifest, nil
 }
 
-func (f *file) compute() error {
+func (f *File) compute() error {
 	if f.computed {
 		return nil
 	}
