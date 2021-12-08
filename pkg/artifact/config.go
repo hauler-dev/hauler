@@ -7,6 +7,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"k8s.io/apimachinery/pkg/util/json"
+
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
 var _ partial.Describable = (*marshallableConfig)(nil)
@@ -22,14 +24,22 @@ type Config interface {
 	Size() (int64, error)
 }
 
-type Marshallable interface {
-	MediaType() (types.MediaType, error)
-}
+type Marshallable interface{}
+
+type ConfigOption func(*marshallableConfig)
 
 // ToConfig takes anything that is marshallabe and converts it into a Config
-func ToConfig(i Marshallable) Config {
-	return &marshallableConfig{
-		Marshallable: i,
+func ToConfig(i Marshallable, opts ...ConfigOption) Config {
+	mc := &marshallableConfig{Marshallable: i}
+	for _, o := range opts {
+		o(mc)
+	}
+	return mc
+}
+
+func WithConfigMediaType(mediaType string) ConfigOption {
+	return func(config *marshallableConfig) {
+		config.mediaType = mediaType
 	}
 }
 
@@ -37,8 +47,15 @@ func ToConfig(i Marshallable) Config {
 type marshallableConfig struct {
 	Marshallable
 
-	hash v1.Hash
-	size int64
+	mediaType string
+}
+
+func (c *marshallableConfig) MediaType() (types.MediaType, error) {
+	mt := c.mediaType
+	if mt == "" {
+		mt = consts.UnknownManifest
+	}
+	return types.MediaType(mt), nil
 }
 
 func (c *marshallableConfig) Raw() ([]byte, error) {
