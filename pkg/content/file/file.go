@@ -87,7 +87,11 @@ func (f *file) compute() error {
 		return err
 	}
 
-	cfg := f.client.Config(f.ref)
+	cfg := f.config
+	if cfg == nil {
+		cfg = f.client.Config(f.ref)
+	}
+
 	cfgDesc, err := partial.Descriptor(cfg)
 	if err != nil {
 		return err
