@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/v1/types"
-
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
@@ -61,13 +59,9 @@ func (h *Http) Config(u *url.URL) artifact.Config {
 	c := &httpConfig{
 		config{Reference: u.String()},
 	}
-	return artifact.ToConfig(c)
+	return artifact.ToConfig(c, artifact.WithConfigMediaType(consts.FileHttpConfigMediaType))
 }
 
 type httpConfig struct {
 	config `json:",inline,omitempty"`
-}
-
-func (c *httpConfig) MediaType() (types.MediaType, error) {
-	return consts.FileHttpConfigMediaType, nil
 }

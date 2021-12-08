@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	glayout "github.com/google/go-containerregistry/pkg/v1/layout"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"oras.land/oras-go/pkg/content"
@@ -118,16 +117,6 @@ func (s *Store) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) List(ctx context.Context) ([]ocispec.Descriptor, error) {
-	refs := s.store.ListReferences()
-
-	var descs []ocispec.Descriptor
-	for _, desc := range refs {
-		descs = append(descs, desc)
-	}
-	return descs, nil
-}
-
 func (s *Store) Open(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
 	readerAt, err := s.store.ReaderAt(ctx, desc)
 	if err != nil {
@@ -137,31 +126,11 @@ func (s *Store) Open(ctx context.Context, desc ocispec.Descriptor) (io.ReadClose
 	return ioutil.NopCloser(content.NewReaderAtWrapper(readerAt)), nil
 }
 
-func (s *Store) Walk(fn func(m ocispec.Manifest) error) error {
-	p, err := glayout.FromPath(s.Root)
-	if err != nil {
-		return err
-	}
+func (s *Store) Walk(fn func(desc ocispec.Descriptor) error) error {
+	refs := s.store.ListReferences()
 
-	ii, _ := p.ImageIndex()
-	im, _ := ii.IndexManifest()
-	for _, m := range im.Manifests {
-		desc, err := p.Image(m.Digest)
-		if err != nil {
-			return err
-		}
-
-		manifestData, err := desc.RawManifest()
-		if err != nil {
-			return err
-		}
-
-		var manifest ocispec.Manifest
-		if err := json.Unmarshal(manifestData, &manifest); err != nil {
-			return err
-		}
-
-		if err := fn(manifest); err != nil {
+	for _, desc := range refs {
+		if err := fn(desc); err != nil {
 			return err
 		}
 	}
@@ -195,7 +164,7 @@ func (s *Store) CopyAll(ctx context.Context, to target.Target, toMapper func(str
 	return nil
 }
 
-// Identify is a helper function that will identify the content type given a descriptor
+// Identify is a helper function that will identify a human-readable content type given a descriptor
 func (s *Store) Identify(ctx context.Context, desc ocispec.Descriptor) string {
 	rc, err := s.store.Fetch(ctx, desc)
 	if err != nil {

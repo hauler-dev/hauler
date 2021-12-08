@@ -2,40 +2,137 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"os"
+	"strings"
 	"text/tabwriter"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/pkg/consts"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type InfoOpts struct{}
+type InfoOpts struct {
+	OutputFormat string
+	SizeUnit     string
+}
 
 func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
-	_ = cmd.Flags()
+	f := cmd.Flags()
+
+	f.StringVarP(&o.OutputFormat, "output", "o", "table", "Output format (table, json)")
+
 	// TODO: Regex/globbing
 }
 
 func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Store) error {
-	refs, err := s.List(ctx)
-	if err != nil {
+	var items []item
+	if err := s.Walk(func(desc ocispec.Descriptor) error {
+		if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
+			return nil
+		}
+
+		rc, err := s.Open(ctx, desc)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		var m ocispec.Manifest
+		if err := json.NewDecoder(rc).Decode(&m); err != nil {
+			return err
+		}
+
+		i := newItem(s, desc, m)
+		items = append(items, i)
+
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0)
-	defer tw.Flush()
+	var msg string
+	switch o.OutputFormat {
+	case "json":
+		msg = buildJson(items...)
 
-	fmt.Fprintf(tw, "Reference\tTag/Digest\tType\n")
-	fmt.Fprintf(tw, "---------\t----------\t----\n")
-	for _, r := range refs {
-		if _, ok := r.Annotations[ocispec.AnnotationRefName]; !ok {
-			continue
-		}
-		fmt.Fprintf(tw, "%s\t%s\n", r.Annotations[ocispec.AnnotationRefName], "")
+	default:
+		msg = buildTable(items...)
+	}
+	fmt.Println(msg)
+	return nil
+}
+
+func buildTable(items ...item) string {
+	b := strings.Builder{}
+	tw := tabwriter.NewWriter(&b, 1, 1, 3, ' ', 0)
+
+	fmt.Fprintf(tw, "Reference\tType\t# Layers\tSize\n")
+	fmt.Fprintf(tw, "---------\t----\t--------\t----\n")
+
+	for _, i := range items {
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n",
+			i.Reference, i.Type, i.Layers, i.Size,
+		)
+	}
+	tw.Flush()
+	return b.String()
+}
+
+func buildJson(item ...item) string {
+	data, err := json.MarshalIndent(item, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+type item struct {
+	Reference string
+	Type      string
+	Layers    int
+	Size      string
+}
+
+func newItem(s *store.Store, desc ocispec.Descriptor, m ocispec.Manifest) item {
+	var size int64 = 0
+	for _, l := range m.Layers {
+		size = +l.Size
 	}
 
-	return nil
+	// Generate a human-readable content type
+	var ctype string
+	switch m.Config.MediaType {
+	case consts.DockerConfigJSON:
+		ctype = "image"
+	case consts.ChartConfigMediaType:
+		ctype = "chart"
+	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType:
+		ctype = "file"
+	default:
+		ctype = "unknown"
+	}
+
+	return item{
+		Reference: desc.Annotations[ocispec.AnnotationRefName],
+		Type:      ctype,
+		Layers:    len(m.Layers),
+		Size:      byteCountSI(size),
+	}
+}
+
+func byteCountSI(b int64) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB",
+		float64(b)/float64(div), "kMGTPE"[exp])
 }

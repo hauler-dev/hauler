@@ -87,7 +87,7 @@ func (f *file) compute() error {
 		return err
 	}
 
-	cfg := f.config
+	cfg := f.client.Config(f.ref)
 	if cfg == nil {
 		cfg = f.client.Config(f.ref)
 	}

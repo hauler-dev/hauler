@@ -7,41 +7,74 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/spf13/afero"
 
 	"github.com/rancherfederal/hauler/internal/getter"
+	"github.com/rancherfederal/hauler/pkg/consts"
 	"github.com/rancherfederal/hauler/pkg/content/file"
 )
 
-func Test_file_Layers(t *testing.T) {
-	filename := "myfile.yaml"
-	data := []byte(`data`)
+var (
+	filename = "myfile.yaml"
+	data     = []byte(`data`)
 
-	mfs := afero.NewMemMapFs()
-	afero.WriteFile(mfs, filename, data, 0644)
+	ts  *httptest.Server
+	tfs afero.Fs
+	mc  *getter.Client
+)
 
-	mf := &mockFile{File: getter.NewFile(), fs: mfs}
+func TestMain(m *testing.M) {
+	teardown := setup()
+	defer teardown()
+	code := m.Run()
+	os.Exit(code)
+}
 
-	mockHttp := getter.NewHttp()
-
-	mhttp := afero.NewHttpFs(mfs)
-	fileserver := http.FileServer(mhttp.Dir("."))
-	http.Handle("/", fileserver)
-
-	s := httptest.NewServer(fileserver)
-	defer s.Close()
-
-	mc := &getter.Client{
-		Options: getter.ClientOptions{},
-		Getters: map[string]getter.Getter{
-			"file": mf,
-			"http": mockHttp,
+func Test_file_Config(t *testing.T) {
+	tests := []struct {
+		name    string
+		ref     string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "should properly type local file",
+			ref:     filename,
+			want:    consts.FileLocalConfigMediaType,
+			wantErr: false,
 		},
+		{
+			name:    "should properly type remote file",
+			ref:     ts.URL + "/" + filename,
+			want:    consts.FileHttpConfigMediaType,
+			wantErr: false,
+		},
+		// TODO: Add directory test
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := file.NewFile(tt.ref, file.WithClient(mc))
 
+			f.MediaType()
+
+			m, err := f.Manifest()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got := string(m.Config.MediaType)
+			if got != tt.want {
+				t.Errorf("Expected mediatype %s | got %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_file_Layers(t *testing.T) {
 	tests := []struct {
 		name    string
 		ref     string
@@ -56,7 +89,7 @@ func Test_file_Layers(t *testing.T) {
 		},
 		{
 			name:    "should load a remote file and preserve contents",
-			ref:     s.URL + "/" + filename,
+			ref:     ts.URL + "/" + filename,
 			want:    data,
 			wantErr: false,
 		},
@@ -87,6 +120,33 @@ func Test_file_Layers(t *testing.T) {
 			}
 		})
 	}
+}
+
+func setup() func() {
+	tfs = afero.NewMemMapFs()
+	afero.WriteFile(tfs, filename, data, 0644)
+
+	mf := &mockFile{File: getter.NewFile(), fs: tfs}
+
+	mockHttp := getter.NewHttp()
+	mhttp := afero.NewHttpFs(tfs)
+	fileserver := http.FileServer(mhttp.Dir("."))
+	http.Handle("/", fileserver)
+	ts = httptest.NewServer(fileserver)
+
+	mc = &getter.Client{
+		Options: getter.ClientOptions{},
+		Getters: map[string]getter.Getter{
+			"file": mf,
+			"http": mockHttp,
+		},
+	}
+
+	teardown := func() {
+		defer ts.Close()
+	}
+
+	return teardown
 }
 
 type mockFile struct {
