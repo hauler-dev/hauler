@@ -16,7 +16,8 @@ import (
 var _ artifact.OCI = (*File)(nil)
 
 type File struct {
-	ref    string
+	Ref string
+
 	client *getter.Client
 
 	computed    bool
@@ -31,7 +32,7 @@ func NewFile(ref string, opts ...Option) *File {
 
 	f := &File{
 		client: client,
-		ref:    ref,
+		Ref:    ref,
 	}
 
 	for _, opt := range opts {
@@ -77,7 +78,7 @@ func (f *File) compute() error {
 	}
 
 	ctx := context.Background()
-	blob, err := f.client.LayerFrom(ctx, f.ref)
+	blob, err := f.client.LayerFrom(ctx, f.Ref)
 	if err != nil {
 		return err
 	}
@@ -87,9 +88,9 @@ func (f *File) compute() error {
 		return err
 	}
 
-	cfg := f.client.Config(f.ref)
+	cfg := f.client.Config(f.Ref)
 	if cfg == nil {
-		cfg = f.client.Config(f.ref)
+		cfg = f.client.Config(f.Ref)
 	}
 
 	cfgDesc, err := partial.Descriptor(cfg)

@@ -68,7 +68,7 @@ func Test_file_Config(t *testing.T) {
 
 			got := string(m.Config.MediaType)
 			if got != tt.want {
-				t.Errorf("Expected mediatype %s | got %s", got, tt.want)
+				t.Errorf("unxpected mediatype; got %s, want %s", got, tt.want)
 			}
 		})
 	}
@@ -96,27 +96,26 @@ func Test_file_Layers(t *testing.T) {
 		// TODO: Add directory test
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(it *testing.T) {
 			f := file.NewFile(tt.ref, file.WithClient(mc))
 
 			layers, err := f.Layers()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Layers() error = %v, wantErr %v", err, tt.wantErr)
-				return
+				it.Fatalf("unexpected Layers() error: got %v, want %v", err, tt.wantErr)
 			}
 
 			rc, err := layers[0].Compressed()
 			if err != nil {
-				t.Fatal(err)
+				it.Fatal(err)
 			}
 
 			got, err := io.ReadAll(rc)
 			if err != nil {
-				t.Fatal(err)
+				it.Fatal(err)
 			}
 
 			if !bytes.Equal(got, tt.want) {
-				t.Errorf("Layers() got = %v, want %v", layers, tt.want)
+				it.Fatalf("unexpected Layers(): got %v, want %v", layers, tt.want)
 			}
 		})
 	}
