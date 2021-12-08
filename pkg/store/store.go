@@ -3,10 +3,13 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	glayout "github.com/google/go-containerregistry/pkg/v1/layout"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"oras.land/oras-go/pkg/content"
@@ -19,7 +22,8 @@ import (
 )
 
 type Store struct {
-	root  string
+	Root string
+
 	store *content.OCI
 	cache cache.Cache
 }
@@ -35,7 +39,7 @@ func NewStore(rootdir string, opts ...Options) (*Store, error) {
 	}
 
 	b := &Store{
-		root:  rootdir,
+		Root:  rootdir,
 		store: ociStore,
 	}
 
@@ -96,17 +100,17 @@ func (s *Store) AddCollection(ctx context.Context, coll artifact.Collection) ([]
 // 	This can be a highly destructive operation if the store's directory happens to be inline with other non-store contents
 // 	To reduce the blast radius and likelihood of deleting things we don't own, Flush explicitly deletes oci-layout content only
 func (s *Store) Flush(ctx context.Context) error {
-	blobs := filepath.Join(s.root, "blobs")
+	blobs := filepath.Join(s.Root, "blobs")
 	if err := os.RemoveAll(blobs); err != nil {
 		return err
 	}
 
-	index := filepath.Join(s.root, "index.json")
+	index := filepath.Join(s.Root, "index.json")
 	if err := os.RemoveAll(index); err != nil {
 		return err
 	}
 
-	layout := filepath.Join(s.root, "oci-layout")
+	layout := filepath.Join(s.Root, "oci-layout")
 	if err := os.RemoveAll(layout); err != nil {
 		return err
 	}
@@ -124,14 +128,55 @@ func (s *Store) List(ctx context.Context) ([]ocispec.Descriptor, error) {
 	return descs, nil
 }
 
-// Get given a reference,
-func (s *Store) Get(ctx context.Context, to target.Target, reference string) (ocispec.Descriptor, error) {
-	return oras.Copy(ctx, s.store, reference, to, "",
+func (s *Store) Open(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
+	readerAt, err := s.store.ReaderAt(ctx, desc)
+	if err != nil {
+		return nil, err
+	}
+	// just wrap the ReaderAt with a Reader
+	return ioutil.NopCloser(content.NewReaderAtWrapper(readerAt)), nil
+}
+
+func (s *Store) Walk(fn func(m ocispec.Manifest) error) error {
+	p, err := glayout.FromPath(s.Root)
+	if err != nil {
+		return err
+	}
+
+	ii, _ := p.ImageIndex()
+	im, _ := ii.IndexManifest()
+	for _, m := range im.Manifests {
+		desc, err := p.Image(m.Digest)
+		if err != nil {
+			return err
+		}
+
+		manifestData, err := desc.RawManifest()
+		if err != nil {
+			return err
+		}
+
+		var manifest ocispec.Manifest
+		if err := json.Unmarshal(manifestData, &manifest); err != nil {
+			return err
+		}
+
+		if err := fn(manifest); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Copy will copy a given reference to a given target.Target
+// 		This is essentially a wrapper around oras.Copy, but locked to this content store
+func (s *Store) Copy(ctx context.Context, ref string, to target.Target, toRef string) (ocispec.Descriptor, error) {
+	return oras.Copy(ctx, s.store, ref, to, toRef,
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
 }
 
-// Copy performs bulk copy operations on the stores oci layout to a provided target.Target
-func (s *Store) Copy(ctx context.Context, to target.Target, toMapper func(string) (string, error)) error {
+// CopyAll performs bulk copy operations on the stores oci layout to a provided target.Target
+func (s *Store) CopyAll(ctx context.Context, to target.Target, toMapper func(string) (string, error)) error {
 	for ref := range s.store.ListReferences() {
 		toRef := ""
 		if toMapper != nil {
@@ -142,8 +187,7 @@ func (s *Store) Copy(ctx context.Context, to target.Target, toMapper func(string
 			toRef = tr
 		}
 
-		_, err := oras.Copy(ctx, s.store, ref, to, toRef,
-			oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
+		_, err := s.Copy(ctx, ref, to, toRef)
 		if err != nil {
 			return err
 		}

@@ -82,14 +82,12 @@ func (l *layout) commit(ctx context.Context, b *Store) (ocispec.Descriptor, erro
 		return ocispec.Descriptor{}, err
 	}
 
-	// src, err := content.NewOCI(l.path(""))
 	src, err := NewOCI(l.path(""))
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
-	// dst, err := content.NewOCI(b.root)
-	dst, err := NewOCI(b.root)
+	dst, err := NewOCI(b.Root)
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
@@ -106,9 +104,6 @@ func (l *layout) commit(ctx context.Context, b *Store) (ocispec.Descriptor, erro
 	if err != nil {
 		return ocispec.Descriptor{}, errors.Wrap(err, "comitting staging layout")
 	}
-
-	// TODO: This is hacky but needed since oras.Copy between oci layouts doesn't update the index
-	// dst.AddReference(ref, desc)
 
 	if err := dst.SaveIndex(); err != nil {
 		return ocispec.Descriptor{}, err

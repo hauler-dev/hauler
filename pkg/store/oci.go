@@ -136,9 +136,7 @@ func (o *oci) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 		return nil, err
 	}
 
-	var (
-		baseRef, hash string
-	)
+	var baseRef, hash string
 	parts := strings.SplitN(ref, "@", 2)
 	baseRef = parts[0]
 	if len(parts) > 1 {
