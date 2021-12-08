@@ -24,6 +24,10 @@ import (
 var _ artifact.OCI = (*Chart)(nil)
 
 type Chart struct {
+	Repo    string
+	Name    string
+	Version string
+
 	path string
 
 	annotations map[string]string
@@ -41,7 +45,10 @@ func NewChart(name, repo, version string) (*Chart, error) {
 	}
 
 	return &Chart{
-		path: cp,
+		Repo:    repo,
+		Name:    name,
+		Version: version,
+		path:    cp,
 	}, nil
 }
 
