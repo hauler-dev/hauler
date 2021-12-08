@@ -33,7 +33,7 @@ func (d directory) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) 
 	defer zw.Close()
 
 	tarDigester := digest.Canonical.Digester()
-	if err := tarDir(d.path(u), d.Name(u), io.MultiWriter(zw, tarDigester.Hash()), true); err != nil {
+	if err := tarDir(d.path(u), d.Name(u), io.MultiWriter(zw, tarDigester.Hash()), false); err != nil {
 		return nil, err
 	}
 
