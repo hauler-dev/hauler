@@ -12,6 +12,9 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
+
+	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
 type directory struct {
@@ -66,6 +69,17 @@ func (d directory) Detect(u *url.URL) bool {
 		return false
 	}
 	return fi.IsDir()
+}
+
+func (d directory) Config(u *url.URL) artifact.Config {
+	c := &directoryConfig{
+		config{Reference: u.String()},
+	}
+	return artifact.ToConfig(c, artifact.WithConfigMediaType(consts.FileDirectoryConfigMediaType))
+}
+
+type directoryConfig struct {
+	config `json:",inline,omitempty"`
 }
 
 func tarDir(root string, prefix string, w io.Writer, stripTimes bool) error {

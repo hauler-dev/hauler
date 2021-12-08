@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/google/go-containerregistry/pkg/v1/types"
-
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
@@ -47,13 +45,9 @@ func (f File) Config(u *url.URL) artifact.Config {
 	c := &fileConfig{
 		config{Reference: u.String()},
 	}
-	return artifact.ToConfig(c)
+	return artifact.ToConfig(c, artifact.WithConfigMediaType(consts.FileLocalConfigMediaType))
 }
 
 type fileConfig struct {
 	config `json:",inline,omitempty"`
-}
-
-func (c *fileConfig) MediaType() (types.MediaType, error) {
-	return consts.FileLocalConfigMediaType, nil
 }

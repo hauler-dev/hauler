@@ -23,8 +23,9 @@ const (
 	FileLayerMediaType = "application/vnd.content.hauler.file.layer.v1"
 
 	// FileLocalConfigMediaType is the reserved media type for File config
-	FileLocalConfigMediaType = "application/vnd.content.hauler.file.local.config.v1+json"
-	FileHttpConfigMediaType  = "application/vnd.content.hauler.file.http.config.v1+json"
+	FileLocalConfigMediaType     = "application/vnd.content.hauler.file.local.config.v1+json"
+	FileDirectoryConfigMediaType = "application/vnd.content.hauler.file.directory.config.v1+json"
+	FileHttpConfigMediaType      = "application/vnd.content.hauler.file.http.config.v1+json"
 
 	// WasmArtifactLayerMediaType is the reserved media type for WASM artifact layers
 	WasmArtifactLayerMediaType = "application/vnd.wasm.content.layer.v1+wasm"
