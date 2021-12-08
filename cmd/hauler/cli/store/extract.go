@@ -2,11 +2,15 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/cmd/hauler/cli/download"
-	"github.com/rancherfederal/hauler/pkg/layout"
+	"github.com/rancherfederal/hauler/internal/mapper"
+	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
@@ -21,17 +25,52 @@ func (o *ExtractOpts) AddArgs(cmd *cobra.Command) {
 }
 
 func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, reference string) error {
-	s.Open()
-	defer s.Close()
+	l := log.FromContext(ctx)
 
-	eref, err := layout.RelocateReference(reference, s.Registry())
+	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
 	if err != nil {
 		return err
 	}
 
-	gopts := &download.Opts{
-		DestinationDir: o.DestinationDir,
+	p, err := layout.FromPath("store")
+	if err != nil {
+		return err
 	}
 
-	return download.Cmd(ctx, gopts, eref.Name())
+	ii, _ := p.ImageIndex()
+	im, _ := ii.IndexManifest()
+	var manifest ocispec.Manifest
+	for _, m := range im.Manifests {
+		if r, ok := m.Annotations[ocispec.AnnotationRefName]; !ok || r != ref.Name() {
+			continue
+		}
+
+		desc, err := p.Image(m.Digest)
+		if err != nil {
+			return err
+		}
+		l.Infof(m.Annotations[ocispec.AnnotationRefName])
+
+		manifestData, err := desc.RawManifest()
+		if err != nil {
+			return err
+		}
+
+		if err := json.Unmarshal(manifestData, &manifest); err != nil {
+			return err
+		}
+	}
+
+	mapperStore, err := mapper.FromManifest(manifest, o.DestinationDir)
+	if err != nil {
+		return err
+	}
+
+	desc, err := s.Copy(ctx, ref.Name(), mapperStore, "")
+	if err != nil {
+		return err
+	}
+
+	l.Infof("downloaded [%s] with digest [%s]", desc.MediaType, desc.Digest.String())
+	return nil
 }

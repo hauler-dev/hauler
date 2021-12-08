@@ -49,6 +49,6 @@ func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) er
 		return err
 	}
 
-	l.Infof("saved haul [%s] -> [%s]", dir, absOutputfile)
+	l.Infof("saved store [%s] -> [%s]", dir, absOutputfile)
 	return nil
 }

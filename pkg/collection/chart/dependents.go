@@ -1,20 +1,18 @@
 package chart
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/json"
 	"io"
 	"strings"
 
-	"github.com/rancher/wrangler/pkg/yaml"
 	"helm.sh/helm/v3/pkg/action"
 	helmchart "helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/kube/fake"
 	"helm.sh/helm/v3/pkg/storage"
 	"helm.sh/helm/v3/pkg/storage/driver"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/util/jsonpath"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -32,50 +30,37 @@ var defaultKnownImagePaths = []string{
 
 // ImagesInChart will render a chart and identify all dependent images from it
 func ImagesInChart(c *helmchart.Chart) (v1alpha1.Images, error) {
-	objs, err := template(c)
+	docs, err := template(c)
 	if err != nil {
 		return v1alpha1.Images{}, err
 	}
 
-	var imageRefs []string
-	for _, o := range objs {
-		d, err := o.(*unstructured.Unstructured).MarshalJSON()
+	var images []v1alpha1.Image
+	reader := yaml.NewYAMLReader(bufio.NewReader(strings.NewReader(docs)))
+	for {
+		raw, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			// TODO: Should we actually capture these errors?
-			continue
+			return v1alpha1.Images{}, err
 		}
 
-		var obj interface{}
-		if err := json.Unmarshal(d, &obj); err != nil {
-			continue
-		}
-
-		j := jsonpath.New("")
-		j.AllowMissingKeys(true)
-
-		for _, p := range defaultKnownImagePaths {
-			r, err := parseJSONPath(obj, j, p)
-			if err != nil {
-				continue
-			}
-
-			imageRefs = append(imageRefs, r...)
+		found := find(raw, defaultKnownImagePaths...)
+		for _, f := range found {
+			images = append(images, v1alpha1.Image{Ref: f})
 		}
 	}
 
 	ims := v1alpha1.Images{
 		Spec: v1alpha1.ImageSpec{
-			Images: []v1alpha1.Image{},
+			Images: images,
 		},
-	}
-
-	for _, ref := range imageRefs {
-		ims.Spec.Images = append(ims.Spec.Images, v1alpha1.Image{Ref: ref})
 	}
 	return ims, nil
 }
 
-func template(c *helmchart.Chart) ([]runtime.Object, error) {
+func template(c *helmchart.Chart) (string, error) {
 	s := storage.Init(driver.NewMemory())
 
 	templateCfg := &action.Configuration{
@@ -99,10 +84,33 @@ func template(c *helmchart.Chart) ([]runtime.Object, error) {
 
 	release, err := client.Run(c, vals)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	return yaml.ToObjects(bytes.NewBufferString(release.Manifest))
+	return release.Manifest, nil
+}
+
+func find(data []byte, paths ...string) []string {
+	var (
+		pathMatches []string
+		obj         interface{}
+	)
+
+	if err := yaml.Unmarshal(data, &obj); err != nil {
+		return nil
+	}
+	j := jsonpath.New("")
+	j.AllowMissingKeys(true)
+
+	for _, p := range paths {
+		r, err := parseJSONPath(obj, j, p)
+		if err != nil {
+			continue
+		}
+
+		pathMatches = append(pathMatches, r...)
+	}
+	return pathMatches
 }
 
 func parseJSONPath(data interface{}, parser *jsonpath.JSONPath, template string) ([]string, error) {

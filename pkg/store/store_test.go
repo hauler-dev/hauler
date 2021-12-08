@@ -1,35 +1,38 @@
-package store
+package store_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/random"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/rancherfederal/hauler/pkg/artifact"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-func TestStore_List(t *testing.T) {
+func TestStore_AddArtifact(t *testing.T) {
 	ctx := context.Background()
 
-	s, err := testStore(ctx)
+	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	s.Open()
-	defer s.Close()
-
-	r := randomImage(t)
-	addImageToStore(t, s, r, "hauler/tester:latest")
-	addImageToStore(t, s, r, "hauler/tester:non")
-	addImageToStore(t, s, r, "other/ns:more")
-	addImageToStore(t, s, r, "unique/donkey:v1.2.2")
+	s, err := store.NewStore(tmpdir)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	type args struct {
-		ctx context.Context
+		ctx       context.Context
+		reference string
 	}
 	tests := []struct {
 		name    string
@@ -37,51 +40,76 @@ func TestStore_List(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "should list",
-			args:    args{},
+			name: "should add artifact with a valid tagged reference",
+			args: args{
+				ctx:       ctx,
+				reference: "random:v1",
+			},
 			wantErr: false,
 		},
+		// {
+		// 	name: "should fail when an invalid reference is provided",
+		// 	args: args{
+		// 		ctx:       ctx,
+		// 		reference: "n0tV@l!d:v1",
+		// 	},
+		// 	wantErr: true,
+		// },
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			refs, err := s.List(ctx)
+			oci, want := genArtifact(t, tt.args.reference)
+
+			got, err := s.AddArtifact(tt.args.ctx, oci, tt.args.reference)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("List() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("AddArtifact() error = %v, wantErr %v", err, tt.wantErr)
+				return
 			}
 
-			// TODO: Make this more robust
-			if len(refs) != 4 {
-				t.Errorf("Expected 4, got %d", len(refs))
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("AddArtifact() got = %v, want %v", got, want)
 			}
 		})
 	}
 }
 
-func testStore(ctx context.Context) (*Store, error) {
-	tmpdir, err := os.MkdirTemp("", "hauler")
-	if err != nil {
-		return nil, err
-	}
-
-	s := NewStore(ctx, tmpdir)
-	return s, nil
+type testImage struct {
+	gv1.Image
 }
 
-func randomImage(t *testing.T) v1.Image {
-	r, err := random.Image(1024, 3)
+func (i *testImage) MediaType() string {
+	mt, err := i.Image.MediaType()
 	if err != nil {
-		t.Fatalf("random.Image() = %v", err)
+		return ""
 	}
-	return r
+	return string(mt)
 }
 
-func addImageToStore(t *testing.T, s *Store, image v1.Image, reference string) {
-	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(s.Registry()))
+func (i *testImage) RawConfig() ([]byte, error) {
+	return i.RawConfigFile()
+}
+
+func genArtifact(t *testing.T, ref string) (artifact.OCI, ocispec.Descriptor) {
+	img, err := random.Image(1024, 3)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	if err := remote.Write(ref, image); err != nil {
-		t.Error(err)
+	desc, err := partial.Descriptor(img)
+	if err != nil {
+		t.Fatal(err)
 	}
+	desc.Annotations = make(map[string]string)
+	desc.Annotations[ocispec.AnnotationRefName] = ref
+
+	data, err := json.Marshal(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m ocispec.Descriptor
+	if err := json.NewDecoder(bytes.NewBuffer(data)).Decode(&m); err != nil {
+		t.Fatal(err)
+	}
+	return &testImage{Image: img}, m
 }

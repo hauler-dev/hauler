@@ -22,7 +22,7 @@ func addStore(parent *cobra.Command) {
 		addStoreLoad(),
 		addStoreSave(),
 		addStoreServe(),
-		addStoreList(),
+		addStoreInfo(),
 		addStoreCopy(),
 
 		// TODO: Remove this in favor of sync?
@@ -92,8 +92,9 @@ func addStoreLoad() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			_ = s
 
-			return store.LoadCmd(ctx, o, s.DataDir, args...)
+			return store.LoadCmd(ctx, o, "", args...)
 		},
 	}
 	o.AddFlags(cmd)
@@ -137,8 +138,9 @@ func addStoreSave() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			_ = s
 
-			return store.SaveCmd(ctx, o, o.FileName, s.DataDir)
+			return store.SaveCmd(ctx, o, o.FileName, "")
 		},
 	}
 	o.AddArgs(cmd)
@@ -146,14 +148,14 @@ func addStoreSave() *cobra.Command {
 	return cmd
 }
 
-func addStoreList() *cobra.Command {
-	o := &store.ListOpts{}
+func addStoreInfo() *cobra.Command {
+	o := &store.InfoOpts{}
 
 	cmd := &cobra.Command{
-		Use:     "list",
-		Short:   "List all content references in a store",
+		Use:     "info",
+		Short:   "Print out information about the store",
 		Args:    cobra.ExactArgs(0),
-		Aliases: []string{"ls"},
+		Aliases: []string{"i"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -162,7 +164,7 @@ func addStoreList() *cobra.Command {
 				return err
 			}
 
-			return store.ListCmd(ctx, o, s)
+			return store.InfoCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)

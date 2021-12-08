@@ -7,7 +7,7 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 
-	"github.com/rancherfederal/hauler/pkg/artifact/local"
+	"github.com/rancherfederal/hauler/internal/layer"
 )
 
 type fs struct {
@@ -37,14 +37,14 @@ func (f *fs) Put(l v1.Layer) (v1.Layer, error) {
 
 func (f *fs) Get(h v1.Hash) (v1.Layer, error) {
 	opener := f.open(h)
-	l, err := local.LayerFromOpener(opener)
+	l, err := layer.FromOpener(opener)
 	if os.IsNotExist(err) {
 		return nil, ErrLayerNotFound
 	}
 	return l, err
 }
 
-func (f *fs) open(h v1.Hash) local.Opener {
+func (f *fs) open(h v1.Hash) layer.Opener {
 	return func() (io.ReadCloser, error) {
 		return os.Open(layerpath(f.root, h))
 	}

@@ -18,6 +18,5 @@ type FileSpec struct {
 }
 
 type File struct {
-	Ref  string `json:"ref"`
-	Name string `json:"name,omitempty"`
+	Ref string `json:"ref"`
 }

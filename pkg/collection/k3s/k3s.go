@@ -10,8 +10,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/name"
-
+	"github.com/rancherfederal/hauler/internal/getter"
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/content/file"
 	"github.com/rancherfederal/hauler/pkg/content/image"
@@ -37,18 +36,19 @@ type k3s struct {
 	arch    string
 
 	computed bool
-	contents map[name.Reference]artifact.OCI
+	contents map[string]artifact.OCI
 	channels map[string]string
+	client   *getter.Client
 }
 
 func NewK3s(version string) (artifact.Collection, error) {
 	return &k3s{
 		version:  version,
-		contents: make(map[name.Reference]artifact.OCI),
+		contents: make(map[string]artifact.OCI),
 	}, nil
 }
 
-func (k *k3s) Contents() (map[name.Reference]artifact.OCI, error) {
+func (k *k3s) Contents() (map[string]artifact.OCI, error) {
 	if err := k.compute(); err != nil {
 		return nil, err
 	}
@@ -94,32 +94,17 @@ func (k *k3s) executable() error {
 		return ErrExecutableNotfound
 	}
 
-	f, err := file.NewFile(fref, "k3s")
-	if err != nil {
-		return err
-	}
+	f := file.NewFile(fref)
 
-	ref, err := name.ParseReference("hauler/k3s", name.WithDefaultTag(k.dnsCompliantVersion()), name.WithDefaultRegistry(""))
-	if err != nil {
-		return err
-	}
-
+	ref := fmt.Sprintf("k3s:%s", k.dnsCompliantVersion())
 	k.contents[ref] = f
 	return nil
 }
 
 func (k *k3s) bootstrap() error {
-	f, err := file.NewFile(bootstrapUrl, "get-k3s.io")
-	if err != nil {
-		return err
-	}
-
-	ref, err := name.ParseReference("hauler/get-k3s.io", name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
-	if err != nil {
-		return err
-	}
-
-	k.contents[ref] = f
+	namedBootstrapUrl := fmt.Sprintf("%s?filename=%s", bootstrapUrl, "k3s-init.sh")
+	f := file.NewFile(namedBootstrapUrl)
+	k.contents["k3s-init.sh"] = f
 	return nil
 }
 
@@ -135,16 +120,12 @@ func (k *k3s) images() error {
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		reference := scanner.Text()
-		ref, err := name.ParseReference(reference)
-		if err != nil {
-			return err
-		}
 		o, err := image.NewImage(reference)
 		if err != nil {
 			return err
 		}
 
-		k.contents[ref] = o
+		k.contents[reference] = o
 	}
 	return nil
 }

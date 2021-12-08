@@ -20,11 +20,11 @@ airgap-scp.sh
 
 # test artifacts
 *.tar*
+*.out
 
 # generated
 dist/
-./bundle/
 tmp/
 bin/
-pkg.yaml
-haul/
+/store/
+/registry/

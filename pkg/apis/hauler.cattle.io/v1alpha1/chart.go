@@ -30,15 +30,20 @@ type ThickCharts struct {
 	*metav1.TypeMeta  `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec ChartSpec `json:"spec,omitempty"`
+	Spec ThickChartSpec `json:"spec,omitempty"`
 }
 
 type ThickChartSpec struct {
-	ThickCharts []ThickChart `json:"charts,omitempty"`
+	Charts []ThickChart `json:"charts,omitempty"`
 }
 
 type ThickChart struct {
-	Name    string `json:"name"`
-	RepoURL string `json:"repoURL"`
-	Version string `json:"version"`
+	Name        string       `json:"name"`
+	RepoURL     string       `json:"repoURL"`
+	Version     string       `json:"version"`
+	ExtraImages []ChartImage `json:"extraImages"`
+}
+
+type ChartImage struct {
+	Reference string `json:"ref"`
 }

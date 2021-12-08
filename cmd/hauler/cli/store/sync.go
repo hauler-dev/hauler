@@ -32,13 +32,10 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 	l := log.FromContext(ctx)
 
 	// Start from an empty store (contents are cached elsewhere)
-	l.Debugf("flushing any existing content in store: %s", s.DataDir)
+	l.Debugf("flushing content store")
 	if err := s.Flush(ctx); err != nil {
 		return err
 	}
-
-	s.Open()
-	defer s.Close()
 
 	for _, filename := range o.ContentFiles {
 		l.Debugf("processing content file: '%s'", filename)
@@ -68,7 +65,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 				return err
 			}
 
-			l.Infof("syncing [%s] to [%s]", obj.GroupVersionKind().String(), s.DataDir)
+			l.Infof("syncing [%s] to store", obj.GroupVersionKind().String())
 
 			// TODO: Should type switch instead...
 			switch obj.GroupVersionKind().Kind {
@@ -133,7 +130,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 				}
 
 				for _, cfg := range cfg.Spec.Charts {
-					tc, err := tchart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+					tc, err := tchart.NewThickChart(cfg)
 					if err != nil {
 						return err
 					}

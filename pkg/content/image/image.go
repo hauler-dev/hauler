@@ -1,6 +1,7 @@
 package image
 
 import (
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -26,13 +27,18 @@ type image struct {
 	gv1.Image
 }
 
-func NewImage(ref string) (*image, error) {
+func NewImage(ref string, opts ...remote.Option) (*image, error) {
 	r, err := name.ParseReference(ref)
 	if err != nil {
 		return nil, err
 	}
 
-	img, err := remote.Image(r)
+	defaultOpts := []remote.Option{
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+	}
+	opts = append(opts, defaultOpts...)
+
+	img, err := remote.Image(r, opts...)
 	if err != nil {
 		return nil, err
 	}

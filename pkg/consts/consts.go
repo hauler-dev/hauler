@@ -1,10 +1,14 @@
-package types
+package consts
 
 const (
 	OCIManifestSchema1    = "application/vnd.oci.image.manifest.v1+json"
 	DockerManifestSchema2 = "application/vnd.docker.distribution.manifest.v2+json"
 
-	DockerConfigJSON = "application/vnd.docker.container.image.v1+json"
+	DockerConfigJSON        = "application/vnd.docker.container.image.v1+json"
+	DockerLayer             = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+	DockerForeignLayer      = "application/vnd.docker.image.rootfs.foreign.diff.tar.gzip"
+	DockerUncompressedLayer = "application/vnd.docker.image.rootfs.diff.tar"
+	OCILayer                = "application/vnd.oci.image.layer.v1.tar+gzip"
 
 	// ChartConfigMediaType is the reserved media type for the Helm chart manifest config
 	ChartConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
@@ -18,8 +22,9 @@ const (
 	// FileLayerMediaType is the reserved media type for File content layers
 	FileLayerMediaType = "application/vnd.content.hauler.file.layer.v1"
 
-	// FileConfigMediaType is the reserved media type for File config
-	FileConfigMediaType = "application/vnd.content.hauler.file.config.v1+json"
+	// FileLocalConfigMediaType is the reserved media type for File config
+	FileLocalConfigMediaType = "application/vnd.content.hauler.file.local.config.v1+json"
+	FileHttpConfigMediaType  = "application/vnd.content.hauler.file.http.config.v1+json"
 
 	// WasmArtifactLayerMediaType is the reserved media type for WASM artifact layers
 	WasmArtifactLayerMediaType = "application/vnd.wasm.content.layer.v1+wasm"
