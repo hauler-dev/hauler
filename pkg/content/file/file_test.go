@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -20,12 +21,20 @@ import (
 var (
 	filename = "myfile.yaml"
 	data     = []byte(`data`)
+
+	ts  *httptest.Server
+	tfs afero.Fs
+	mc  *getter.Client
 )
 
-func Test_file_Config(t *testing.T) {
-	mc, s, teardown := setup()
+func TestMain(m *testing.M) {
+	teardown := setup()
 	defer teardown()
+	code := m.Run()
+	os.Exit(code)
+}
 
+func Test_file_Config(t *testing.T) {
 	tests := []struct {
 		name    string
 		ref     string
@@ -40,7 +49,7 @@ func Test_file_Config(t *testing.T) {
 		},
 		{
 			name:    "should properly type remote file",
-			ref:     s.URL + "/" + filename,
+			ref:     ts.URL + "/" + filename,
 			want:    consts.FileHttpConfigMediaType,
 			wantErr: false,
 		},
@@ -66,9 +75,6 @@ func Test_file_Config(t *testing.T) {
 }
 
 func Test_file_Layers(t *testing.T) {
-	mc, s, teardown := setup()
-	defer teardown()
-
 	tests := []struct {
 		name    string
 		ref     string
@@ -83,7 +89,7 @@ func Test_file_Layers(t *testing.T) {
 		},
 		{
 			name:    "should load a remote file and preserve contents",
-			ref:     s.URL + "/" + filename,
+			ref:     ts.URL + "/" + filename,
 			want:    data,
 			wantErr: false,
 		},
@@ -116,21 +122,19 @@ func Test_file_Layers(t *testing.T) {
 	}
 }
 
-func setup() (*getter.Client, *httptest.Server, func()) {
-	mfs := afero.NewMemMapFs()
-	afero.WriteFile(mfs, filename, data, 0644)
+func setup() func() {
+	tfs = afero.NewMemMapFs()
+	afero.WriteFile(tfs, filename, data, 0644)
 
-	mf := &mockFile{File: getter.NewFile(), fs: mfs}
+	mf := &mockFile{File: getter.NewFile(), fs: tfs}
 
 	mockHttp := getter.NewHttp()
-
-	mhttp := afero.NewHttpFs(mfs)
+	mhttp := afero.NewHttpFs(tfs)
 	fileserver := http.FileServer(mhttp.Dir("."))
 	http.Handle("/", fileserver)
+	ts = httptest.NewServer(fileserver)
 
-	s := httptest.NewServer(fileserver)
-
-	mc := &getter.Client{
+	mc = &getter.Client{
 		Options: getter.ClientOptions{},
 		Getters: map[string]getter.Getter{
 			"file": mf,
@@ -139,10 +143,10 @@ func setup() (*getter.Client, *httptest.Server, func()) {
 	}
 
 	teardown := func() {
-		defer s.Close()
+		defer ts.Close()
 	}
 
-	return mc, s, teardown
+	return teardown
 }
 
 type mockFile struct {
