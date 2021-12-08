@@ -66,7 +66,7 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, reference s
 		return err
 	}
 
-	desc, err := s.Get(ctx, mapperStore, ref.Name())
+	desc, err := s.Copy(ctx, ref.Name(), mapperStore, "")
 	if err != nil {
 		return err
 	}

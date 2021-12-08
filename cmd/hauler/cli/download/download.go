@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -18,20 +19,32 @@ import (
 
 type Opts struct {
 	DestinationDir string
-	OutputFile     string
+
+	Username  string
+	Password  string
+	Insecure  bool
+	PlainHTTP bool
 }
 
 func (o *Opts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVar(&o.DestinationDir, "dir", "", "Directory to save contents to (defaults to current directory)")
-	f.StringVarP(&o.OutputFile, "output", "o", "", "(Optional) Override name of file to save.")
+	f.StringVarP(&o.DestinationDir, "output", "o", "", "Directory to save contents to (defaults to current directory)")
+	f.StringVarP(&o.Username, "username", "u", "", "Username when copying to an authenticated remote registry")
+	f.StringVarP(&o.Password, "password", "p", "", "Password when copying to an authenticated remote registry")
+	f.BoolVar(&o.Insecure, "insecure", false, "Toggle allowing insecure connections when copying to a remote registry")
+	f.BoolVar(&o.PlainHTTP, "plain-http", false, "Toggle allowing plain http connections when copying to a remote registry")
 }
 
 func Cmd(ctx context.Context, o *Opts, reference string) error {
 	l := log.FromContext(ctx)
 
-	rs, err := content.NewRegistry(content.RegistryOptions{})
+	rs, err := content.NewRegistry(content.RegistryOptions{
+		Username:  o.Username,
+		Password:  o.Password,
+		Insecure:  o.Insecure,
+		PlainHTTP: o.PlainHTTP,
+	})
 	if err != nil {
 		return err
 	}
@@ -41,7 +54,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 		return err
 	}
 
-	desc, err := remote.Get(ref)
+	desc, err := remote.Get(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain), remote.WithContext(ctx))
 	if err != nil {
 		return err
 	}
