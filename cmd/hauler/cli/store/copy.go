@@ -2,9 +2,10 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
-	"github.com/pkg/errors"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
@@ -33,6 +34,7 @@ func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string) error {
 	l := log.FromContext(ctx)
 
+	var descs []ocispec.Descriptor
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
 	case "dir":
@@ -40,9 +42,11 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string)
 		fs := content.NewFile(components[1])
 		defer fs.Close()
 
-		if err := s.CopyAll(ctx, fs, nil); err != nil {
+		ds, err := s.CopyAll(ctx, fs, nil)
+		if err != nil {
 			return err
 		}
+		descs = ds
 
 	case "registry":
 		l.Debugf("identified registry target reference")
@@ -64,12 +68,16 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string)
 			return ref.Name(), nil
 		}
 
-		if err := s.CopyAll(ctx, r, mapperFn); err != nil {
+		ds, err := s.CopyAll(ctx, r, mapperFn)
+		if err != nil {
 			return err
 		}
+		descs = ds
 
 	default:
-		return errors.Errorf("determining target protocol from: [%s]", targetRef)
+		return fmt.Errorf("detecting protocol from [%s]", targetRef)
 	}
+
+	l.Infof("Copied [%d] artifacts to [%s]", len(descs), components[1])
 	return nil
 }
