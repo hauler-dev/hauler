@@ -20,8 +20,8 @@ import (
 type Store struct {
 	Root string
 
-	Store *OCI
-	cache cache.Cache
+	Content *OCI
+	cache   cache.Cache
 }
 
 func NewStore(rootdir string, opts ...Options) (*Store, error) {
@@ -31,8 +31,8 @@ func NewStore(rootdir string, opts ...Options) (*Store, error) {
 	}
 
 	b := &Store{
-		Root:  rootdir,
-		Store: ociStore,
+		Root:    rootdir,
+		Content: ociStore,
 	}
 
 	for _, opt := range opts {
@@ -113,14 +113,14 @@ func (s *Store) Flush(ctx context.Context) error {
 // Copy will copy a given reference to a given target.Target
 // 		This is essentially a wrapper around oras.Copy, but locked to this content store
 func (s *Store) Copy(ctx context.Context, ref string, to target.Target, toRef string) (ocispec.Descriptor, error) {
-	return oras.Copy(ctx, s.Store, ref, to, toRef,
+	return oras.Copy(ctx, s.Content, ref, to, toRef,
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
 }
 
 // CopyAll performs bulk copy operations on the stores oci layout to a provided target.Target
 func (s *Store) CopyAll(ctx context.Context, to target.Target, toMapper func(string) (string, error)) ([]ocispec.Descriptor, error) {
 	var descs []ocispec.Descriptor
-	err := s.Store.Walk(func(reference string, desc ocispec.Descriptor) error {
+	err := s.Content.Walk(func(reference string, desc ocispec.Descriptor) error {
 		toRef := ""
 		if toMapper != nil {
 			tr, err := toMapper(reference)
@@ -146,7 +146,7 @@ func (s *Store) CopyAll(ctx context.Context, to target.Target, toMapper func(str
 
 // Identify is a helper function that will identify a human-readable content type given a descriptor
 func (s *Store) Identify(ctx context.Context, desc ocispec.Descriptor) string {
-	rc, err := s.Store.Fetch(ctx, desc)
+	rc, err := s.Content.Fetch(ctx, desc)
 	if err != nil {
 		return ""
 	}
