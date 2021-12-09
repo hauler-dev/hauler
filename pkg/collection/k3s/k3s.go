@@ -50,7 +50,7 @@ func NewK3s(version string) (artifact.Collection, error) {
 
 func (k *k3s) Contents() (map[string]artifact.OCI, error) {
 	if err := k.compute(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compute: %w", err)
 	}
 	return k.contents, nil
 }
@@ -67,15 +67,15 @@ func (k *k3s) compute() error {
 	}
 
 	if err := k.images(); err != nil {
-		return err
+		return fmt.Errorf("images: %w", err)
 	}
 
 	if err := k.executable(); err != nil {
-		return err
+		return fmt.Errorf("executable: %w", err)
 	}
 
 	if err := k.bootstrap(); err != nil {
-		return err
+		return fmt.Errorf("bootstrap: %w", err)
 	}
 
 	k.computed = true
@@ -144,12 +144,12 @@ func (k *k3s) dnsCompliantVersion() string {
 func (k *k3s) fetchChannels() error {
 	resp, err := http.Get(channelUrl)
 	if err != nil {
-		return err
+		return fmt.Errorf("get channel info: %w", err)
 	}
 
 	var c channel
 	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
-		return err
+		return fmt.Errorf("parse channel info: %w", err)
 	}
 
 	channels := make(map[string]string)

@@ -13,7 +13,7 @@ import (
 func Load(data []byte) (schema.ObjectKind, error) {
 	var tm *metav1.TypeMeta
 	if err := yaml.Unmarshal(data, &tm); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse yaml: %w", err)
 	}
 
 	if tm.GroupVersionKind().GroupVersion() != v1alpha1.ContentGroupVersion && tm.GroupVersionKind().GroupVersion() != v1alpha1.CollectionGroupVersion {

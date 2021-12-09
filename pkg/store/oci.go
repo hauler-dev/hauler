@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -40,7 +41,7 @@ func (o *oci) LoadIndex() error {
 	idx, err := os.Open(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return err
+			return fmt.Errorf("open path %s: %w", path, err)
 		}
 		o.index = &ocispec.Index{
 			Versioned: specs.Versioned{
@@ -52,7 +53,7 @@ func (o *oci) LoadIndex() error {
 	defer idx.Close()
 
 	if err := json.NewDecoder(idx).Decode(&o.index); err != nil {
-		return err
+		return fmt.Errorf("parse index: %w", err)
 	}
 
 	for _, desc := range o.index.Manifests {
@@ -79,7 +80,7 @@ func (o *oci) SaveIndex() error {
 	o.index.Manifests = descs
 	data, err := json.Marshal(o.index)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal index: %w", err)
 	}
 	return os.WriteFile(o.path(consts.OCIImageIndexFile), data, 0644)
 }
@@ -97,11 +98,11 @@ func (o *oci) SaveIndex() error {
 // If the resolution fails, an error will be returned.
 func (o *oci) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
 	if err := o.LoadIndex(); err != nil {
-		return "", ocispec.Descriptor{}, err
+		return "", ocispec.Descriptor{}, fmt.Errorf("load index: %w", err)
 	}
 	d, ok := o.nameMap.Load(ref)
 	if !ok {
-		return "", ocispec.Descriptor{}, err
+		return "", ocispec.Descriptor{}, fmt.Errorf("load: %w", err)
 	}
 	desc = d.(ocispec.Descriptor)
 	return ref, desc, nil
@@ -112,7 +113,7 @@ func (o *oci) Resolve(ctx context.Context, ref string) (name string, desc ocispe
 // from the namespace referred to by ref.
 func (o *oci) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
 	if err := o.LoadIndex(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load index: %w", err)
 	}
 	if _, ok := o.nameMap.Load(ref); !ok {
 		return nil, nil
@@ -123,7 +124,7 @@ func (o *oci) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) 
 func (o *oci) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
 	readerAt, err := o.blobReaderAt(desc)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("blob reader: %w", err)
 	}
 	return readerAt, nil
 }
@@ -152,7 +153,7 @@ func (o *oci) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 func (o *oci) blobReaderAt(desc ocispec.Descriptor) (*os.File, error) {
 	blobPath, err := o.ensureBlob(desc)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ensure blob: %w", err)
 	}
 	return os.Open(blobPath)
 }
@@ -160,7 +161,7 @@ func (o *oci) blobReaderAt(desc ocispec.Descriptor) (*os.File, error) {
 func (o *oci) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
 	blobPath, err := o.ensureBlob(desc)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ensure blob: %w", err)
 	}
 	return os.OpenFile(blobPath, os.O_WRONLY|os.O_CREATE, 0644)
 }
@@ -168,7 +169,7 @@ func (o *oci) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
 func (o *oci) ensureBlob(desc ocispec.Descriptor) (string, error) {
 	dir := o.path("blobs", desc.Digest.Algorithm().String())
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
-		return "", err
+		return "", fmt.Errorf("mkdirall: %w", err)
 	}
 	return filepath.Join(dir, desc.Digest.Hex()), nil
 }
@@ -192,18 +193,18 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 		// if the hash of the content matches that which was provided as the hash for the root, mark it
 		if p.digest != "" && p.digest == d.Digest.String() {
 			if err := p.oci.LoadIndex(); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("load index: %w", err)
 			}
 			p.oci.nameMap.Store(p.ref, d)
 			if err := p.oci.SaveIndex(); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("save index: %w", err)
 			}
 		}
 	}
 
 	blobPath, err := p.oci.ensureBlob(d)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ensure blob: %w", err)
 	}
 
 	if _, err := os.Stat(blobPath); err == nil {
@@ -213,7 +214,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 
 	f, err := os.Create(blobPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create file: %w", err)
 	}
 
 	w := content.NewIoContentWriter(f, content.WithInputHash(d.Digest), content.WithOutputHash(d.Digest))

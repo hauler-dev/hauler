@@ -2,9 +2,9 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
@@ -69,7 +69,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string)
 		}
 
 	default:
-		return errors.Errorf("determining target protocol from: [%s]", targetRef)
+		return fmt.Errorf("could not determine protocol from %q", targetRef)
 	}
 	return nil
 }

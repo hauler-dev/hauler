@@ -2,12 +2,13 @@ package getter
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/url"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 	"oras.land/oras-go/pkg/content"
 
 	"github.com/rancherfederal/hauler/internal/layer"
@@ -79,7 +80,7 @@ func (c *Client) LayerFrom(ctx context.Context, source string) (v1.Layer, error)
 			return l, nil
 		}
 	}
-	return nil, errors.Wrapf(ErrGetterTypeUnknown, "%s", source)
+	return nil, fmt.Errorf("%s: %w", source, err)
 }
 
 func (c *Client) Name(source string) string {

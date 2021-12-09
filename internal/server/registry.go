@@ -12,7 +12,6 @@ import (
 	"github.com/distribution/distribution/v3/registry"
 	"github.com/distribution/distribution/v3/registry/handlers"
 	"github.com/docker/go-metrics"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -79,10 +78,10 @@ func (t *tmpRegistryServer) Start() error {
 			return err
 		}
 		resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			return nil
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("start temporary registry: got unexpected status %s", resp.Status)
 		}
-		return errors.New("to start temporary registry")
+		return nil
 
 	})
 	return err

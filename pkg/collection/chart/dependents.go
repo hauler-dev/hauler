@@ -3,6 +3,7 @@ package chart
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 
@@ -32,7 +33,7 @@ var defaultKnownImagePaths = []string{
 func ImagesInChart(c *helmchart.Chart) (v1alpha1.Images, error) {
 	docs, err := template(c)
 	if err != nil {
-		return v1alpha1.Images{}, err
+		return v1alpha1.Images{}, fmt.Errorf("template: %w", err)
 	}
 
 	var images []v1alpha1.Image
@@ -43,7 +44,7 @@ func ImagesInChart(c *helmchart.Chart) (v1alpha1.Images, error) {
 			break
 		}
 		if err != nil {
-			return v1alpha1.Images{}, err
+			return v1alpha1.Images{}, fmt.Errorf("read chart content: %w", err)
 		}
 
 		found := find(raw, defaultKnownImagePaths...)
@@ -84,7 +85,7 @@ func template(c *helmchart.Chart) (string, error) {
 
 	release, err := client.Run(c, vals)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("dry run install: %w", err)
 	}
 
 	return release.Manifest, nil
@@ -105,6 +106,7 @@ func find(data []byte, paths ...string) []string {
 	for _, p := range paths {
 		r, err := parseJSONPath(obj, j, p)
 		if err != nil {
+			// TODO - log warning?
 			continue
 		}
 
@@ -116,11 +118,11 @@ func find(data []byte, paths ...string) []string {
 func parseJSONPath(data interface{}, parser *jsonpath.JSONPath, template string) ([]string, error) {
 	buf := new(bytes.Buffer)
 	if err := parser.Parse(template); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse template: %w", err)
 	}
 
 	if err := parser.Execute(buf, data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("execute template: %w", err)
 	}
 
 	f := func(s rune) bool { return s == ' ' }

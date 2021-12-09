@@ -1,6 +1,8 @@
 package chart
 
 import (
+	"fmt"
+
 	gname "github.com/google/go-containerregistry/pkg/name"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -23,7 +25,7 @@ type tchart struct {
 func NewThickChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
 	o, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create chart: %w", err)
 	}
 
 	return &tchart{
@@ -35,7 +37,7 @@ func NewThickChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
 
 func (c *tchart) Contents() (map[string]artifact.OCI, error) {
 	if err := c.compute(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compute content: %w", err)
 	}
 	return c.contents, nil
 }
@@ -46,13 +48,13 @@ func (c *tchart) compute() error {
 	}
 
 	if err := c.dependentImages(); err != nil {
-		return err
+		return fmt.Errorf("dependent images: %w", err)
 	}
 	if err := c.chartContents(); err != nil {
-		return err
+		return fmt.Errorf("chart contents: %w", err)
 	}
 	if err := c.extraImages(); err != nil {
-		return err
+		return fmt.Errorf("extra images: %w", err)
 	}
 
 	c.computed = true
@@ -62,7 +64,7 @@ func (c *tchart) compute() error {
 func (c *tchart) chartContents() error {
 	oci, err := chart.NewChart(c.config.Name, c.config.RepoURL, c.config.Version)
 	if err != nil {
-		return err
+		return fmt.Errorf("create chart: %w", err)
 	}
 
 	tag := c.config.Version
@@ -77,18 +79,18 @@ func (c *tchart) chartContents() error {
 func (c *tchart) dependentImages() error {
 	ch, err := c.chart.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load chart: %w", err)
 	}
 
 	imgs, err := ImagesInChart(ch)
 	if err != nil {
-		return err
+		return fmt.Errorf("images in chart: %w", err)
 	}
 
 	for _, img := range imgs.Spec.Images {
 		i, err := image.NewImage(img.Ref)
 		if err != nil {
-			return err
+			return fmt.Errorf("create image %s: %w", img.Ref, err)
 		}
 		c.contents[img.Ref] = i
 	}
@@ -99,7 +101,7 @@ func (c *tchart) extraImages() error {
 	for _, img := range c.config.ExtraImages {
 		i, err := image.NewImage(img.Reference)
 		if err != nil {
-			return err
+			return fmt.Errorf("create image %s: %w", img.Reference, err)
 		}
 		c.contents[img.Reference] = i
 	}

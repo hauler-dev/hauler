@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"bytes"
+	"fmt"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
@@ -77,7 +78,7 @@ type WithRawConfig interface {
 func Digest(c WithRawConfig) (v1.Hash, error) {
 	b, err := c.Raw()
 	if err != nil {
-		return v1.Hash{}, err
+		return v1.Hash{}, fmt.Errorf("get raw: %w", err)
 	}
 	digest, _, err := v1.SHA256(bytes.NewReader(b))
 	return digest, err
@@ -86,7 +87,7 @@ func Digest(c WithRawConfig) (v1.Hash, error) {
 func Size(c WithRawConfig) (int64, error) {
 	b, err := c.Raw()
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("get raw: %w", err)
 	}
 	return int64(len(b)), nil
 }

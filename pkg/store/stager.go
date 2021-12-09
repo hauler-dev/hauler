@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 	"oras.land/oras-go/pkg/oras"
 
@@ -34,7 +34,7 @@ var _ stager = (*layout)(nil)
 func newLayout() (*layout, error) {
 	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mkdir temp: %w", err)
 	}
 	return &layout{
 		root:  tmpdir,
@@ -59,7 +59,7 @@ func (l *layout) commit(ctx context.Context, b *Store) (ocispec.Descriptor, erro
 		g.Go(func() error {
 			rc, err := blob.Compressed()
 			if err != nil {
-				return err
+				return fmt.Errorf("digest %s compressed layer: %w", d.Encoded(), err)
 			}
 			return l.writeBlob(d, rc)
 		})
@@ -76,24 +76,24 @@ func (l *layout) commit(ctx context.Context, b *Store) (ocispec.Descriptor, erro
 
 	data, err := json.Marshal(idx)
 	if err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("marshal index: %w", err)
 	}
 	if err := os.WriteFile(l.path("index.json"), data, 0666); err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("write index: %w", err)
 	}
 
 	src, err := NewOCI(l.path(""))
 	if err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("new oci, src: %w", err)
 	}
 
 	dst, err := NewOCI(b.Root)
 	if err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("new oci, dst: %w", err)
 	}
 
 	if err := src.LoadIndex(); err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("load source index: %w", err)
 	}
 
 	m := src.index.Manifests[0]
@@ -102,14 +102,14 @@ func (l *layout) commit(ctx context.Context, b *Store) (ocispec.Descriptor, erro
 	desc, err := oras.Copy(ctx, src, ref, dst, "",
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
 	if err != nil {
-		return ocispec.Descriptor{}, errors.Wrap(err, "comitting staging layout")
+		return ocispec.Descriptor{}, fmt.Errorf("committing staging layout: %w", err)
 	}
 
 	if err := dst.SaveIndex(); err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("save destination index: %w", err)
 	}
 
-	return desc, err
+	return desc, nil
 }
 
 func (l *layout) flush(ctx context.Context) error {
@@ -119,31 +119,31 @@ func (l *layout) flush(ctx context.Context) error {
 func (l *layout) add(ctx context.Context, oci artifact.OCI, ref name.Reference) error {
 	m, err := oci.Manifest()
 	if err != nil {
-		return err
+		return fmt.Errorf("manifest: %w", err)
 	}
 	mdata, err := json.Marshal(m)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal manifest: %w", err)
 	}
 	mdigest := digest.FromBytes(mdata)
 	l.blobs[mdigest] = static.NewLayer(mdata, m.MediaType)
 
 	cdata, err := oci.RawConfig()
 	if err != nil {
-		return err
+		return fmt.Errorf("raw config: %w", err)
 	}
 
 	l.blobs[digest.FromBytes(cdata)] = static.NewLayer(cdata, "")
 
 	layers, err := oci.Layers()
 	if err != nil {
-		return err
+		return fmt.Errorf("layers: %w", err)
 	}
 
 	for _, layer := range layers {
 		h, err := layer.Digest()
 		if err != nil {
-			return err
+			return fmt.Errorf("layer digest: %w", err)
 		}
 
 		d := digest.NewDigestFromHex(h.Algorithm, h.Hex)
@@ -168,17 +168,17 @@ func (l *layout) add(ctx context.Context, oci artifact.OCI, ref name.Reference) 
 func (l *layout) writeBlob(d digest.Digest, rc io.ReadCloser) error {
 	dir := l.path("blobs", d.Algorithm().String())
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
-		return err
+		return fmt.Errorf("mkdirall: %w", err)
 	}
 
 	file := filepath.Join(dir, d.Hex())
 	if _, err := os.Stat(file); err == nil {
-		return err
+		return fmt.Errorf("stat: %w", err)
 	}
 
 	w, err := os.Create(file)
 	if err != nil {
-		return err
+		return fmt.Errorf("create file: %w", err)
 	}
 	defer w.Close()
 

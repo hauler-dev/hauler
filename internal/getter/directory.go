@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"github.com/opencontainers/go-digest"
-	"github.com/pkg/errors"
 
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/consts"
@@ -108,7 +108,7 @@ func tarDir(root string, prefix string, w io.Writer, stripTimes bool) error {
 		}
 		header, err := tar.FileInfoHeader(info, link)
 		if err != nil {
-			return errors.Wrap(err, path)
+			return fmt.Errorf("header for %s: %w", path, err)
 		}
 		header.Name = name
 		header.Uid = 0
@@ -124,7 +124,7 @@ func tarDir(root string, prefix string, w io.Writer, stripTimes bool) error {
 
 		// Write file
 		if err := tw.WriteHeader(header); err != nil {
-			return errors.Wrap(err, "tar")
+			return fmt.Errorf("write header: %w", err)
 		}
 		if mode.IsRegular() {
 			file, err := os.Open(path)
@@ -133,7 +133,7 @@ func tarDir(root string, prefix string, w io.Writer, stripTimes bool) error {
 			}
 			defer file.Close()
 			if _, err := io.Copy(tw, file); err != nil {
-				return errors.Wrap(err, path)
+				return fmt.Errorf("copy: %w", err)
 			}
 		}
 

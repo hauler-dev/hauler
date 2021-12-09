@@ -1,6 +1,7 @@
 package image
 
 import (
+	"fmt"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
@@ -33,7 +34,7 @@ type Image struct {
 func NewImage(ref string, opts ...remote.Option) (*Image, error) {
 	r, err := name.ParseReference(ref)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse reference %s: %w", ref, err)
 	}
 
 	defaultOpts := []remote.Option{
@@ -43,7 +44,7 @@ func NewImage(ref string, opts ...remote.Option) (*Image, error) {
 
 	img, err := remote.Image(r, opts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create remote image: %w", err)
 	}
 
 	return &Image{

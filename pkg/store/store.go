@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -10,7 +12,6 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
 	"oras.land/oras-go/pkg/target"
@@ -67,7 +68,7 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference str
 	// Ensure that index.docker.io isn't prepended
 	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
 	if err != nil {
-		return ocispec.Descriptor{}, errors.Wrap(err, "adding artifact")
+		return ocispec.Descriptor{}, fmt.Errorf("add artifact: %w", err)
 	}
 
 	if err := stage.add(ctx, oci, ref); err != nil {

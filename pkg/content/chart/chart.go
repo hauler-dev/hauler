@@ -3,6 +3,7 @@ package chart
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func NewChart(name, repo, version string) (*Chart, error) {
 
 	cp, err := cpo.LocateChart(name, cli.New())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("locate chart: %w", err)
 	}
 
 	return &Chart{
@@ -61,7 +62,7 @@ func (h *Chart) MediaType() string {
 func (h *Chart) Manifest() (*gv1.Manifest, error) {
 	cfgDesc, err := h.configDescriptor()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config descriptor: %w", err)
 	}
 
 	var layerDescs []gv1.Descriptor
@@ -69,7 +70,7 @@ func (h *Chart) Manifest() (*gv1.Manifest, error) {
 	for _, l := range ls {
 		desc, err := partial.Descriptor(l)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("layer descriptor: %w", err)
 		}
 		layerDescs = append(layerDescs, *desc)
 	}
@@ -86,7 +87,7 @@ func (h *Chart) Manifest() (*gv1.Manifest, error) {
 func (h *Chart) RawConfig() ([]byte, error) {
 	ch, err := loader.Load(h.path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load chart: %w", err)
 	}
 	return json.Marshal(ch.Metadata)
 }
@@ -94,12 +95,12 @@ func (h *Chart) RawConfig() ([]byte, error) {
 func (h *Chart) configDescriptor() (gv1.Descriptor, error) {
 	data, err := h.RawConfig()
 	if err != nil {
-		return gv1.Descriptor{}, err
+		return gv1.Descriptor{}, fmt.Errorf("raw config: %w", err)
 	}
 
 	hash, size, err := gv1.SHA256(bytes.NewBuffer(data))
 	if err != nil {
-		return gv1.Descriptor{}, err
+		return gv1.Descriptor{}, fmt.Errorf("hash: %w", err)
 	}
 
 	return gv1.Descriptor{
@@ -112,7 +113,7 @@ func (h *Chart) configDescriptor() (gv1.Descriptor, error) {
 func (h *Chart) Load() (*chart.Chart, error) {
 	rc, err := chartOpener(h.path)()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open chart: %w", err)
 	}
 	defer rc.Close()
 	return loader.LoadArchive(rc)
@@ -121,7 +122,7 @@ func (h *Chart) Load() (*chart.Chart, error) {
 func (h *Chart) Layers() ([]gv1.Layer, error) {
 	chartDataLayer, err := h.chartDataLayer()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("chart data layer: %w", err)
 	}
 
 	return []gv1.Layer{

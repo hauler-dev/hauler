@@ -2,6 +2,7 @@ package file
 
 import (
 	"context"
+	"fmt"
 
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
@@ -60,7 +61,7 @@ func (f *File) RawConfig() ([]byte, error) {
 
 func (f *File) Layers() ([]gv1.Layer, error) {
 	if err := f.compute(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compute: %w", err)
 	}
 	var layers []gv1.Layer
 	layers = append(layers, f.blob)
@@ -69,7 +70,7 @@ func (f *File) Layers() ([]gv1.Layer, error) {
 
 func (f *File) Manifest() (*gv1.Manifest, error) {
 	if err := f.compute(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compute: %w", err)
 	}
 	return f.manifest, nil
 }
@@ -82,12 +83,12 @@ func (f *File) compute() error {
 	ctx := context.Background()
 	blob, err := f.client.LayerFrom(ctx, f.Ref)
 	if err != nil {
-		return err
+		return fmt.Errorf("fetch content: %w", err)
 	}
 
 	layer, err := partial.Descriptor(blob)
 	if err != nil {
-		return err
+		return fmt.Errorf("create blob descriptor: %w", err)
 	}
 
 	cfg := f.client.Config(f.Ref)
@@ -97,7 +98,8 @@ func (f *File) compute() error {
 
 	cfgDesc, err := partial.Descriptor(cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create config descriptor: %w", err)
+
 	}
 
 	m := &gv1.Manifest{
