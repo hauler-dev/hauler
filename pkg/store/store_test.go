@@ -204,6 +204,10 @@ func TestStore_CopyAll(t *testing.T) {
 			} else if len(descs) != len(tt.args.refs) {
 				t.Errorf("CopyAll() expected to push %d descriptors, but only pushed %d", len(descs), len(tt.args.refs))
 			}
+
+			if err := s.Flush(ctx); err != nil {
+				t.Fatal(err)
+			}
 		})
 	}
 }
