@@ -1,8 +1,6 @@
 package chart
 
 import (
-	gname "github.com/google/go-containerregistry/pkg/name"
-
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
@@ -21,7 +19,7 @@ type tchart struct {
 }
 
 func NewThickChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
-	o, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+	o, err := chart.NewChart(cfg.Chart)
 	if err != nil {
 		return nil, err
 	}
@@ -60,17 +58,7 @@ func (c *tchart) compute() error {
 }
 
 func (c *tchart) chartContents() error {
-	oci, err := chart.NewChart(c.config.Name, c.config.RepoURL, c.config.Version)
-	if err != nil {
-		return err
-	}
-
-	tag := c.config.Version
-	if tag == "" {
-		tag = gname.DefaultTag
-	}
-
-	c.contents[c.config.Name] = oci
+	c.contents[c.config.Name] = c.chart
 	return nil
 }
 

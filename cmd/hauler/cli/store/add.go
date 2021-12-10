@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -155,10 +156,15 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, chartName string) error {
+	path := ""
+	if _, err := os.Stat(chartName); err == nil {
+		path = chartName
+	}
 	cfg := v1alpha1.Chart{
 		Name:    chartName,
 		RepoURL: o.RepoURL,
 		Version: o.Version,
+		Path:    path,
 	}
 
 	return storeChart(ctx, s, cfg)
@@ -167,7 +173,7 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Store, chartName
 func storeChart(ctx context.Context, s *store.Store, cfg v1alpha1.Chart) error {
 	l := log.FromContext(ctx)
 
-	oci, err := chart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+	oci, err := chart.NewChart(cfg)
 	if err != nil {
 		return err
 	}
