@@ -11,7 +11,7 @@ import (
 )
 
 func Load(data []byte) (schema.ObjectKind, error) {
-	var tm *metav1.TypeMeta
+	var tm metav1.TypeMeta
 	if err := yaml.Unmarshal(data, &tm); err != nil {
 		return nil, err
 	}
@@ -20,5 +20,5 @@ func Load(data []byte) (schema.ObjectKind, error) {
 		return nil, fmt.Errorf("unrecognized content/collection type: %s", tm.GroupVersionKind().String())
 	}
 
-	return tm, nil
+	return &tm, nil
 }
