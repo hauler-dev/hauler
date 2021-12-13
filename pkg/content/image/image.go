@@ -2,7 +2,7 @@ package image
 
 import (
 	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/name"
+	gname "github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
@@ -24,14 +24,14 @@ func (i *Image) RawConfig() ([]byte, error) {
 }
 
 // Image implements the OCI interface for Image API objects. API spec information
-// is stored into the Ref field.
+// is stored into the Name field.
 type Image struct {
-	Ref string
+	Name string
 	gv1.Image
 }
 
-func NewImage(ref string, opts ...remote.Option) (*Image, error) {
-	r, err := name.ParseReference(ref)
+func NewImage(name string, opts ...remote.Option) (*Image, error) {
+	r, err := gname.ParseReference(name)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func NewImage(ref string, opts ...remote.Option) (*Image, error) {
 	}
 
 	return &Image{
-		Ref:   ref,
+		Name:  name,
 		Image: img,
 	}, nil
 }

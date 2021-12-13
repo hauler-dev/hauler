@@ -51,7 +51,7 @@ func TestStore_AddArtifact(t *testing.T) {
 			name: "should add artifact with a valid tagged reference",
 			args: args{
 				ctx:       ctx,
-				reference: "random:v1",
+				reference: "hauler/random:v1",
 			},
 			wantErr: false,
 		},

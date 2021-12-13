@@ -48,7 +48,7 @@ func ImagesInChart(c *helmchart.Chart) (v1alpha1.Images, error) {
 
 		found := find(raw, defaultKnownImagePaths...)
 		for _, f := range found {
-			images = append(images, v1alpha1.Image{Ref: f})
+			images = append(images, v1alpha1.Image{Name: f})
 		}
 	}
 

@@ -155,7 +155,7 @@ func addStoreInfo() *cobra.Command {
 		Use:     "info",
 		Short:   "Print out information about the store",
 		Args:    cobra.ExactArgs(0),
-		Aliases: []string{"i"},
+		Aliases: []string{"i", "list", "ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

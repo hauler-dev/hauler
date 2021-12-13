@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/reference"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
@@ -115,8 +116,13 @@ func newItem(s *store.Store, desc ocispec.Descriptor, m ocispec.Manifest) item {
 		ctype = "unknown"
 	}
 
+	ref, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+	if err != nil {
+		return item{}
+	}
+
 	return item{
-		Reference: desc.Annotations[ocispec.AnnotationRefName],
+		Reference: ref.Name(),
 		Type:      ctype,
 		Layers:    len(m.Layers),
 		Size:      byteCountSI(size),

@@ -18,5 +18,6 @@ type ImageSpec struct {
 }
 
 type Image struct {
-	Ref string `json:"ref"`
+	// Name is the full location for the image, can be referenced by tags or digests
+	Name string `json:"name"`
 }

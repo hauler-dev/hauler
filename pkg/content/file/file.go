@@ -16,9 +16,9 @@ import (
 var _ artifact.OCI = (*File)(nil)
 
 // File implements the OCI interface for File API objects. API spec information is
-// stored into the Ref field.
+// stored into the Path field.
 type File struct {
-	Ref string
+	Path string
 
 	client *getter.Client
 
@@ -29,12 +29,12 @@ type File struct {
 	annotations map[string]string
 }
 
-func NewFile(ref string, opts ...Option) *File {
+func NewFile(path string, opts ...Option) *File {
 	client := getter.NewClient(getter.ClientOptions{})
 
 	f := &File{
 		client: client,
-		Ref:    ref,
+		Path:   path,
 	}
 
 	for _, opt := range opts {
@@ -43,8 +43,8 @@ func NewFile(ref string, opts ...Option) *File {
 	return f
 }
 
-func (f *File) Name(ref string) string {
-	return f.client.Name(ref)
+func (f *File) Name(path string) string {
+	return f.client.Name(path)
 }
 
 func (f *File) MediaType() string {
@@ -80,7 +80,7 @@ func (f *File) compute() error {
 	}
 
 	ctx := context.Background()
-	blob, err := f.client.LayerFrom(ctx, f.Ref)
+	blob, err := f.client.LayerFrom(ctx, f.Path)
 	if err != nil {
 		return err
 	}
@@ -90,9 +90,9 @@ func (f *File) compute() error {
 		return err
 	}
 
-	cfg := f.client.Config(f.Ref)
+	cfg := f.client.Config(f.Path)
 	if cfg == nil {
-		cfg = f.client.Config(f.Ref)
+		cfg = f.client.Config(f.Path)
 	}
 
 	cfgDesc, err := partial.Descriptor(cfg)
