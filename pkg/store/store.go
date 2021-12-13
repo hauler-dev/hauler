@@ -3,16 +3,12 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
 	"oras.land/oras-go/pkg/target"
 
@@ -24,23 +20,19 @@ import (
 type Store struct {
 	Root string
 
-	store *content.OCI
-	cache cache.Cache
+	Content *OCI
+	cache   cache.Cache
 }
 
-var (
-	ErrInvalidReference = errors.New("invalid reference")
-)
-
 func NewStore(rootdir string, opts ...Options) (*Store, error) {
-	ociStore, err := content.NewOCI(rootdir)
+	ociStore, err := NewOCI(rootdir)
 	if err != nil {
 		return nil, err
 	}
 
 	b := &Store{
-		Root:  rootdir,
-		store: ociStore,
+		Root:    rootdir,
+		Content: ociStore,
 	}
 
 	for _, opt := range opts {
@@ -68,11 +60,11 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference str
 	// Ensure that index.docker.io isn't prepended
 	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
 	if err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("add artifact: %w", err)
+		return ocispec.Descriptor{}, fmt.Errorf("%w", ErrInvalidReference)
 	}
 
 	if err := stage.add(ctx, oci, ref); err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("add artifact: %w", err)
 	}
 	return stage.commit(ctx, s)
 }
@@ -118,56 +110,43 @@ func (s *Store) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) Open(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
-	readerAt, err := s.store.ReaderAt(ctx, desc)
-	if err != nil {
-		return nil, err
-	}
-	// just wrap the ReaderAt with a Reader
-	return ioutil.NopCloser(content.NewReaderAtWrapper(readerAt)), nil
-}
-
-func (s *Store) Walk(fn func(desc ocispec.Descriptor) error) error {
-	refs := s.store.ListReferences()
-
-	for _, desc := range refs {
-		if err := fn(desc); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // Copy will copy a given reference to a given target.Target
 // 		This is essentially a wrapper around oras.Copy, but locked to this content store
 func (s *Store) Copy(ctx context.Context, ref string, to target.Target, toRef string) (ocispec.Descriptor, error) {
-	return oras.Copy(ctx, s.store, ref, to, toRef,
+	return oras.Copy(ctx, s.Content, ref, to, toRef,
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
 }
 
 // CopyAll performs bulk copy operations on the stores oci layout to a provided target.Target
-func (s *Store) CopyAll(ctx context.Context, to target.Target, toMapper func(string) (string, error)) error {
-	for ref := range s.store.ListReferences() {
+func (s *Store) CopyAll(ctx context.Context, to target.Target, toMapper func(string) (string, error)) ([]ocispec.Descriptor, error) {
+	var descs []ocispec.Descriptor
+	err := s.Content.Walk(func(reference string, desc ocispec.Descriptor) error {
 		toRef := ""
 		if toMapper != nil {
-			tr, err := toMapper(ref)
+			tr, err := toMapper(reference)
 			if err != nil {
 				return err
 			}
 			toRef = tr
 		}
 
-		_, err := s.Copy(ctx, ref, to, toRef)
+		desc, err := s.Copy(ctx, reference, to, toRef)
 		if err != nil {
 			return err
 		}
+
+		descs = append(descs, desc)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	return descs, nil
 }
 
 // Identify is a helper function that will identify a human-readable content type given a descriptor
 func (s *Store) Identify(ctx context.Context, desc ocispec.Descriptor) string {
-	rc, err := s.store.Fetch(ctx, desc)
+	rc, err := s.Content.Fetch(ctx, desc)
 	if err != nil {
 		return ""
 	}

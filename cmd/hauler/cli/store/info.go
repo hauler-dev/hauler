@@ -29,12 +29,12 @@ func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
 
 func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Store) error {
 	var items []item
-	if err := s.Walk(func(desc ocispec.Descriptor) error {
+	if err := s.Content.Walk(func(ref string, desc ocispec.Descriptor) error {
 		if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
 			return nil
 		}
 
-		rc, err := s.Open(ctx, desc)
+		rc, err := s.Content.Fetch(ctx, desc)
 		if err != nil {
 			return err
 		}

@@ -65,6 +65,7 @@ func NewTempRegistry(ctx context.Context, root string) *tmpRegistryServer {
 	}
 }
 
+// Registry returns the URL of the server without the protocol, suitable for content references
 func (t *tmpRegistryServer) Registry() string {
 	return strings.Replace(t.Server.URL, "http://", "", 1)
 }

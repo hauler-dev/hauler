@@ -21,22 +21,23 @@ import (
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
-var _ target.Target = (*oci)(nil)
+var _ target.Target = (*OCI)(nil)
 
-type oci struct {
+type OCI struct {
 	root    string
 	index   *ocispec.Index
 	nameMap *sync.Map // map[string]ocispec.Descriptor
 }
 
-func NewOCI(root string) (*oci, error) {
-	return &oci{
+func NewOCI(root string) (*OCI, error) {
+	o := &OCI{
 		root:    root,
 		nameMap: &sync.Map{},
-	}, nil
+	}
+	return o, nil
 }
 
-func (o *oci) LoadIndex() error {
+func (o *OCI) LoadIndex() error {
 	path := o.path(consts.OCIImageIndexFile)
 	idx, err := os.Open(path)
 	if err != nil {
@@ -64,7 +65,7 @@ func (o *oci) LoadIndex() error {
 	return nil
 }
 
-func (o *oci) SaveIndex() error {
+func (o *OCI) SaveIndex() error {
 	var descs []ocispec.Descriptor
 	o.nameMap.Range(func(name, desc interface{}) bool {
 		n := name.(string)
@@ -96,7 +97,7 @@ func (o *oci) SaveIndex() error {
 // While the name may differ from ref, it should itself be a valid ref.
 //
 // If the resolution fails, an error will be returned.
-func (o *oci) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
+func (o *OCI) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
 	if err := o.LoadIndex(); err != nil {
 		return "", ocispec.Descriptor{}, fmt.Errorf("load index: %w", err)
 	}
@@ -111,7 +112,7 @@ func (o *oci) Resolve(ctx context.Context, ref string) (name string, desc ocispe
 // Fetcher returns a new fetcher for the provided reference.
 // All content fetched from the returned fetcher will be
 // from the namespace referred to by ref.
-func (o *oci) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
+func (o *OCI) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
 	if err := o.LoadIndex(); err != nil {
 		return nil, fmt.Errorf("load index: %w", err)
 	}
@@ -121,7 +122,7 @@ func (o *oci) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) 
 	return o, nil
 }
 
-func (o *oci) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
+func (o *OCI) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
 	readerAt, err := o.blobReaderAt(desc)
 	if err != nil {
 		return nil, fmt.Errorf("blob reader: %w", err)
@@ -132,7 +133,7 @@ func (o *oci) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser
 // Pusher returns a new pusher for the provided reference
 // The returned Pusher should satisfy content.Ingester and concurrent attempts
 // to push the same blob using the Ingester API should result in ErrUnavailable.
-func (o *oci) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
+func (o *OCI) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 	if err := o.LoadIndex(); err != nil {
 		return nil, err
 	}
@@ -150,7 +151,21 @@ func (o *oci) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 	}, nil
 }
 
-func (o *oci) blobReaderAt(desc ocispec.Descriptor) (*os.File, error) {
+func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) error {
+	if err := o.LoadIndex(); err != nil {
+		return err
+	}
+	o.nameMap.Range(func(key, value interface{}) bool {
+		if err := fn(key.(string), value.(ocispec.Descriptor)); err != nil {
+			return false
+		}
+
+		return true
+	})
+	return nil
+}
+
+func (o *OCI) blobReaderAt(desc ocispec.Descriptor) (*os.File, error) {
 	blobPath, err := o.ensureBlob(desc)
 	if err != nil {
 		return nil, fmt.Errorf("ensure blob: %w", err)
@@ -158,7 +173,7 @@ func (o *oci) blobReaderAt(desc ocispec.Descriptor) (*os.File, error) {
 	return os.Open(blobPath)
 }
 
-func (o *oci) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
+func (o *OCI) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
 	blobPath, err := o.ensureBlob(desc)
 	if err != nil {
 		return nil, fmt.Errorf("ensure blob: %w", err)
@@ -166,7 +181,7 @@ func (o *oci) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
 	return os.OpenFile(blobPath, os.O_WRONLY|os.O_CREATE, 0644)
 }
 
-func (o *oci) ensureBlob(desc ocispec.Descriptor) (string, error) {
+func (o *OCI) ensureBlob(desc ocispec.Descriptor) (string, error) {
 	dir := o.path("blobs", desc.Digest.Algorithm().String())
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
 		return "", fmt.Errorf("mkdirall: %w", err)
@@ -174,13 +189,13 @@ func (o *oci) ensureBlob(desc ocispec.Descriptor) (string, error) {
 	return filepath.Join(dir, desc.Digest.Hex()), nil
 }
 
-func (o *oci) path(elem ...string) string {
+func (o *OCI) path(elem ...string) string {
 	complete := []string{string(o.root)}
 	return filepath.Join(append(complete, elem...)...)
 }
 
 type ociPusher struct {
-	oci    *oci
+	oci    *OCI
 	ref    string
 	digest string
 }
