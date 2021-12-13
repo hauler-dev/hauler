@@ -1,9 +1,12 @@
 package chart
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -17,6 +20,7 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 
 	"github.com/rancherfederal/hauler/internal/layer"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
@@ -30,12 +34,39 @@ type Chart struct {
 	Name    string
 	Version string
 
-	path string
-
+	path        string
 	annotations map[string]string
 }
 
-func NewChart(name, repo, version string) (*Chart, error) {
+// NewChart is a helper method that returns NewLocalChart or NewRemoteChart depending on v1alpha1.Chart contents
+func NewChart(cfg v1alpha1.Chart) (*Chart, error) {
+	var (
+		ch  *Chart
+		err error
+	)
+	if cfg.Path != "" {
+		ch, err = NewLocalChart(cfg.Path)
+	} else {
+		ch, err = NewRemoteChart(cfg.Name, cfg.RepoURL, cfg.Version)
+	}
+	return ch, err
+}
+
+func NewLocalChart(path string) (*Chart, error) {
+	c, err := loader.Load(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Chart{
+		Name:    c.Name(),
+		Version: c.Metadata.Version,
+
+		path: path,
+	}, nil
+}
+
+func NewRemoteChart(name, repo, version string) (*Chart, error) {
 	cpo := action.ChartPathOptions{
 		RepoURL: repo,
 		Version: version,
@@ -50,7 +81,8 @@ func NewChart(name, repo, version string) (*Chart, error) {
 		Repo:    repo,
 		Name:    name,
 		Version: version,
-		path:    cp,
+
+		path: cp,
 	}, nil
 }
 
@@ -110,16 +142,11 @@ func (h *Chart) configDescriptor() (gv1.Descriptor, error) {
 }
 
 func (h *Chart) Load() (*chart.Chart, error) {
-	rc, err := chartOpener(h.path)()
-	if err != nil {
-		return nil, err
-	}
-	defer rc.Close()
-	return loader.LoadArchive(rc)
+	return loader.Load(h.path)
 }
 
 func (h *Chart) Layers() ([]gv1.Layer, error) {
-	chartDataLayer, err := h.chartDataLayer()
+	chartDataLayer, err := h.chartData()
 	if err != nil {
 		return nil, err
 	}
@@ -134,17 +161,83 @@ func (h *Chart) RawChartData() ([]byte, error) {
 	return os.ReadFile(h.path)
 }
 
-func (h *Chart) chartDataLayer() (gv1.Layer, error) {
+// chartData loads the chart contents into memory and returns a NopCloser for the contents
+// 		Normally we avoid loading into memory, but charts sizes are strictly capped at ~1MB
+func (h *Chart) chartData() (gv1.Layer, error) {
+	info, err := os.Stat(h.path)
+	if err != nil {
+		return nil, err
+	}
+
+	var chartdata []byte
+	if info.IsDir() {
+		buf := &bytes.Buffer{}
+		gw := gzip.NewWriter(buf)
+		tw := tar.NewWriter(gw)
+
+		if err := filepath.WalkDir(h.path, func(path string, d fs.DirEntry, err error) error {
+			fi, err := d.Info()
+			if err != nil {
+				return err
+			}
+
+			header, err := tar.FileInfoHeader(fi, fi.Name())
+			if err != nil {
+				return err
+			}
+
+			rel, err := filepath.Rel(filepath.Dir(h.path), path)
+			if err != nil {
+				return err
+			}
+			header.Name = rel
+
+			if err := tw.WriteHeader(header); err != nil {
+				return err
+			}
+
+			if !d.IsDir() {
+				data, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				if _, err := io.Copy(tw, data); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := tw.Close(); err != nil {
+			return nil, err
+		}
+		if err := gw.Close(); err != nil {
+			return nil, err
+		}
+		chartdata = buf.Bytes()
+
+	} else {
+		data, err := os.ReadFile(h.path)
+		if err != nil {
+			return nil, err
+		}
+		chartdata = data
+	}
+
 	annotations := make(map[string]string)
 	annotations[ocispec.AnnotationTitle] = filepath.Base(h.path)
 
-	return layer.FromOpener(chartOpener(h.path),
+	opener := func() layer.Opener {
+		return func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewBuffer(chartdata)), nil
+		}
+	}
+	chartDataLayer, err := layer.FromOpener(opener(),
 		layer.WithMediaType(consts.ChartLayerMediaType),
 		layer.WithAnnotations(annotations))
-}
 
-func chartOpener(path string) layer.Opener {
-	return func() (io.ReadCloser, error) {
-		return os.Open(path)
-	}
+	return chartDataLayer, err
 }

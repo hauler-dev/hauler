@@ -264,9 +264,15 @@ func addStoreAddChart() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "chart",
-		Short: "Add a chart to the content store",
+		Short: "Add a local or remote chart to the content store",
 		Example: `
-# add a chart
+# add a local chart
+hauler store add chart path/to/chart/directory
+
+# add a local compressed chart
+hauler store add chart path/to/chart.tar.gz
+
+# add a remote chart
 hauler store add chart longhorn --repo "https://charts.longhorn.io"
 
 # add a specific version of a chart

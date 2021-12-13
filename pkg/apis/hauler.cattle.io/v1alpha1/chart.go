@@ -21,9 +21,10 @@ type ChartSpec struct {
 }
 
 type Chart struct {
-	Name    string `json:"name"`
-	RepoURL string `json:"repoURL"`
-	Version string `json:"version"`
+	Name    string `json:"name,omitempty"`
+	RepoURL string `json:"repoURL,omitempty"`
+	Version string `json:"version,omitempty"`
+	Path    string `json:"path,omitempty"`
 }
 
 type ThickCharts struct {
@@ -38,10 +39,8 @@ type ThickChartSpec struct {
 }
 
 type ThickChart struct {
-	Name        string       `json:"name"`
-	RepoURL     string       `json:"repoURL"`
-	Version     string       `json:"version"`
-	ExtraImages []ChartImage `json:"extraImages"`
+	Chart       `json:",inline,omitempty"`
+	ExtraImages []ChartImage `json:"extraImages,omitempty"`
 }
 
 type ChartImage struct {

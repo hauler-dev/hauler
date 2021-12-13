@@ -62,7 +62,8 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 		for _, doc := range docs {
 			obj, err := content.Load(doc)
 			if err != nil {
-				return err
+				l.Debugf("skipping sync of unknown content")
+				continue
 			}
 
 			l.Infof("syncing [%s] to store", obj.GroupVersionKind().String())
