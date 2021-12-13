@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -14,6 +13,7 @@ import (
 	"github.com/rancherfederal/hauler/pkg/content/file"
 	"github.com/rancherfederal/hauler/pkg/content/image"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/reference"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
@@ -87,7 +87,7 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 
 func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, reference string) error {
 	cfg := v1alpha1.File{
-		Ref: reference,
+		Path: reference,
 	}
 
 	return storeFile(ctx, s, cfg)
@@ -96,9 +96,13 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Store, reference s
 func storeFile(ctx context.Context, s *store.Store, fi v1alpha1.File) error {
 	l := log.FromContext(ctx)
 
-	f := file.NewFile(fi.Ref)
+	f := file.NewFile(fi.Path)
+	ref, err := reference.NewTagged(f.Name(fi.Path), reference.DefaultTag)
+	if err != nil {
+		return err
+	}
 
-	desc, err := s.AddArtifact(ctx, f, f.Name(fi.Ref))
+	desc, err := s.AddArtifact(ctx, f, ref.Name())
 	if err != nil {
 		return err
 	}
@@ -118,7 +122,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference string) error {
 	cfg := v1alpha1.Image{
-		Ref: reference,
+		Name: reference,
 	}
 
 	return storeImage(ctx, s, cfg)
@@ -127,17 +131,22 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference
 func storeImage(ctx context.Context, s *store.Store, i v1alpha1.Image) error {
 	l := log.FromContext(ctx)
 
-	oci, err := image.NewImage(i.Ref)
+	oci, err := image.NewImage(i.Name)
 	if err != nil {
 		return err
 	}
 
-	desc, err := s.AddArtifact(ctx, oci, i.Ref)
+	r, err := name.ParseReference(i.Name)
 	if err != nil {
 		return err
 	}
 
-	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", i.Ref)
+	desc, err := s.AddArtifact(ctx, oci, r.Name())
+	if err != nil {
+		return err
+	}
+
+	l.With(log.Fields{"type": s.Identify(ctx, desc)}).Infof("added [%s] to store", i.Name)
 	return nil
 }
 
@@ -178,13 +187,11 @@ func storeChart(ctx context.Context, s *store.Store, cfg v1alpha1.Chart) error {
 		return err
 	}
 
-	tag := cfg.Version
-	if tag == "" {
-		tag = name.DefaultTag
+	ref, err := reference.NewTagged(cfg.Name, cfg.Version)
+	if err != nil {
+		return err
 	}
-
-	ref := fmt.Sprintf("%s:%s", cfg.Name, tag)
-	desc, err := s.AddArtifact(ctx, oci, ref)
+	desc, err := s.AddArtifact(ctx, oci, ref.Name())
 	if err != nil {
 		return err
 	}

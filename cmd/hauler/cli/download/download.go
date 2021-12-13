@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
@@ -15,6 +14,7 @@ import (
 	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/consts"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/reference"
 )
 
 type Opts struct {
@@ -36,7 +36,7 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 	f.BoolVar(&o.PlainHTTP, "plain-http", false, "Toggle allowing plain http connections when copying to a remote registry")
 }
 
-func Cmd(ctx context.Context, o *Opts, reference string) error {
+func Cmd(ctx context.Context, o *Opts, ref string) error {
 	l := log.FromContext(ctx)
 
 	rs, err := content.NewRegistry(content.RegistryOptions{
@@ -49,12 +49,12 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 		return err
 	}
 
-	ref, err := name.ParseReference(reference)
+	r, err := reference.Parse(ref)
 	if err != nil {
 		return err
 	}
 
-	desc, err := remote.Get(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain), remote.WithContext(ctx))
+	desc, err := remote.Get(r, remote.WithAuthFromKeychain(authn.DefaultKeychain), remote.WithContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 		return err
 	}
 
-	pushedDesc, err := oras.Copy(ctx, rs, ref.Name(), mapperStore, "",
+	pushedDesc, err := oras.Copy(ctx, rs, r.Name(), mapperStore, "",
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2))
 	if err != nil {
 		return err

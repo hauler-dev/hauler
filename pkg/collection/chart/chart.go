@@ -74,11 +74,11 @@ func (c *tchart) dependentImages() error {
 	}
 
 	for _, img := range imgs.Spec.Images {
-		i, err := image.NewImage(img.Ref)
+		i, err := image.NewImage(img.Name)
 		if err != nil {
 			return err
 		}
-		c.contents[img.Ref] = i
+		c.contents[img.Name] = i
 	}
 	return nil
 }

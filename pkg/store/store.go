@@ -15,6 +15,7 @@ import (
 	"github.com/rancherfederal/hauler/internal/cache"
 	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/reference"
 )
 
 type Store struct {
@@ -46,7 +47,7 @@ func NewStore(rootdir string, opts ...Options) (*Store, error) {
 //  saved, the entirety of the layout is copied to the store (which is just a registry).  This allows us to not only use
 //  strict types to define generic content, but provides a processing pipeline suitable for extensibility.  In the
 //  future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
-func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference string) (ocispec.Descriptor, error) {
+func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, r string) (ocispec.Descriptor, error) {
 	stage, err := newLayout()
 	if err != nil {
 		return ocispec.Descriptor{}, err
@@ -57,10 +58,10 @@ func (s *Store) AddArtifact(ctx context.Context, oci artifact.OCI, reference str
 		oci = cached
 	}
 
-	// Ensure that index.docker.io isn't prepended
-	ref, err := name.ParseReference(reference, name.WithDefaultRegistry(""), name.WithDefaultTag("latest"))
+	// Validate we have a locatable reference
+	ref, err := reference.Parse(r)
 	if err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("%w", ErrInvalidReference)
+		return ocispec.Descriptor{}, err
 	}
 
 	if err := stage.add(ctx, oci, ref); err != nil {

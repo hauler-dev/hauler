@@ -18,5 +18,11 @@ type FileSpec struct {
 }
 
 type File struct {
-	Ref string `json:"ref"`
+	// Path is the path to the file contents, can be a local or remote path
+	Path string `json:"path"`
+
+	// Reference is an optionally defined reference to the contents within the store
+	// 	If not specified, this will be generated as follows:
+	// 		hauler/<path base>:latest
+	Reference string `json:"reference,omitempty"`
 }
