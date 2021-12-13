@@ -1,3 +1,7 @@
+// Package reference provides general types to represent oci content within a registry or local oci layout
+// Grammar (stolen mostly from containerd's grammar)
+//
+// 	reference :=
 package reference
 
 import (
@@ -12,6 +16,10 @@ const (
 )
 
 type Reference interface {
+	// FullName is the full name of the reference
+	FullName() string
+
+	// Name is the registryless name
 	Name() string
 }
 
@@ -27,18 +35,14 @@ func NewTagged(n string, tag string) (gname.Reference, error) {
 
 // Parse will parse a reference and return a name.Reference namespaced with DefaultNamespace if necessary
 func Parse(ref string) (gname.Reference, error) {
-	repo, err := gname.ParseReference(ref, gname.WithDefaultRegistry(""))
+	r, err := gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(DefaultTag))
 	if err != nil {
 		return nil, err
 	}
 
-	if !strings.ContainsRune(repo.String(), '/') {
-		ref = DefaultNamespace + "/" + repo.String()
-	}
-
-	r, err := gname.ParseReference(ref)
-	if err != nil {
-		return nil, err
+	if !strings.ContainsRune(r.String(), '/') {
+		ref = DefaultNamespace + "/" + r.String()
+		return gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(DefaultTag))
 	}
 
 	return r, nil

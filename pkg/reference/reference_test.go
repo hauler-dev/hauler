@@ -22,23 +22,23 @@ func TestParse(t *testing.T) {
 			args: args{
 				ref: "myfile",
 			},
-			want:    "index.docker.io/hauler/myfile:latest",
+			want:    "hauler/myfile:latest",
 			wantErr: false,
 		},
 		{
-			name: "Shouldn't modify fully qualified reference",
+			name: "shouldn't modify namespaced reference",
+			args: args{
+				ref: "rancher/rancher:latest",
+			},
+			want:    "rancher/rancher:latest",
+			wantErr: false,
+		},
+		{
+			name: "Shouldn't modify canonical reference",
 			args: args{
 				ref: "index.docker.io/library/registry@sha256:42043edfae481178f07aa077fa872fcc242e276d302f4ac2026d9d2eb65b955f",
 			},
 			want:    "index.docker.io/library/registry@sha256:42043edfae481178f07aa077fa872fcc242e276d302f4ac2026d9d2eb65b955f",
-			wantErr: false,
-		},
-		{
-			name: "Shouldn't modify library",
-			args: args{
-				ref: "library/alpine",
-			},
-			want:    "index.docker.io/library/alpine:latest",
 			wantErr: false,
 		},
 	}

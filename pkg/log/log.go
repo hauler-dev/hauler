@@ -14,6 +14,7 @@ type Logger interface {
 	SetLevel(string)
 	With(Fields) *logger
 	WithContext(context.Context) context.Context
+
 	Errorf(string, ...interface{})
 	Infof(string, ...interface{})
 	Warnf(string, ...interface{})

@@ -122,7 +122,7 @@ func newItem(s *store.Store, desc ocispec.Descriptor, m ocispec.Manifest) item {
 	}
 
 	return item{
-		Reference: ref.Context().RepositoryStr(),
+		Reference: ref.Name(),
 		Type:      ctype,
 		Layers:    len(m.Layers),
 		Size:      byteCountSI(size),

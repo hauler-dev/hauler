@@ -21,7 +21,7 @@ type ExtractOpts struct {
 func (o *ExtractOpts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVar(&o.DestinationDir, "dir", "", "Directory to save contents to (defaults to current directory)")
+	f.StringVarP(&o.DestinationDir, "output", "o", "", "Directory to save contents to (defaults to current directory)")
 }
 
 func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, ref string) error {
@@ -60,7 +60,7 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, ref string)
 			return err
 		}
 
-		l.Infof("downloaded [%s] with digest [%s]", pushedDesc.MediaType, pushedDesc.Digest.String())
+		l.Infof("extracted [%s] from store with digest [%s]", pushedDesc.MediaType, pushedDesc.Digest.String())
 
 		return nil
 	}); err != nil {
