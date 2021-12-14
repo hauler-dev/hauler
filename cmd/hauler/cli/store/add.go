@@ -2,9 +2,14 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -53,16 +58,35 @@ func storeFile(ctx context.Context, s *store.Store, fi v1alpha1.File) error {
 
 type AddImageOpts struct {
 	Name string
+
+	Platform string
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	_ = f
+
+	f.StringVarP(&o.Platform, "platform", "p", "all", "Image's platform, specified as OS/ARCH[/VARIANT].  Defaults to images default.")
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference string) error {
 	cfg := v1alpha1.Image{
 		Name: reference,
+	}
+
+	if o.Platform != "" {
+		parts := strings.Split(o.Platform, "/")
+		if len(parts) < 2 {
+			return fmt.Errorf("failed to parse platform [%s], expected OS/ARCH[/VARIANT]", o.Platform)
+		} else if len(parts) > 3 {
+			return fmt.Errorf("failed to parse platform [%s], expected OS/ARCH[/VARIANT]", o.Platform)
+		}
+		cfg.Platform = ocispec.Platform{
+			OS:           parts[0],
+			Architecture: parts[1],
+		}
+		if len(parts) > 2 {
+			cfg.Platform.Variant = parts[2]
+		}
 	}
 
 	return storeImage(ctx, s, cfg)
@@ -71,7 +95,17 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference
 func storeImage(ctx context.Context, s *store.Store, i v1alpha1.Image) error {
 	l := log.FromContext(ctx)
 
-	oci, err := image.NewImage(i.Name)
+	var opts []remote.Option
+	if i.Platform.OS != "" {
+		p := gv1.Platform{
+			OS:           i.Platform.OS,
+			Architecture: i.Platform.Architecture,
+			Variant:      i.Platform.Variant,
+		}
+		opts = append(opts, remote.WithPlatform(p))
+	}
+
+	oci, err := image.NewImage(i.Name, opts...)
 	if err != nil {
 		return err
 	}

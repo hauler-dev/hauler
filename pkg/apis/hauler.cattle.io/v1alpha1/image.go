@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -20,4 +21,6 @@ type ImageSpec struct {
 type Image struct {
 	// Name is the full location for the image, can be referenced by tags or digests
 	Name string `json:"name"`
+
+	Platform ocispec.Platform `json:"platform,omitempty"`
 }
