@@ -121,10 +121,12 @@ func (l *layout) add(ctx context.Context, oci artifact.OCI, ref name.Reference) 
 	if err != nil {
 		return err
 	}
+
 	mdata, err := json.Marshal(m)
 	if err != nil {
 		return err
 	}
+
 	mdigest := digest.FromBytes(mdata)
 	l.blobs[mdigest] = static.NewLayer(mdata, m.MediaType)
 

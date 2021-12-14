@@ -33,8 +33,11 @@ spec:
     # or by their digest:
     - name: registry@sha256:42043edfae481178f07aa077fa872fcc242e276d302f4ac2026d9d2eb65b955f
 
-    # or fully qualified from any OCI compliant registry registry
+    # or fully qualified from any OCI compliant registry for other platforms
     - name: ghcr.io/fluxcd/flux-cli:v0.22.0
+      platform:
+        os: linux
+        architecture: arm64
 
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1

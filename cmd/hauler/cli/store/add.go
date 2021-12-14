@@ -65,7 +65,7 @@ type AddImageOpts struct {
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.Platform, "platform", "p", "all", "Image's platform, specified as OS/ARCH[/VARIANT].  Defaults to images default.")
+	f.StringVarP(&o.Platform, "platform", "p", "", "Image's platform, specified as OS/ARCH[/VARIANT].")
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Store, reference string) error {
