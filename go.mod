@@ -9,6 +9,7 @@ require (
 	github.com/google/go-containerregistry v0.7.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
+	github.com/kardianos/service v1.2.0
 	github.com/mholt/archiver/v3 v3.5.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2
