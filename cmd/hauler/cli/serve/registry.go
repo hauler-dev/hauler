@@ -25,6 +25,10 @@ type RegistryOpts struct {
 	Service bool
 }
 
+const (
+	serviceName = "hauler-registry"
+)
+
 func (o *RegistryOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Root, "root", "r", ".", "Path to root of the directory to serve")
@@ -43,11 +47,11 @@ func RegistryCmd(ctx context.Context, o *RegistryOpts) error {
 		} else {
 			args = append(args, []string{"-c", o.ConfigFile}...)
 		}
-		if err := ensureService(args); err != nil {
+		if err := ensureService(ctx, args); err != nil {
 			return err
 		}
 
-		l.Infof("successfully created service file [%s], enable and start it", "hauler-registry")
+		l.Infof("successfully created service file [%s], however, it still must be started", "hauler-registry")
 		return nil
 	}
 	ctx = dcontext.WithVersion(ctx, version.Version)
@@ -101,11 +105,13 @@ func (o *RegistryOpts) defaultConfig() *configuration.Configuration {
 	return cfg
 }
 
-func ensureService(args []string) error {
+// ensureService will install a new registry service OR update an existing one
+func ensureService(ctx context.Context, args []string) error {
+	l := log.FromContext(ctx)
 	prg := prog{}
 
 	cfg := &service.Config{
-		Name:        "hauler-registry",
+		Name:        serviceName,
 		DisplayName: "Hauler Registry",
 		Description: "Hauler's embedded registry",
 	}
@@ -131,6 +137,7 @@ func ensureService(args []string) error {
 
 	cfg.Arguments = args
 	cfg.Dependencies = deps
+	l.Infof("Installing service [%s]", serviceName)
 	return s.Install()
 }
 
