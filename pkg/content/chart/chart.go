@@ -79,10 +79,15 @@ func NewRemoteChart(name, repo, version string) (*Chart, error) {
 		return nil, err
 	}
 
+	c, err := loader.Load(cp)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Chart{
 		Repo:    repo,
-		Name:    name,
-		Version: version,
+		Name:    c.Name(),
+		Version: c.Metadata.Version,
 
 		path: cp,
 	}, nil

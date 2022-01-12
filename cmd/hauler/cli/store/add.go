@@ -75,7 +75,7 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 	l := log.FromContext(ctx)
 
-	oci, err := image.NewImage(i.Name)
+	img, err := image.NewImage(i.Name)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 		return err
 	}
 
-	desc, err := s.AddOCI(ctx, oci, r.Name())
+	desc, err := s.AddOCI(ctx, img, r.Name())
 	if err != nil {
 		return err
 	}
@@ -127,16 +127,16 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartNam
 func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart) error {
 	l := log.FromContext(ctx)
 
-	oci, err := chart.NewChart(cfg)
+	chrt, err := chart.NewChart(cfg)
 	if err != nil {
 		return err
 	}
 
-	ref, err := reference.NewTagged(cfg.Name, cfg.Version)
+	ref, err := reference.NewTagged(chrt.Name, chrt.Version)
 	if err != nil {
 		return err
 	}
-	desc, err := s.AddOCI(ctx, oci, ref.Name())
+	desc, err := s.AddOCI(ctx, chrt, ref.Name())
 	if err != nil {
 		return err
 	}
