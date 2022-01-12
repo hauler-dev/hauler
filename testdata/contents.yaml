@@ -15,7 +15,7 @@ spec:
     - path: "https://github.com/k3s-io/k3s/releases/download/v1.22.2%2Bk3s2/k3s-images.txt"
 
     # when filenames are not appropriate, a name should be specified
-    - path: https://get.k3s.io?filename=get-k3s.sh
+    - path: https://get.k3s.io
 
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1

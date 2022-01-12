@@ -10,32 +10,26 @@ import (
 )
 
 type LoadOpts struct {
-	OutputDir string
+	*RootOpts
 }
 
 func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-
-	f.StringVarP(&o.OutputDir, "output", "o", "", "Directory to unload archived contents to (defaults to $PWD/haul)")
+	_ = f
 }
 
 // LoadCmd
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
-func LoadCmd(ctx context.Context, o *LoadOpts, dir string, archiveRefs ...string) error {
+func LoadCmd(ctx context.Context, o *LoadOpts, archiveRefs ...string) error {
 	l := log.FromContext(ctx)
 
 	// TODO: Support more formats?
 	a := archiver.NewTarZstd()
 	a.OverwriteExisting = true
 
-	odir := dir
-	if o.OutputDir != "" {
-		odir = o.OutputDir
-	}
-
 	for _, archiveRef := range archiveRefs {
-		l.Infof("loading content from [%s] to [%s]", archiveRef, odir)
-		err := a.Unarchive(archiveRef, odir)
+		l.Infof("loading content from [%s] to [%s]", archiveRef, o.StoreDir)
+		err := a.Unarchive(archiveRef, o.StoreDir)
 		if err != nil {
 			return err
 		}

@@ -47,3 +47,21 @@ func Parse(ref string) (gname.Reference, error) {
 
 	return r, nil
 }
+
+// Relocate returns a name.Reference given a reference and registry
+func Relocate(reference string, registry string) (gname.Reference, error) {
+	ref, err := gname.ParseReference(reference)
+	if err != nil {
+		return nil, err
+	}
+
+	relocated, err := gname.ParseReference(ref.Context().RepositoryStr(), gname.WithDefaultRegistry(registry))
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := gname.NewDigest(ref.Name()); err == nil {
+		return relocated.Context().Digest(ref.Identifier()), nil
+	}
+	return relocated.Context().Tag(ref.Identifier()), nil
+}

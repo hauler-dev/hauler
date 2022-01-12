@@ -10,15 +10,17 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
+	"github.com/rancherfederal/ocil/pkg/store"
+
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type SyncOpts struct {
+	*RootOpts
 	ContentFiles []string
 }
 
@@ -28,7 +30,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
 }
 
-func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
+func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 	l := log.FromContext(ctx)
 
 	// Start from an empty store (contents are cached elsewhere)
@@ -120,7 +122,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 					return err
 				}
 
-				if _, err := s.AddCollection(ctx, k); err != nil {
+				if _, err := s.AddOCICollection(ctx, k); err != nil {
 					return err
 				}
 
@@ -136,7 +138,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 						return err
 					}
 
-					if _, err := s.AddCollection(ctx, tc); err != nil {
+					if _, err := s.AddOCICollection(ctx, tc); err != nil {
 						return err
 					}
 				}

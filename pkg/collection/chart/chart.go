@@ -1,13 +1,14 @@
 package chart
 
 import (
+	"github.com/rancherfederal/ocil/pkg/artifacts"
+	"github.com/rancherfederal/ocil/pkg/artifacts/image"
+
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/artifact"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
-	"github.com/rancherfederal/hauler/pkg/content/image"
 )
 
-var _ artifact.Collection = (*tchart)(nil)
+var _ artifacts.OCICollection = (*tchart)(nil)
 
 // tchart is a thick chart that includes all the dependent images as well as the chart itself
 type tchart struct {
@@ -15,10 +16,10 @@ type tchart struct {
 	config v1alpha1.ThickChart
 
 	computed bool
-	contents map[string]artifact.OCI
+	contents map[string]artifacts.OCI
 }
 
-func NewThickChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
+func NewThickChart(cfg v1alpha1.ThickChart) (artifacts.OCICollection, error) {
 	o, err := chart.NewChart(cfg.Chart)
 	if err != nil {
 		return nil, err
@@ -27,11 +28,11 @@ func NewThickChart(cfg v1alpha1.ThickChart) (artifact.Collection, error) {
 	return &tchart{
 		chart:    o,
 		config:   cfg,
-		contents: make(map[string]artifact.OCI),
+		contents: make(map[string]artifacts.OCI),
 	}, nil
 }
 
-func (c *tchart) Contents() (map[string]artifact.OCI, error) {
+func (c *tchart) Contents() (map[string]artifacts.OCI, error) {
 	if err := c.compute(); err != nil {
 		return nil, err
 	}

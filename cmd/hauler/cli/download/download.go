@@ -11,8 +11,9 @@ import (
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
 
+	"github.com/rancherfederal/ocil/pkg/consts"
+
 	"github.com/rancherfederal/hauler/internal/mapper"
-	"github.com/rancherfederal/hauler/pkg/consts"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/reference"
 )

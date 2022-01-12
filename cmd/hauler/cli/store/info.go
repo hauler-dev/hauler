@@ -10,12 +10,16 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/ocil/pkg/consts"
+
+	"github.com/rancherfederal/ocil/pkg/store"
+
 	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type InfoOpts struct {
+	*RootOpts
+
 	OutputFormat string
 	SizeUnit     string
 }
@@ -28,14 +32,14 @@ func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
 	// TODO: Regex/globbing
 }
 
-func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Store) error {
+func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 	var items []item
-	if err := s.Content.Walk(func(ref string, desc ocispec.Descriptor) error {
+	if err := s.Walk(func(ref string, desc ocispec.Descriptor) error {
 		if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
 			return nil
 		}
 
-		rc, err := s.Content.Fetch(ctx, desc)
+		rc, err := s.Fetch(ctx, desc)
 		if err != nil {
 			return err
 		}
@@ -97,7 +101,7 @@ type item struct {
 	Size      string
 }
 
-func newItem(s *store.Store, desc ocispec.Descriptor, m ocispec.Manifest) item {
+func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest) item {
 	var size int64 = 0
 	for _, l := range m.Layers {
 		size = +l.Size

@@ -1,30 +1,16 @@
 package cli
 
 import (
-	"context"
-	"errors"
-	"os"
-	"path/filepath"
-
 	"github.com/spf13/cobra"
 
-	cache2 "github.com/rancherfederal/hauler/internal/cache"
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type rootOpts struct {
 	logLevel string
-	cacheDir string
-	storeDir string
 }
 
 var ro = &rootOpts{}
-
-const (
-	DefaultStoreName = "store"
-	DefaultCacheDir  = "hauler"
-)
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
@@ -43,8 +29,6 @@ func New() *cobra.Command {
 
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
-	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to $XDG_CACHE_DIR/hauler)")
-	pf.StringVarP(&ro.storeDir, "store", "s", DefaultStoreName, "Location to create store at")
 
 	// Add subcommands
 	addDownload(cmd)
@@ -53,58 +37,4 @@ func New() *cobra.Command {
 	addVersion(cmd)
 
 	return cmd
-}
-
-func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
-	l := log.FromContext(ctx)
-	dir := o.storeDir
-
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	l.Debugf("using store at %s", abs)
-	if _, err := os.Stat(abs); errors.Is(err, os.ErrNotExist) {
-		err := os.Mkdir(abs, os.ModePerm)
-		if err != nil {
-			return nil, err
-		}
-	} else if err != nil {
-		return nil, err
-	}
-
-	// TODO: Do we want this to be configurable?
-	c, err := o.getCache(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	s, err := store.NewStore(abs, store.WithCache(c))
-	if err != nil {
-		return nil, err
-	}
-	return s, nil
-}
-
-func (o *rootOpts) getCache(ctx context.Context) (cache2.Cache, error) {
-	dir := o.cacheDir
-
-	if dir == "" {
-		// Default to $XDG_CACHE_HOME
-		cachedir, err := os.UserCacheDir()
-		if err != nil {
-			return nil, err
-		}
-
-		abs, _ := filepath.Abs(filepath.Join(cachedir, DefaultCacheDir))
-		if err := os.MkdirAll(abs, os.ModePerm); err != nil {
-			return nil, err
-		}
-
-		dir = abs
-	}
-
-	c := cache2.NewFilesystem(dir)
-	return c, nil
 }
