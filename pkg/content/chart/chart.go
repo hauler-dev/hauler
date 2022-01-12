@@ -14,18 +14,20 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rancherfederal/ocil/pkg/artifacts"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 
-	"github.com/rancherfederal/hauler/internal/layer"
+	"github.com/rancherfederal/ocil/pkg/layer"
+
+	"github.com/rancherfederal/ocil/pkg/consts"
+
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/artifact"
-	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
-var _ artifact.OCI = (*Chart)(nil)
+var _ artifacts.OCI = (*Chart)(nil)
 
 // Chart implements the  OCI interface for Chart API objects. API spec values are
 // stored into the Repo, Name, and Version fields.

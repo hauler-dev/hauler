@@ -6,11 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rancherfederal/ocil/pkg/layer"
 	"github.com/spf13/cobra"
 
-	cache2 "github.com/rancherfederal/hauler/internal/cache"
+	"github.com/rancherfederal/ocil/pkg/store"
+
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type rootOpts struct {
@@ -55,7 +56,7 @@ func New() *cobra.Command {
 	return cmd
 }
 
-func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
+func (o *rootOpts) getStore(ctx context.Context) (*store.Layout, error) {
 	l := log.FromContext(ctx)
 	dir := o.storeDir
 
@@ -80,14 +81,14 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 		return nil, err
 	}
 
-	s, err := store.NewStore(abs, store.WithCache(c))
+	s, err := store.NewLayout(abs, store.WithCache(c))
 	if err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-func (o *rootOpts) getCache(ctx context.Context) (cache2.Cache, error) {
+func (o *rootOpts) getCache(ctx context.Context) (layer.Cache, error) {
 	dir := o.cacheDir
 
 	if dir == "" {
@@ -105,6 +106,6 @@ func (o *rootOpts) getCache(ctx context.Context) (cache2.Cache, error) {
 		dir = abs
 	}
 
-	c := cache2.NewFilesystem(dir)
+	c := layer.NewFilesystemCache(dir)
 	return c, nil
 }

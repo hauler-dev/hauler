@@ -10,7 +10,8 @@ import (
 	"github.com/mholt/archiver/v3"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/ocil/pkg/consts"
+
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 )
 

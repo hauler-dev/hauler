@@ -9,8 +9,10 @@ import (
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
+	"github.com/rancherfederal/ocil/pkg/store"
+
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/reference"
 )
 
 type CopyOpts struct {
@@ -31,7 +33,7 @@ func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.PlainHTTP, "plain-http", false, "Toggle allowing plain http connections when copying to a remote registry")
 }
 
-func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string) error {
+func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string) error {
 	l := log.FromContext(ctx)
 
 	var descs []ocispec.Descriptor
@@ -60,12 +62,12 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Store, targetRef string)
 			return err
 		}
 
-		mapperFn := func(reference string) (string, error) {
-			ref, err := store.RelocateReference(reference, components[1])
+		mapperFn := func(ref string) (string, error) {
+			r, err := reference.Relocate(ref, components[1])
 			if err != nil {
 				return "", err
 			}
-			return ref.Name(), nil
+			return r.Name(), nil
 		}
 
 		ds, err := s.CopyAll(ctx, r, mapperFn)

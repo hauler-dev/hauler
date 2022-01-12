@@ -14,8 +14,9 @@ import (
 	"github.com/distribution/distribution/v3/version"
 	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/ocil/pkg/store"
+
 	"github.com/rancherfederal/hauler/internal/server"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type ServeOpts struct {
@@ -37,7 +38,7 @@ func (o *ServeOpts) AddFlags(cmd *cobra.Command) {
 }
 
 // ServeCmd serves the embedded registry almost identically to how distribution/v3 does it
-func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Store) error {
+func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Layout) error {
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
 	tr := server.NewTempRegistry(ctx, o.RootDir)

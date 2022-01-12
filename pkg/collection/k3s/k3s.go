@@ -10,13 +10,15 @@ import (
 	"path"
 	"strings"
 
-	"github.com/rancherfederal/hauler/internal/getter"
-	"github.com/rancherfederal/hauler/pkg/artifact"
-	"github.com/rancherfederal/hauler/pkg/content/file"
-	"github.com/rancherfederal/hauler/pkg/content/image"
+	"github.com/rancherfederal/ocil/pkg/artifacts"
+	"github.com/rancherfederal/ocil/pkg/artifacts/image"
+
+	"github.com/rancherfederal/ocil/pkg/artifacts/file"
+
+	"github.com/rancherfederal/ocil/pkg/artifacts/file/getter"
 )
 
-var _ artifact.Collection = (*k3s)(nil)
+var _ artifacts.OCICollection = (*k3s)(nil)
 
 const (
 	releaseUrl   = "https://github.com/k3s-io/k3s/releases/download"
@@ -36,19 +38,19 @@ type k3s struct {
 	arch    string
 
 	computed bool
-	contents map[string]artifact.OCI
+	contents map[string]artifacts.OCI
 	channels map[string]string
 	client   *getter.Client
 }
 
-func NewK3s(version string) (artifact.Collection, error) {
+func NewK3s(version string) (artifacts.OCICollection, error) {
 	return &k3s{
 		version:  version,
-		contents: make(map[string]artifact.OCI),
+		contents: make(map[string]artifacts.OCI),
 	}, nil
 }
 
-func (k *k3s) Contents() (map[string]artifact.OCI, error) {
+func (k *k3s) Contents() (map[string]artifacts.OCI, error) {
 	if err := k.compute(); err != nil {
 		return nil, err
 	}

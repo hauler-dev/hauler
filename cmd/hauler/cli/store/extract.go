@@ -8,10 +8,11 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/ocil/pkg/store"
+
 	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type ExtractOpts struct {
@@ -24,7 +25,7 @@ func (o *ExtractOpts) AddArgs(cmd *cobra.Command) {
 	f.StringVarP(&o.DestinationDir, "output", "o", "", "Directory to save contents to (defaults to current directory)")
 }
 
-func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, ref string) error {
+func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Layout, ref string) error {
 	l := log.FromContext(ctx)
 
 	r, err := reference.Parse(ref)
@@ -33,13 +34,13 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Store, ref string)
 	}
 
 	found := false
-	if err := s.Content.Walk(func(reference string, desc ocispec.Descriptor) error {
+	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
 		if reference != r.Name() {
 			return nil
 		}
 		found = true
 
-		rc, err := s.Content.Fetch(ctx, desc)
+		rc, err := s.Fetch(ctx, desc)
 		if err != nil {
 			return err
 		}
