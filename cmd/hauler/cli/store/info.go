@@ -18,6 +18,8 @@ import (
 )
 
 type InfoOpts struct {
+	*RootOpts
+
 	OutputFormat string
 	SizeUnit     string
 }

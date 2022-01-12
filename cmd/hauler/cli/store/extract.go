@@ -16,6 +16,7 @@ import (
 )
 
 type ExtractOpts struct {
+	*RootOpts
 	DestinationDir string
 }
 

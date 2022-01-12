@@ -20,6 +20,7 @@ import (
 )
 
 type SyncOpts struct {
+	*RootOpts
 	ContentFiles []string
 }
 

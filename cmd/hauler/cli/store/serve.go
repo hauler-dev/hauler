@@ -20,6 +20,8 @@ import (
 )
 
 type ServeOpts struct {
+	*RootOpts
+
 	Port       int
 	RootDir    string
 	ConfigFile string

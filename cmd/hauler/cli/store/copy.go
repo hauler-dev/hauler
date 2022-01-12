@@ -16,8 +16,9 @@ import (
 )
 
 type CopyOpts struct {
-	Target string
+	*RootOpts
 
+	Target    string
 	Username  string
 	Password  string
 	Insecure  bool

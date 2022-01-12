@@ -12,6 +12,7 @@ import (
 )
 
 type SaveOpts struct {
+	*RootOpts
 	FileName string
 }
 
@@ -23,7 +24,7 @@ func (o *SaveOpts) AddArgs(cmd *cobra.Command) {
 
 // SaveCmd
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
-func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) error {
+func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string) error {
 	l := log.FromContext(ctx)
 
 	// TODO: Support more formats?
@@ -40,7 +41,7 @@ func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) er
 		return err
 	}
 	defer os.Chdir(cwd)
-	if err := os.Chdir(dir); err != nil {
+	if err := os.Chdir(o.StoreDir); err != nil {
 		return err
 	}
 
@@ -49,6 +50,6 @@ func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string, dir string) er
 		return err
 	}
 
-	l.Infof("saved store [%s] -> [%s]", dir, absOutputfile)
+	l.Infof("saved store [%s] -> [%s]", o.StoreDir, absOutputfile)
 	return nil
 }

@@ -6,6 +6,8 @@ import (
 	"github.com/rancherfederal/hauler/cmd/hauler/cli/store"
 )
 
+var rootStoreOpts = &store.RootOpts{}
+
 func addStore(parent *cobra.Command) {
 	cmd := &cobra.Command{
 		Use:     "store",
@@ -15,6 +17,7 @@ func addStore(parent *cobra.Command) {
 			return cmd.Help()
 		},
 	}
+	rootStoreOpts.AddArgs(cmd)
 
 	cmd.AddCommand(
 		addStoreSync(),
@@ -33,7 +36,7 @@ func addStore(parent *cobra.Command) {
 }
 
 func addStoreExtract() *cobra.Command {
-	o := &store.ExtractOpts{}
+	o := &store.ExtractOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:     "extract",
@@ -43,7 +46,7 @@ func addStoreExtract() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
@@ -57,7 +60,7 @@ func addStoreExtract() *cobra.Command {
 }
 
 func addStoreSync() *cobra.Command {
-	o := &store.SyncOpts{}
+	o := &store.SyncOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "sync",
@@ -65,7 +68,7 @@ func addStoreSync() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
@@ -79,7 +82,7 @@ func addStoreSync() *cobra.Command {
 }
 
 func addStoreLoad() *cobra.Command {
-	o := &store.LoadOpts{}
+	o := &store.LoadOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "load",
@@ -88,13 +91,13 @@ func addStoreLoad() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
 			_ = s
 
-			return store.LoadCmd(ctx, o, "", args...)
+			return store.LoadCmd(ctx, o, args...)
 		},
 	}
 	o.AddFlags(cmd)
@@ -103,7 +106,7 @@ func addStoreLoad() *cobra.Command {
 }
 
 func addStoreServe() *cobra.Command {
-	o := &store.ServeOpts{}
+	o := &store.ServeOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -111,7 +114,7 @@ func addStoreServe() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
@@ -125,7 +128,7 @@ func addStoreServe() *cobra.Command {
 }
 
 func addStoreSave() *cobra.Command {
-	o := &store.SaveOpts{}
+	o := &store.SaveOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "save",
@@ -134,13 +137,13 @@ func addStoreSave() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
 			_ = s
 
-			return store.SaveCmd(ctx, o, o.FileName, "")
+			return store.SaveCmd(ctx, o, o.FileName)
 		},
 	}
 	o.AddArgs(cmd)
@@ -149,7 +152,7 @@ func addStoreSave() *cobra.Command {
 }
 
 func addStoreInfo() *cobra.Command {
-	o := &store.InfoOpts{}
+	o := &store.InfoOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:     "info",
@@ -159,7 +162,7 @@ func addStoreInfo() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
@@ -173,7 +176,7 @@ func addStoreInfo() *cobra.Command {
 }
 
 func addStoreCopy() *cobra.Command {
-	o := &store.CopyOpts{}
+	o := &store.CopyOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "copy",
@@ -182,7 +185,7 @@ func addStoreCopy() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
@@ -214,7 +217,7 @@ func addStoreAdd() *cobra.Command {
 }
 
 func addStoreAddFile() *cobra.Command {
-	o := &store.AddFileOpts{}
+	o := &store.AddFileOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "file",
@@ -223,7 +226,7 @@ func addStoreAddFile() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
@@ -237,7 +240,7 @@ func addStoreAddFile() *cobra.Command {
 }
 
 func addStoreAddImage() *cobra.Command {
-	o := &store.AddImageOpts{}
+	o := &store.AddImageOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "image",
@@ -246,7 +249,7 @@ func addStoreAddImage() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}
@@ -260,7 +263,7 @@ func addStoreAddImage() *cobra.Command {
 }
 
 func addStoreAddChart() *cobra.Command {
-	o := &store.AddChartOpts{}
+	o := &store.AddChartOpts{RootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "chart",
@@ -282,7 +285,7 @@ hauler store add chart rancher --repo "https://releases.rancher.com/server-chart
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := ro.getStore(ctx)
+			s, err := o.Store(ctx)
 			if err != nil {
 				return err
 			}

@@ -19,6 +19,7 @@ import (
 )
 
 type AddFileOpts struct {
+	*RootOpts
 	Name string
 }
 
@@ -54,6 +55,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 }
 
 type AddImageOpts struct {
+	*RootOpts
 	Name string
 }
 
@@ -93,6 +95,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 }
 
 type AddChartOpts struct {
+	*RootOpts
 	Version string
 	RepoURL string
 
