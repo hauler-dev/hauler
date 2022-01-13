@@ -14,6 +14,7 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
+	"github.com/rancherfederal/hauler/pkg/collection/imagetxt"
 	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
@@ -140,6 +141,26 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 
 					if _, err := s.AddOCICollection(ctx, tc); err != nil {
 						return err
+					}
+				}
+
+			case v1alpha1.ImageTxtsContentKind:
+				var cfg v1alpha1.ImageTxts
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+
+				for _, cfgIt := range cfg.Spec.ImageTxts {
+					it, err := imagetxt.New(cfgIt.Ref,
+						imagetxt.WithIncludeSources(cfgIt.Sources.Include...),
+						imagetxt.WithExcludeSources(cfgIt.Sources.Exclude...),
+					)
+					if err != nil {
+						return fmt.Errorf("convert ImageTxt %s: %v", cfg.Name, err)
+					}
+
+					if _, err := s.AddOCICollection(ctx, it); err != nil {
+						return fmt.Errorf("add ImageTxt %s to store: %v", cfg.Name, err)
 					}
 				}
 
