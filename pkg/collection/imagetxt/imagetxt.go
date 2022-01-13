@@ -122,7 +122,7 @@ func (it *ImageTxt) compute() error {
 	}
 
 	var pullAll bool
-	var targetSources map[string]bool
+	targetSources := make(map[string]bool)
 
 	if len(foundSources) == 0 || (len(it.IncludeSources) == 0 && len(it.ExcludeSources) == 0) {
 		// pull all found images
