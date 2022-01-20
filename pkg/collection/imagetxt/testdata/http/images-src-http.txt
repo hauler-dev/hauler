@@ -1,0 +1,5 @@
+busybox core
+nginx:1.19 core,nginx
+rancher/hyperkube:v1.21.7-rancher1 rancher,rke
+docker.io/rancher/klipper-lb:v0.3.4 rancher,k3s
+quay.io/jetstack/cert-manager-controller:v1.6.1 cert-manager
