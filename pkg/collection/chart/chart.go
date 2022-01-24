@@ -3,6 +3,7 @@ package chart
 import (
 	"github.com/rancherfederal/ocil/pkg/artifacts"
 	"github.com/rancherfederal/ocil/pkg/artifacts/image"
+	"helm.sh/helm/v3/pkg/action"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
@@ -19,8 +20,8 @@ type tchart struct {
 	contents map[string]artifacts.OCI
 }
 
-func NewThickChart(cfg v1alpha1.ThickChart) (artifacts.OCICollection, error) {
-	o, err := chart.NewChart(cfg.Chart)
+func NewThickChart(cfg v1alpha1.ThickChart, opts *action.ChartPathOptions) (artifacts.OCICollection, error) {
+	o, err := chart.NewChart(cfg.Chart.Name, opts)
 	if err != nil {
 		return nil, err
 	}

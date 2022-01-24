@@ -23,8 +23,6 @@ import (
 	"github.com/rancherfederal/ocil/pkg/layer"
 
 	"github.com/rancherfederal/ocil/pkg/consts"
-
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 )
 
 var _ artifacts.OCI = (*Chart)(nil)
@@ -32,65 +30,45 @@ var _ artifacts.OCI = (*Chart)(nil)
 // Chart implements the  OCI interface for Chart API objects. API spec values are
 // stored into the Repo, Name, and Version fields.
 type Chart struct {
-	Repo    string
-	Name    string
-	Version string
-
 	path        string
 	annotations map[string]string
 }
 
 // NewChart is a helper method that returns NewLocalChart or NewRemoteChart depending on v1alpha1.Chart contents
-func NewChart(cfg v1alpha1.Chart) (*Chart, error) {
-	var (
-		ch  *Chart
-		err error
-	)
-	if cfg.Path != "" {
-		ch, err = NewLocalChart(cfg.Path)
-	} else {
-		ch, err = NewRemoteChart(cfg.Name, cfg.RepoURL, cfg.Version)
-	}
-	return ch, err
-}
-
-func NewLocalChart(path string) (*Chart, error) {
-	c, err := loader.Load(path)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Chart{
-		Name:    c.Name(),
-		Version: c.Metadata.Version,
-
-		path: path,
-	}, nil
-}
-
-func NewRemoteChart(name, repo, version string) (*Chart, error) {
+func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	cpo := action.ChartPathOptions{
-		RepoURL: repo,
-		Version: version,
+		RepoURL: opts.RepoURL,
+		Version: opts.Version,
+
+		CaFile:                opts.CaFile,
+		CertFile:              opts.CertFile,
+		KeyFile:               opts.KeyFile,
+		InsecureSkipTLSverify: opts.InsecureSkipTLSverify,
+		Keyring:               opts.Keyring,
+		Password:              opts.Password,
+		PassCredentialsAll:    opts.PassCredentialsAll,
+		Username:              opts.Username,
+		Verify:                opts.Verify,
 	}
 
-	cp, err := cpo.LocateChart(name, cli.New())
+	chartPath, err := cpo.LocateChart(name, cli.New())
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := loader.Load(cp)
-	if err != nil {
-		return nil, err
-	}
-
+	// c, err := loader.Loader(chartPath)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	//
+	// ch, err := c.Load()
+	// if err != nil {
+	// 	return nil, err
+	// }
+	//
 	return &Chart{
-		Repo:    repo,
-		Name:    c.Name(),
-		Version: c.Metadata.Version,
-
-		path: cp,
-	}, nil
+		path: chartPath,
+	}, err
 }
 
 func (h *Chart) MediaType() string {

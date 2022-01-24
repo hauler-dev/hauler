@@ -2,13 +2,13 @@ package chart_test
 
 import (
 	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/mholt/archiver/v3"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"helm.sh/helm/v3/pkg/action"
 
 	"github.com/rancherfederal/ocil/pkg/consts"
 
@@ -19,7 +19,7 @@ var (
 	chartpath = "../../../testdata/podinfo-6.0.3.tgz"
 )
 
-func TestNewLocalChart(t *testing.T) {
+func TestNewChart(t *testing.T) {
 	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		t.Fatal(err)
@@ -30,20 +30,9 @@ func TestNewLocalChart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := v1.Descriptor{
-		MediaType: consts.ChartLayerMediaType,
-		Size:      13524,
-		Digest: v1.Hash{
-			Algorithm: "sha256",
-			Hex:       "e30b95a08787de69ffdad3c232d65cfb131b5b50c6fd44295f48a078fceaa44e",
-		},
-		Annotations: map[string]string{
-			ocispec.AnnotationTitle: filepath.Base(chartpath),
-		},
-	}
-
 	type args struct {
-		path string
+		name string
+		opts *action.ChartPathOptions
 	}
 	tests := []struct {
 		name    string
@@ -54,9 +43,20 @@ func TestNewLocalChart(t *testing.T) {
 		{
 			name: "should create from a chart archive",
 			args: args{
-				path: chartpath,
+				name: chartpath,
+				opts: &action.ChartPathOptions{},
 			},
-			want:    want,
+			want: v1.Descriptor{
+				MediaType: consts.ChartLayerMediaType,
+				Size:      13524,
+				Digest: v1.Hash{
+					Algorithm: "sha256",
+					Hex:       "e30b95a08787de69ffdad3c232d65cfb131b5b50c6fd44295f48a078fceaa44e",
+				},
+				Annotations: map[string]string{
+					ocispec.AnnotationTitle: "podinfo-6.0.3.tgz",
+				},
+			},
 			wantErr: false,
 		},
 		// TODO: This isn't matching digests b/c of file timestamps not being respected
@@ -68,10 +68,30 @@ func TestNewLocalChart(t *testing.T) {
 		// 	want:    want,
 		// 	wantErr: false,
 		// },
+		{
+			// TODO: Use a mock helm server
+			name: "should fetch a remote chart",
+			args: args{
+				name: "ingress-nginx",
+				opts: &action.ChartPathOptions{RepoURL: "https://kubernetes.github.io/ingress-nginx", Version: "4.0.16"},
+			},
+			want: v1.Descriptor{
+				MediaType: consts.ChartLayerMediaType,
+				Size:      38591,
+				Digest: v1.Hash{
+					Algorithm: "sha256",
+					Hex:       "b0ea91f7febc6708ad9971871d2de6e8feb2072110c3add6dd7082d90753caa2",
+				},
+				Annotations: map[string]string{
+					ocispec.AnnotationTitle: "ingress-nginx-4.0.16.tgz",
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := chart.NewLocalChart(tt.args.path)
+			got, err := chart.NewChart(tt.args.name, tt.args.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewLocalChart() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -88,8 +108,8 @@ func TestNewLocalChart(t *testing.T) {
 			}
 			desc := m.Layers[0]
 
-			if !reflect.DeepEqual(desc, want) {
-				t.Errorf("%v | %v", desc, want)
+			if !reflect.DeepEqual(desc, tt.want) {
+				t.Errorf("got: %v\nwant: %v", desc, tt.want)
 				return
 			}
 		})

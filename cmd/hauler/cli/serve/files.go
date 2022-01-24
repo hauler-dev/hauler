@@ -20,7 +20,12 @@ func (o *FilesOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func FilesCmd(ctx context.Context, o *FilesOpts) error {
-	s, err := server.NewFile(ctx, o.Root)
+	cfg := server.FileConfig{
+		Root: o.Root,
+		Port: o.Port,
+	}
+
+	s, err := server.NewFile(ctx, cfg)
 	if err != nil {
 		return err
 	}

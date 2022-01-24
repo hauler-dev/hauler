@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/ocil/pkg/store"
@@ -106,7 +107,8 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 				}
 
 				for _, ch := range cfg.Spec.Charts {
-					err := storeChart(ctx, s, ch)
+					// TODO: Provide a way to configure syncs
+					err := storeChart(ctx, s, ch, &action.ChartPathOptions{})
 					if err != nil {
 						return err
 					}
@@ -134,7 +136,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 				}
 
 				for _, cfg := range cfg.Spec.Charts {
-					tc, err := tchart.NewThickChart(cfg)
+					tc, err := tchart.NewThickChart(cfg, &action.ChartPathOptions{})
 					if err != nil {
 						return err
 					}
