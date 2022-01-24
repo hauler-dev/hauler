@@ -98,7 +98,7 @@ func (k *k3s) executable() error {
 
 	f := file.NewFile(fref)
 
-	ref := fmt.Sprintf("k3s:%s", k.dnsCompliantVersion())
+	ref := fmt.Sprintf("hauler/k3s:%s", k.dnsCompliantVersion())
 	k.contents[ref] = f
 	return nil
 }
@@ -106,7 +106,7 @@ func (k *k3s) executable() error {
 func (k *k3s) bootstrap() error {
 	namedBootstrapUrl := fmt.Sprintf("%s?filename=%s", bootstrapUrl, "k3s-init.sh")
 	f := file.NewFile(namedBootstrapUrl)
-	k.contents["k3s-init.sh"] = f
+	k.contents["hauler/k3s-init.sh:latest"] = f
 	return nil
 }
 
