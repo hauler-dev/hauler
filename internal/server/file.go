@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -10,15 +11,29 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func NewFile(ctx context.Context, root string) (Server, error) {
-	http.FileServer(http.Dir(root))
+type FileConfig struct {
+	Root string
+	Host string
+	Port int
+}
 
+// NewFile returns a fileserver
+// TODO: Better configs
+func NewFile(ctx context.Context, cfg FileConfig) (Server, error) {
 	r := mux.NewRouter()
-	r.Handle("/", handlers.LoggingHandler(os.Stdout, http.FileServer(http.Dir(root))))
+	r.Handle("/", handlers.LoggingHandler(os.Stdout, http.FileServer(http.Dir(cfg.Root))))
+
+	if cfg.Root == "" {
+		cfg.Root = "."
+	}
+
+	if cfg.Port == 0 {
+		cfg.Port = 8080
+	}
 
 	srv := &http.Server{
 		Handler:      r,
-		Addr:         ":8000",
+		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}
