@@ -2,10 +2,10 @@ package store
 
 import (
 	"context"
-	"os"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
+	"helm.sh/helm/v3/pkg/action"
 
 	"github.com/rancherfederal/ocil/pkg/artifacts/file"
 	"github.com/rancherfederal/ocil/pkg/artifacts/image"
@@ -96,43 +96,53 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 
 type AddChartOpts struct {
 	*RootOpts
-	Version string
-	RepoURL string
 
-	// TODO: Support helm auth
+	ChartOpts *action.ChartPathOptions
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.RepoURL, "repo", "r", "", "Chart repository URL")
-	f.StringVar(&o.Version, "version", "", "(Optional) Version of the chart to download, defaults to latest if not specified")
+	f.StringVar(&o.ChartOpts.RepoURL, "repo", "", "chart repository url where to locate the requested chart")
+	f.StringVar(&o.ChartOpts.Version, "version", "", "specify a version constraint for the chart version to use. This constraint can be a specific tag (e.g. 1.1.1) or it may reference a valid range (e.g. ^2.0.0). If this is not specified, the latest version is used")
+	f.BoolVar(&o.ChartOpts.Verify, "verify", false, "verify the package before using it")
+	f.StringVar(&o.ChartOpts.Username, "username", "", "chart repository username where to locate the requested chart")
+	f.StringVar(&o.ChartOpts.Password, "password", "", "chart repository password where to locate the requested chart")
+	f.StringVar(&o.ChartOpts.CertFile, "cert-file", "", "identify HTTPS client using this SSL certificate file")
+	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "identify HTTPS client using this SSL key file")
+	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "skip tls certificate checks for the chart download")
+	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "verify certificates of HTTPS-enabled servers using this CA bundle")
 }
 
 func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartName string) error {
-	path := ""
-	if _, err := os.Stat(chartName); err == nil {
-		path = chartName
-	}
+	// TODO: Reduce duplicates between api chart and upstream helm opts
 	cfg := v1alpha1.Chart{
 		Name:    chartName,
-		RepoURL: o.RepoURL,
-		Version: o.Version,
-		Path:    path,
+		RepoURL: o.ChartOpts.RepoURL,
+		Version: o.ChartOpts.Version,
 	}
 
-	return storeChart(ctx, s, cfg)
+	return storeChart(ctx, s, cfg, o.ChartOpts)
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart) error {
+func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
 
-	chrt, err := chart.NewChart(cfg)
+	// TODO: This shouldn't be necessary
+	opts.RepoURL = cfg.RepoURL
+	opts.Version = cfg.Version
+
+	chrt, err := chart.NewChart(cfg.Name, opts)
 	if err != nil {
 		return err
 	}
 
-	ref, err := reference.NewTagged(chrt.Name, chrt.Version)
+	c, err := chrt.Load()
+	if err != nil {
+		return err
+	}
+
+	ref, err := reference.NewTagged(c.Name(), c.Metadata.Version)
 	if err != nil {
 		return err
 	}

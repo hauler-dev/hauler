@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+	"helm.sh/helm/v3/pkg/action"
 
 	"github.com/rancherfederal/hauler/cmd/hauler/cli/store"
 )
@@ -263,7 +264,10 @@ func addStoreAddImage() *cobra.Command {
 }
 
 func addStoreAddChart() *cobra.Command {
-	o := &store.AddChartOpts{RootOpts: rootStoreOpts}
+	o := &store.AddChartOpts{
+		RootOpts:  rootStoreOpts,
+		ChartOpts: &action.ChartPathOptions{},
+	}
 
 	cmd := &cobra.Command{
 		Use:   "chart",
