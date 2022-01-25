@@ -40,12 +40,13 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 func Cmd(ctx context.Context, o *Opts, ref string) error {
 	l := log.FromContext(ctx)
 
-	rs, err := content.NewRegistry(content.RegistryOptions{
+	ropts := content.RegistryOptions{
 		Username:  o.Username,
 		Password:  o.Password,
 		Insecure:  o.Insecure,
 		PlainHTTP: o.PlainHTTP,
-	})
+	}
+	rs, err := content.NewRegistry(ropts)
 	if err != nil {
 		return err
 	}

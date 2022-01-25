@@ -21,13 +21,13 @@ Note that the content type determines it's format on disk.  Hauler's built in co
 	- Chart: as a .tar.gz named after the chart (ex: loki:2.0.2 --> loki-2.0.2.tar.gz)`,
 		Example: `
 # Download a file
-hauler dl my-file.yaml:latest
+hauler dl localhost:5000/my-file.yaml:latest
 
 # Download an image
-hauler dl rancher/k3s:v1.22.2-k3s2
+hauler dl localhost:5000/rancher/k3s:v1.22.2-k3s2
 
 # Download a chart
-hauler dl longhorn:1.2.0`,
+hauler dl localhost:5000/hauler/longhorn:1.2.0`,
 		Aliases: []string{"dl"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, arg []string) error {
