@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/rancherfederal/ocil/pkg/artifacts/file/getter"
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 
@@ -39,7 +40,11 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Layout, reference 
 func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 	l := log.FromContext(ctx)
 
-	f := file.NewFile(fi.Path)
+	copts := getter.ClientOptions{
+		NameOverride: fi.Name,
+	}
+
+	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)))
 	ref, err := reference.NewTagged(f.Name(fi.Path), reference.DefaultTag)
 	if err != nil {
 		return err

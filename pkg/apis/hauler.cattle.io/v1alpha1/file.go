@@ -21,8 +21,7 @@ type File struct {
 	// Path is the path to the file contents, can be a local or remote path
 	Path string `json:"path"`
 
-	// Reference is an optionally defined reference to the contents within the store
-	// 	If not specified, this will be generated as follows:
-	// 		hauler/<path base>:latest
-	Reference string `json:"reference,omitempty"`
+	// Name is an optional field specifying the name of the file when specified,
+	// 	it will override any dynamic name discovery from Path
+	Name string `json:"name,omitempty"`
 }
