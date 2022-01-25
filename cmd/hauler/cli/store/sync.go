@@ -136,7 +136,10 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 				}
 
 				for _, cfg := range cfg.Spec.Charts {
-					tc, err := tchart.NewThickChart(cfg, &action.ChartPathOptions{})
+					tc, err := tchart.NewThickChart(cfg, &action.ChartPathOptions{
+						RepoURL: cfg.RepoURL,
+						Version: cfg.Version,
+					})
 					if err != nil {
 						return err
 					}

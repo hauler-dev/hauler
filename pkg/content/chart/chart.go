@@ -56,16 +56,6 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 		return nil, err
 	}
 
-	// c, err := loader.Loader(chartPath)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	//
-	// ch, err := c.Load()
-	// if err != nil {
-	// 	return nil, err
-	// }
-	//
 	return &Chart{
 		path: chartPath,
 	}, err

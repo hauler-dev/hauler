@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
+	"github.com/rancherfederal/hauler/pkg/reference"
 )
 
 var _ artifacts.OCICollection = (*tchart)(nil)
@@ -60,7 +61,16 @@ func (c *tchart) compute() error {
 }
 
 func (c *tchart) chartContents() error {
-	c.contents[c.config.Name] = c.chart
+	ch, err := c.chart.Load()
+	if err != nil {
+		return err
+	}
+
+	ref, err := reference.NewTagged(ch.Name(), ch.Metadata.Version)
+	if err != nil {
+		return err
+	}
+	c.contents[ref.Name()] = c.chart
 	return nil
 }
 

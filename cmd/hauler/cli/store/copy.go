@@ -18,7 +18,6 @@ import (
 type CopyOpts struct {
 	*RootOpts
 
-	Target    string
 	Username  string
 	Password  string
 	Insecure  bool
@@ -53,12 +52,13 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 
 	case "registry":
 		l.Debugf("identified registry target reference")
-		r, err := content.NewRegistry(content.RegistryOptions{
+		ropts := content.RegistryOptions{
 			Username:  o.Username,
 			Password:  o.Password,
 			Insecure:  o.Insecure,
 			PlainHTTP: o.PlainHTTP,
-		})
+		}
+		r, err := content.NewRegistry(ropts)
 		if err != nil {
 			return err
 		}
