@@ -1,6 +1,6 @@
 # Hauler: Airgap Swiss Army Knife
 
-> ⚠️ This project is still in active development and _not_ GA.  While a lot of the core features are ready, we're still adding a _ton_, and we may make breaking api and feature changes version to version.
+> ⚠️ This project is still in active development and _not_ GA.  While a lot of the core features are ready, we're still adding a _ton_, and we may break API compatibility as we change features in newer versions.
 
 `hauler` simplifies the airgap experience without forcing you to adopt a specific workflow for your infrastructure or application.  
 
