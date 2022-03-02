@@ -22,8 +22,8 @@ type ImageTxt struct {
 	IncludeSources map[string]bool
 	ExcludeSources map[string]bool
 
-	getter   local.Opener
 	lock     *sync.Mutex
+	getter   local.Opener
 	computed bool
 	contents map[name.Reference]artifact.OCI
 }
@@ -32,23 +32,6 @@ var _ artifact.Collection = (*ImageTxt)(nil)
 
 type Option interface {
 	Apply(*ImageTxt) error
-}
-
-type withRef string
-
-func (o withRef) Apply(it *ImageTxt) error {
-	ref := string(o)
-
-	if strings.HasPrefix(ref, "http") || strings.HasPrefix(ref, "https") {
-		it.getter = local.RemoteOpener(ref)
-	} else {
-		it.getter = local.LocalOpener(ref)
-	}
-	return nil
-}
-
-func WithRef(ref string) Option {
-	return withRef(ref)
 }
 
 type withIncludeSources []string
@@ -83,9 +66,17 @@ func WithExcludeSources(exclude ...string) Option {
 	return withExcludeSources(exclude)
 }
 
-func New(opts ...Option) (*ImageTxt, error) {
+func New(ref string, opts ...Option) (*ImageTxt, error) {
 	it := &ImageTxt{
+		Ref: ref,
+
 		lock: &sync.Mutex{},
+	}
+
+	if strings.HasPrefix(ref, "http") || strings.HasPrefix(ref, "https") {
+		it.getter = local.RemoteOpener(ref)
+	} else {
+		it.getter = local.LocalOpener(ref)
 	}
 
 	for i, o := range opts {
@@ -139,7 +130,7 @@ func (it *ImageTxt) compute() error {
 	}
 
 	var pullAll bool
-	var targetSources map[string]bool
+	targetSources := make(map[string]bool)
 
 	if len(foundSources) == 0 || (len(it.IncludeSources) == 0 && len(it.ExcludeSources) == 0) {
 		// pull all found images
