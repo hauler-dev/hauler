@@ -167,8 +167,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 					}
 
 					for _, cfgIt := range cfg.Spec.ImageTxts {
-						it, err := imagetxt.New(
-							imagetxt.WithRef(cfgIt.Ref),
+						it, err := imagetxt.New(cfgIt.Ref,
 							imagetxt.WithIncludeSources(cfgIt.Sources.Include...),
 							imagetxt.WithExcludeSources(cfgIt.Sources.Exclude...),
 						)
