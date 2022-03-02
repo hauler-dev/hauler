@@ -2,8 +2,10 @@ package download
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path"
 
 	"github.com/containerd/containerd/remotes/docker"
@@ -22,14 +24,21 @@ import (
 
 type Opts struct {
 	DestinationDir string
-	OutputFile     string
+
+	Username  string
+	Password  string
+	Insecure  bool
+	PlainHTTP bool
 }
 
 func (o *Opts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVar(&o.DestinationDir, "dir", "", "Directory to save contents to (defaults to current directory)")
-	f.StringVarP(&o.OutputFile, "output", "o", "", "(Optional) Override name of file to save.")
+	f.StringVarP(&o.DestinationDir, "output", "o", "", "Directory to save contents to (defaults to current directory)")
+	f.StringVarP(&o.Username, "username", "u", "", "Username when copying to an authenticated remote registry")
+	f.StringVarP(&o.Password, "password", "p", "", "Password when copying to an authenticated remote registry")
+	f.BoolVar(&o.Insecure, "insecure", false, "Toggle allowing insecure connections when copying to a remote registry")
+	f.BoolVar(&o.PlainHTTP, "plain-http", false, "Toggle allowing plain http connections when copying to a remote registry")
 }
 
 func Cmd(ctx context.Context, o *Opts, reference string) error {
@@ -43,7 +52,26 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 		return err
 	}
 
-	desc, err := remote.Get(ref)
+	remoteOpts := []remote.Option{
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+	}
+
+	if o.Username != "" || o.Password != "" {
+		basicAuth := &authn.Basic{
+			Username: o.Username,
+			Password: o.Password,
+		}
+		remoteOpts = append(remoteOpts, remote.WithAuth(basicAuth))
+	}
+
+	if o.Insecure {
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		remoteOpts = append(remoteOpts, remote.WithTransport(transport))
+	}
+
+	desc, err := remote.Get(ref, remoteOpts...)
 	if err != nil {
 		return err
 	}
@@ -62,15 +90,12 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 	switch manifest.Config.MediaType {
 	case types.DockerConfigJSON, types.OCIManifestSchema1:
 		l.Debugf("identified [image] (%s) content", manifest.Config.MediaType)
-		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+		img, err := remote.Image(ref, remoteOpts...)
 		if err != nil {
 			return err
 		}
 
-		outputFile := o.OutputFile
-		if outputFile == "" {
-			outputFile = fmt.Sprintf("%s:%s.tar", path.Base(ref.Context().RepositoryStr()), ref.Identifier())
-		}
+		outputFile := fmt.Sprintf("%s_%s.tar", path.Base(ref.Context().RepositoryStr()), ref.Identifier())
 
 		if err := tarball.WriteToFile(outputFile, ref, img); err != nil {
 			return err
