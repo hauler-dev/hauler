@@ -2,7 +2,6 @@ package download
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/version"
 )
 
 type Opts struct {
@@ -47,13 +47,14 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 	cs := content.NewFileStore(o.DestinationDir)
 	defer cs.Close()
 
-	ref, err := name.ParseReference(reference)
-	if err != nil {
-		return err
-	}
-
+	// build + configure oras client
+	var refOpts []name.Option
 	remoteOpts := []remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+	}
+
+	if o.PlainHTTP {
+		refOpts = append(refOpts, name.Insecure)
 	}
 
 	if o.Username != "" || o.Password != "" {
@@ -65,10 +66,49 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 	}
 
 	if o.Insecure {
-		transport := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig.InsecureSkipVerify = true
+
 		remoteOpts = append(remoteOpts, remote.WithTransport(transport))
+	}
+
+	// build + configure containerd client
+	var registryOpts []docker.RegistryOpt
+
+	if o.PlainHTTP {
+		registryOpts = append(registryOpts, docker.WithPlainHTTP(docker.MatchAllHosts))
+	}
+
+	if o.Username != "" || o.Password != "" {
+		creds := func(string) (string, string, error) {
+			return o.Username, o.Password, nil
+		}
+		authorizer := docker.NewDockerAuthorizer(docker.WithAuthCreds(creds))
+		registryOpts = append(registryOpts, docker.WithAuthorizer(authorizer))
+	}
+
+	if o.Insecure {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig.InsecureSkipVerify = true
+
+		httpClient := &http.Client{
+			Transport: transport,
+		}
+		registryOpts = append(registryOpts, docker.WithClient(httpClient))
+	}
+
+	resolverOpts := docker.ResolverOptions{
+		Hosts:   docker.ConfigureDefaultRegistries(registryOpts...),
+		Headers: http.Header{},
+	}
+	resolverOpts.Headers.Set("User-Agent", "hauler/"+version.GitVersion)
+
+	resolver := docker.NewResolver(resolverOpts)
+
+	// begin dowloading target
+	ref, err := name.ParseReference(reference, refOpts...)
+	if err != nil {
+		return err
 	}
 
 	desc, err := remote.Get(ref, remoteOpts...)
@@ -108,7 +148,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 
 		fs := content.NewFileStore(o.DestinationDir)
 
-		resolver := docker.NewResolver(docker.ResolverOptions{})
+		// TODO - additional accepted media types
 		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
 		if err != nil {
 			return err
@@ -125,7 +165,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 
 		fs := content.NewFileStore(o.DestinationDir)
 
-		resolver := docker.NewResolver(docker.ResolverOptions{})
+		// TODO - additional accepted media types
 		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
 		if err != nil {
 			return err
