@@ -13,7 +13,7 @@ import (
 
 	"github.com/rancherfederal/ocil/pkg/store"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha2"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/reference"
@@ -30,14 +30,14 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Layout, reference string) error {
-	cfg := v1alpha1.File{
+	cfg := v1alpha2.File{
 		Path: reference,
 	}
 
 	return storeFile(ctx, s, cfg)
 }
 
-func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
+func storeFile(ctx context.Context, s *store.Layout, fi v1alpha2.File) error {
 	l := log.FromContext(ctx)
 
 	copts := getter.ClientOptions{
@@ -70,14 +70,14 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, reference string) error {
-	cfg := v1alpha1.Image{
+	cfg := v1alpha2.Image{
 		Name: reference,
 	}
 
 	return storeImage(ctx, s, cfg)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1alpha2.Image) error {
 	l := log.FromContext(ctx)
 
 	img, err := image.NewImage(i.Name)
@@ -121,7 +121,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 
 func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartName string) error {
 	// TODO: Reduce duplicates between api chart and upstream helm opts
-	cfg := v1alpha1.Chart{
+	cfg := v1alpha2.Chart{
 		Name:    chartName,
 		RepoURL: o.ChartOpts.RepoURL,
 		Version: o.ChartOpts.Version,
@@ -130,7 +130,7 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartNam
 	return storeChart(ctx, s, cfg, o.ChartOpts)
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
+func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha2.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
 
 	// TODO: This shouldn't be necessary

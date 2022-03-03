@@ -5,7 +5,7 @@ import (
 	"github.com/rancherfederal/ocil/pkg/artifacts/image"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha2"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 	"github.com/rancherfederal/hauler/pkg/reference"
 )
@@ -15,13 +15,13 @@ var _ artifacts.OCICollection = (*tchart)(nil)
 // tchart is a thick chart that includes all the dependent images as well as the chart itself
 type tchart struct {
 	chart  *chart.Chart
-	config v1alpha1.ThickChart
+	config v1alpha2.ThickChart
 
 	computed bool
 	contents map[string]artifacts.OCI
 }
 
-func NewThickChart(cfg v1alpha1.ThickChart, opts *action.ChartPathOptions) (artifacts.OCICollection, error) {
+func NewThickChart(cfg v1alpha2.ThickChart, opts *action.ChartPathOptions) (artifacts.OCICollection, error) {
 	o, err := chart.NewChart(cfg.Chart.Name, opts)
 	if err != nil {
 		return nil, err

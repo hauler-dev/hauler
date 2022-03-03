@@ -66,9 +66,9 @@ func WithExcludeSources(exclude ...string) Option {
 	return withExcludeSources(exclude)
 }
 
-func New(ref string, opts ...Option) (*ImageTxt, error) {
+func New(path string, opts ...Option) (*ImageTxt, error) {
 	it := &ImageTxt{
-		Ref: ref,
+		Ref: path,
 
 		client: getter.NewClient(getter.ClientOptions{}),
 		lock:   &sync.Mutex{},

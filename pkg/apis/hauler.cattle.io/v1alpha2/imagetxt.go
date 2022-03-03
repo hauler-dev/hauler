@@ -1,4 +1,4 @@
-package v1alpha1
+package v1alpha2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,7 +20,7 @@ type ImageTxtsSpec struct {
 }
 
 type ImageTxt struct {
-	Ref     string          `json:"ref,omitempty"`
+	Path    string          `json:"path,omitempty"`
 	Sources ImageTxtSources `json:"sources,omitempty"`
 }
 
