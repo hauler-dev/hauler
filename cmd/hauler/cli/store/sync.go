@@ -77,7 +77,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 			// content.hauler.cattle.io/v1alpha1
 			case gvk.GroupVersion() == v1alpha1.ContentGroupVersion:
 				l.Warnf(
-					"API version %s is deprecated in v0.3; ok to use in v0.2, %s is recommended instead for v0.3",
+					"API version %s is deprecated in v0.3; ok to use in v0.2, use %s instead in v0.3",
 					gvk.GroupVersion().String(),
 					v1alpha2.ContentGroupVersion.String(),
 				)
@@ -125,7 +125,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 			// collection.hauler.cattle.io/v1alpha1
 			case gvk.GroupVersion() == v1alpha1.CollectionGroupVersion:
 				l.Warnf(
-					"API version %s is deprecated in v0.3; ok to use in v0.2, %s is recommended instead for v0.3",
+					"API version %s is deprecated in v0.3; ok to use in v0.2, use %s instead in v0.3",
 					gvk.GroupVersion().String(),
 					v1alpha2.CollectionGroupVersion.String(),
 				)
