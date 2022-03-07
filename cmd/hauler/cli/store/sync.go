@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -72,15 +71,17 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 
 			l.Infof("syncing [%s] to [%s]", obj.GroupVersionKind().String(), s.DataDir)
 
-			switch obj.GroupVersionKind().GroupVersion() {
+			gvk := obj.GroupVersionKind()
+
+			switch {
 			// content.hauler.cattle.io/v1alpha1
-			case schema.GroupVersion{Group: v1alpha1.ContentGroup, Version: v1alpha1.Version}:
+			case gvk.GroupVersion() == v1alpha1.ContentGroupVersion:
 				l.Warnf(
-					"API version %s is deprecated; %s is recommended instead",
-					obj.GroupVersionKind().GroupVersion().String(),
-					schema.GroupVersion{Group: v1alpha2.ContentGroup, Version: v1alpha2.Version}.String(),
+					"API version %s is deprecated in v0.3; ok to use in v0.2, %s is recommended instead for v0.3",
+					gvk.GroupVersion().String(),
+					v1alpha2.ContentGroupVersion.String(),
 				)
-				switch obj.GroupVersionKind().Kind {
+				switch gvk.Kind {
 				// content.hauler.cattle.io/v1alpha1 Files
 				case v1alpha1.FilesContentKind:
 					var cfg v1alpha1.Files
@@ -122,13 +123,13 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 					return fmt.Errorf("unsupported Kind %s for %s", obj.GroupVersionKind().Kind, obj.GroupVersionKind().GroupVersion().String())
 				}
 			// collection.hauler.cattle.io/v1alpha1
-			case schema.GroupVersion{Group: v1alpha1.CollectionGroup, Version: v1alpha1.Version}:
+			case gvk.GroupVersion() == v1alpha1.CollectionGroupVersion:
 				l.Warnf(
-					"API version %s is deprecated; %s is recommended instead",
-					obj.GroupVersionKind().GroupVersion().String(),
-					schema.GroupVersion{Group: v1alpha2.CollectionGroup, Version: v1alpha2.Version}.String(),
+					"API version %s is deprecated in v0.3; ok to use in v0.2, %s is recommended instead for v0.3",
+					gvk.GroupVersion().String(),
+					v1alpha2.CollectionGroupVersion.String(),
 				)
-				switch obj.GroupVersionKind().Kind {
+				switch gvk.Kind {
 				// collection.hauler.cattle.io/v1alpha1 K3s
 				case v1alpha1.K3sCollectionKind:
 					var cfg v1alpha1.K3s
@@ -159,12 +160,11 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 					}
 				// collection.hauler.cattle.io/v1alpha1 unknown
 				default:
-					return fmt.Errorf("unsupported Kind %s for %s", obj.GroupVersionKind().Kind, obj.GroupVersionKind().GroupVersion().String())
+					return fmt.Errorf("unsupported Kind %s for %s", gvk.Kind, gvk.GroupVersion().String())
 				}
-			// content.hauler.cattle.io/v1alpha2
-			case schema.GroupVersion{Group: v1alpha2.ContentGroup, Version: v1alpha2.Version}:
-			// collection.hauler.cattle.io/v1alpha2
-			case schema.GroupVersion{Group: v1alpha2.CollectionGroup, Version: v1alpha2.Version}:
+			// content.hauler.cattle.io/v1alpha2 + collection.hauler.cattle.io/v1alpha2
+			case gvk.GroupVersion() == v1alpha2.ContentGroupVersion || gvk.GroupVersion() == v1alpha2.CollectionGroupVersion:
+				return fmt.Errorf("API group + version %s not yet supported", gvk.GroupVersion().String())
 			// unknown
 			default:
 				return fmt.Errorf("unrecognized content/collection type: %s", obj.GroupVersionKind().String())
