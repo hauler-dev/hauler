@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha2"
 )
 
 func Load(data []byte) (schema.ObjectKind, error) {
@@ -16,8 +17,9 @@ func Load(data []byte) (schema.ObjectKind, error) {
 		return nil, err
 	}
 
-	if tm.GroupVersionKind().GroupVersion() != v1alpha1.ContentGroupVersion && tm.GroupVersionKind().GroupVersion() != v1alpha1.CollectionGroupVersion {
-		return nil, fmt.Errorf("unrecognized content/collection type: %s", tm.GroupVersionKind().String())
+	gv := tm.GroupVersionKind().GroupVersion()
+	if gv != v1alpha1.ContentGroupVersion && gv != v1alpha1.CollectionGroupVersion && gv != v1alpha2.ContentGroupVersion && gv != v1alpha2.CollectionGroupVersion {
+		return nil, fmt.Errorf("unrecognized API type: %s", tm.GroupVersionKind().String())
 	}
 
 	return tm, nil
