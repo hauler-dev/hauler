@@ -39,7 +39,7 @@ func New() *cobra.Command {
 	}
 
 	pf := cmd.PersistentFlags()
-	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
+	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", `Verbosity of logs ("debug", info", "warn", "error")`)
 	pf.StringVar(&ro.cacheDir, "cache", "", "Location of where to store cache data (defaults to $XDG_CACHE_HOME/hauler)")
 	pf.StringVarP(&ro.storeDir, "store", "s", "", "Location to create store at (defaults to $PWD/store)")
 
