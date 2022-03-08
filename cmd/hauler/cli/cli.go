@@ -63,23 +63,23 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve store absolute path: %w", err)
 	}
 
 	l.Debugf("using store at %s", abs)
 	if _, err := os.Stat(abs); errors.Is(err, os.ErrNotExist) {
 		err := os.Mkdir(abs, os.ModePerm)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create store directory %s: %w", abs, err)
 		}
 	} else if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("stat %s: %w", abs, err)
 	}
 
 	// TODO: Do we want this to be configurable?
 	c, err := o.getCache(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get cache: %w", err)
 	}
 
 	s := store.NewStore(ctx, abs, store.WithCache(c))
