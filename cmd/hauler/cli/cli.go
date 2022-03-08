@@ -57,12 +57,7 @@ func (o *rootOpts) getStore(ctx context.Context) (*store.Store, error) {
 
 	if dir == "" {
 		l.Debugf("no store path specified, defaulting to $PWD/store")
-		pwd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-
-		dir = filepath.Join(pwd, defaultStoreLocation)
+		dir = defaultStoreLocation
 	}
 
 	abs, err := filepath.Abs(dir)
