@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -89,18 +90,17 @@ func (o *rootOpts) getCache(ctx context.Context) (cache.Cache, error) {
 	dir := o.cacheDir
 
 	if dir == "" {
-		// Default to $XDG_CACHE_HOME
-		cachedir, err := os.UserCacheDir()
+		// Default to $XDG_CACHE_HOME/hauler
+		userCacheDir, err := os.UserCacheDir()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get default cache directory: %w", err)
 		}
+		dir = filepath.Join(userCacheDir, "hauler")
+	}
 
-		abs, _ := filepath.Abs(filepath.Join(cachedir, "hauler"))
-		if err := os.MkdirAll(abs, os.ModePerm); err != nil {
-			return nil, err
-		}
-
-		dir = abs
+	abs, _ := filepath.Abs(dir)
+	if err := os.MkdirAll(abs, os.ModePerm); err != nil {
+		return nil, fmt.Errorf("create cache directory %s: %w", abs, err)
 	}
 
 	c := cache.NewFilesystem(dir)
