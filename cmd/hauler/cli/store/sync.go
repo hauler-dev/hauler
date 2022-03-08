@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha2"
 	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
@@ -70,79 +71,101 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Store) error {
 
 			l.Infof("syncing [%s] to [%s]", obj.GroupVersionKind().String(), s.DataDir)
 
-			// TODO: Should type switch instead...
-			switch obj.GroupVersionKind().Kind {
-			case v1alpha1.FilesContentKind:
-				var cfg v1alpha1.Files
-				if err := yaml.Unmarshal(doc, &cfg); err != nil {
-					return err
-				}
+			gvk := obj.GroupVersionKind()
 
-				for _, f := range cfg.Spec.Files {
-					err := storeFile(ctx, s, f)
+			switch {
+			// content.hauler.cattle.io/v1alpha1
+			case gvk.GroupVersion() == v1alpha1.ContentGroupVersion:
+				l.Warnf(
+					"API version %s is deprecated in v0.3; ok to use in v0.2, use %s instead in v0.3",
+					gvk.GroupVersion().String(),
+					v1alpha2.ContentGroupVersion.String(),
+				)
+				switch gvk.Kind {
+				// content.hauler.cattle.io/v1alpha1 Files
+				case v1alpha1.FilesContentKind:
+					var cfg v1alpha1.Files
+					if err := yaml.Unmarshal(doc, &cfg); err != nil {
+						return err
+					}
+					for _, f := range cfg.Spec.Files {
+						err := storeFile(ctx, s, f)
+						if err != nil {
+							return err
+						}
+					}
+				// content.hauler.cattle.io/v1alpha1 Images
+				case v1alpha1.ImagesContentKind:
+					var cfg v1alpha1.Images
+					if err := yaml.Unmarshal(doc, &cfg); err != nil {
+						return err
+					}
+					for _, i := range cfg.Spec.Images {
+						err := storeImage(ctx, s, i)
+						if err != nil {
+							return err
+						}
+					}
+				// content.hauler.cattle.io/v1alpha1 Charts
+				case v1alpha1.ChartsContentKind:
+					var cfg v1alpha1.Charts
+					if err := yaml.Unmarshal(doc, &cfg); err != nil {
+						return err
+					}
+					for _, ch := range cfg.Spec.Charts {
+						err := storeChart(ctx, s, ch)
+						if err != nil {
+							return err
+						}
+					}
+				// collection.hauler.cattle.io/v1alpha1 unknown
+				default:
+					return fmt.Errorf("unsupported Kind %s for %s", obj.GroupVersionKind().Kind, obj.GroupVersionKind().GroupVersion().String())
+				}
+			// collection.hauler.cattle.io/v1alpha1
+			case gvk.GroupVersion() == v1alpha1.CollectionGroupVersion:
+				l.Warnf(
+					"API version %s is deprecated in v0.3; ok to use in v0.2, use %s instead in v0.3",
+					gvk.GroupVersion().String(),
+					v1alpha2.CollectionGroupVersion.String(),
+				)
+				switch gvk.Kind {
+				// collection.hauler.cattle.io/v1alpha1 K3s
+				case v1alpha1.K3sCollectionKind:
+					var cfg v1alpha1.K3s
+					if err := yaml.Unmarshal(doc, &cfg); err != nil {
+						return err
+					}
+					k, err := k3s.NewK3s(cfg.Spec.Version)
 					if err != nil {
 						return err
 					}
-				}
-
-			case v1alpha1.ImagesContentKind:
-				var cfg v1alpha1.Images
-				if err := yaml.Unmarshal(doc, &cfg); err != nil {
-					return err
-				}
-
-				for _, i := range cfg.Spec.Images {
-					err := storeImage(ctx, s, i)
-					if err != nil {
+					if _, err := s.AddCollection(ctx, k); err != nil {
 						return err
 					}
-				}
-
-			case v1alpha1.ChartsContentKind:
-				var cfg v1alpha1.Charts
-				if err := yaml.Unmarshal(doc, &cfg); err != nil {
-					return err
-				}
-
-				for _, ch := range cfg.Spec.Charts {
-					err := storeChart(ctx, s, ch)
-					if err != nil {
+				// collection.hauler.cattle.io/v1alpha1 ThickCharts
+				case v1alpha1.ChartsCollectionKind:
+					var cfg v1alpha1.ThickCharts
+					if err := yaml.Unmarshal(doc, &cfg); err != nil {
 						return err
 					}
-				}
-
-			case v1alpha1.K3sCollectionKind:
-				var cfg v1alpha1.K3s
-				if err := yaml.Unmarshal(doc, &cfg); err != nil {
-					return err
-				}
-
-				k, err := k3s.NewK3s(cfg.Spec.Version)
-				if err != nil {
-					return err
-				}
-
-				if _, err := s.AddCollection(ctx, k); err != nil {
-					return err
-				}
-
-			case v1alpha1.ChartsCollectionKind:
-				var cfg v1alpha1.ThickCharts
-				if err := yaml.Unmarshal(doc, &cfg); err != nil {
-					return err
-				}
-
-				for _, cfg := range cfg.Spec.Charts {
-					tc, err := tchart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
-					if err != nil {
-						return err
+					for _, cfg := range cfg.Spec.Charts {
+						tc, err := tchart.NewChart(cfg.Name, cfg.RepoURL, cfg.Version)
+						if err != nil {
+							return err
+						}
+						if _, err := s.AddCollection(ctx, tc); err != nil {
+							return err
+						}
 					}
-
-					if _, err := s.AddCollection(ctx, tc); err != nil {
-						return err
-					}
+				// collection.hauler.cattle.io/v1alpha1 unknown
+				default:
+					return fmt.Errorf("unsupported Kind %s for %s", gvk.Kind, gvk.GroupVersion().String())
 				}
-
+			// content.hauler.cattle.io/v1alpha2 + collection.hauler.cattle.io/v1alpha2
+			case gvk.GroupVersion() == v1alpha2.ContentGroupVersion || gvk.GroupVersion() == v1alpha2.CollectionGroupVersion:
+				return fmt.Errorf("API group + version %s not yet supported", gvk.GroupVersion().String())
+			// unknown
 			default:
 				return fmt.Errorf("unrecognized content/collection type: %s", obj.GroupVersionKind().String())
 			}
