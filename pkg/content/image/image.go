@@ -8,9 +8,9 @@ import (
 	"github.com/rancherfederal/hauler/pkg/artifact"
 )
 
-var _ artifact.OCI = (*image)(nil)
+var _ artifact.OCI = (*Image)(nil)
 
-func (i *image) MediaType() string {
+func (i *Image) MediaType() string {
 	mt, err := i.Image.MediaType()
 	if err != nil {
 		return ""
@@ -18,15 +18,15 @@ func (i *image) MediaType() string {
 	return string(mt)
 }
 
-func (i *image) RawConfig() ([]byte, error) {
+func (i *Image) RawConfig() ([]byte, error) {
 	return i.RawConfigFile()
 }
 
-type image struct {
+type Image struct {
 	gv1.Image
 }
 
-func NewImage(ref string) (*image, error) {
+func NewImage(ref string) (*Image, error) {
 	r, err := name.ParseReference(ref)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func NewImage(ref string) (*image, error) {
 		return nil, err
 	}
 
-	return &image{
+	return &Image{
 		Image: img,
 	}, nil
 }

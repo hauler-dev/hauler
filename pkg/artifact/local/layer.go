@@ -9,8 +9,6 @@ import (
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 )
 
-type Opener func() (io.ReadCloser, error)
-
 func LayerFromOpener(opener Opener, opts ...LayerOption) (v1.Layer, error) {
 	var err error
 
