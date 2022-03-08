@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path"
 
 	"github.com/containerd/containerd/remotes/docker"
@@ -18,18 +19,26 @@ import (
 
 	"github.com/rancherfederal/hauler/pkg/artifact/types"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/version"
 )
 
 type Opts struct {
 	DestinationDir string
-	OutputFile     string
+
+	Username  string
+	Password  string
+	Insecure  bool
+	PlainHTTP bool
 }
 
 func (o *Opts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVar(&o.DestinationDir, "dir", "", "Directory to save contents to (defaults to current directory)")
-	f.StringVarP(&o.OutputFile, "output", "o", "", "(Optional) Override name of file to save.")
+	f.StringVarP(&o.DestinationDir, "output", "o", "", "Directory to save contents to (defaults to current directory)")
+	f.StringVarP(&o.Username, "username", "u", "", "Username when copying to an authenticated remote registry")
+	f.StringVarP(&o.Password, "password", "p", "", "Password when copying to an authenticated remote registry")
+	f.BoolVar(&o.Insecure, "insecure", false, "Toggle allowing insecure connections when copying to a remote registry")
+	f.BoolVar(&o.PlainHTTP, "plain-http", false, "Toggle allowing plain http connections when copying to a remote registry")
 }
 
 func Cmd(ctx context.Context, o *Opts, reference string) error {
@@ -38,12 +47,71 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 	cs := content.NewFileStore(o.DestinationDir)
 	defer cs.Close()
 
-	ref, err := name.ParseReference(reference)
+	// build + configure oras client
+	var refOpts []name.Option
+	remoteOpts := []remote.Option{
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+	}
+
+	if o.PlainHTTP {
+		refOpts = append(refOpts, name.Insecure)
+	}
+
+	if o.Username != "" || o.Password != "" {
+		basicAuth := &authn.Basic{
+			Username: o.Username,
+			Password: o.Password,
+		}
+		remoteOpts = append(remoteOpts, remote.WithAuth(basicAuth))
+	}
+
+	if o.Insecure {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig.InsecureSkipVerify = true
+
+		remoteOpts = append(remoteOpts, remote.WithTransport(transport))
+	}
+
+	// build + configure containerd client
+	var registryOpts []docker.RegistryOpt
+
+	if o.PlainHTTP {
+		registryOpts = append(registryOpts, docker.WithPlainHTTP(docker.MatchAllHosts))
+	}
+
+	if o.Username != "" || o.Password != "" {
+		creds := func(string) (string, string, error) {
+			return o.Username, o.Password, nil
+		}
+		authorizer := docker.NewDockerAuthorizer(docker.WithAuthCreds(creds))
+		registryOpts = append(registryOpts, docker.WithAuthorizer(authorizer))
+	}
+
+	if o.Insecure {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig.InsecureSkipVerify = true
+
+		httpClient := &http.Client{
+			Transport: transport,
+		}
+		registryOpts = append(registryOpts, docker.WithClient(httpClient))
+	}
+
+	resolverOpts := docker.ResolverOptions{
+		Hosts:   docker.ConfigureDefaultRegistries(registryOpts...),
+		Headers: http.Header{},
+	}
+	resolverOpts.Headers.Set("User-Agent", "hauler/"+version.GitVersion)
+
+	resolver := docker.NewResolver(resolverOpts)
+
+	// begin dowloading target
+	ref, err := name.ParseReference(reference, refOpts...)
 	if err != nil {
 		return err
 	}
 
-	desc, err := remote.Get(ref)
+	desc, err := remote.Get(ref, remoteOpts...)
 	if err != nil {
 		return err
 	}
@@ -62,15 +130,12 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 	switch manifest.Config.MediaType {
 	case types.DockerConfigJSON, types.OCIManifestSchema1:
 		l.Debugf("identified [image] (%s) content", manifest.Config.MediaType)
-		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+		img, err := remote.Image(ref, remoteOpts...)
 		if err != nil {
 			return err
 		}
 
-		outputFile := o.OutputFile
-		if outputFile == "" {
-			outputFile = fmt.Sprintf("%s:%s.tar", path.Base(ref.Context().RepositoryStr()), ref.Identifier())
-		}
+		outputFile := fmt.Sprintf("%s_%s.tar", path.Base(ref.Context().RepositoryStr()), ref.Identifier())
 
 		if err := tarball.WriteToFile(outputFile, ref, img); err != nil {
 			return err
@@ -83,7 +148,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 
 		fs := content.NewFileStore(o.DestinationDir)
 
-		resolver := docker.NewResolver(docker.ResolverOptions{})
+		// TODO - additional accepted media types
 		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
 		if err != nil {
 			return err
@@ -100,7 +165,7 @@ func Cmd(ctx context.Context, o *Opts, reference string) error {
 
 		fs := content.NewFileStore(o.DestinationDir)
 
-		resolver := docker.NewResolver(docker.ResolverOptions{})
+		// TODO - additional accepted media types
 		_, descs, err := oras.Pull(ctx, resolver, ref.Name(), fs)
 		if err != nil {
 			return err
