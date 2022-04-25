@@ -152,6 +152,8 @@ spec:
   images:
 $temp
 EOF
+
+cat contents.yaml
 ```
 
 * The result would look like this
