@@ -140,7 +140,7 @@ rancher/nginx-ingress-controller:nginx-1.0.2-hardened4
 
 * The generated list of images can then be used to easily generate a hauler config file by using the following logic:
 ```bash
-temp=$(echo "$IMAGE_LIST" | sed 's/^/  - /')
+temp=$(echo "$IMAGE_LIST" | sed 's/^/  - name: /')
 # sed intents each entry in the list by 2 spaces, then
 # appends -, to make add an entry to the yaml list
 cat << EOF | tee contents.yaml
@@ -164,16 +164,16 @@ metadata:
   name: myimage
 spec:
   images:
-  - index.docker.io/rancher/hardened-etcd:v3.5.1-k3s1-build20220112
-  - index.docker.io/rancher/hardened-kubernetes:v1.23.5-rke2r1-build20220316
-  - index.docker.io/rancher/rke2-cloud-provider:v0.0.3-build20211118
-  - rancher/hardened-calico:v3.21.4-build20220228
-  - rancher/hardened-cluster-autoscaler:v1.8.5-build20211119
-  - rancher/hardened-coredns:v1.9.1-build20220318
-  - rancher/hardened-flannel:v0.17.0-build20220317
-  - rancher/hardened-k8s-metrics-server:v0.5.0-build20211119
-  - rancher/klipper-helm:v0.7.0-build20220315
-  - rancher/nginx-ingress-controller:nginx-1.0.2-hardened4
+  - name: index.docker.io/rancher/hardened-etcd:v3.5.1-k3s1-build20220112
+  - name: index.docker.io/rancher/hardened-kubernetes:v1.23.5-rke2r1-build20220316
+  - name: index.docker.io/rancher/rke2-cloud-provider:v0.0.3-build20211118
+  - name: rancher/hardened-calico:v3.21.4-build20220228
+  - name: rancher/hardened-cluster-autoscaler:v1.8.5-build20211119
+  - name: rancher/hardened-coredns:v1.9.1-build20220318
+  - name: rancher/hardened-flannel:v0.17.0-build20220317
+  - name: rancher/hardened-k8s-metrics-server:v0.5.0-build20211119
+  - name: rancher/klipper-helm:v0.7.0-build20220315
+  - name: rancher/nginx-ingress-controller:nginx-1.0.2-hardened4
 ```
 
 ### Collections
