@@ -140,7 +140,7 @@ rancher/nginx-ingress-controller:nginx-1.0.2-hardened4
 
 * The generated list of images can then be used to easily generate a hauler config file by using the following logic:
 ```bash
-temp=$(echo "$IMAGE_LIST" | sed 's/^/  - name: /')
+temp=$(cat "$IMAGE_LIST" | sed 's/^/  - name: /')
 # sed, stream editor, appends 2 spaces of indentation denotes 
 # an entry in a list, then adds name: to match expected syntax
 cat << EOF | tee contents.yaml
