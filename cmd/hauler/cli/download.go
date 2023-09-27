@@ -12,7 +12,10 @@ func addDownload(parent *cobra.Command) {
 	cmd := &cobra.Command{
 		Use:   "download",
 		Short: "Download OCI content from a registry and populate it on disk",
-		Long: `Locate OCI content based on it's reference in a compatible registry and download the contents to disk.
+		Long: `*** WARNING: Deprecated Command *** 
+The 'download (dl)' command is deprecated and will be removed in a future release of Hauler.
+
+Locate OCI content based on it's reference in a compatible registry and download the contents to disk.
 
 Note that the content type determines it's format on disk.  Hauler's built in content types act as follows:
 

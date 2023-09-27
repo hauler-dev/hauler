@@ -10,6 +10,8 @@ func addServe(parent *cobra.Command) {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run one or more of hauler's embedded servers types",
+		Long: `*** WARNING: Deprecated Command *** 
+The 'serve' command is deprecated and will be removed in a future release of Hauler.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
