@@ -26,3 +26,9 @@ For a guided example of all of `haulers` capabilities, check out the [guided exa
 * [go-containerregistry](https://github.com/google/go-containerregistry)
 * [oras](https://github.com/oras-project/oras)
 * [cosign](https://github.com/sigstore/cosign)
+
+## Notices
+
+*** WARNING: Deprecated Command *** 
+
+The `hauler download (dl)` and `hauler serve (not the store version)` commands are deprecated and will be removed in a future release of Hauler.
