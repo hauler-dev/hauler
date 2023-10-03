@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
-	"github.com/rancherfederal/ocil/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/reference"

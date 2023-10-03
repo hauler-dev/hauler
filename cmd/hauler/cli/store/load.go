@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/mholt/archiver/v3"
-	"github.com/rancherfederal/ocil/pkg/content"
-	"github.com/rancherfederal/ocil/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/content"
+	"github.com/rancherfederal/hauler/pkg/store"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/log"

@@ -12,9 +12,9 @@ import (
 	"github.com/rancherfederal/hauler/pkg/log"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	artifact "github.com/rancherfederal/ocil/pkg/artifacts"
-	"github.com/rancherfederal/ocil/pkg/artifacts/file/getter"
-	"github.com/rancherfederal/ocil/pkg/artifacts/image"
+	artifact "github.com/rancherfederal/hauler/pkg/artifacts"
+	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
+	"github.com/rancherfederal/hauler/pkg/artifacts/image"
 )
 
 type ImageTxt struct {

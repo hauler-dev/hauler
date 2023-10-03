@@ -14,15 +14,15 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rancherfederal/ocil/pkg/artifacts"
+	"github.com/rancherfederal/hauler/pkg/artifacts"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 
-	"github.com/rancherfederal/ocil/pkg/layer"
+	"github.com/rancherfederal/hauler/pkg/layer"
 
-	"github.com/rancherfederal/ocil/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
 var _ artifacts.OCI = (*Chart)(nil)
@@ -137,7 +137,8 @@ func (h *Chart) RawChartData() ([]byte, error) {
 }
 
 // chartData loads the chart contents into memory and returns a NopCloser for the contents
-// 		Normally we avoid loading into memory, but charts sizes are strictly capped at ~1MB
+//
+//	Normally we avoid loading into memory, but charts sizes are strictly capped at ~1MB
 func (h *Chart) chartData() (gv1.Layer, error) {
 	info, err := os.Stat(h.path)
 	if err != nil {

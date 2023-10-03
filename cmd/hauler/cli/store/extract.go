@@ -8,7 +8,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/ocil/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/log"

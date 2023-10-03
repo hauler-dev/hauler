@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rancherfederal/ocil/pkg/layer"
-	"github.com/rancherfederal/ocil/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/layer"
+	"github.com/rancherfederal/hauler/pkg/store"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/log"
