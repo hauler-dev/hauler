@@ -11,25 +11,28 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/rancherfederal/ocil/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/imagetxt"
 	"github.com/rancherfederal/hauler/pkg/collection/k3s"
 	"github.com/rancherfederal/hauler/pkg/content"
+	"github.com/rancherfederal/hauler/pkg/cosign"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 type SyncOpts struct {
 	*RootOpts
 	ContentFiles []string
+	Key          string
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
+	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for digital signature verification")
 }
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
@@ -94,7 +97,17 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 				}
 
 				for _, i := range cfg.Spec.Images {
-					err := storeImage(ctx, s, i)
+
+					// Check if the user provided a key.
+					if o.Key != "" {
+						// verify signature using the provided key.
+						err := cosign.VerifySignature(i.Name, o.Key)
+						if err != nil {
+							return err
+						}
+					}
+
+					err = storeImage(ctx, s, i)
 					if err != nil {
 						return err
 					}

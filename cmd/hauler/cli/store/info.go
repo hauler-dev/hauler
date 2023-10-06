@@ -10,9 +10,9 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/ocil/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/consts"
 
-	"github.com/rancherfederal/ocil/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/pkg/reference"
 )
@@ -78,9 +78,11 @@ func buildTable(items ...item) string {
 	fmt.Fprintf(tw, "---------\t----\t--------\t----\n")
 
 	for _, i := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n",
-			i.Reference, i.Type, i.Layers, i.Size,
-		)
+		if i.Type != "unknown" {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n",
+				i.Reference, i.Type, i.Layers, i.Size,
+			)
+		}
 	}
 	tw.Flush()
 	return b.String()

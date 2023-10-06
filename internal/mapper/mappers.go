@@ -39,7 +39,7 @@ func Images() map[string]Fn {
 		return "manifest.json", nil
 	})
 
-	for _, l := range []string{consts.DockerManifestSchema2, consts.OCIManifestSchema1} {
+	for _, l := range []string{consts.DockerManifestSchema2, consts.DockerManifestListSchema2, consts.OCIManifestSchema1} {
 		m[l] = manifestMapperFn
 	}
 

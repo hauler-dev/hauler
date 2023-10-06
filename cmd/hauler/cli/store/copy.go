@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
+	"github.com/rancherfederal/hauler/pkg/cosign"
 	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/reference"
 )
 
 type CopyOpts struct {
@@ -36,7 +35,6 @@ func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string) error {
 	l := log.FromContext(ctx)
 
-	var descs []ocispec.Descriptor
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
 	case "dir":
@@ -44,11 +42,10 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 		fs := content.NewFile(components[1])
 		defer fs.Close()
 
-		ds, err := s.CopyAll(ctx, fs, nil)
+		_, err := s.CopyAll(ctx, fs, nil)
 		if err != nil {
 			return err
 		}
-		descs = ds
 
 	case "registry":
 		l.Debugf("identified registry target reference")
@@ -58,29 +55,16 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			Insecure:  o.Insecure,
 			PlainHTTP: o.PlainHTTP,
 		}
-		r, err := content.NewRegistry(ropts)
+
+		err := cosign.LoadImage(s.Root, components[1], ropts)
 		if err != nil {
 			return err
 		}
-
-		mapperFn := func(ref string) (string, error) {
-			r, err := reference.Relocate(ref, components[1])
-			if err != nil {
-				return "", err
-			}
-			return r.Name(), nil
-		}
-
-		ds, err := s.CopyAll(ctx, r, mapperFn)
-		if err != nil {
-			return err
-		}
-		descs = ds
 
 	default:
 		return fmt.Errorf("detecting protocol from [%s]", targetRef)
 	}
 
-	l.Infof("Copied [%d] artifacts to [%s]", len(descs), components[1])
+	l.Infof("Copied artifacts to [%s]", components[1])
 	return nil
 }
