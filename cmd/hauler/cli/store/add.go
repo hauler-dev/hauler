@@ -78,7 +78,7 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 	// Check if the user provided a key.
 	if o.Key != "" {
 		// verify signature using the provided key.
-		err := cosign.VerifySignature(reference, o.Key)
+		err := cosign.VerifySignature(ctx, s, o.Key)
 		if err != nil {
 			return err
 		}
@@ -95,7 +95,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 		return err
 	}
 
-	err = cosign.SaveImage(s.Root, r.Name())
+	err = cosign.SaveImage(ctx, s, r.Name())
 	//desc, err := s.AddOCI(ctx, img, r.Name())
 	if err != nil {
 		return err

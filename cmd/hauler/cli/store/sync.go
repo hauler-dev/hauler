@@ -101,7 +101,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 					// Check if the user provided a key.
 					if o.Key != "" {
 						// verify signature using the provided key.
-						err := cosign.VerifySignature(i.Name, o.Key)
+						err := cosign.VerifySignature(ctx, s, o.Key)
 						if err != nil {
 							return err
 						}

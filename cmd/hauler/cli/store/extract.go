@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"encoding/json"
 	"fmt"
 
@@ -36,7 +37,8 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Layout, ref string
 
 	found := false
 	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
-		if reference != r.Name() {
+	
+		if !strings.Contains(reference, r.Name()) {
 			return nil
 		}
 		found = true
@@ -57,7 +59,7 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Layout, ref string
 			return err
 		}
 
-		pushedDesc, err := s.Copy(ctx, r.Name(), mapperStore, "")
+		pushedDesc, err := s.Copy(ctx, reference, mapperStore, "")
 		if err != nil {
 			return err
 		}
