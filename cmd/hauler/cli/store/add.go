@@ -83,7 +83,7 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 		if err != nil {
 			return err
 		}
-		l.Infof("Signature verified for image [%s]", cfg.Name)
+		l.Infof("signature verified for image [%s]", cfg.Name)
 	}
 
 	return storeImage(ctx, s, cfg)

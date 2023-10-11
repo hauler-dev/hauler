@@ -105,7 +105,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 						if err != nil {
 							return err
 						}
-						l.Infof("Signature verified for image [%s]", cfg.Name)
+						l.Infof("signature verified for image [%s]", i.Name)
 					}
 
 					err = storeImage(ctx, s, i)
