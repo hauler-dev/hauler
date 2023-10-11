@@ -25,7 +25,7 @@ import (
 )
 
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
-func VerifySignature(ctx context.Context, s *store.Layout, keyPath string) error {
+func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string) error {
 
 	// Ensure that the cosign binary is installed or download it if needed
 	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
@@ -34,7 +34,7 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string) error
 	}
 
 	// Command to verify the signature using Cosign.
-	cmd := exec.Command(cosignBinaryPath, "verify", "--insecure-ignore-tlog", "--key", keyPath, s.Root)
+	cmd := exec.Command(cosignBinaryPath, "verify", "--insecure-ignore-tlog", "--key", keyPath, ref)
 
 	// Run the command and capture its output.
 	output, err := cmd.CombinedOutput()
@@ -53,10 +53,9 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
 	if err != nil {
 		return err
 	}
-	println(cosignBinaryPath)
 
 	// Command to verify the signature using Cosign.
-	cmd := exec.Command("/Users/amartin/go/bin/cosign", "save", ref, "--dir", s.Root)
+	cmd := exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
 
 	// Run the command and capture its output.
 	output, err := cmd.CombinedOutput()
@@ -75,10 +74,9 @@ func LoadImage(ctx context.Context, s *store.Layout, registry string, ropts cont
 	if err != nil {
 		return err
 	}
-	println(cosignBinaryPath)
 
 	// Command to verify the signature using Cosign.
-	cmd := exec.Command("/Users/amartin/go/bin/cosign", "load", "--registry", registry, "--dir", s.Root)
+	cmd := exec.Command(cosignBinaryPath, "load", "--registry", registry, "--dir", s.Root)
 
 	// Conditionally add extra registry flags.
 	if ropts.Insecure {

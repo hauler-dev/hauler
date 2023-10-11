@@ -71,6 +71,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, reference string) error {
+	l := log.FromContext(ctx)
 	cfg := v1alpha1.Image{
 		Name: reference,
 	}
@@ -78,10 +79,11 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 	// Check if the user provided a key.
 	if o.Key != "" {
 		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, s, o.Key)
+		err := cosign.VerifySignature(ctx, s, o.Key, cfg.Name)
 		if err != nil {
 			return err
 		}
+		l.Infof("Signature verified for image [%s]", cfg.Name)
 	}
 
 	return storeImage(ctx, s, cfg)

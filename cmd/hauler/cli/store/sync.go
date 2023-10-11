@@ -101,10 +101,11 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 					// Check if the user provided a key.
 					if o.Key != "" {
 						// verify signature using the provided key.
-						err := cosign.VerifySignature(ctx, s, o.Key)
+						err := cosign.VerifySignature(ctx, s, o.Key, i.Name)
 						if err != nil {
 							return err
 						}
+						l.Infof("Signature verified for image [%s]", cfg.Name)
 					}
 
 					err = storeImage(ctx, s, i)
