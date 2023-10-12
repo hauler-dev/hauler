@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"github.com/mitchellh/go-homedir"
 
 	"github.com/rancherfederal/hauler/pkg/store"
 
@@ -32,7 +33,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
-	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for digital signature verification")
+	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for image signature verification")
 }
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
@@ -99,15 +100,22 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 				for _, i := range cfg.Spec.Images {
 
 					// Check if the user provided a key.
-					if o.Key != "" {
+					if o.Key != "" || i.Key != "" {
+						key := o.Key
+						if i.Key != "" {
+							key, err = homedir.Expand(i.Key)
+						}
+						l.Debugf("key for image [%s]", key)
+						
 						// verify signature using the provided key.
-						err := cosign.VerifySignature(ctx, s, o.Key, i.Name)
+						err := cosign.VerifySignature(ctx, s, key, i.Name)
 						if err != nil {
-							return err
+							l.Errorf("signature verification failed for image [%s]. ** hauler will skip adding this image to the store **:\n%v", i.Name, err)
+							continue
 						}
 						l.Infof("signature verified for image [%s]", i.Name)
 					}
-
+					
 					err = storeImage(ctx, s, i)
 					if err != nil {
 						return err

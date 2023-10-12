@@ -54,7 +54,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
 		return err
 	}
 
-	// Command to verify the signature using Cosign.
+	// Command to save/download an image using Cosign.
 	cmd := exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
 
 	// Run the command and capture its output.
@@ -75,7 +75,7 @@ func LoadImage(ctx context.Context, s *store.Layout, registry string, ropts cont
 		return err
 	}
 
-	// Command to verify the signature using Cosign.
+	// Command to upload index to a remote registry using Cosign.
 	cmd := exec.Command(cosignBinaryPath, "load", "--registry", registry, "--dir", s.Root)
 
 	// Conditionally add extra registry flags.
