@@ -60,7 +60,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 		if err != nil {
 			return err
 		}
-		err = ExtractCmd(ctx, &ExtractOpts{RootOpts: o.RootOpts}, s, "hauler/rke2-manifest.yaml:v2.7.8")
+		err = ExtractCmd(ctx, &ExtractOpts{RootOpts: o.RootOpts}, s, fmt.Sprintf("%s-manifest.yaml:%s", parts[0],parts[1]))
 		if err != nil {
 			return err
 		}
