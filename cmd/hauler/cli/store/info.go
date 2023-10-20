@@ -116,7 +116,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest) item 
 		ctype = "image"
 	case consts.ChartConfigMediaType:
 		ctype = "chart"
-	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType:
+	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType, consts.OCIArtifact:
 		ctype = "file"
 	default:
 		ctype = "unknown"
