@@ -48,6 +48,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 		return err
 	}
 
+	// if passed products, check for a remote manifest to retrieve and use.
 	for _, product := range o.Products {
 		l.Infof("processing content file for product: '%s'", product)
 		parts := strings.Split(product, "=")
@@ -76,6 +77,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 		}
 	}
 
+	// if passed a local manifest, process it
 	for _, filename := range o.ContentFiles {
 		l.Debugf("processing content file: '%s'", filename)
 		fi, err := os.Open(filename)
