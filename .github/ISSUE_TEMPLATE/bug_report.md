@@ -24,8 +24,7 @@ assignees: ''
 * <!-- A clear and concise way to reproduce the bug. -->
 
 **Expected behavior:**
-<!-- A clear and concise description of what you expected to happen, without the bug. -->
-*
+* <!-- A clear and concise description of what you expected to happen, without the bug. -->
 
 **Actual behavior:**
 * <!-- A clear and concise description of what actually happened. -->
