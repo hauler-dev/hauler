@@ -49,6 +49,5 @@ const (
 	KindAnnotationName = "kind"
 	KindAnnotation     = "dev.cosignproject.cosign/image"
 
-	//CarbideRegistry = "rgcrprod.azurecr.us"
-	CarbideRegistry = "localhost:5001"
+	CarbideRegistry = "rgcrprod.azurecr.us"
 )
