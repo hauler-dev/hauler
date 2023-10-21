@@ -6,7 +6,9 @@
 
 `Rancher Government Hauler` simplifies the airgap experience without requiring users to adopt a specific workflow. **Hauler** simplifies the airgapping process, by representing assets (images, charts, files, etc...) as content and collections to allow users to easily fetch, store, package, and distribute these assets with declarative manifests or through the command line.
 
-`Hauler` does this by storing contents and collections as OCI Objects and Specifications and allows users to serve contents and collections with an embedded registry and fileserver. Additionally, `Hauler` has the ability to inspect and verify image attestations and warn when attestations are available for a specific image. For more information, please review the **[Hauler Documentation](https://rancherfederal.github.io/hauler-docs)!**
+`Hauler` does this by storing contents and collections as OCI Artifacts and allows users to serve contents and collections with an embedded registry and fileserver. Additionally, `Hauler` has the ability to store and inspect various non-image OCI Artifacts. 
+
+For more information, please review the **[Hauler Documentation](https://rancherfederal.github.io/hauler-docs)!**
 
 ## Latest Release
 * [Hauler v0.3.0](https://github.com/rancherfederal/hauler/releases/tag/v0.3.0)
@@ -19,7 +21,7 @@
 ```bash
 curl -#OL https://github.com/rancherfederal/hauler/releases/download/v0.3.0/hauler_0.3.0_linux_amd64.tar.gz
 tar -xf hauler_0.3.0_linux_amd64.tar.gz
-mv hauler /usr/bin/hauler
+sudo mv hauler /usr/bin/hauler
 ```
 
 ## Acknowledgements
@@ -30,6 +32,6 @@ mv hauler /usr/bin/hauler
 * [cosign](https://github.com/sigstore/cosign)
 
 ## Notices
-**WARNING: Upcoming Deprecated Command(s)**
+**WARNING - Upcoming Deprecated Command(s):**
 
 `hauler download (dl)` and `hauler serve (not the store version)` commands are deprecated and will be removed in a future release.
