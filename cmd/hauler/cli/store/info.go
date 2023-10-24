@@ -105,7 +105,9 @@ type item struct {
 }
 
 func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest) item {
-	if desc.Annotations["kind"] == "dev.cosignproject.cosign/atts" || desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" {
+	if desc.Annotations["kind"] == "dev.cosignproject.cosign/atts" ||
+	   desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" ||
+	   desc.Annotations["kind"] == "dev.cosignproject.cosign/sboms" {
 		return item{}
 	}
 
