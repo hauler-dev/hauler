@@ -34,4 +34,4 @@ sudo mv hauler /usr/bin/hauler
 ## Notices
 **WARNING - Upcoming Deprecated Command(s):**
 
-`hauler download (dl)` and `hauler serve (not the store version)` commands are deprecated and will be removed in a future release.
+`hauler download` (alternatively, `dl`) and `hauler serve` (_not_ `hauler store serve`) commands are deprecated and will be removed in a future release.
