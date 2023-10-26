@@ -38,14 +38,14 @@ func TestClient_Detect(t *testing.T) {
 			want: "directory",
 		},
 		{
-			name: "should identify a http",
+			name: "should identify an http fqdn",
 			args: args{
 				source: "http://my.cool.website",
 			},
 			want: "http",
 		},
 		{
-			name: "should identify a http",
+			name: "should identify an http fqdn",
 			args: args{
 				source: "https://my.cool.website",
 			},

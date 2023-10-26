@@ -35,8 +35,8 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
-	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for image signature verification")
-	f.StringSliceVar(&o.Products, "products", []string{}, "Used for RGS Carbide customers to supply a product and version and Hauler will retrieve the images. i.e. '--product rancher=v2.7.8'")
+	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for signature verification")
+	f.StringSliceVar(&o.Products, "products", []string{}, "Used for RGS Carbide customers to supply a product and version and Hauler will retrieve the images. i.e. '--product rancher=v2.7.6'")
 }
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {

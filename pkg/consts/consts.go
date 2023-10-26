@@ -29,7 +29,7 @@ const (
 	FileDirectoryConfigMediaType = "application/vnd.content.hauler.file.directory.config.v1+json"
 	FileHttpConfigMediaType      = "application/vnd.content.hauler.file.http.config.v1+json"
 
-	// MemoryConfigMediaType
+	// MemoryConfigMediaType is the reserved media type for Memory config for a generic set of bytes stored in memory
 	MemoryConfigMediaType = "application/vnd.content.hauler.memory.config.v1+json"
 
 	// WasmArtifactLayerMediaType is the reserved media type for WASM artifact layers
