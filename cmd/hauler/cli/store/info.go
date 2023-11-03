@@ -38,7 +38,6 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 		if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
 			return nil
 		}
-
 		rc, err := s.Fetch(ctx, desc)
 		if err != nil {
 			return err
@@ -49,9 +48,11 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 		if err := json.NewDecoder(rc).Decode(&m); err != nil {
 			return err
 		}
-
 		i := newItem(s, desc, m)
-		items = append(items, i)
+		var emptyItem item
+		if i != emptyItem {
+			items = append(items, i)
+		}
 
 		return nil
 	}); err != nil {
@@ -78,7 +79,7 @@ func buildTable(items ...item) string {
 	fmt.Fprintf(tw, "---------\t----\t--------\t----\n")
 
 	for _, i := range items {
-		if i.Type != "unknown" {
+		if i.Type != "" {
 			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n",
 				i.Reference, i.Type, i.Layers, i.Size,
 			)
@@ -104,6 +105,12 @@ type item struct {
 }
 
 func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest) item {
+	if desc.Annotations["kind"] == "dev.cosignproject.cosign/atts" ||
+	   desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" ||
+	   desc.Annotations["kind"] == "dev.cosignproject.cosign/sboms" {
+		return item{}
+	}
+
 	var size int64 = 0
 	for _, l := range m.Layers {
 		size = +l.Size
@@ -119,7 +126,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest) item 
 	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType:
 		ctype = "file"
 	default:
-		ctype = "unknown"
+		ctype = "image"
 	}
 
 	ref, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])

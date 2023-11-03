@@ -10,6 +10,7 @@ const (
 	DockerForeignLayer      = "application/vnd.docker.image.rootfs.foreign.diff.tar.gzip"
 	DockerUncompressedLayer = "application/vnd.docker.image.rootfs.diff.tar"
 	OCILayer                = "application/vnd.oci.image.layer.v1.tar+gzip"
+	OCIArtifact             = "application/vnd.oci.empty.v1+json"
 
 	// ChartConfigMediaType is the reserved media type for the Helm chart manifest config
 	ChartConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
@@ -28,7 +29,7 @@ const (
 	FileDirectoryConfigMediaType = "application/vnd.content.hauler.file.directory.config.v1+json"
 	FileHttpConfigMediaType      = "application/vnd.content.hauler.file.http.config.v1+json"
 
-	// MemoryConfigMediaType
+	// MemoryConfigMediaType is the reserved media type for Memory config for a generic set of bytes stored in memory
 	MemoryConfigMediaType = "application/vnd.content.hauler.memory.config.v1+json"
 
 	// WasmArtifactLayerMediaType is the reserved media type for WASM artifact layers
@@ -47,4 +48,6 @@ const (
 
 	KindAnnotationName = "kind"
 	KindAnnotation     = "dev.cosignproject.cosign/image"
+
+	CarbideRegistry = "rgcrprod.azurecr.us"
 )
