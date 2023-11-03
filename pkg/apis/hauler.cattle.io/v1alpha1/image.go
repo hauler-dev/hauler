@@ -20,4 +20,8 @@ type ImageSpec struct {
 type Image struct {
 	// Name is the full location for the image, can be referenced by tags or digests
 	Name string `json:"name"`
+	
+	// Path is the path to the cosign public key used for verifying image signatures
+	//Key string `json:"key,omitempty"`
+	Key string `json:"key"`
 }
