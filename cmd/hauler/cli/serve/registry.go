@@ -74,6 +74,7 @@ func (o *RegistryOpts) defaultConfig() *configuration.Configuration {
 	cfg.HTTP.Addr = fmt.Sprintf(":%d", o.Port)
 	cfg.HTTP.Headers = http.Header{
 		"X-Content-Type-Options": []string{"nosniff"},
+		"Accept": []string{"application/vnd.dsse.envelope.v1+json, application/json"},
 	}
 
 	return cfg

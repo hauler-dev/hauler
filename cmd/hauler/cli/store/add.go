@@ -4,17 +4,17 @@ import (
 	"context"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/rancherfederal/ocil/pkg/artifacts/file/getter"
+	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/ocil/pkg/artifacts/file"
-	"github.com/rancherfederal/ocil/pkg/artifacts/image"
+	"github.com/rancherfederal/hauler/pkg/artifacts/file"
 
-	"github.com/rancherfederal/ocil/pkg/store"
+	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
+	"github.com/rancherfederal/hauler/pkg/cosign"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/reference"
 )
@@ -62,16 +62,28 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 type AddImageOpts struct {
 	*RootOpts
 	Name string
+	Key  string
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	_ = f
+	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for digital signature verification")
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, reference string) error {
+	l := log.FromContext(ctx)
 	cfg := v1alpha1.Image{
 		Name: reference,
+	}
+
+	// Check if the user provided a key.
+	if o.Key != "" {
+		// verify signature using the provided key.
+		err := cosign.VerifySignature(ctx, s, o.Key, cfg.Name)
+		if err != nil {
+			return err
+		}
+		l.Infof("signature verified for image [%s]", cfg.Name)
 	}
 
 	return storeImage(ctx, s, cfg)
@@ -80,22 +92,18 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 	l := log.FromContext(ctx)
 
-	img, err := image.NewImage(i.Name)
-	if err != nil {
-		return err
-	}
-
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
 		return err
 	}
 
-	desc, err := s.AddOCI(ctx, img, r.Name())
+	err = cosign.SaveImage(ctx, s, r.Name())
+	//desc, err := s.AddOCI(ctx, img, r.Name())
 	if err != nil {
 		return err
 	}
 
-	l.Infof("added 'image' to store at [%s], with digest [%s]", r.Name(), desc.Digest.String())
+	l.Infof("added 'image' to store at [%s]", r.Name())
 	return nil
 }
 

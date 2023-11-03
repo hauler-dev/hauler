@@ -11,13 +11,13 @@ all: fmt vet install test
 
 build:
 	mkdir bin;\
-	$(GO_BUILD_ENV) go build -o bin ./cmd/...;\
+	GOENV=GOARCH=$(uname -m) CGO_ENABLED=0 go build -o bin ./cmd/...;\
 
 build-all: fmt vet
 	goreleaser build --rm-dist --snapshot
 	
 install:
-	$(GO_BUILD_ENV) go install
+	GOENV=GOARCH=$(uname -m) CGO_ENABLED=0 go install ./cmd/...;\
 
 vet:
 	go vet $(GO_FILES)

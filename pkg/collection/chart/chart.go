@@ -1,8 +1,8 @@
 package chart
 
 import (
-	"github.com/rancherfederal/ocil/pkg/artifacts"
-	"github.com/rancherfederal/ocil/pkg/artifacts/image"
+	"github.com/rancherfederal/hauler/pkg/artifacts"
+	"github.com/rancherfederal/hauler/pkg/artifacts/image"
 	"helm.sh/helm/v3/pkg/action"
 
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"

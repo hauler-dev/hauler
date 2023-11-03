@@ -10,7 +10,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/ocil/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/consts"
 
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 )
