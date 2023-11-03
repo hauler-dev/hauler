@@ -52,7 +52,8 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 	for _, product := range o.Products {
 		l.Infof("processing content file for product: '%s'", product)
 		parts := strings.Split(product, "=")
-		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", consts.CarbideRegistry, parts[0], parts[1])
+		tag := strings.ReplaceAll(parts[1], "+", "-")
+		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", consts.CarbideRegistry, parts[0], tag)
 		l.Infof("retrieving product manifest from: '%s'", manifestLoc)
 		img := v1alpha1.Image{
 			Name: manifestLoc,
@@ -61,7 +62,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 		if err != nil {
 			return err
 		}
-		err = ExtractCmd(ctx, &ExtractOpts{RootOpts: o.RootOpts}, s, fmt.Sprintf("%s-manifest.yaml:%s", parts[0],parts[1]))
+		err = ExtractCmd(ctx, &ExtractOpts{RootOpts: o.RootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0],tag))
 		if err != nil {
 			return err
 		}
