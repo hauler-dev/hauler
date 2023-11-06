@@ -146,6 +146,11 @@ func ensureCosignBinary(ctx context.Context, s *store.Layout) (string, error) {
 		}
 	}
 
+    // Make the binary executable.
+    if err := os.Chmod(filepath.Join(haulerDir, "cosign"), 0755); err != nil {
+        return "", fmt.Errorf("error setting executable permission: %v", err)
+    }
+
 	return binaryPath, nil
 }
 
@@ -236,7 +241,7 @@ func downloadCosign(ctx context.Context, haulerDir string) error {
 	l := log.FromContext(ctx)
 
     // Define the GitHub release URL and architecture-specific binary name.
-    releaseURL := "https://github.com/rancher-government-solutions/cosign/releases/latest/download"
+    releaseURL := "https://github.com/rancher-government-carbide/cosign/releases/latest/download"
 	
     // Determine the architecture and add it to the binary name.
     arch := runtime.GOARCH
@@ -267,11 +272,6 @@ func downloadCosign(ctx context.Context, haulerDir string) error {
     _, err = io.Copy(binaryFile, resp.Body)
     if err != nil {
         return fmt.Errorf("error saving cosign binary: %v", err)
-    }
-
-    // Make the binary executable.
-    if err := os.Chmod(binaryFile.Name(), 0755); err != nil {
-        return fmt.Errorf("error setting executable permission: %v", err)
     }
 
     // Rename the binary to "cosign"
