@@ -11,21 +11,8 @@ command -v curl >/dev/null 2>&1 || error_exit "curl is not installed"
 command -v tar >/dev/null 2>&1 || error_exit "tar is not installed"
 command -v sha256sum >/dev/null 2>&1 || error_exit "sha256sum is not installed"
 
-# set default version (latest release)
-version="0.4.0"
-
-# override default version
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -v|--version)
-            version="$2"
-            shift 2
-            ;;
-        *)
-            error_exit "Unknown option: $1"
-            ;;
-    esac
-done
+# set version or default to latest release
+version=${HAULER_VERSION:-0.4.0}
 
 # detect the operating system
 platform=$(uname -s | tr '[:upper:]' '[:lower:]')
