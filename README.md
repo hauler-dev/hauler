@@ -12,16 +12,21 @@ For more information, please review the **[Hauler Documentation](https://rancher
 
 ## Installation
 
-### Linux/Darwin Install
+### Linux/Darwin
 ```bash
-# install latest version
-curl -sfL https://hauler.dev/install.sh | sh
+# install latest release
+curl -sfL https://get.hauler.dev | sh
 
-# install a specific version
-curl -sfL https://hauler.dev/install.sh | HAULER_VERSION=0.4.0 sh
+# install specific release
+curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.0 sh
 ```
 
-### Windows Install
+### Windows
+```bash
+# coming soon
+```
+
+### Homebrew
 ```bash
 # coming soon
 ```
