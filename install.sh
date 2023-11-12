@@ -2,17 +2,33 @@
 
 # function to display error and exit
 function error_exit {
-    echo "Hauler: $1"
+    echo "Hauler - Error: $1"
     exit 1
 }
 
 # check for required tools
 command -v curl >/dev/null 2>&1 || error_exit "curl is not installed"
 command -v tar >/dev/null 2>&1 || error_exit "tar is not installed"
-command -v sha256sum >/dev/null 2>&1 || error_exit "sha256sum is not installed"
+command -v openssl >/dev/null 2>&1 || error_exit "openssl is not installed"
 
-# set version or default to latest release
+# start hauler installation
+echo -e "\n\c" && echo "Hauler: Starting Installation..."
+
+# set version when specified as an environment variable
 version=${HAULER_VERSION:-0.4.0}
+
+# set verision when specified as an argument
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    HAULER_VERSION=*)
+      version="${1#*=}"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
 
 # detect the operating system
 platform=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -43,7 +59,9 @@ case $arch in
 esac
 
 # display the version, platform, and architecture
-echo "Hauler: Version: $version | Platform: $platform | Architecture: $arch"
+echo "- Version: $version"
+echo "- Platform: $platform"
+echo "- Architecture: $arch"
 
 # download the checksum file
 curl -sOL https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_checksums.txt || error_exit "Failed to Download the Checksums File"
@@ -51,11 +69,24 @@ curl -sOL https://github.com/rancherfederal/hauler/releases/download/v${version}
 # download the archive file
 curl -sOL https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_${platform}_${arch}.tar.gz || error_exit "Failed to Download the Archive"
 
-# verify the checksum
-checksum_match=$(sha256sum -c --ignore-missing hauler_${version}_checksums.txt 2>/dev/null | grep "hauler_${version}_${platform}_${arch}.tar.gz: OK")
-if [ -z "$checksum_match" ]; then
-    error_exit "Failed Checksum Verification"
-fi
+# start hauler checksum verification
+echo -e "\n\c" && echo "Hauler: Starting Checksum Verification..."
+
+# verify the hauler checksum
+  expected_checksum=$(awk "/hauler_${version}_${platform}_${arch}\.tar\.gz/ {print \$1}" hauler_${version}_checksums.txt)
+
+  if [ -z "$expected_checksum" ]; then
+    error_exit "Failed to Find Checksum for hauler_${version}_${platform}_${arch}.tar.gz"
+  fi
+
+  determined_checksum=$(openssl sha256 -r "hauler_${version}_${platform}_${arch}.tar.gz" | awk '{print $1}')
+
+  if [ "$determined_checksum" != "$expected_checksum" ]; then
+    error_exit "Failed to Verify Checksum - Expected: $expected_checksum - Determined: $determined_checksum"
+  fi
+
+# hauler checksum verified
+echo "- Successfully Verified Checksum"
 
 # uncompress the archive
 tar -xzf "hauler_${version}_${platform}_${arch}.tar.gz" || error_exit "Failed to Extract the Archive"
@@ -77,4 +108,10 @@ esac
 rm hauler_${version}_checksums.txt hauler_${version}_${platform}_${arch}.tar.gz
 
 # display success message
-echo "Hauler: Installation Successful!! Hauler v${version} is now available for use!"
+echo -e "\n\c" && echo "Hauler: Successfully Installed at /usr/local/bin/hauler"
+
+# display availability message
+echo "- Hauler v${version} is now available for use!"
+
+# display hauler docs message
+echo "- Documentation: https://hauler.dev" && echo -e "\n\c"
