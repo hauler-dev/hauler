@@ -12,10 +12,18 @@ For more information, please review the **[Hauler Documentation](https://rancher
 
 ## Installation
 
+### Linux/Darwin Install
 ```bash
-curl -#OL https://github.com/rancherfederal/hauler/releases/download/v0.3.0/hauler_0.3.0_linux_amd64.tar.gz
-tar -xf hauler_0.3.0_linux_amd64.tar.gz
-sudo mv hauler /usr/bin/hauler
+# install latest version
+curl -sfL https://hauler.dev/install.sh | sh
+
+# install a specific version
+curl -sfL https://hauler.dev/install.sh | HAULER_VERSION=0.4.0 sh
+```
+
+### Windows Install
+```bash
+# coming soon
 ```
 
 ## Acknowledgements

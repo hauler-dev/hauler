@@ -31,10 +31,10 @@ esac
 # detect the architecture
 arch=$(uname -m)
 case $arch in
-    x86_64)
+    x86_64 | x86-32 | x64 | x32 | amd64)
         arch="amd64"
         ;;
-    aarch64)
+    aarch64 | arm64)
         arch="arm64"
         ;;
     *)
@@ -43,12 +43,12 @@ case $arch in
 esac
 
 # display the version, platform, and architecture
-echo "Version: $version | Platform: $platform | Architecture: $arch"
+echo "Hauler: Version: $version | Platform: $platform | Architecture: $arch"
 
 # download the checksum file
 curl -sOL https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_checksums.txt || error_exit "Failed to Download the Checksums File"
 
-# download the tar.gz file
+# download the archive file
 curl -sOL https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_${platform}_${arch}.tar.gz || error_exit "Failed to Download the Archive"
 
 # verify the checksum
@@ -77,4 +77,4 @@ esac
 rm hauler_${version}_checksums.txt hauler_${version}_${platform}_${arch}.tar.gz
 
 # display success message
-echo "Installation Successful! Hauler v${version} is now available for use!"
+echo "Hauler: Installation Successful!! Hauler v${version} is now available for use!"
