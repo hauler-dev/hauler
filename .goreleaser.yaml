@@ -5,7 +5,7 @@ before:
     - go mod download
 
 env:
-  - vpkg=github.com/rancherfederal/hauler/pkg/version
+  - vpkg=github.com/rancherfederal/hauler/internal/version
 
 builds:
   - main: cmd/hauler/main.go
@@ -17,7 +17,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X {{ .Env.vpkg }}.GitVersion={{ .Version }} -X {{ .Env.vpkg }}.commit={{ .ShortCommit }} -X {{ .Env.vpkg }}.buildDate={{ .Date }}
+      - -s -w -X {{ .Env.vpkg }}.gitVersion={{ .Version }} -X {{ .Env.vpkg }}.gitCommit={{ .ShortCommit }} -X {{ .Env.vpkg }}.gitTreeState={{if .IsGitDirty}}dirty{{else}}clean{{end}} -X {{ .Env.vpkg }}.buildDate={{ .Date }}
     env:
       - CGO_ENABLED=0
 
