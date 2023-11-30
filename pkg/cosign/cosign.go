@@ -12,6 +12,7 @@ import (
 	"context"
 	"strings"
 	"encoding/json"
+	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/pkg/content"
@@ -24,76 +25,121 @@ import (
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 )
 
+const maxRetries = 3
+const retryDelay = time.Second * 5
+
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
 func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string) error {
+	operation := func() error {
+		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+		if err != nil {
+			return err
+		}
 
-	// Ensure that the cosign binary is installed or download it if needed
-	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
-	if err != nil {
-		return err
+		cmd := exec.Command(cosignBinaryPath, "verify", "--insecure-ignore-tlog", "--key", keyPath, ref)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error verifying signature: %v, output: %s", err, output)
+		}
+
+		return nil
 	}
 
-	// Command to verify the signature using Cosign.
-	cmd := exec.Command(cosignBinaryPath, "verify", "--insecure-ignore-tlog", "--key", keyPath, ref)
-
-	// Run the command and capture its output.
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error verifying signature: %v, output: %s", err, output)
-	}
-
-	return nil
+	return RetryOperation(ctx, operation)
 }
 
 // SaveImage saves image and any signatures/attestations to the store.
 func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
+	operation := func() error {
+		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+		if err != nil {
+			return err
+		}
 
-	// Ensure that the cosign binary is installed or download it if needed
-	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
-	if err != nil {
-		return err
+		cmd := exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
+		}
+
+		return nil
 	}
 
-	// Command to save/download an image using Cosign.
-	cmd := exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
-
-	// Run the command and capture its output.
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
-	}
-
-	return nil
+	return RetryOperation(ctx, operation)
 }
 
 // LoadImage loads store to a remote registry.
 func LoadImage(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
+	operation := func() error {
+		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+		if err != nil {
+			return err
+		}
 
-	//Ensure that the cosign binary is installed or download it if needed
-	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
-	if err != nil {
-		return err
+		cmd := exec.Command(cosignBinaryPath, "load", "--registry", registry, "--dir", s.Root)
+
+		// Conditionally add extra registry flags.
+		if ropts.Insecure {
+			cmd.Args = append(cmd.Args, "--allow-insecure-registry=true")
+		}
+		if ropts.PlainHTTP {
+			cmd.Args = append(cmd.Args, "--allow-http-registry=true")
+		}
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error copying store: %v, output: %s", err, output)
+		}
+
+		return nil
 	}
 
-	// Command to upload index to a remote registry using Cosign.
-	cmd := exec.Command(cosignBinaryPath, "load", "--registry", registry, "--dir", s.Root)
-
-	// Conditionally add extra registry flags.
-	if ropts.Insecure {
-		cmd.Args = append(cmd.Args, "--allow-insecure-registry=true")
-	}
-	if ropts.PlainHTTP {
-		cmd.Args = append(cmd.Args, "--allow-http-registry=true")
-	}
-
-	// Run the command and capture its output.
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
-	}
-
-	return nil
+	return RetryOperation(ctx, operation)
 }
+
+// RegistryLogin - performs cosign login
+func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
+	operation := func() error {
+		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+		if err != nil {
+			return err
+		}
+
+		cmd := exec.Command(cosignBinaryPath, "login", registry, "-u", ropts.Username, "-p", ropts.Password)
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error logging into registry: %v, output: %s", err, output)
+		}
+
+		return nil
+	}
+
+	return RetryOperation(ctx, operation)
+}
+
+func RetryOperation(ctx context.Context, operation func() error) error {
+	l := log.FromContext(ctx)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := operation()
+		if err == nil {
+			// If the operation succeeds, return nil (no error).
+			return nil
+		}
+
+		// Log the error for the current attempt.
+		l.Errorf("Error (attempt %d/%d): %v", attempt, maxRetries, err)
+
+		// If this is not the last attempt, wait before retrying.
+		if attempt < maxRetries {
+			time.Sleep(retryDelay)
+		}
+	}
+
+	// If all attempts fail, return an error.
+	return fmt.Errorf("operation failed after %d attempts", maxRetries)
+}
+
 
 // ensureCosignBinary checks if the cosign binary exists in the specified directory and installs it if not.
 func ensureCosignBinary(ctx context.Context, s *store.Layout) (string, error) {
