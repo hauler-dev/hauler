@@ -42,12 +42,6 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 	l := log.FromContext(ctx)
 
-	// Start from an empty store (contents are cached elsewhere)
-	l.Debugf("flushing content store")
-	if err := s.Flush(ctx); err != nil {
-		return err
-	}
-
 	// if passed products, check for a remote manifest to retrieve and use.
 	for _, product := range o.Products {
 		l.Infof("processing content file for product: '%s'", product)
