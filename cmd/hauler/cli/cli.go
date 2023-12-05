@@ -35,6 +35,7 @@ func New() *cobra.Command {
 	addStore(cmd)
 	addServe(cmd)
 	addVersion(cmd)
+	addCompletion(cmd)
 
 	return cmd
 }
