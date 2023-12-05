@@ -17,15 +17,20 @@ func addVersion(parent *cobra.Command) {
 		Aliases: []string{"v"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			v := version.GetVersionInfo()
-			response := v.String()
+			v.Name = cmd.Root().Name()
+			v.Description = cmd.Root().Short
+			v.FontName = "starwars"
+			cmd.SetOut(cmd.OutOrStdout())
+
 			if json {
-				data, err := v.JSONString()
+				out, err := v.JSONString()
 				if err != nil {
-					return err
+					return fmt.Errorf("unable to generate JSON from version info: %w", err)
 				}
-				response = data
+				cmd.Println(out)
+			} else {
+				cmd.Println(v.String())
 			}
-			fmt.Print(response)
 			return nil
 		},
 	}

@@ -98,8 +98,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 	}
 
 	err = cosign.SaveImage(ctx, s, r.Name())
-	// sync with local index
-	s.CopyAll(ctx, s.OCI, nil)
 	if err != nil {
 		return err
 	}

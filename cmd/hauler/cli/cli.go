@@ -15,7 +15,7 @@ var ro = &rootOpts{}
 func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hauler",
-		Short: "",
+		Short: "Airgap Swiss Army Knife",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			l := log.FromContext(cmd.Context())
 			l.SetLevel(ro.logLevel)
