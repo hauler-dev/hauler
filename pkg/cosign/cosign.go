@@ -13,6 +13,7 @@ import (
 	"strings"
 	"encoding/json"
 	"time"
+	"bufio"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/pkg/content"
@@ -69,53 +70,81 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
 }
 
 // LoadImage loads store to a remote registry.
-func LoadImage(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
-	operation := func() error {
-		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
-		if err != nil {
-			return err
-		}
+func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
+	l := log.FromContext(ctx)
 
-		cmd := exec.Command(cosignBinaryPath, "load", "--registry", registry, "--dir", s.Root)
-
-		// Conditionally add extra registry flags.
-		if ropts.Insecure {
-			cmd.Args = append(cmd.Args, "--allow-insecure-registry=true")
-		}
-		if ropts.PlainHTTP {
-			cmd.Args = append(cmd.Args, "--allow-http-registry=true")
-		}
-
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("error copying store: %v, output: %s", err, output)
-		}
-
-		return nil
+	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+	if err != nil {
+		return err
 	}
 
-	return RetryOperation(ctx, operation)
+	cmd := exec.Command(cosignBinaryPath, "load", "--registry", registry, "--dir", s.Root)
+
+	// Conditionally add extra registry flags.
+	if ropts.Insecure {
+		cmd.Args = append(cmd.Args, "--allow-insecure-registry=true")
+	}
+	if ropts.PlainHTTP {
+		cmd.Args = append(cmd.Args, "--allow-http-registry=true")
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	// start the command after having set up the pipe
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	
+	// read command's stdout line by line
+	output := bufio.NewScanner(stdout)
+	for output.Scan() {
+		l.Infof(output.Text()) // write each line to your log, or anything you need
+	}
+	if err := output.Err(); err != nil {
+		cmd.Wait()
+		return err
+	}
+
+	// read command's stderr line by line
+	errors := bufio.NewScanner(stderr)
+	for errors.Scan() {
+		l.Errorf(errors.Text()) // write each line to your log, or anything you need
+	}
+	if err := errors.Err(); err != nil {
+		cmd.Wait()
+		return err
+	}
+
+	// Wait for the command to finish
+	err = cmd.Wait()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // RegistryLogin - performs cosign login
 func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
-	operation := func() error {
-		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
-		if err != nil {
-			return err
-		}
-
-		cmd := exec.Command(cosignBinaryPath, "login", registry, "-u", ropts.Username, "-p", ropts.Password)
-
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("error logging into registry: %v, output: %s", err, output)
-		}
-
-		return nil
+	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+	if err != nil {
+		return err
 	}
 
-	return RetryOperation(ctx, operation)
+	cmd := exec.Command(cosignBinaryPath, "login", registry, "-u", ropts.Username, "-p", ropts.Password)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error logging into registry: %v, output: %s", err, output)
+	}
+
+	return nil
 }
 
 func RetryOperation(ctx context.Context, operation func() error) error {

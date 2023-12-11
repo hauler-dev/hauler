@@ -63,7 +63,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			}
 		}
 
-		err := cosign.LoadImage(ctx, s, components[1], ropts)
+		err := cosign.LoadImages(ctx, s, components[1], ropts)
 		if err != nil {
 			return err
 		}
@@ -72,6 +72,6 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 		return fmt.Errorf("detecting protocol from [%s]", targetRef)
 	}
 
-	l.Infof("Copied artifacts to [%s]", components[1])
+	l.Infof("copied artifacts to [%s]", components[1])
 	return nil
 }
