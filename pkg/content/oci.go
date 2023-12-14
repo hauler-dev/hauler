@@ -161,6 +161,14 @@ func (o *OCI) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser
 	return readerAt, nil
 }
 
+func (o *OCI) FetchManifest(ctx context.Context, manifest ocispec.Manifest) (io.ReadCloser, error) {
+	readerAt, err := o.manifestBlobReaderAt(manifest)
+	if err != nil {
+		return nil, err
+	}
+	return readerAt, nil
+}
+
 // Pusher returns a new pusher for the provided reference
 // The returned Pusher should satisfy content.Ingester and concurrent attempts
 // to push the same blob using the Ingester API should result in ErrUnavailable.
@@ -202,6 +210,14 @@ func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) err
 
 func (o *OCI) blobReaderAt(desc ocispec.Descriptor) (*os.File, error) {
 	blobPath, err := o.ensureBlob(desc.Digest.Algorithm().String(), desc.Digest.Hex())
+	if err != nil {
+		return nil, err
+	}
+	return os.Open(blobPath)
+}
+
+func (o *OCI) manifestBlobReaderAt(manifest ocispec.Manifest) (*os.File, error) {
+	blobPath, err := o.ensureBlob(string(manifest.Config.Digest.Algorithm().String()), manifest.Config.Digest.Hex())
 	if err != nil {
 		return nil, err
 	}

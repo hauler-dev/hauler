@@ -4,6 +4,7 @@ const (
 	OCIManifestSchema1        = "application/vnd.oci.image.manifest.v1+json"
 	DockerManifestSchema2     = "application/vnd.docker.distribution.manifest.v2+json"
 	DockerManifestListSchema2 = "application/vnd.docker.distribution.manifest.list.v2+json"
+	OCIImageIndexSchema       = "application/vnd.oci.image.index.v1+json"
 
 	DockerConfigJSON        = "application/vnd.docker.container.image.v1+json"
 	DockerLayer             = "application/vnd.docker.image.rootfs.diff.tar.gzip"

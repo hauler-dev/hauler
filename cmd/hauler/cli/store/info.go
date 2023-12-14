@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"text/tabwriter"
+	"github.com/olekukonko/tablewriter"
+	"os"
+	"sort"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
@@ -44,14 +45,67 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 		}
 		defer rc.Close()
 
-		var m ocispec.Manifest
-		if err := json.NewDecoder(rc).Decode(&m); err != nil {
-			return err
-		}
-		i := newItem(s, desc, m)
-		var emptyItem item
-		if i != emptyItem {
-			items = append(items, i)
+		// handle multi-arch images 
+		if desc.MediaType == consts.OCIImageIndexSchema || desc.MediaType == consts.DockerManifestListSchema2 {
+			var idx ocispec.Index
+			if err := json.NewDecoder(rc).Decode(&idx); err != nil {
+				return err
+			}
+
+			for _, internalDesc := range idx.Manifests {
+				rc, err := s.Fetch(ctx, internalDesc)
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+
+				var internalManifest ocispec.Manifest
+				if err := json.NewDecoder(rc).Decode(&internalManifest); err != nil {
+					return err
+				}
+
+				i := newItem(s, desc, internalManifest, internalDesc.Platform.Architecture)
+				var emptyItem item
+				if i != emptyItem {
+					items = append(items, i)
+				}
+			}
+		// handle single arch docker images
+		} else if desc.MediaType == consts.DockerManifestSchema2 {
+			var m ocispec.Manifest
+			if err := json.NewDecoder(rc).Decode(&m); err != nil {
+				return err
+			}
+			
+			rc, err := s.FetchManifest(ctx, m)
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+
+			// Unmarshal the OCI image content
+			var internalManifest ocispec.Image
+			if err := json.NewDecoder(rc).Decode(&internalManifest); err != nil {
+				return err
+			}
+
+			i := newItem(s, desc, m, internalManifest.Architecture)
+			var emptyItem item
+			if i != emptyItem {
+				items = append(items, i)
+			}
+		// handle the rest
+		} else {  
+			var m ocispec.Manifest
+			if err := json.NewDecoder(rc).Decode(&m); err != nil {
+				return err
+			}
+
+			i := newItem(s, desc, m, "-")
+			var emptyItem item
+			if i != emptyItem {
+				items = append(items, i)
+			}
 		}
 
 		return nil
@@ -59,34 +113,41 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 		return err
 	}
 
+	// sort items by ref and arch
+	sort.Sort(byReferenceAndArch(items))
+
 	var msg string
 	switch o.OutputFormat {
 	case "json":
 		msg = buildJson(items...)
-
+		fmt.Println(msg)
 	default:
-		msg = buildTable(items...)
+		buildTable(items...)
 	}
-	fmt.Println(msg)
 	return nil
 }
 
-func buildTable(items ...item) string {
-	b := strings.Builder{}
-	tw := tabwriter.NewWriter(&b, 1, 1, 3, ' ', 0)
-
-	fmt.Fprintf(tw, "Reference\tType\t# Layers\tSize\n")
-	fmt.Fprintf(tw, "---------\t----\t--------\t----\n")
+func buildTable(items ...item) {
+	// Create a table for the results
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Reference", "Type", "Arch", "# Layers", "Size"})
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetRowLine(false)
+	table.SetAutoMergeCellsByColumnIndex([]int{0})
 
 	for _, i := range items {
 		if i.Type != "" {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n",
-				i.Reference, i.Type, i.Layers, i.Size,
-			)
+			row := []string{
+				i.Reference,
+				i.Type,
+				i.Architecture,
+				fmt.Sprintf("%d", i.Layers),
+				i.Size,
+			}
+			table.Append(row)
 		}
 	}
-	tw.Flush()
-	return b.String()
+	table.Render()
 }
 
 func buildJson(item ...item) string {
@@ -98,16 +159,29 @@ func buildJson(item ...item) string {
 }
 
 type item struct {
-	Reference string
-	Type      string
-	Layers    int
-	Size      string
+	Reference    string
+	Type         string
+	Architecture string
+	Layers       int
+	Size         string
 }
 
-func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest) item {
+type byReferenceAndArch []item
+
+func (a byReferenceAndArch) Len() int      { return len(a) }
+func (a byReferenceAndArch) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a byReferenceAndArch) Less(i, j int) bool {
+	if a[i].Reference == a[j].Reference {
+		return a[i].Architecture < a[j].Architecture
+	}
+	return a[i].Reference < a[j].Reference
+}
+
+func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, arch string) item {
+	// skip listing cosign items
 	if desc.Annotations["kind"] == "dev.cosignproject.cosign/atts" ||
-	   desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" ||
-	   desc.Annotations["kind"] == "dev.cosignproject.cosign/sboms" {
+		desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" ||
+		desc.Annotations["kind"] == "dev.cosignproject.cosign/sboms" {
 		return item{}
 	}
 
@@ -135,10 +209,11 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest) item 
 	}
 
 	return item{
-		Reference: ref.Name(),
-		Type:      ctype,
-		Layers:    len(m.Layers),
-		Size:      byteCountSI(size),
+		Reference:    ref.Name(),
+		Type:         ctype,
+		Architecture: arch,
+		Layers:       len(m.Layers),
+		Size:         byteCountSI(size),
 	}
 }
 
