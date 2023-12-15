@@ -29,7 +29,7 @@ func NewTagged(n string, tag string) (gname.Reference, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	tag = strings.Replace(tag, "+", "-", -1)
 	return repo.Context().Tag(tag), nil
 }
 
