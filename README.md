@@ -15,10 +15,10 @@ For more information, please review the **[Hauler Documentation](https://rancher
 ### Linux/Darwin
 ```bash
 # install latest release
-curl -sfL https://get.hauler.dev | sh
+curl -sfL https://get.hauler.dev | bash
 
 # install specific release
-curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.0 sh
+curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.1 bash
 ```
 
 ### Windows
