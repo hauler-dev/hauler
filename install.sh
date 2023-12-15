@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # Usage:
-#   - curl -sfL... | ENV_VAR=... sh
-#   - ENV_VAR=... sh ./install.sh
+#   - curl -sfL... | ENV_VAR=... bash
+#   - ENV_VAR=... bash ./install.sh
 #   - ./install.sh ENV_VAR=...
 
 # Example:
 #   Install Latest Release
-#     - curl -sfL https://get.hauler.dev | sh
+#     - curl -sfL https://get.hauler.dev | bash
 #   Install Specific Release
-#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.0 sh
+#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.1 bash
 
 # Documentation:
 #   - https://hauler.dev
@@ -34,7 +34,7 @@ function fatal {
 }
 
 # check for required dependencies
-dependencies=("curl" "awk" "openssl" "tar" "sudo" "mv" "rm")
+dependencies=("curl" "awk" "openssl" "tar" "rm")
 
 for cmd in "${dependencies[@]}"; do
     if ! command -v "$cmd" &> /dev/null; then
@@ -46,7 +46,7 @@ done
 info "Starting Installation..."
 
 # set version with an environment variable
-version=${HAULER_VERSION:-0.4.0}
+version=${HAULER_VERSION:-0.4.1}
 
 # set verision with an argument
 while [[ $# -gt 0 ]]; do
@@ -109,17 +109,19 @@ info "Starting Checksum Verification..."
 
 # Verify the Hauler checksum
 expected_checksum=$(awk -v version="$version" -v platform="$platform" -v arch="$arch" '$2 == "hauler_"version"_"platform"_"arch".tar.gz" {print $1}' "hauler_${version}_checksums.txt")
+determined_checksum=$(openssl dgst -sha256 "hauler_${version}_${platform}_${arch}.tar.gz" | awk '{print $2}')
+
 if [ -z "$expected_checksum" ]; then
     fatal "Failed to Locate Checksum: hauler_${version}_${platform}_${arch}.tar.gz"
+elif [ "$determined_checksum" = "$expected_checksum" ]; then
+    verbose "- Expected Checksum: $expected_checksum"
+    verbose "- Determined Checksum: $determined_checksum"
+    verbose "- Successfully Verified Checksum: hauler_${version}_${platform}_${arch}.tar.gz"
+else
+    verbose "- Expected: $expected_checksum"
+    verbose "- Determined: $determined_checksum"
+    fatal "Failed Checksum Verification: hauler_${version}_${platform}_${arch}.tar.gz"
 fi
-
-determined_checksum=$(openssl dgst -sha256 "hauler_${version}_${platform}_${arch}.tar.gz" | awk '{print $2}')
-if [ "$determined_checksum" != "$expected_checksum" ]; then
-    fatal "Failed to Verify Checksum: Expected: $expected_checksum - Determined: $determined_checksum"
-fi
-
-# hauler checksum verified
-verbose "- Successfully Verified Checksum"
 
 # uncompress the archive
 tar -xzf "hauler_${version}_${platform}_${arch}.tar.gz" || fatal "Failed to Extract: hauler_${version}_${platform}_${arch}.tar.gz"
@@ -127,18 +129,21 @@ tar -xzf "hauler_${version}_${platform}_${arch}.tar.gz" || fatal "Failed to Extr
 # install the binary
 case "$platform" in
     linux)
-        sudo mv hauler /usr/local/bin || fatal "Failed to Move: hauler to /usr/local/bin"
+        install hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
         ;;
     darwin)
-        sudo mv hauler /usr/local/bin || fatal "Failed to Move: hauler to /usr/local/bin"
+        install hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
         ;;
     *)
-        fatal "Unsupported Platform/Architecture: $platform/$arch"
+        fatal "Unsupported Platform or Architecture: $platform/$arch"
         ;;
 esac
 
-# clean up the files
-rm "hauler_${version}_checksums.txt" "hauler_${version}_${platform}_${arch}.tar.gz" || warn "Failed to Remove: hauler_${version}_checksums.txt hauler_${version}_${platform}_${arch}.tar.gz"
+# clean up checksum(s)
+rm -rf "hauler_${version}_checksums.txt" || warn "Failed to Remove: hauler_${version}_checksums.txt"
+
+# clean up archive file(s)
+rm -rf "hauler_${version}_${platform}_${arch}.tar.gz" || warn "Failed to Remove: hauler_${version}_${platform}_${arch}.tar.gz"
 
 # display success message
 info "Successfully Installed at /usr/local/bin/hauler"
