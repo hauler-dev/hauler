@@ -45,6 +45,9 @@ func NewTempRegistry(ctx context.Context, root string) *tmpRegistryServer {
 			"filesystem": configuration.Parameters{"rootdirectory": root},
 		},
 	}
+	// Add validation configuration
+	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
+	
 	cfg.Log.Level = "error"
 	cfg.HTTP.Headers = http.Header{
 		"X-Content-Type-Options": []string{"nosniff"},
