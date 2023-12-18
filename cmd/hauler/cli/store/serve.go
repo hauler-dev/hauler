@@ -95,6 +95,10 @@ func (o *ServeOpts) defaultConfig() *configuration.Configuration {
 			// "maintenance": configuration.Parameters{"readonly.enabled": false},
 		},
 	}
+
+	// Add validation configuration
+	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
+
 	cfg.Log.Level = "info"
 	cfg.HTTP.Addr = fmt.Sprintf(":%d", o.Port)
 	cfg.HTTP.Headers = http.Header{
