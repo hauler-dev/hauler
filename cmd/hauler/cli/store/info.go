@@ -22,6 +22,7 @@ type InfoOpts struct {
 	*RootOpts
 
 	OutputFormat string
+	TypeFilter   string
 	SizeUnit     string
 }
 
@@ -29,6 +30,7 @@ func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVarP(&o.OutputFormat, "output", "o", "table", "Output format (table, json)")
+	f.StringVarP(&o.TypeFilter, "type", "t", "all", "Filter on type (image, chart, file)")
 
 	// TODO: Regex/globbing
 }
@@ -64,7 +66,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 					return err
 				}
 
-				i := newItem(s, desc, internalManifest, internalDesc.Platform.Architecture)
+				i := newItem(s, desc, internalManifest, internalDesc.Platform.Architecture, o)
 				var emptyItem item
 				if i != emptyItem {
 					items = append(items, i)
@@ -89,7 +91,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 				return err
 			}
 
-			i := newItem(s, desc, m, internalManifest.Architecture)
+			i := newItem(s, desc, m, internalManifest.Architecture, o)
 			var emptyItem item
 			if i != emptyItem {
 				items = append(items, i)
@@ -101,7 +103,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 				return err
 			}
 
-			i := newItem(s, desc, m, "-")
+			i := newItem(s, desc, m, "-", o)
 			var emptyItem item
 			if i != emptyItem {
 				items = append(items, i)
@@ -177,7 +179,7 @@ func (a byReferenceAndArch) Less(i, j int) bool {
 	return a[i].Reference < a[j].Reference
 }
 
-func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, arch string) item {
+func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, arch string, o *InfoOpts) item {
 	// skip listing cosign items
 	if desc.Annotations["kind"] == "dev.cosignproject.cosign/atts" ||
 		desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" ||
@@ -205,6 +207,10 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, arch 
 
 	ref, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
 	if err != nil {
+		return item{}
+	}
+
+	if o.TypeFilter != "all" && ctype != o.TypeFilter {
 		return item{}
 	}
 

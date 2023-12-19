@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
+	"fmt"
 
 	"github.com/rancherfederal/hauler/cmd/hauler/cli/store"
 )
@@ -155,6 +156,8 @@ func addStoreSave() *cobra.Command {
 func addStoreInfo() *cobra.Command {
 	o := &store.InfoOpts{RootOpts: rootStoreOpts}
 
+	var allowedValues = []string{"image", "chart", "file", "all"}
+
 	cmd := &cobra.Command{
 		Use:     "info",
 		Short:   "Print out information about the store",
@@ -167,8 +170,13 @@ func addStoreInfo() *cobra.Command {
 			if err != nil {
 				return err
 			}
-
-			return store.InfoCmd(ctx, o, s)
+			
+			for _, allowed := range allowedValues {
+				if o.TypeFilter == allowed {
+					return store.InfoCmd(ctx, o, s)
+				}
+			}
+			return fmt.Errorf("type must be one of %v", allowedValues)
 		},
 	}
 	o.AddFlags(cmd)
