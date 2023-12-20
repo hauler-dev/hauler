@@ -18,7 +18,7 @@ For more information, please review the **[Hauler Documentation](https://rancher
 curl -sfL https://get.hauler.dev | bash
 
 # install specific release
-curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.1 bash
+curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.2 bash
 ```
 
 ### Windows

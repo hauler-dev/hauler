@@ -9,7 +9,7 @@
 #   Install Latest Release
 #     - curl -sfL https://get.hauler.dev | bash
 #   Install Specific Release
-#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.1 bash
+#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.2 bash
 
 # Documentation:
 #   - https://hauler.dev
@@ -34,9 +34,7 @@ function fatal {
 }
 
 # check for required dependencies
-dependencies=("curl" "awk" "openssl" "tar" "rm")
-
-for cmd in "${dependencies[@]}"; do
+for cmd in curl sed awk openssl tar rm; do
     if ! command -v "$cmd" &> /dev/null; then
         fatal "$cmd is not installed"
     fi
@@ -46,7 +44,7 @@ done
 info "Starting Installation..."
 
 # set version with an environment variable
-version=${HAULER_VERSION:-0.4.1}
+version=${HAULER_VERSION:-$(curl -s https://api.github.com/repos/rancherfederal/hauler/releases/latest | grep '"tag_name":' | sed 's/.*"v\([^"]*\)".*/\1/')}
 
 # set verision with an argument
 while [[ $# -gt 0 ]]; do
