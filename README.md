@@ -14,19 +14,18 @@ For more information, please review the **[Hauler Documentation](https://rancher
 
 ### Linux/Darwin
 ```bash
-# install latest release
+# installs latest release
 curl -sfL https://get.hauler.dev | bash
-
-# install specific release
-curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.1 bash
-```
-
-### Windows
-```bash
-# coming soon
 ```
 
 ### Homebrew
+```bash
+# installs latest release
+brew tap rancherfederal/homebrew-tap
+brew install hauler
+```
+
+### Windows
 ```bash
 # coming soon
 ```
