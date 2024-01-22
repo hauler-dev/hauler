@@ -108,12 +108,28 @@ func addStoreLoad() *cobra.Command {
 }
 
 func addStoreServe() *cobra.Command {
-	o := &store.ServeOpts{RootOpts: rootStoreOpts}
-
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Expose the content of a local store through an OCI compliant server",
+		Short: "Expose the content of a local store through an OCI compliant registry or file server",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	cmd.AddCommand(
+		addStoreServeRegistry(),
+		addStoreServeFiles(),
+	)
+
+	return cmd
+}
+
+// RegistryCmd serves the embedded registry
+func addStoreServeRegistry() *cobra.Command {
+    o := &store.ServeRegistryOpts{RootOpts: rootStoreOpts}
+	cmd := &cobra.Command{
+        Use:   "registry",
+        Short: "Serve the embedded registry",
+        RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
 			s, err := o.Store(ctx)
@@ -121,12 +137,36 @@ func addStoreServe() *cobra.Command {
 				return err
 			}
 
-			return store.ServeCmd(ctx, o, s)
-		},
-	}
-	o.AddFlags(cmd)
+			return store.ServeRegistryCmd(ctx, o, s)
+        },
+    }
 
-	return cmd
+    o.AddFlags(cmd)
+
+    return cmd
+}
+
+// FileServerCmd serves the file server
+func addStoreServeFiles() *cobra.Command {
+    o := &store.ServeFilesOpts{RootOpts: rootStoreOpts}
+	cmd := &cobra.Command{
+        Use:   "fileserver",
+        Short: "Serve the file server",
+        RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := o.Store(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.ServeFilesCmd(ctx, o, s)
+        },
+    }
+
+    o.AddFlags(cmd)
+
+    return cmd
 }
 
 func addStoreSave() *cobra.Command {

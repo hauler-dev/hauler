@@ -17,30 +17,29 @@ import (
 	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/internal/server"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-type ServeOpts struct {
+type ServeRegistryOpts struct {
 	*RootOpts
 
 	Port       int
 	RootDir    string
 	ConfigFile string
-	Daemon     bool
 
 	storedir string
 }
 
-func (o *ServeOpts) AddFlags(cmd *cobra.Command) {
+func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on")
-	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for registry backend (defaults to '$PWD/registry')")
+	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on.")
+	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for backend.  Defaults to $PWD/registry")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to a config file, will override all other configs")
-	f.BoolVarP(&o.Daemon, "daemon", "d", false, "Toggle serving as a daemon")
 }
 
-// ServeCmd serves the embedded registry almost identically to how distribution/v3 does it
-func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Layout) error {
+func ServeRegistryCmd(ctx context.Context, o *ServeRegistryOpts, s *store.Layout) error {
+	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
 	tr := server.NewTempRegistry(ctx, o.RootDir)
@@ -55,7 +54,7 @@ func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Layout) error {
 
 	tr.Close()
 
-	cfg := o.defaultConfig()
+	cfg := o.defaultRegistryConfig()
 	if o.ConfigFile != "" {
 		ucfg, err := loadConfig(o.ConfigFile)
 		if err != nil {
@@ -64,14 +63,59 @@ func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Layout) error {
 		cfg = ucfg
 	}
 
+	l.Infof("starting registry on port [%d]", o.Port)
 	r, err := server.NewRegistry(ctx, cfg)
 	if err != nil {
 		return err
 	}
-
+	
 	if err = r.ListenAndServe(); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+type ServeFilesOpts struct {
+	*RootOpts
+
+	Port       int
+	RootDir    string
+
+	storedir string
+}
+
+func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+
+	f.IntVarP(&o.Port, "port", "p", 8080, "Port to listen on.")
+	f.StringVar(&o.RootDir, "directory", "store-files", "Directory to use for backend.  Defaults to $PWD/store-files")
+}
+
+func ServeFilesCmd(ctx context.Context, o *ServeFilesOpts, s *store.Layout) error {
+	l := log.FromContext(ctx)
+	ctx = dcontext.WithVersion(ctx, version.Version)
+
+	opts := &CopyOpts{}
+	if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir); err != nil {
+		return err
+	}
+	
+	cfg := server.FileConfig{
+		Root: o.RootDir,
+		Port: o.Port,
+	}
+
+	f, err := server.NewFile(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	
+	l.Infof("starting file server on port [%d]", o.Port)
+	if err := f.ListenAndServe(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -84,7 +128,7 @@ func loadConfig(filename string) (*configuration.Configuration, error) {
 	return configuration.Parse(f)
 }
 
-func (o *ServeOpts) defaultConfig() *configuration.Configuration {
+func (o *ServeRegistryOpts) defaultRegistryConfig() *configuration.Configuration {
 	cfg := &configuration.Configuration{
 		Version: "0.1",
 		Storage: configuration.Storage{

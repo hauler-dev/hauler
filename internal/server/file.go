@@ -21,8 +21,7 @@ type FileConfig struct {
 // TODO: Better configs
 func NewFile(ctx context.Context, cfg FileConfig) (Server, error) {
 	r := mux.NewRouter()
-	r.Handle("/", handlers.LoggingHandler(os.Stdout, http.FileServer(http.Dir(cfg.Root))))
-
+	r.PathPrefix("/").Handler(handlers.LoggingHandler(os.Stdout, http.StripPrefix("/", http.FileServer(http.Dir(cfg.Root)))))
 	if cfg.Root == "" {
 		cfg.Root = "."
 	}
