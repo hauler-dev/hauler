@@ -112,7 +112,7 @@ func addStoreServe() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Expose the content of a local store through an OCI compliant server",
+		Short: "Expose the content of a local store through an OCI compliant registry or file server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

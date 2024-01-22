@@ -17,6 +17,7 @@ import (
 	"github.com/rancherfederal/hauler/pkg/store"
 
 	"github.com/rancherfederal/hauler/internal/server"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 type ServeOpts struct {
@@ -25,7 +26,8 @@ type ServeOpts struct {
 	Port       int
 	RootDir    string
 	ConfigFile string
-	Daemon     bool
+
+	Files      bool
 
 	storedir string
 }
@@ -33,45 +35,96 @@ type ServeOpts struct {
 func (o *ServeOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on")
-	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for registry backend (defaults to '$PWD/registry')")
+	f.BoolVarP(&o.Files, "files", "f", false, "Toggle file server instead of registry")
+	f.IntVarP(&o.Port, "port", "p", 0, "Port to listen on.  Defaults to 5000 for registry and 8080 for file server.")
+	f.StringVar(&o.RootDir, "directory", "", "Directory to use for backend.  Defaults to $PWD/registry for registry and $PWD/store-files for file server.")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to a config file, will override all other configs")
-	f.BoolVarP(&o.Daemon, "daemon", "d", false, "Toggle serving as a daemon")
+
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if o.Port == 0 {
+			o.Port = getDefaultPort(o.Files)
+		}
+		if o.RootDir == "" {
+			o.RootDir = getDefaultDirectory(o.Files)
+		}
+		return nil
+	}
+}
+
+func getDefaultPort(files bool) int {
+	if files {
+		return 8080
+	}
+	return 5000
+}
+
+func getDefaultDirectory(files bool) string {
+	if files {
+		return "store-files"
+	}
+	return "registry"
 }
 
 // ServeCmd serves the embedded registry almost identically to how distribution/v3 does it
 func ServeCmd(ctx context.Context, o *ServeOpts, s *store.Layout) error {
+	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
-	tr := server.NewTempRegistry(ctx, o.RootDir)
-	if err := tr.Start(); err != nil {
-		return err
-	}
-
-	opts := &CopyOpts{}
-	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry()); err != nil {
-		return err
-	}
-
-	tr.Close()
-
-	cfg := o.defaultConfig()
-	if o.ConfigFile != "" {
-		ucfg, err := loadConfig(o.ConfigFile)
+	if o.Files {
+		opts := &CopyOpts{}
+		if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir); err != nil {
+			return err
+		}
+		
+		cfg := server.FileConfig{
+			Root: o.RootDir,
+			Port: o.Port,
+		}
+	
+		f, err := server.NewFile(ctx, cfg)
 		if err != nil {
 			return err
 		}
-		cfg = ucfg
+		
+		l.Infof("starting file server on port [%d]", o.Port)
+		if err := f.ListenAndServe(); err != nil {
+			return err
+		}
+
+	} else { // start registry
+
+		tr := server.NewTempRegistry(ctx, o.RootDir)
+		if err := tr.Start(); err != nil {
+			return err
+		}
+
+		opts := &CopyOpts{}
+		if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry()); err != nil {
+			return err
+		}
+
+		tr.Close()
+
+		cfg := o.defaultConfig()
+		if o.ConfigFile != "" {
+			ucfg, err := loadConfig(o.ConfigFile)
+			if err != nil {
+				return err
+			}
+			cfg = ucfg
+		}
+
+		l.Infof("starting registry on port [%d]", o.Port)
+		r, err := server.NewRegistry(ctx, cfg)
+		if err != nil {
+			return err
+		}
+		
+		if err = r.ListenAndServe(); err != nil {
+			return err
+		}
 	}
 
-	r, err := server.NewRegistry(ctx, cfg)
-	if err != nil {
-		return err
-	}
-
-	if err = r.ListenAndServe(); err != nil {
-		return err
-	}
 	return nil
 }
 
