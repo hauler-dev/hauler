@@ -19,7 +19,7 @@ type SaveOpts struct {
 func (o *SaveOpts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.FileName, "filename", "f", "pkg.tar.zst", "Name of archive")
+	f.StringVarP(&o.FileName, "filename", "f", "haul.tar.zst", "Name of archive")
 }
 
 // SaveCmd
