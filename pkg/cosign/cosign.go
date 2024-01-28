@@ -2,28 +2,19 @@ package cosign
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
 	"context"
-	"strings"
-	"encoding/json"
 	"time"
 	"bufio"
+	"embed"
 
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/store"
 	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/internal/mapper"
-	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/artifacts/file"
-	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 )
 
 const maxRetries = 3
@@ -32,7 +23,7 @@ const retryDelay = time.Second * 5
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
 func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string) error {
 	operation := func() error {
-		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+		cosignBinaryPath, err := getCosignPath(ctx)
 		if err != nil {
 			return err
 		}
@@ -52,7 +43,7 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 // SaveImage saves image and any signatures/attestations to the store.
 func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
 	operation := func() error {
-		cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+		cosignBinaryPath, err := getCosignPath(ctx)
 		if err != nil {
 			return err
 		}
@@ -73,7 +64,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
 func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
 	l := log.FromContext(ctx)
 
-	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+	cosignBinaryPath, err := getCosignPath(ctx)
 	if err != nil {
 		return err
 	}
@@ -132,7 +123,7 @@ func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts con
 
 // RegistryLogin - performs cosign login
 func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
-	cosignBinaryPath, err := ensureCosignBinary(ctx, s)
+	cosignBinaryPath, err := getCosignPath(ctx)
 	if err != nil {
 		return err
 	}
@@ -170,8 +161,41 @@ func RetryOperation(ctx context.Context, operation func() error) error {
 }
 
 
-// ensureCosignBinary checks if the cosign binary exists in the specified directory and installs it if not.
-func ensureCosignBinary(ctx context.Context, s *store.Layout) (string, error) {
+func EnsureBinaryExists(ctx context.Context, bin embed.FS) (error) {
+	// Set up a path for the binary to be copied.
+    binaryPath, err := getCosignPath(ctx)
+	if err != nil {
+		return fmt.Errorf("Error: %v\n", err)
+	}
+	
+	// Determine the architecture so that we pull the correct embedded binary.
+	arch := runtime.GOARCH
+	rOS := runtime.GOOS
+	binaryName := "cosign"
+	if rOS == "windows" {
+		binaryName = fmt.Sprintf("cosign-%s-%s.exe", rOS, arch)
+	} else {
+		binaryName = fmt.Sprintf("cosign-%s-%s", rOS, arch)
+	}
+
+	// retrieve the embedded binary
+	f, err := bin.ReadFile(fmt.Sprintf("binaries/%s", binaryName))
+	if err != nil {
+		return fmt.Errorf("Error: %v\n", err)
+	}
+
+	// write the binary to the filesystem
+	err = os.WriteFile(binaryPath, f, 0755)
+	if err != nil {
+		return fmt.Errorf("Error: %v\n", err)
+	}
+
+	return nil
+}
+
+
+// getCosignPath returns the binary path
+func getCosignPath(ctx context.Context) (string, error) {
 	l := log.FromContext(ctx)
 
 	// Get the current user's information
@@ -192,170 +216,18 @@ func ensureCosignBinary(ctx context.Context, s *store.Layout) (string, error) {
         if err := os.MkdirAll(haulerDir, 0755); err != nil {
             return "", fmt.Errorf("Error creating .hauler directory: %v\n", err)
         }
-        l.Infof("Created .hauler directory at: %s", haulerDir)
+        l.Debugf("Created .hauler directory at: %s", haulerDir)
     }
 
-	// Check if the cosign binary exists in the specified directory.
-    binaryPath := filepath.Join(haulerDir, "cosign")
-    _, err = os.Stat(binaryPath)
-    if err == nil {
-        // Cosign binary is already installed in the specified directory.
-        return binaryPath, nil
-    }
-
-    // Cosign binary is not found.
-    l.Infof("Cosign binary not found. Checking to see if it exists in the store...")
-
-	// grab binary from store if it exists, otherwise try to download it from GitHub.
-	// if the binary has to be downloaded, then automatically add it to the store afterwards.
-	err = copyCosignFromStore(ctx, s, haulerDir)
-	if err != nil {
-		l.Warnf("%s", err)
-		err = downloadCosign(ctx, haulerDir)
-		if err != nil {
-			return "", err
-		}
-		err = addCosignToStore(ctx, s, binaryPath)
-		if err != nil {
-			return "", err
-		}
-	}
-
-    // Make the binary executable.
-    if err := os.Chmod(filepath.Join(haulerDir, "cosign"), 0755); err != nil {
-        return "", fmt.Errorf("error setting executable permission: %v", err)
-    }
-
-	return binaryPath, nil
-}
-
-// used to check if the cosign binary is in the store and if so copy it to the .hauler directory
-func copyCosignFromStore(ctx context.Context, s *store.Layout, destDir string) error {
-	l := log.FromContext(ctx)
-
-	ref := "hauler/cosign:latest"
-	r, err := reference.Parse(ref)
-	if err != nil {
-		return err
-	}
-
-	found := false
-	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
-	
-		if !strings.Contains(reference, r.Name()) {
-			return nil
-		}
-		found = true
-
-		rc, err := s.Fetch(ctx, desc)
-		if err != nil {
-			return err
-		}
-		defer rc.Close()
-
-		var m ocispec.Manifest
-		if err := json.NewDecoder(rc).Decode(&m); err != nil {
-			return err
-		}
-
-		mapperStore, err := mapper.FromManifest(m, destDir)
-		if err != nil {
-			return err
-		}
-
-		pushedDesc, err := s.Copy(ctx, reference, mapperStore, "")
-		if err != nil {
-			return err
-		}
-
-		l.Infof("extracted [%s] from store with digest [%s]", ref, pushedDesc.Digest.String())
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	if !found {
-		return fmt.Errorf("Reference [%s] not found in store.  Hauler will attempt to download it from Github.", ref)
-	}
-
-	return nil
-}
-
-// adds the cosign binary to the store.
-// this is to help with airgapped situations where you cannot access the internet.
-func addCosignToStore(ctx context.Context, s *store.Layout, binaryPath string) error {
-	l := log.FromContext(ctx)
-	
-	fi := v1alpha1.File{
-		Path: binaryPath,
-	}
-
-	copts := getter.ClientOptions{
-		NameOverride: fi.Name,
-	}
-
-	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)))
-	ref, err := reference.NewTagged(f.Name(fi.Path), reference.DefaultTag)
-	if err != nil {
-		return err
-	}
-
-	desc, err := s.AddOCI(ctx, f, ref.Name())
-	if err != nil {
-		return err
-	}
-
-	l.Infof("added 'file' to store at [%s], with digest [%s]", ref.Name(), desc.Digest.String())
-	return nil
-}
-
-
-// used to check if the cosign binary is in the store and if so copy it to the .hauler directory
-func downloadCosign(ctx context.Context, haulerDir string) error {
-	l := log.FromContext(ctx)
-
-    // Define the GitHub release URL and architecture-specific binary name.
-    releaseURL := "https://github.com/rancher-government-carbide/cosign/releases/latest/download"
-	
-    // Determine the architecture and add it to the binary name.
-    arch := runtime.GOARCH
+	// Determine the binary name.
 	rOS := runtime.GOOS
 	binaryName := "cosign"
 	if rOS == "windows" {
-		binaryName = fmt.Sprintf("cosign-%s-%s.exe", rOS, arch)
-	} else {
-		binaryName = fmt.Sprintf("cosign-%s-%s", rOS, arch)
+		binaryName = "cosign.exe"
 	}
-	
-    // Download the binary.
-    downloadURL := fmt.Sprintf("%s/%s", releaseURL, binaryName)
-    resp, err := http.Get(downloadURL)
-    if err != nil {
-        return fmt.Errorf("error downloading cosign binary: %v", err)
-    }
-    defer resp.Body.Close()
 
-    // Create the cosign binary file in the specified directory.
-    binaryFile, err := os.Create(filepath.Join(haulerDir, binaryName))
-    if err != nil {
-        return fmt.Errorf("error creating cosign binary: %v", err)
-    }
-    defer binaryFile.Close()
+	// construct path to binary
+    binaryPath := filepath.Join(haulerDir, binaryName)
 
-    // Copy the downloaded binary to the file.
-    _, err = io.Copy(binaryFile, resp.Body)
-    if err != nil {
-        return fmt.Errorf("error saving cosign binary: %v", err)
-    }
-
-    // Rename the binary to "cosign"
-	oldBinaryPath := filepath.Join(haulerDir, binaryName)
-    newBinaryPath := filepath.Join(haulerDir, "cosign")
-    if err := os.Rename(oldBinaryPath, newBinaryPath); err != nil {
-        return fmt.Errorf("error renaming cosign binary: %v", err)
-    }
-
-    l.Infof("Cosign binary downloaded and installed to %s", haulerDir)
-	return nil
+	return binaryPath, nil
 }

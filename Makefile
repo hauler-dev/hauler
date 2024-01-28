@@ -1,6 +1,9 @@
 SHELL:=/bin/bash
-GO_BUILD_ENV=GOOS=linux GOARCH=amd64 
+BUILD_OS=darwin
+BUILD_ARCH=arm64 
 GO_FILES=$(shell go list ./... | grep -v /vendor/)
+
+COSIGN_VERSION=v2.2.2+carbide.1
 
 BUILD_VERSION=$(shell cat VERSION)
 BUILD_TAG=$(BUILD_VERSION)
@@ -10,14 +13,20 @@ BUILD_TAG=$(BUILD_VERSION)
 all: fmt vet install test
 
 build:
+	rm -rf cmd/hauler/binaries;\
+	mkdir -p cmd/hauler/binaries;\
+    wget -P cmd/hauler/binaries/ https://github.com/rancher-government-carbide/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(BUILD_OS)-$(BUILD_ARCH);\
 	mkdir bin;\
-	GOENV=GOARCH=$(uname -m) CGO_ENABLED=0 go build -o bin ./cmd/...;\
+	GOENV=GOARCH=$(BUILD_ARCH) CGO_ENABLED=0 go build -o bin ./cmd/...;\
 
 build-all: fmt vet
 	goreleaser build --rm-dist --snapshot
 	
 install:
-	GOENV=GOARCH=$(uname -m) CGO_ENABLED=0 go install ./cmd/...;\
+	rm -rf cmd/hauler/binaries;\
+	mkdir -p cmd/hauler/binaries;\
+    wget -P cmd/hauler/binaries/ https://github.com/rancher-government-carbide/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(BUILD_OS)-$(BUILD_ARCH);\
+	GOENV=GOARCH=$(BUILD_ARCH) CGO_ENABLED=0 go install ./cmd/...;\
 
 vet:
 	go vet $(GO_FILES)
