@@ -211,8 +211,6 @@ func EnsureBinaryExists(ctx context.Context, bin embed.FS) (error) {
 
 // getCosignPath returns the binary path
 func getCosignPath(ctx context.Context) (string, error) {
-	l := log.FromContext(ctx)
-
 	// Get the current user's information
 	currentUser, err := user.Current()
 	if err != nil {
@@ -231,7 +229,6 @@ func getCosignPath(ctx context.Context) (string, error) {
         if err := os.MkdirAll(haulerDir, 0755); err != nil {
             return "", fmt.Errorf("Error creating .hauler directory: %v\n", err)
         }
-        l.Debugf("Created .hauler directory at: %s", haulerDir)
     }
 
 	// Determine the binary name.
