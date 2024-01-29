@@ -11,6 +11,7 @@ import (
 	"time"
 	"bufio"
 	"embed"
+	"strings"
 
 	"oras.land/oras-go/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/store"
@@ -41,7 +42,7 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 }
 
 // SaveImage saves image and any signatures/attestations to the store.
-func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
+func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string) error {
 	operation := func() error {
 		cosignBinaryPath, err := getCosignPath(ctx)
 		if err != nil {
@@ -49,9 +50,23 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string) error {
 		}
 
 		cmd := exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
+		// Conditionally add platform.
+		if platform != "" {
+			cmd.Args = append(cmd.Args, "--platform", platform)
+		}
+		
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
+			if strings.Contains(string(output), "specified reference is not a multiarch image") {
+				// Rerun the command without the platform flag
+				cmd = exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
+				output, err = cmd.CombinedOutput()
+				if err != nil {
+					return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
+				}
+			} else {
+				return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
+			}
 		}
 
 		return nil

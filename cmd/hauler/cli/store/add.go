@@ -61,13 +61,15 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 
 type AddImageOpts struct {
 	*RootOpts
-	Name string
-	Key  string
+	Name     string
+	Key      string
+	Platform string
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for digital signature verification")
+	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specific platform to save. i.e. linux/amd64. Defaults to all if flag is omitted.")
 }
 
 func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, reference string) error {
@@ -86,10 +88,10 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 		l.Infof("signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg)
+	return storeImage(ctx, s, cfg, o.Platform)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string) error {
 	l := log.FromContext(ctx)
 
 	r, err := name.ParseReference(i.Name)
@@ -97,7 +99,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image) error {
 		return err
 	}
 
-	err = cosign.SaveImage(ctx, s, r.Name())
+	err = cosign.SaveImage(ctx, s, r.Name(), platform)
 	if err != nil {
 		return err
 	}

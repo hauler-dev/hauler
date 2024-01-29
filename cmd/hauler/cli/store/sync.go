@@ -29,6 +29,7 @@ type SyncOpts struct {
 	ContentFiles []string
 	Key          string
 	Products	 []string
+	Platform	 string
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -37,6 +38,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path to content files")
 	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for signature verification")
 	f.StringSliceVar(&o.Products, "products", []string{}, "Used for RGS Carbide customers to supply a product and version and Hauler will retrieve the images. i.e. '--product rancher=v2.7.6'")
+	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specific platform to save. i.e. linux/amd64. Defaults to all if flag is omitted.")
 }
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
@@ -52,7 +54,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 		img := v1alpha1.Image{
 			Name: manifestLoc,
 		}
-		err := storeImage(ctx, s, img)
+		err := storeImage(ctx, s, img, o.Platform)
 		if err != nil {
 			return err
 		}
@@ -154,8 +156,14 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 					}
 					l.Infof("signature verified for image [%s]", i.Name)
 				}
-				
-				err = storeImage(ctx, s, i)
+
+				// Check if the user provided a platform.
+				platform := o.Platform
+				if i.Platform != "" {
+					platform = i.Platform
+				}
+
+				err = storeImage(ctx, s, i, platform)
 				if err != nil {
 					return err
 				}
