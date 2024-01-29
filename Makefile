@@ -3,7 +3,7 @@ BUILD_OS=darwin
 BUILD_ARCH=arm64 
 GO_FILES=$(shell go list ./... | grep -v /vendor/)
 
-COSIGN_VERSION=v2.2.2+carbide.1
+COSIGN_VERSION=v2.2.2+carbide.2
 
 BUILD_VERSION=$(shell cat VERSION)
 BUILD_TAG=$(BUILD_VERSION)
