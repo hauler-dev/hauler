@@ -66,14 +66,14 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 					return err
 				}
 
-				i := newItem(s, desc, internalManifest, internalDesc.Platform.Architecture, o)
+				i := newItem(s, desc, internalManifest, fmt.Sprintf("%s/%s", internalDesc.Platform.OS, internalDesc.Platform.Architecture), o)
 				var emptyItem item
 				if i != emptyItem {
 					items = append(items, i)
 				}
 			}
-		// handle single arch docker images
-		} else if desc.MediaType == consts.DockerManifestSchema2 {
+		// handle "non" multi-arch images
+		} else if desc.MediaType == consts.DockerManifestSchema2 || desc.MediaType == consts.OCIManifestSchema1 {
 			var m ocispec.Manifest
 			if err := json.NewDecoder(rc).Decode(&m); err != nil {
 				return err
@@ -90,11 +90,19 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 			if err := json.NewDecoder(rc).Decode(&internalManifest); err != nil {
 				return err
 			}
-
-			i := newItem(s, desc, m, internalManifest.Architecture, o)
-			var emptyItem item
-			if i != emptyItem {
-				items = append(items, i)
+			
+			if internalManifest.Architecture != "" {
+				i := newItem(s, desc, m, fmt.Sprintf("%s/%s", internalManifest.OS, internalManifest.Architecture), o)
+				var emptyItem item
+				if i != emptyItem {
+					items = append(items, i)
+				}
+			} else {
+				i := newItem(s, desc, m, "-", o)
+				var emptyItem item
+				if i != emptyItem {
+					items = append(items, i)
+				}
 			}
 		// handle the rest
 		} else {  
@@ -132,7 +140,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 func buildTable(items ...item) {
 	// Create a table for the results
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Reference", "Type", "Arch", "# Layers", "Size"})
+	table.SetHeader([]string{"Reference", "Type", "Platform", "# Layers", "Size"})
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 	table.SetRowLine(false)
 	table.SetAutoMergeCellsByColumnIndex([]int{0})
@@ -142,7 +150,7 @@ func buildTable(items ...item) {
 			row := []string{
 				i.Reference,
 				i.Type,
-				i.Architecture,
+				i.Platform,
 				fmt.Sprintf("%d", i.Layers),
 				i.Size,
 			}
@@ -163,7 +171,7 @@ func buildJson(item ...item) string {
 type item struct {
 	Reference    string
 	Type         string
-	Architecture string
+	Platform     string
 	Layers       int
 	Size         string
 }
@@ -174,12 +182,12 @@ func (a byReferenceAndArch) Len() int      { return len(a) }
 func (a byReferenceAndArch) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byReferenceAndArch) Less(i, j int) bool {
 	if a[i].Reference == a[j].Reference {
-		return a[i].Architecture < a[j].Architecture
+		return a[i].Platform < a[j].Platform
 	}
 	return a[i].Reference < a[j].Reference
 }
 
-func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, arch string, o *InfoOpts) item {
+func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *InfoOpts) item {
 	// skip listing cosign items
 	if desc.Annotations["kind"] == "dev.cosignproject.cosign/atts" ||
 		desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" ||
@@ -217,7 +225,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, arch 
 	return item{
 		Reference:    ref.Name(),
 		Type:         ctype,
-		Architecture: arch,
+		Platform:     plat,
 		Layers:       len(m.Layers),
 		Size:         byteCountSI(size),
 	}

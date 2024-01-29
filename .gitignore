@@ -28,3 +28,4 @@ tmp/
 bin/
 /store/
 /registry/
+cmd/hauler/binaries
