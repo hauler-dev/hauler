@@ -143,6 +143,9 @@ rm -rf "hauler_${version}_checksums.txt" || warn "Failed to Remove: hauler_${ver
 # clean up archive file(s)
 rm -rf "hauler_${version}_${platform}_${arch}.tar.gz" || warn "Failed to Remove: hauler_${version}_${platform}_${arch}.tar.gz"
 
+# clean up other files
+rm -rf LICENSE README.md hauler
+
 # display success message
 info "Successfully Installed at /usr/local/bin/hauler"
 
