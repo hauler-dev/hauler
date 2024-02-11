@@ -60,7 +60,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		if err != nil {
 			if strings.Contains(string(output), "specified reference is not a multiarch image") {
 				l.Infof(fmt.Sprintf("specified image [%s] is not a multiarch image.  (choosing default)", ref))
-			    // Rerun the command without the platform flag
+				// Rerun the command without the platform flag
 				cmd = exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
 				output, err = cmd.CombinedOutput()
 				if err != nil {
