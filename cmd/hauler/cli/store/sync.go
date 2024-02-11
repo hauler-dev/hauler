@@ -140,6 +140,15 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 			}
 			a := cfg.GetAnnotations()
 			for _, i := range cfg.Spec.Images {
+	
+				// Check if the user provided a registry.  If a registry is provided in the annotation, use it for the images that don't have a registry in their ref name.
+				if a[consts.ImageAnnotationRegistry] != "" {
+					newRef,_ := reference.Parse(i.Name)
+					if newRef.Context().RegistryStr() == "" {
+						newRef,_ = reference.Relocate(i.Name, a[consts.ImageAnnotationRegistry])
+					}
+					i.Name = newRef.Name()
+				}
 
 				// Check if the user provided a key.  The flag from the CLI takes precedence over the annotation.  The individual image key takes precedence over both.
 				if a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != "" {
@@ -175,15 +184,6 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 				}
 				l.Debugf("platform for image [%s]", platform)
 				
-			    // Check if the user provided a registry.  If a registry is provided in the annotation, use it for the images that don't have a registry in their ref name.
-				if a[consts.ImageAnnotationRegistry] != "" {
-					newRef,_ := reference.Parse(i.Name)
-					if newRef.Context().RegistryStr() == "" {
-						newRef,_ = reference.Relocate(i.Name, a[consts.ImageAnnotationRegistry])
-					}
-					i.Name = newRef.Name()
-				}
-
 				err = storeImage(ctx, s, i, platform)
 				if err != nil {
 					return err
