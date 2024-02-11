@@ -51,4 +51,6 @@ const (
 	KindAnnotation     = "dev.cosignproject.cosign/image"
 
 	CarbideRegistry = "rgcrprod.azurecr.us"
+	ImageAnnotationKey = "hauler.dev/key"
+	ImageAnnotationPlatform = "hauler.dev/platform"
 )

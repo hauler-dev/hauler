@@ -137,12 +137,17 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
 			}
-
+			a := cfg.GetAnnotations()
 			for _, i := range cfg.Spec.Images {
 
-				// Check if the user provided a key.
-				if o.Key != "" || i.Key != "" {
-					key := o.Key
+				// Check if the user provided a key.  The flag from the CLI takes precedence over the annotation.  The individual image key takes precedence over both.
+				if a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != "" {
+					key := o.Key // cli flag
+					// if no cli flag but there was an annotation, use the annotation.
+					if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
+						key, err = homedir.Expand(a[consts.ImageAnnotationKey])
+					}
+					// the individual image key trumps all
 					if i.Key != "" {
 						key, err = homedir.Expand(i.Key)
 					}
@@ -157,12 +162,19 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 					l.Infof("signature verified for image [%s]", i.Name)
 				}
 
-				// Check if the user provided a platform.
-				platform := o.Platform
+				// Check if the user provided a platform.  The flag from the CLI takes precedence over the annotation.  The individual image platform takes precedence over both.
+				platform := o.Platform // cli flag
+				// if no cli flag but there was an annotation, use the annotation.
+				if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
+					platform = a[consts.ImageAnnotationPlatform]
+				}
+				// the individual image platform trumps all
 				if i.Platform != "" {
 					platform = i.Platform
 				}
-
+				l.Debugf("platform for image [%s]", platform)
+				
+			
 				err = storeImage(ctx, s, i, platform)
 				if err != nil {
 					return err
