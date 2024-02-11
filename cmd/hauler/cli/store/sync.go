@@ -8,12 +8,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"github.com/mitchellh/go-homedir"
 
-	"github.com/rancherfederal/hauler/pkg/store"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/imagetxt"
@@ -22,6 +21,8 @@ import (
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/cosign"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/reference"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type SyncOpts struct {
@@ -174,7 +175,15 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 				}
 				l.Debugf("platform for image [%s]", platform)
 				
-			
+			    // Check if the user provided a registry.  If a registry is provided in the annotation, use it for the images that don't have a registry in their ref name.
+				if a[consts.ImageAnnotationRegistry] != "" {
+					newRef,_ := reference.Parse(i.Name)
+					if newRef.Context().RegistryStr() == "" {
+						newRef,_ = reference.Relocate(i.Name, a[consts.ImageAnnotationRegistry])
+					}
+					i.Name = newRef.Name()
+				}
+
 				err = storeImage(ctx, s, i, platform)
 				if err != nil {
 					return err

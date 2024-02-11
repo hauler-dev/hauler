@@ -53,4 +53,5 @@ const (
 	CarbideRegistry = "rgcrprod.azurecr.us"
 	ImageAnnotationKey = "hauler.dev/key"
 	ImageAnnotationPlatform = "hauler.dev/platform"
+	ImageAnnotationRegistry = "hauler.dev/registry"
 )
