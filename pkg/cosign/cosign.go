@@ -43,6 +43,7 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 
 // SaveImage saves image and any signatures/attestations to the store.
 func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string) error {
+	l := log.FromContext(ctx)
 	operation := func() error {
 		cosignBinaryPath, err := getCosignPath(ctx)
 		if err != nil {
@@ -58,6 +59,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			if strings.Contains(string(output), "specified reference is not a multiarch image") {
+				l.Debugf(fmt.Sprintf("specified image [%s] is not a multiarch image.  (choosing default)", ref))
 				// Rerun the command without the platform flag
 				cmd = exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
 				output, err = cmd.CombinedOutput()
