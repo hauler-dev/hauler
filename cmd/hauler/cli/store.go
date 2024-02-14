@@ -196,7 +196,7 @@ func addStoreSave() *cobra.Command {
 func addStoreInfo() *cobra.Command {
 	o := &store.InfoOpts{RootOpts: rootStoreOpts}
 
-	var allowedValues = []string{"image", "chart", "file", "all"}
+	var allowedValues = []string{"image", "chart", "file", "sigs", "atts", "sbom", "all"}
 
 	cmd := &cobra.Command{
 		Use:     "info",

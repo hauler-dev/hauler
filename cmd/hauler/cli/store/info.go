@@ -30,7 +30,7 @@ func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVarP(&o.OutputFormat, "output", "o", "table", "Output format (table, json)")
-	f.StringVarP(&o.TypeFilter, "type", "t", "all", "Filter on type (image, chart, file)")
+	f.StringVarP(&o.TypeFilter, "type", "t", "all", "Filter on type (image, chart, file, sigs, atts, sbom)")
 
 	// TODO: Regex/globbing
 }
@@ -144,7 +144,8 @@ func buildTable(items ...item) {
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 	table.SetRowLine(false)
 	table.SetAutoMergeCellsByColumnIndex([]int{0})
-
+	
+	totalSize := int64(0)
 	for _, i := range items {
 		if i.Type != "" {
 			row := []string{
@@ -152,11 +153,14 @@ func buildTable(items ...item) {
 				i.Type,
 				i.Platform,
 				fmt.Sprintf("%d", i.Layers),
-				i.Size,
+				byteCountSI(i.Size),
 			}
+			totalSize += i.Size
 			table.Append(row)
 		}
 	}
+	table.SetFooter([]string{"", "", "", "Total", byteCountSI(totalSize)})
+
 	table.Render()
 }
 
@@ -173,7 +177,7 @@ type item struct {
 	Type         string
 	Platform     string
 	Layers       int
-	Size         string
+	Size         int64
 }
 
 type byReferenceAndArch []item
@@ -182,22 +186,24 @@ func (a byReferenceAndArch) Len() int      { return len(a) }
 func (a byReferenceAndArch) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byReferenceAndArch) Less(i, j int) bool {
 	if a[i].Reference == a[j].Reference {
-		return a[i].Platform < a[j].Platform
+		if a[i].Type == "image" && a[j].Type == "image" {
+			return a[i].Platform < a[j].Platform
+		}
+		if a[i].Type == "image" {
+			return true
+		}
+		if a[j].Type == "image" {
+			return false
+		}
+		return a[i].Type < a[j].Type
 	}
 	return a[i].Reference < a[j].Reference
 }
 
 func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *InfoOpts) item {
-	// skip listing cosign items
-	if desc.Annotations["kind"] == "dev.cosignproject.cosign/atts" ||
-		desc.Annotations["kind"] == "dev.cosignproject.cosign/sigs" ||
-		desc.Annotations["kind"] == "dev.cosignproject.cosign/sboms" {
-		return item{}
-	}
-
 	var size int64 = 0
 	for _, l := range m.Layers {
-		size = +l.Size
+		size += l.Size
 	}
 
 	// Generate a human-readable content type
@@ -213,6 +219,15 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		ctype = "image"
 	}
 
+	switch desc.Annotations["kind"] {
+	case "dev.cosignproject.cosign/sigs":
+		ctype = "sigs"
+	case "dev.cosignproject.cosign/atts":
+		ctype = "atts"
+	case "dev.cosignproject.cosign/sboms":
+		ctype = "sbom"
+	}
+	
 	ref, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
 	if err != nil {
 		return item{}
@@ -227,7 +242,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		Type:         ctype,
 		Platform:     plat,
 		Layers:       len(m.Layers),
-		Size:         byteCountSI(size),
+		Size:         size,
 	}
 }
 
