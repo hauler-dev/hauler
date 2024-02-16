@@ -25,6 +25,11 @@ func (h Http) Name(u *url.URL) string {
 		return ""
 	}
 
+	name, _ := url.PathUnescape(u.String())
+	if err != nil {
+		return ""
+	}
+
 	contentType := resp.Header.Get("Content-Type")
 	for _, v := range strings.Split(contentType, ",") {
 		t, _, err := mime.ParseMediaType(v)
@@ -36,7 +41,7 @@ func (h Http) Name(u *url.URL) string {
 	}
 
 	// TODO: Not this
-	return filepath.Base(u.String())
+	return filepath.Base(name)
 }
 
 func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
