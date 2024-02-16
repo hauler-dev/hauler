@@ -21,7 +21,7 @@ require (
 	github.com/spf13/afero v1.10.0
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/sync v0.6.0
-	helm.sh/helm/v3 v3.14.0
+	helm.sh/helm/v3 v3.14.1
 	k8s.io/apimachinery v0.29.0
 	k8s.io/client-go v0.29.0
 	oras.land/oras-go v1.2.5
