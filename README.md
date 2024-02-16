@@ -36,8 +36,3 @@ brew install hauler
 * [go-containerregistry](https://github.com/google/go-containerregistry)
 * [oras cli](https://github.com/oras-project/oras)
 * [cosign](https://github.com/sigstore/cosign)
-
-## Notices
-**WARNING - Upcoming Deprecated Command(s):**
-
-`hauler download` (alternatively, `dl`) and `hauler serve` (_not_ `hauler store serve`) commands are deprecated and will be removed in a future release.

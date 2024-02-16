@@ -31,10 +31,8 @@ func New() *cobra.Command {
 	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
 
 	// Add subcommands
-	addDownload(cmd)
 	addLogin(cmd)
 	addStore(cmd)
-	addServe(cmd)
 	addVersion(cmd)
 	addCompletion(cmd)
 
