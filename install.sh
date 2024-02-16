@@ -15,21 +15,28 @@
 #   - https://hauler.dev
 #   - https://github.com/rancherfederal/hauler
 
+# color
+export RED='\x1b[0;31m'
+export GREEN='\x1b[32m'
+export BLUE='\x1b[34m'
+export YELLOW='\x1b[33m'
+export NO_COLOR='\x1b[0m'
+
 # set functions for debugging/logging
 function info {
-    echo && echo "[INFO] Hauler: $1"
+    echo && echo -e "$GREEN[INFO]$NO_COLOR Hauler: $1"
 }
 
 function verbose {
-    echo "$1"
+    echo -e "$1"
 }
 
 function warn {
-    echo && echo "[WARN] Hauler: $1"
+    echo && echo -e "$YELLOW[WARN]$NO_COLOR Hauler: $1"
 }
 
 function fatal {
-    echo && echo "[ERROR] Hauler: $1"
+    echo && echo -e "$RED[ERROR]$NO_COLOR Hauler: $1"
     exit 1
 }
 
@@ -137,6 +144,31 @@ case "$platform" in
         ;;
 esac
 
+# install systemd unit file
+
+if [ "$platform" == linux ]; then
+# create hauler dir
+mkdir /opt/hauler
+
+# add systemd file
+cat << EOF > /etc/systemd/system/hauler@.service
+# /etc/systemd/system/hauler.service
+[Unit]
+Description=Hauler Serve %I Service
+
+[Service]
+Environment="HOME=/opt/hauler/"
+ExecStart=/usr/local/bin/hauler store serve %i -s /opt/hauler/store
+WorkingDirectory=/opt/hauler
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+#reload daemon
+systemctl daemon-reload
+fi
+
 # clean up checksum(s)
 rm -rf "hauler_${version}_checksums.txt" || warn "Failed to Remove: hauler_${version}_checksums.txt"
 
@@ -152,5 +184,10 @@ info "Successfully Installed at /usr/local/bin/hauler"
 # display availability message
 verbose "- Hauler v${version} is now available for use!"
 
+# display systemd message
+verbose "- $BLUE'systemctl start hauler@regsitry'$NO_COLOR or $BLUE'systemctl start hauler@fileserver'$NO_COLOR is available"
+verbose "    cd to /opt/hauler/ and create a store here with the name $BLUE'store'$NO_COLOR"
+
+
 # display hauler docs message
-verbose "- Documentation: https://hauler.dev" && echo
+info "Documentation:$BLUE https://hauler.dev $NO_COLOR" && echo
