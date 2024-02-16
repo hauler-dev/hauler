@@ -32,6 +32,7 @@ func New() *cobra.Command {
 
 	// Add subcommands
 	addDownload(cmd)
+	addLogin(cmd)
 	addStore(cmd)
 	addServe(cmd)
 	addVersion(cmd)

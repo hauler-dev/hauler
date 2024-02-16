@@ -140,17 +140,18 @@ func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts con
 
 // RegistryLogin - performs cosign login
 func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
+	log := log.FromContext(ctx)
 	cosignBinaryPath, err := getCosignPath(ctx)
 	if err != nil {
 		return err
 	}
 
 	cmd := exec.Command(cosignBinaryPath, "login", registry, "-u", ropts.Username, "-p", ropts.Password)
-
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error logging into registry: %v, output: %s", err, output)
 	}
+	log.Infof(strings.Trim(string(output), "\n"))
 
 	return nil
 }
