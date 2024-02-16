@@ -25,6 +25,7 @@ type Reference interface {
 
 // NewTagged will create a new docker.NamedTagged given a path-component
 func NewTagged(n string, tag string) (gname.Reference, error) {
+	n = strings.Replace(strings.ToLower(n), "+", "-", -1)
 	repo, err := Parse(n)
 	if err != nil {
 		return nil, err
