@@ -148,7 +148,7 @@ esac
 
 if [ "$platform" == linux ]; then
 # create hauler dir
-mkdir /opt/hauler
+if [ ! -d /opt/hauler ]; then mkdir /opt/hauler ; fi
 
 # add systemd file
 cat << EOF > /etc/systemd/system/hauler@.service
@@ -185,9 +185,10 @@ info "Successfully Installed at /usr/local/bin/hauler"
 verbose "- Hauler v${version} is now available for use!"
 
 # display systemd message
-verbose "- $BLUE'systemctl start hauler@regsitry'$NO_COLOR or $BLUE'systemctl start hauler@fileserver'$NO_COLOR is available"
-verbose "    cd to /opt/hauler/ and create a store here with the name $BLUE'store'$NO_COLOR"
-
+verbose "- Systemd servies are available"
+verbose "  cd to /opt/hauler/ and use the default store named $BLUE'store'$NO_COLOR."
+verbose "- Start registry service - $BLUE'systemctl start hauler@regsitry'$NO_COLOR."
+verbose "- Start fileserver service - $BLUE'systemctl start hauler@fileserver'$NO_COLOR."
 
 # display hauler docs message
 info "Documentation:$BLUE https://hauler.dev $NO_COLOR" && echo
