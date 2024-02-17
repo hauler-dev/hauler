@@ -2,26 +2,32 @@
 
 # Usage:
 #   - curl -sfL... | ENV_VAR=... bash
-#   - ENV_VAR=... bash ./install.sh
-#   - ./install.sh ENV_VAR=...
-
-# Example:
+#   - ENV_VAR=... ./install.sh
+#
+# Install Usage:
 #   Install Latest Release
 #     - curl -sfL https://get.hauler.dev | bash
+#     - ./install.sh
+#
 #   Install Specific Release
-#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=0.4.2 bash
-
+#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=1.0.0 bash
+#     - HAULER_VERSION=1.0.0 ./install.sh
+#
+# Uninstall Usage:
+#   - curl -sfL https://get.hauler.dev | HAULER_UNINSTALL=true bash
+#   - HAULER_UNINSTALL=true ./install.sh
+#
 # Documentation:
 #   - https://hauler.dev
 #   - https://github.com/rancherfederal/hauler
 
 # set functions for debugging/logging
-function info {
-    echo && echo "[INFO] Hauler: $1"
-}
-
 function verbose {
     echo "$1"
+}
+
+function info {
+    echo && echo "[INFO] Hauler: $1"
 }
 
 function warn {
@@ -30,34 +36,34 @@ function warn {
 
 function fatal {
     echo && echo "[ERROR] Hauler: $1"
-    exit 1
+    exit 0
 }
 
 # check for required dependencies
-for cmd in curl sed awk openssl tar rm; do
+for cmd in sudo rm curl grep mkdir sed awk openssl tar; do
     if ! command -v "$cmd" &> /dev/null; then
         fatal "$cmd is not installed"
     fi
 done
 
-# start hauler installation
-info "Starting Installation..."
+# set version environment variable
+if [ -z "${HAULER_VERSION}" ]; then
+    version="${HAULER_VERSION:-$(curl -s https://api.github.com/repos/rancherfederal/hauler/releases/latest | grep '"tag_name":' | sed 's/.*"v\([^"]*\)".*/\1/')}"
+else
+    version="${HAULER_VERSION}"
+fi
 
-# set version with an environment variable
-version=${HAULER_VERSION:-$(curl -s https://api.github.com/repos/rancherfederal/hauler/releases/latest | grep '"tag_name":' | sed 's/.*"v\([^"]*\)".*/\1/')}
+# set uninstall environment variable from argument or environment
+if [ "${HAULER_UNINSTALL}" = "true" ]; then
+    # remove the hauler binary
+    sudo rm -f /usr/local/bin/hauler || fatal "Failed to Remove Hauler from /usr/local/bin"
 
-# set verision with an argument
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    HAULER_VERSION=*)
-      version="${1#*=}"
-      shift
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
+    # remove the installation directory
+    rm -rf "$HOME/.hauler" || fatal "Failed to Remove Directory: $HOME/.hauler"
+
+    info "Hauler Uninstalled Successfully"
+    exit 0
+fi
 
 # detect the operating system
 platform=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -87,25 +93,36 @@ case $arch in
         ;;
 esac
 
+# start hauler installation
+info "Starting Installation..."
+
 # display the version, platform, and architecture
 verbose "- Version: v$version"
 verbose "- Platform: $platform"
 verbose "- Architecture: $arch"
 
+# check if install directory exists, create it if not
+if [ ! -d "$HOME/.hauler" ]; then
+    mkdir -p "$HOME/.hauler" || fatal "Failed to Create Directory: ~/.hauler"
+fi
+
+# change to install directory
+cd "$HOME/.hauler" || fatal "Failed to Change Directory: ~/.hauler"
+
 # download the checksum file
-if ! curl -sOL "https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_checksums.txt"; then
+if ! curl -sfOL "https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_checksums.txt"; then
     fatal "Failed to Download: hauler_${version}_checksums.txt"
 fi
 
 # download the archive file
-if ! curl -sOL "https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_${platform}_${arch}.tar.gz"; then
+if ! curl -sfOL "https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_${platform}_${arch}.tar.gz"; then
     fatal "Failed to Download: hauler_${version}_${platform}_${arch}.tar.gz"
 fi
 
 # start hauler checksum verification
 info "Starting Checksum Verification..."
 
-# Verify the Hauler checksum
+# verify the Hauler checksum
 expected_checksum=$(awk -v version="$version" -v platform="$platform" -v arch="$arch" '$2 == "hauler_"version"_"platform"_"arch".tar.gz" {print $1}' "hauler_${version}_checksums.txt")
 determined_checksum=$(openssl dgst -sha256 "hauler_${version}_${platform}_${arch}.tar.gz" | awk '{print $2}')
 
@@ -127,24 +144,32 @@ tar -xzf "hauler_${version}_${platform}_${arch}.tar.gz" || fatal "Failed to Extr
 # install the binary
 case "$platform" in
     linux)
-        install hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
+        sudo install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
         ;;
     darwin)
-        install hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
+        sudo install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
         ;;
     *)
         fatal "Unsupported Platform or Architecture: $platform/$arch"
         ;;
 esac
 
-# clean up checksum(s)
-rm -rf "hauler_${version}_checksums.txt" || warn "Failed to Remove: hauler_${version}_checksums.txt"
-
-# clean up archive file(s)
-rm -rf "hauler_${version}_${platform}_${arch}.tar.gz" || warn "Failed to Remove: hauler_${version}_${platform}_${arch}.tar.gz"
-
-# clean up other files
-rm -rf LICENSE README.md hauler
+# add hauler to the path
+if [ -f "$HOME/.bashrc" ]; then
+    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.bashrc"
+    source "$HOME/.bashrc"
+elif [ -f "$HOME/.bash_profile" ]; then
+    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.bash_profile"
+    source "$HOME/.bash_profile"
+elif [ -f "$HOME/.zshrc" ]; then
+    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.zshrc"
+    source "$HOME/.zshrc"
+elif [ -f "$HOME/.profile" ]; then
+    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.profile"
+    source "$HOME/.profile"
+else
+    echo "Failed to add /usr/local/bin to PATH: Unsupported Shell"
+fi
 
 # display success message
 info "Successfully Installed at /usr/local/bin/hauler"
