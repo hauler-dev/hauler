@@ -27,5 +27,7 @@ func main() {
 	
 	if err := cli.New().ExecuteContext(ctx); err != nil {
 		logger.Errorf("%v", err)
+		cancel()
+		os.Exit(1)
 	}
 }
