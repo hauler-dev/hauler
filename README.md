@@ -1,5 +1,7 @@
 # Rancher Government Hauler
 
+![Rancher Government Hauler](/static/hauler_logo_words.png?raw=true) 
+
 ## Airgap Swiss Army Knife
 
 > ⚠️ **Please Note:** Hauler and the Hauler Documentation are recently Generally Available (GA).
