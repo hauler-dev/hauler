@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 146.57 35.25">
+  <defs>
+    <style>
+      .cls-1 {
+        font-family: NasalizationRg-Regular, Nasalization;
+        font-size: 32px;
+      }
+
+      .cls-2 {
+        fill: #e92831;
+        letter-spacing: -.04em;
+      }
+
+      .cls-3, .cls-4 {
+        fill: #231f20;
+      }
+
+      .cls-4 {
+        letter-spacing: 0em;
+      }
+    </style>
+  </defs>
+  <text class="cls-1" transform="translate(0 26.8) scale(1.08 1)"><tspan class="cls-3" x="0" y="0">H</tspan><tspan class="cls-2" x="23.84" y="0">A</tspan><tspan class="cls-4" x="47.65" y="0">ULER</tspan></text>
+</svg>

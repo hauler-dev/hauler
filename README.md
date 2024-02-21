@@ -1,6 +1,6 @@
 # Rancher Government Hauler
 
-![Rancher Government Hauler](/static/hauler_logo_words.png?raw=true) 
+![rancher-government-hauler-logo](/static/rgs-hauler-logo.png)
 
 ## Airgap Swiss Army Knife
 
