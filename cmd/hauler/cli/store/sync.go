@@ -31,6 +31,7 @@ type SyncOpts struct {
 	Key          string
 	Products	 []string
 	Platform	 string
+	Registry	 string
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -40,6 +41,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for signature verification")
 	f.StringSliceVar(&o.Products, "products", []string{}, "Used for RGS Carbide customers to supply a product and version and Hauler will retrieve the images. i.e. '--product rancher=v2.7.6'")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specific platform to save. i.e. linux/amd64. Defaults to all if flag is omitted.")
+	f.StringVarP(&o.Registry, "registry", "r", "", "(Optional) Default pull registry for image refs that are not specifying a registry name.")
 }
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
@@ -142,10 +144,20 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 			for _, i := range cfg.Spec.Images {
 	
 				// Check if the user provided a registry.  If a registry is provided in the annotation, use it for the images that don't have a registry in their ref name.
-				if a[consts.ImageAnnotationRegistry] != "" {
+				if a[consts.ImageAnnotationRegistry] != "" || o.Registry != ""{
 					newRef,_ := reference.Parse(i.Name)
+					
+					newReg := o.Registry // cli flag
+					// if no cli flag but there was an annotation, use the annotation.
+					if o.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
+						newReg = a[consts.ImageAnnotationRegistry]
+					}
+					
 					if newRef.Context().RegistryStr() == "" {
-						newRef,_ = reference.Relocate(i.Name, a[consts.ImageAnnotationRegistry])
+						newRef,err = reference.Relocate(i.Name, newReg)
+						if err != nil {
+							return err
+						}
 					}
 					i.Name = newRef.Name()
 				}
@@ -156,10 +168,16 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 					// if no cli flag but there was an annotation, use the annotation.
 					if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
 						key, err = homedir.Expand(a[consts.ImageAnnotationKey])
+						if err != nil {
+							return err
+						}
 					}
 					// the individual image key trumps all
 					if i.Key != "" {
 						key, err = homedir.Expand(i.Key)
+						if err != nil {
+							return err
+						}
 					}
 					l.Debugf("key for image [%s]", key)
 					
