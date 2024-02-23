@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"os"
 	"embed"
+	"os"
 
 	"github.com/rancherfederal/hauler/cmd/hauler/cli"
 	"github.com/rancherfederal/hauler/pkg/cosign"
@@ -23,8 +23,9 @@ func main() {
 	// ensure cosign binary is available
 	if err := cosign.EnsureBinaryExists(ctx, binaries); err != nil {
 		logger.Errorf("%v", err)
+		os.Exit(1)
 	}
-	
+
 	if err := cli.New().ExecuteContext(ctx); err != nil {
 		logger.Errorf("%v", err)
 		cancel()
