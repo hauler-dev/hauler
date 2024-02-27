@@ -33,7 +33,9 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Layout, reference 
 	cfg := v1alpha1.File{
 		Path: reference,
 	}
-
+	if len(o.Name) > 0 {
+		cfg.Name = o.Name
+	}
 	return storeFile(ctx, s, cfg)
 }
 
