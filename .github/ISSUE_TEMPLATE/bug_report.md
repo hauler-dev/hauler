@@ -2,32 +2,50 @@
 name: Bug Report
 about: Create a report to help us improve!
 title: '[BUG]'
-labels: 'kind/bug'
+labels: 'bug'
 assignees: ''
 ---
 
-<!-- Thank you for helping us to improve Hauler! We welcome all bug reports. Please fill out each area of the template so we can better help you. Comments like this will be hidden when you post but you can delete them if you wish. -->
+<!-- Thank you for helping us to improve Hauler! We welcome all bug reports. Please fill out each area of the template so we can better assist you. Comments like this will be hidden when you submit, but you can delete them if you wish. -->
 
 **Environmental Info:**
-*
+
+<!-- Provide the output of "uname -a" -->
+
+-
 
 **Hauler Version:**
-*
 
-**System CPU architecture, OS, and Version:**
-* <!-- Provide the output from "uname -a" on the system where Hauler is installed -->
+<!-- Provide the output of "hauler version" -->
 
-**Describe the bug:**
-* <!-- A clear and concise description of the bug. -->
+-
 
-**Steps To Reproduce:**
-* <!-- A clear and concise way to reproduce the bug. -->
+**Describe the Bug:**
 
-**Expected behavior:**
-* <!-- A clear and concise description of what you expected to happen, without the bug. -->
+<!-- Provide a clear and concise description of the bug -->
 
-**Actual behavior:**
-* <!-- A clear and concise description of what actually happened. -->
+-
 
-**Additional context / logs:**
-* <!-- Add any other context and/or logs about the problem here. -->
+**Steps to Reproduce:**
+
+<!-- Provide a clear and concise way to reproduce the bug -->
+
+-
+
+**Expected Behavior:**
+
+<!-- Provide a clear and concise description of what you expected to happen -->
+
+-
+
+**Actual Behavior:**
+
+<!-- Provide a clear and concise description of what actually happens -->
+
+-
+
+**Additional Context:**
+
+<!-- Provide any other context and/or logs about the bug -->
+
+-
