@@ -1,13 +1,14 @@
-name: CI
+name: Release Workflow
 
 on:
   workflow_dispatch:
   push:
-    tags: 
+    tags:
       - '*'
 
 jobs:
   goreleaser:
+    name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
