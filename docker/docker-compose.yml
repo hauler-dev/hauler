@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  hauler:
+    container_name: "hauler"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - foo=bar
+    volumes:
+      - ./hauler-manifest.yaml:/home/hauler/hauler-manifest.yaml:ro
+      # - ./haul.tar.zst:/home/hauler/haul.tar.zst:ro
+    ports: ["5000:5000"]

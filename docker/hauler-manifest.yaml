@@ -1,0 +1,16 @@
+apiVersion: content.hauler.cattle.io/v1alpha1
+kind: Charts
+metadata:
+  name: hauler-content-charts-example
+spec:
+  charts:
+    - name: rancher
+      repoURL: https://releases.rancher.com/server-charts/stable
+      version: 2.8.2
+# ---
+# apiVersion: content.hauler.cattle.io/v1alpha1
+# kind: Images
+# metadata:
+#   name: hauler-content-images-example
+#   images:
+#     - name: docker.io/alpine:3.19
