@@ -60,25 +60,44 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 			cmd.Args = append(cmd.Args, "--cache-path", s.CacheRoot)
 		}
 
-		output, err := cmd.CombinedOutput()
+		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			if strings.Contains(string(output), "specified reference is not a multiarch image") {
-				l.Debugf(fmt.Sprintf("specified image [%s] is not a multiarch image.  (choosing default)", ref))
-				// Rerun the command without the platform flag
-				cmd = exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
-				// Conditionally add cache-path.
-				if s.CacheRoot != "" {
-					cmd.Args = append(cmd.Args, "--cache-path", s.CacheRoot)
-				}
-				output, err = cmd.CombinedOutput()
-				if err != nil {
-					return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
-				}
-			} else {
-				return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
-			}
+			return err
 		}
-		l.Debugf(strings.TrimSpace(string(output)))
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return err
+		}
+		// start the command after having set up the pipe
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+
+		// read command's stdout line by line
+		output := bufio.NewScanner(stdout)
+		for output.Scan() {
+			l.Infof(output.Text()) // write each line to your log, or anything you need
+		}
+		if err := output.Err(); err != nil {
+			cmd.Wait()
+			return err
+		}
+
+		// read command's stderr line by line
+		errors := bufio.NewScanner(stderr)
+		for errors.Scan() {
+			l.Errorf(errors.Text()) // write each line to your log, or anything you need
+		}
+		if err := errors.Err(); err != nil {
+			cmd.Wait()
+			return err
+		}
+
+		// Wait for the command to finish
+		err = cmd.Wait()
+		if err != nil {
+			return err
+		}
 
 		return nil
 	}
@@ -175,7 +194,7 @@ func RetryOperation(ctx context.Context, operation func() error) error {
 		}
 
 		// Log the error for the current attempt.
-		l.Errorf("Error (attempt %d/%d): %v", attempt, maxRetries, err)
+		l.Errorf("error (attempt %d/%d): %v", attempt, maxRetries, err)
 
 		// If this is not the last attempt, wait before retrying.
 		if attempt < maxRetries {
