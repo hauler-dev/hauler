@@ -100,7 +100,8 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 	if err != nil {
 		return err
 	}
-
+	
+	l.Infof("adding 'image' [%s] to the store", r.Name())
 	err = cosign.SaveImage(ctx, s, r.Name(), platform)
 	if err != nil {
 		return err

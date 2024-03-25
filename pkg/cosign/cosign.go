@@ -50,7 +50,6 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		if err != nil {
 			return err
 		}
-		l.Infof("adding [%s] to the store", ref)
 
 		// check to see if the image is multi-arch
 		isMultiArch, err := image.IsMultiArchImage(ref)
@@ -86,7 +85,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		// read command's stdout line by line
 		output := bufio.NewScanner(stdout)
 		for output.Scan() {
-			l.Infof(output.Text()) // write each line to your log, or anything you need
+			l.Debugf(output.Text()) // write each line to your log, or anything you need
 		}
 		if err := output.Err(); err != nil {
 			cmd.Wait()
