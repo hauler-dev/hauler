@@ -21,6 +21,7 @@ airgap-scp.sh
 # test artifacts
 *.tar*
 *.out
+*-test.yaml
 
 # generated
 dist/
