@@ -2,9 +2,9 @@ package store
 
 import (
 	"context"
-	"strings"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
@@ -37,7 +37,7 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Layout, ref string
 
 	found := false
 	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
-	
+
 		if !strings.Contains(reference, r.Name()) {
 			return nil
 		}

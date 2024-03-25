@@ -1,7 +1,7 @@
 // Package reference provides general types to represent oci content within a registry or local oci layout
 // Grammar (stolen mostly from containerd's grammar)
 //
-// 	reference :=
+//	reference :=
 package reference
 
 import (

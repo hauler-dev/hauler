@@ -2,24 +2,24 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"github.com/spf13/cobra"
+	"os"
 )
 
 func addCompletion(parent *cobra.Command) {
 	cmd := &cobra.Command{
-		Use:     "completion",
-		Short:   "Generates completion scripts for various shells",
+		Use:   "completion",
+		Short: "Generates completion scripts for various shells",
 		Long:  `The completion sub-command generates completion scripts for various shells.`,
 	}
-	
+
 	cmd.AddCommand(
 		addCompletionZsh(),
 		addCompletionBash(),
 		addCompletionFish(),
 		addCompletionPowershell(),
 	)
-	
+
 	parent.AddCommand(cmd)
 }
 
