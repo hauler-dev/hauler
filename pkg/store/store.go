@@ -23,15 +23,17 @@ import (
 
 type Layout struct {
 	*content.OCI
-	Root  string
-	cache layer.Cache
+	Root      string
+	cache     layer.Cache
+	CacheRoot string
 }
 
 type Options func(*Layout)
 
-func WithCache(c layer.Cache) Options {
+func WithCache(c layer.Cache, cacheDir string) Options {
 	return func(l *Layout) {
 		l.cache = c
+		l.CacheRoot = cacheDir
 	}
 }
 

@@ -48,37 +48,37 @@ func (o *RootOpts) Store(ctx context.Context) (*store.Layout, error) {
 		return nil, err
 	}
 
-	// TODO: Do we want this to be configurable?
-	c, err := o.Cache(ctx)
+	cd, err := o.getCacheDir()
 	if err != nil {
 		return nil, err
 	}
 
-	s, err := store.NewLayout(abs, store.WithCache(c))
+	c := layer.NewFilesystemCache(cd)
+
+	s, err := store.NewLayout(abs, store.WithCache(c, cd))
 	if err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-func (o *RootOpts) Cache(ctx context.Context) (layer.Cache, error) {
+func (o *RootOpts) getCacheDir() (string, error) {
 	dir := o.CacheDir
 
 	if dir == "" {
 		// Default to $XDG_CACHE_HOME
 		cachedir, err := os.UserCacheDir()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
 		abs, _ := filepath.Abs(filepath.Join(cachedir, DefaultCacheDir))
 		if err := os.MkdirAll(abs, os.ModePerm); err != nil {
-			return nil, err
+			return "", err
 		}
 
 		dir = abs
 	}
 
-	c := layer.NewFilesystemCache(dir)
-	return c, nil
+	return dir, nil
 }

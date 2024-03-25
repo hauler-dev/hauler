@@ -55,13 +55,21 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		if platform != "" {
 			cmd.Args = append(cmd.Args, "--platform", platform)
 		}
-		
+		// Conditionally add cache-path.
+		if s.CacheRoot != "" {
+			cmd.Args = append(cmd.Args, "--cache-path", s.CacheRoot)
+		}
+
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			if strings.Contains(string(output), "specified reference is not a multiarch image") {
 				l.Debugf(fmt.Sprintf("specified image [%s] is not a multiarch image.  (choosing default)", ref))
 				// Rerun the command without the platform flag
 				cmd = exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
+				// Conditionally add cache-path.
+				if s.CacheRoot != "" {
+					cmd.Args = append(cmd.Args, "--cache-path", s.CacheRoot)
+				}
 				output, err = cmd.CombinedOutput()
 				if err != nil {
 					return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
@@ -70,6 +78,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 				return fmt.Errorf("error adding image to store: %v, output: %s", err, output)
 			}
 		}
+		l.Debugf(strings.TrimSpace(string(output)))
 
 		return nil
 	}
