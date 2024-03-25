@@ -66,7 +66,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 					return err
 				}
 
-				i := newItem(s, desc, internalManifest, fmt.Sprintf("%s/%s", internalDesc.Platform.OS, internalDesc.Platform.Architecture), o)
+				i := newItem(desc, internalManifest, fmt.Sprintf("%s/%s", internalDesc.Platform.OS, internalDesc.Platform.Architecture), o)
 				var emptyItem item
 				if i != emptyItem {
 					items = append(items, i)
@@ -92,13 +92,13 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 			}
 			
 			if internalManifest.Architecture != "" {
-				i := newItem(s, desc, m, fmt.Sprintf("%s/%s", internalManifest.OS, internalManifest.Architecture), o)
+				i := newItem(desc, m, fmt.Sprintf("%s/%s", internalManifest.OS, internalManifest.Architecture), o)
 				var emptyItem item
 				if i != emptyItem {
 					items = append(items, i)
 				}
 			} else {
-				i := newItem(s, desc, m, "-", o)
+				i := newItem(desc, m, "-", o)
 				var emptyItem item
 				if i != emptyItem {
 					items = append(items, i)
@@ -111,7 +111,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 				return err
 			}
 
-			i := newItem(s, desc, m, "-", o)
+			i := newItem(desc, m, "-", o)
 			var emptyItem item
 			if i != emptyItem {
 				items = append(items, i)
@@ -200,7 +200,7 @@ func (a byReferenceAndArch) Less(i, j int) bool {
 	return a[i].Reference < a[j].Reference
 }
 
-func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *InfoOpts) item {
+func newItem(desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *InfoOpts) item {
 	var size int64 = 0
 	for _, l := range m.Layers {
 		size += l.Size

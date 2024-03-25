@@ -26,8 +26,6 @@ type ServeRegistryOpts struct {
 	Port       int
 	RootDir    string
 	ConfigFile string
-
-	storedir string
 }
 
 func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
@@ -81,8 +79,6 @@ type ServeFilesOpts struct {
 
 	Port       int
 	RootDir    string
-
-	storedir string
 }
 
 func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {

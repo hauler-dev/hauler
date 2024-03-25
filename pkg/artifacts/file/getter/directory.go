@@ -52,10 +52,6 @@ func (d directory) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) 
 		return nil, err
 	}
 
-	// rc := &closer{
-	// 	t: io.TeeReader(tmpfile, fi),
-	// 	closes: []func() error{fi.Close, tmpfile.Close, zw.Close},
-	// }
 	return fi, nil
 }
 
@@ -142,24 +138,4 @@ func tarDir(root string, prefix string, w io.Writer, stripTimes bool) error {
 		return err
 	}
 	return nil
-}
-
-type closer struct {
-	t      io.Reader
-	closes []func() error
-}
-
-func (c *closer) Read(p []byte) (n int, err error) {
-	return c.t.Read(p)
-}
-
-func (c *closer) Close() error {
-	var err error
-	for _, c := range c.closes {
-		lastErr := c()
-		if err == nil {
-			err = lastErr
-		}
-	}
-	return err
 }

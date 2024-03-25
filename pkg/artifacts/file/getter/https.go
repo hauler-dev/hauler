@@ -25,7 +25,7 @@ func (h Http) Name(u *url.URL) string {
 		return ""
 	}
 
-	name, _ := url.PathUnescape(u.String())
+	name, err := url.PathUnescape(u.String())
 	if err != nil {
 		return ""
 	}
