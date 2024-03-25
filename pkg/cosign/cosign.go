@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rancherfederal/hauler/pkg/artifacts/image"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 	"oras.land/oras-go/pkg/content"
@@ -49,10 +50,19 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		if err != nil {
 			return err
 		}
+		l.Infof("adding [%s] to the store", ref)
+
+		// check to see if the image is multi-arch
+		isMultiArch, err := image.IsMultiArchImage(ref)
+		if err != nil {
+			return err
+		}
+		l.Debugf("multi-arch image: %v", isMultiArch)
 
 		cmd := exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
 		// Conditionally add platform.
-		if platform != "" {
+		if platform != "" && isMultiArch {
+			l.Debugf("platform for image [%s]", platform)
 			cmd.Args = append(cmd.Args, "--platform", platform)
 		}
 		// Conditionally add cache-path.

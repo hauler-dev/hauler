@@ -106,7 +106,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 		return err
 	}
 
-	l.Infof("added 'image' to store at [%s]", r.Name())
+	l.Infof("added 'image' [%s] to store", r.Name())
 	return nil
 }
 
