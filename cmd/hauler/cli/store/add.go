@@ -41,7 +41,8 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Layout, reference 
 
 func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 	l := log.FromContext(ctx)
-
+	l.Infof("start adding 'file' [%s] to the store", fi.Name)
+	
 	copts := getter.ClientOptions{
 		NameOverride: fi.Name,
 	}
@@ -57,7 +58,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 		return err
 	}
 
-	l.Infof("added 'file' to store at [%s], with digest [%s]", ref.Name(), desc.Digest.String())
+	l.Infof("finished adding 'file' [%s] to store, with digest [%s]", ref.Name(), desc.Digest.String())
 	return nil
 }
 
@@ -96,18 +97,18 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string) error {
 	l := log.FromContext(ctx)
 
+	l.Infof("start adding 'image' [%s] to the store", i.Name)
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
 		return err
 	}
 	
-	l.Infof("adding 'image' [%s] to the store", r.Name())
 	err = cosign.SaveImage(ctx, s, r.Name(), platform)
 	if err != nil {
 		return err
 	}
 
-	l.Infof("added 'image' [%s] to store", r.Name())
+	l.Infof("finished adding 'image' [%s] to store", r.Name())
 	return nil
 }
 
@@ -144,7 +145,8 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartNam
 
 func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
-
+	l.Infof("start adding 'chart' [%s] to the store", cfg.Name)
+	
 	// TODO: This shouldn't be necessary
 	opts.RepoURL = cfg.RepoURL
 	opts.Version = cfg.Version
@@ -168,6 +170,6 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *
 		return err
 	}
 
-	l.Infof("added 'chart' to store at [%s], with digest [%s]", ref.Name(), desc.Digest.String())
+	l.Infof("finished adding 'chart' [%s] to store, with digest [%s]", ref.Name(), desc.Digest.String())
 	return nil
 }
