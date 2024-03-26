@@ -1,7 +1,7 @@
 SHELL:=/bin/bash
 GO_FILES=$(shell go list ./... | grep -v /vendor/)
 
-COSIGN_VERSION=v2.2.2+carbide.2
+COSIGN_VERSION=v2.2.3+carbide.1
 
 .SILENT:
 
