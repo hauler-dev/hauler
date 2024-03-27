@@ -1,0 +1,8 @@
+*
+!cmd
+!go.mod
+!go.sum
+!internal
+!Makefile
+!pkg
+!static
