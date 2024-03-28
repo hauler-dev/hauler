@@ -1,6 +1,5 @@
-FROM golang:1.21-alpine AS builder
-RUN apk add make bash
-RUN apk add --no-cache ca-certificates
+FROM registry.suse.com/bci/golang:1.21 AS builder
+RUN zypper --non-interactive install make bash wget ca-certificates
 
 COPY . /build
 WORKDIR /build
@@ -13,7 +12,7 @@ RUN echo "hauler:x:1001:1001::/home:" > /etc/passwd \
 && mkdir /registry
 
 FROM scratch
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /var/lib/ca-certificates/ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 COPY --from=builder --chown=hauler:hauler /home/. /home
