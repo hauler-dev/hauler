@@ -207,6 +207,8 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 					return err
 				}
 			}
+			// sync with local index
+			s.CopyAll(ctx, s.OCI, nil)
 
 		case v1alpha1.ChartsContentKind:
 			var cfg v1alpha1.Charts
