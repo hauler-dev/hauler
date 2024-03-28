@@ -17,6 +17,7 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 COPY --from=builder --chown=hauler:hauler /home/. /home
+COPY --from=builder --chown=hauler:hauler /tmp/. /tmp
 COPY --from=builder --chown=hauler:hauler /store/. /store
 COPY --from=builder --chown=hauler:hauler /registry/. /registry
 COPY --from=builder --chown=hauler:hauler /store-files/. /store-files
