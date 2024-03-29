@@ -200,8 +200,7 @@ func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layo
 				if i.Platform != "" {
 					platform = i.Platform
 				}
-				l.Debugf("platform for image [%s]", platform)
-				
+								
 				err = storeImage(ctx, s, i, platform)
 				if err != nil {
 					return err
