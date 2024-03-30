@@ -8,7 +8,7 @@ RUN make build
 RUN echo "hauler:x:1001:1001::/home:" > /etc/passwd \
 && echo "hauler:x:1001:hauler" > /etc/group \
 && mkdir /store \
-&& mkdir /store-files \
+&& mkdir /fileserver \
 && mkdir /registry
 
 FROM scratch
@@ -19,7 +19,7 @@ COPY --from=builder --chown=hauler:hauler /home/. /home
 COPY --from=builder --chown=hauler:hauler /tmp/. /tmp
 COPY --from=builder --chown=hauler:hauler /store/. /store
 COPY --from=builder --chown=hauler:hauler /registry/. /registry
-COPY --from=builder --chown=hauler:hauler /store-files/. /store-files
+COPY --from=builder --chown=hauler:hauler /fileserver/. /fileserver
 COPY --from=builder --chown=hauler:hauler /build/bin/hauler /
 USER hauler
 ENTRYPOINT [ "/hauler" ]
