@@ -41,8 +41,7 @@ func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Layout, reference 
 
 func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 	l := log.FromContext(ctx)
-	l.Infof("adding 'file' [%s] to the store", fi.Name)
-	
+
 	copts := getter.ClientOptions{
 		NameOverride: fi.Name,
 	}
@@ -53,6 +52,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 		return err
 	}
 
+	l.Infof("adding 'file' [%s] to the store as [%s]", fi.Path, ref.Name())
 	_, err = s.AddOCI(ctx, f, ref.Name())
 	if err != nil {
 		return err
