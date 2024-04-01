@@ -14,11 +14,17 @@ import (
 
 type LoadOpts struct {
 	*RootOpts
+	TempOverride string
 }
 
 func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	_ = f
+
+	// On Unix systems, TempDir returns $TMPDIR if non-empty, else /tmp.
+	// On Windows, TempDir uses GetTempPath, returning the first non-empty
+	// value from %TMP%, %TEMP%, %USERPROFILE%, or the Windows directory.
+	// On Plan 9, TempDir returns /tmp.
+	f.StringVarP(&o.TempOverride, "temp", "t", "", "overrides the default directory for temporary files, as returned by your OS.")
 }
 
 // LoadCmd
@@ -28,7 +34,7 @@ func LoadCmd(ctx context.Context, o *LoadOpts, archiveRefs ...string) error {
 
 	for _, archiveRef := range archiveRefs {
 		l.Infof("loading content from [%s] to [%s]", archiveRef, o.StoreDir)
-		err := unarchiveLayoutTo(ctx, archiveRef, o.StoreDir)
+		err := unarchiveLayoutTo(ctx, archiveRef, o.StoreDir, o.TempOverride)
 		if err != nil {
 			return err
 		}
@@ -38,8 +44,8 @@ func LoadCmd(ctx context.Context, o *LoadOpts, archiveRefs ...string) error {
 }
 
 // unarchiveLayoutTo accepts an archived oci layout and extracts the contents to an existing oci layout, preserving the index
-func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string) error {
-	tmpdir, err := os.MkdirTemp("", "hauler")
+func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tempOverride string) error {
+	tmpdir, err := os.MkdirTemp(tempOverride, "hauler")
 	if err != nil {
 		return err
 	}
