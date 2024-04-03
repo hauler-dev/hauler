@@ -52,12 +52,14 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 		return err
 	}
 
-	desc, err := s.AddOCI(ctx, f, ref.Name())
+	l.Infof("adding 'file' [%s] to the store as [%s]", fi.Path, ref.Name())
+	_, err = s.AddOCI(ctx, f, ref.Name())
 	if err != nil {
 		return err
 	}
 
-	l.Infof("added 'file' to store at [%s], with digest [%s]", ref.Name(), desc.Digest.String())
+	l.Infof("successfully added 'file' [%s]", ref.Name())
+
 	return nil
 }
 
@@ -95,18 +97,19 @@ func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, referenc
 
 func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string) error {
 	l := log.FromContext(ctx)
+	l.Infof("adding 'image' [%s] to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
 		return err
 	}
-
+	
 	err = cosign.SaveImage(ctx, s, r.Name(), platform)
 	if err != nil {
 		return err
 	}
 
-	l.Infof("added 'image' to store at [%s]", r.Name())
+	l.Infof("successfully added 'image' [%s]", r.Name())
 	return nil
 }
 
@@ -143,7 +146,8 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartNam
 
 func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
-
+	l.Infof("adding 'chart' [%s] to the store", cfg.Name)
+	
 	// TODO: This shouldn't be necessary
 	opts.RepoURL = cfg.RepoURL
 	opts.Version = cfg.Version
@@ -162,11 +166,11 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *
 	if err != nil {
 		return err
 	}
-	desc, err := s.AddOCI(ctx, chrt, ref.Name())
+	_, err = s.AddOCI(ctx, chrt, ref.Name())
 	if err != nil {
 		return err
 	}
 
-	l.Infof("added 'chart' to store at [%s], with digest [%s]", ref.Name(), desc.Digest.String())
+	l.Infof("successfully added 'chart' [%s]", ref.Name())
 	return nil
 }
