@@ -68,7 +68,7 @@ func ServeRegistryCmd(ctx context.Context, o *ServeRegistryOpts, s *store.Layout
 	if err != nil {
 		return err
 	}
-	
+
 	if err = r.ListenAndServe(); err != nil {
 		return err
 	}
@@ -79,8 +79,8 @@ func ServeRegistryCmd(ctx context.Context, o *ServeRegistryOpts, s *store.Layout
 type ServeFilesOpts struct {
 	*RootOpts
 
-	Port       int
-	RootDir    string
+	Port    int
+	RootDir string
 
 	storedir string
 }
@@ -89,7 +89,7 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.IntVarP(&o.Port, "port", "p", 8080, "Port to listen on.")
-	f.StringVar(&o.RootDir, "directory", "store-files", "Directory to use for backend.  Defaults to $PWD/store-files")
+	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend.  Defaults to $PWD/fileserver")
 }
 
 func ServeFilesCmd(ctx context.Context, o *ServeFilesOpts, s *store.Layout) error {
@@ -100,7 +100,7 @@ func ServeFilesCmd(ctx context.Context, o *ServeFilesOpts, s *store.Layout) erro
 	if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir); err != nil {
 		return err
 	}
-	
+
 	cfg := server.FileConfig{
 		Root: o.RootDir,
 		Port: o.Port,
@@ -110,7 +110,7 @@ func ServeFilesCmd(ctx context.Context, o *ServeFilesOpts, s *store.Layout) erro
 	if err != nil {
 		return err
 	}
-	
+
 	l.Infof("starting file server on port [%d]", o.Port)
 	if err := f.ListenAndServe(); err != nil {
 		return err
