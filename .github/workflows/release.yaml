@@ -61,4 +61,4 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64
           push: true
-          tags: ${{ github.repository_owner }}/${{ github.repository }}:${{ github.ref_name }},${{ github.repository_owner }}/${{ github.repository }}}:latest
+          tags: ${{ github.repository_owner }}/${{ github.repository }}:${{ github.ref_name }},${{ github.repository_owner }}/${{ github.repository }}:latest
