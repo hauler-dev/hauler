@@ -32,6 +32,7 @@ type SyncOpts struct {
 	Products	 []string
 	Platform	 string
 	Registry	 string
+	ProductRegistry string
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -42,6 +43,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringSliceVar(&o.Products, "products", []string{}, "Used for RGS Carbide customers to supply a product and version and Hauler will retrieve the images. i.e. '--product rancher=v2.7.6'")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specific platform to save. i.e. linux/amd64. Defaults to all if flag is omitted.")
 	f.StringVarP(&o.Registry, "registry", "r", "", "(Optional) Default pull registry for image refs that are not specifying a registry name.")
+	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specific Product Registry to use. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us).")
 }
 
 func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
@@ -52,7 +54,14 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 		l.Infof("processing content file for product: '%s'", product)
 		parts := strings.Split(product, "=")
 		tag := strings.ReplaceAll(parts[1], "+", "-")
-		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", consts.CarbideRegistry, parts[0], tag)
+
+		ProductRegistry := o.ProductRegistry // cli flag
+		// if no cli flag use CarbideRegistry.
+		if o.ProductRegistry == "" {
+			ProductRegistry = consts.CarbideRegistry
+		}
+
+		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", ProductRegistry, parts[0], tag)
 		l.Infof("retrieving product manifest from: '%s'", manifestLoc)
 		img := v1alpha1.Image{
 			Name: manifestLoc,
