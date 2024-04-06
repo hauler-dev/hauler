@@ -1,0 +1,70 @@
+{{- if .Values.haulerRegistry.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hauler-registry
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hauler.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hauler-registry
+      {{- include "hauler.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: hauler-registry
+        {{- include "hauler.selectorLabels" . | nindent 8 }}
+    spec:
+      initContainers:
+        - name: wait-for-hauler-hauls-job
+          image: {{ .Values.hauler.initContainers.image.repository }}:{{ .Values.hauler.initContainers.image.tag }}
+          imagePullPolicy: {{ .Values.hauler.initContainers.imagePullPolicy }}
+          args: ["wait", "--for=condition=complete", "job", "hauler-hauls-job", "--namespace", "{{ .Release.Namespace }}", "--timeout={{ .Values.hauler.initContainers.timeout }}"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+        - name: wait-for-hauler-manifests-job
+          image: {{ .Values.hauler.initContainers.image.repository }}:{{ .Values.hauler.initContainers.image.tag }}
+          imagePullPolicy: {{ .Values.hauler.initContainers.imagePullPolicy }}
+          args: ["wait", "--for=condition=complete", "job", "hauler-manifests-job", "--namespace", "{{ .Release.Namespace }}", "--timeout={{ .Values.hauler.initContainers.timeout }}"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+      containers:
+        - name: hauler-registry
+          image: {{ .Values.hauler.image.repository }}:{{ .Values.hauler.image.tag }}
+          imagePullPolicy: {{ .Values.hauler.imagePullPolicy }}
+          args: ["store", "serve", "registry"]
+          ports:
+            - containerPort: {{ .Values.haulerRegistry.service.ports.port }}
+          volumeMounts:
+            - name: hauler-data
+              mountPath: /store
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+      restartPolicy: Always
+      serviceAccountName: hauler-service-account
+      volumes:
+        - name: hauler-data
+          persistentVolumeClaim:
+            claimName: hauler-data
+{{- end }}

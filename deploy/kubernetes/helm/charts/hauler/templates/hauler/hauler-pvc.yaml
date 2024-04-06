@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hauler-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hauler.labels" . | nindent 4 }}
+spec:
+  accessModes:
+  - {{ .Values.hauler.data.pvc.accessModes }}
+  resources:
+    requests:
+      storage: {{ .Values.hauler.data.pvc.storageRequest }}
+  storageClassName: {{ .Values.hauler.data.pvc.storageClass }}

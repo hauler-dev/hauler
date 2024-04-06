@@ -1,0 +1,122 @@
+{{- if .Values.haulerJobs.hauls.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hauler-hauls-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hauler.labels" . | nindent 4 }}
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: hauler-fetch-hauls
+          image: {{ .Values.haulerJobs.image.repository }}:{{ .Values.haulerJobs.image.tag }}
+          imagePullPolicy: {{ .Values.haulerJobs.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              curl -o /hauls/longhorn.tar.zst https://rancher-airgap.s3.amazonaws.com/longhorn.tar.zst &&
+              curl -o /hauls/neuvector.tar.zst https://rancher-airgap.s3.amazonaws.com/neuvector.tar.zst &&
+              echo 'hauler fetch completed'
+          volumeMounts:
+            - name: hauler-data
+              mountPath: /hauls
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+      containers:
+        - name: hauler-load-hauls
+          image: {{ .Values.hauler.image.repository }}:{{ .Values.hauler.image.tag }}
+          imagePullPolicy: {{ .Values.hauler.imagePullPolicy }}
+          args:
+            - "store"
+            - "load"
+            - "/hauls/longhorn.tar.zst"
+            - "/hauls/neuvector.tar.zst"
+          volumeMounts:
+            - name: hauler-data
+              mountPath: /hauls
+            - name: hauler-data
+              mountPath: /store
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+      restartPolicy: OnFailure
+      volumes:
+        - name: hauler-data
+          persistentVolumeClaim:
+            claimName: hauler-data
+{{- end }}
+---
+{{- if .Values.haulerJobs.manifests.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hauler-manifests-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hauler.labels" . | nindent 4 }}
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: hauler-fetch-manifests
+          image: {{ .Values.haulerJobs.image.repository }}:{{ .Values.haulerJobs.image.tag }}
+          imagePullPolicy: {{ .Values.haulerJobs.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              curl -o /manifests/rancher-airgap-cosign.yaml https://rancher-airgap.s3.amazonaws.com/rancher-airgap-cosign.yaml &&
+              curl -o /manifests/rancher-airgap-helm.yaml https://rancher-airgap.s3.amazonaws.com/rancher-airgap-helm.yaml &&
+              echo 'hauler fetch completed'
+          volumeMounts:
+            - name: hauler-data
+              mountPath: /manifests
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+      containers:
+        - name: hauler-load-manifests
+          image: {{ .Values.hauler.image.repository }}:{{ .Values.hauler.image.tag }}
+          imagePullPolicy: {{ .Values.hauler.imagePullPolicy }}
+          args:
+            - "store"
+            - "sync"
+            - "--files"
+            - "/manifests/rancher-airgap-cosign.yaml"
+            - "/manifests/rancher-airgap-helm.yaml"
+          volumeMounts:
+            - name: hauler-data
+              mountPath: /manifests
+            - name: hauler-data
+              mountPath: /store
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+      restartPolicy: OnFailure
+      volumes:
+        - name: hauler-data
+          persistentVolumeClaim:
+            claimName: hauler-data
+{{- end }}

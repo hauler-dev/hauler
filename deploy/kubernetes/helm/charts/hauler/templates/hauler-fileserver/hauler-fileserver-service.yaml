@@ -1,0 +1,17 @@
+{{- if and .Values.haulerFileserver.enabled .Values.haulerFileserver.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: hauler-fileserver
+  labels:
+    {{- include "hauler.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: hauler-fileserver
+  ports:
+    - name: {{ .Values.haulerFileserver.service.ports.name }}
+      protocol: {{ .Values.haulerFileserver.service.ports.protocol }}
+      port: {{ .Values.haulerFileserver.service.ports.port }}
+      targetPort: {{ .Values.haulerFileserver.service.ports.targetPort }}
+  type: {{ .Values.haulerFileserver.service.type }}
+{{- end }}

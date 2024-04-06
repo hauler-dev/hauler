@@ -1,0 +1,109 @@
+# Helm Chart Values for Hauler
+# Docs: http://hauler.dev
+
+hauler:
+  image:
+    repository: zackbradys/hauler
+    tag: v1.0.2
+  imagePullPolicy: Always
+
+  initContainers:
+    image:
+      repository: rancher/kubectl
+      tag: v1.27.0
+    imagePullPolicy: Always
+    timeout: 1h
+
+  data:
+    pvc:
+      accessModes: ReadWriteMany
+      storageClass: longhorn
+      storageRequest: 48Gi
+
+  ingress:
+    enabled: true
+    hosts:
+      - hauler.ranchers.io
+    tls:
+      enabled: true
+      secretName: tls-certs
+
+  service:
+    enabled: true
+    type: ClusterIP
+    ports:
+      name: hauler
+      protocol: TCP
+      port: 80
+      targetPort: 80
+
+# Helm Chart Values for the Hauler Jobs
+# Docs: http://hauler.dev
+
+haulerJobs:
+  image:
+    repository: rancher/shell
+    tag: v0.1.22
+  imagePullPolicy: Always
+
+  hauls:
+    enabled: true
+    artifacts:
+      - path: https://rancher-airgap.s3.amazonaws.com/longhorn.tar.zst
+        name: /hauls/longhorn.tar.zst
+      - path: https://rancher-airgap.s3.amazonaws.com/neuvector.tar.zst
+        name: /hauls/neuvector.tar.zst
+
+  manifests:
+    enabled: true
+    stuff:
+      - path: https://rancher-airgap.s3.amazonaws.com/rancher-airgap-cosign.yaml
+        name: /manifests/rancher-airgap-cosign.yaml
+      - path: https://rancher-airgap.s3.amazonaws.com/rancher-airgap-helm.yaml
+        name: /manifests/rancher-airgap-helm.yaml
+
+# Helm Chart Values for the Hauler Fileserver
+# Docs: http://hauler.dev
+
+haulerFileserver:
+  enabled: true
+
+  ingress:
+    enabled: true
+    hosts:
+      - fileserver.ranchers.io
+    tls:
+      enabled: true
+      secretName: tls-certs
+
+  service:
+    enabled: true
+    type: ClusterIP
+    ports:
+      name: hauler-fileserver
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+# Helm Chart Values for the Hauler Registry
+# Docs: http://hauler.dev
+
+haulerRegistry:
+  enabled: true
+
+  ingress:
+    enabled: true
+    hosts:
+      - registry.ranchers.io
+    tls:
+      enabled: true
+      secretName: tls-certs
+
+  service:
+    enabled: true
+    type: ClusterIP
+    ports:
+      name: hauler-registry
+      protocol: TCP
+      port: 5000
+      targetPort: 5000
