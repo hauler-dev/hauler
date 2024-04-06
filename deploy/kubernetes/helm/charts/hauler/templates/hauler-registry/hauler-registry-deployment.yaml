@@ -18,7 +18,9 @@ spec:
         app: hauler-registry
         {{- include "hauler.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if or .Values.haulerJobs.hauls.enabled .Values.haulerJobs.manifests.enabled }}
       initContainers:
+        {{- if .Values.haulerJobs.hauls.enabled }}
         - name: wait-for-hauler-hauls-job
           image: {{ .Values.hauler.initContainers.image.repository }}:{{ .Values.hauler.initContainers.image.tag }}
           imagePullPolicy: {{ .Values.hauler.initContainers.imagePullPolicy }}
@@ -31,6 +33,8 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
+        {{- end }}
+        {{- if .Values.haulerJobs.manifests.enabled }}
         - name: wait-for-hauler-manifests-job
           image: {{ .Values.hauler.initContainers.image.repository }}:{{ .Values.hauler.initContainers.image.tag }}
           imagePullPolicy: {{ .Values.hauler.initContainers.imagePullPolicy }}
@@ -43,13 +47,15 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
+        {{- end }}
+      {{- end }}
       containers:
         - name: hauler-registry
           image: {{ .Values.hauler.image.repository }}:{{ .Values.hauler.image.tag }}
           imagePullPolicy: {{ .Values.hauler.imagePullPolicy }}
-          args: ["store", "serve", "registry"]
+          args: ["store", "serve", "registry", "--port", "{{ .Values.haulerRegistry.port }}"]
           ports:
-            - containerPort: {{ .Values.haulerRegistry.service.ports.port }}
+            - containerPort: {{ .Values.haulerRegistry.port }}
           volumeMounts:
             - name: hauler-data
               mountPath: /store

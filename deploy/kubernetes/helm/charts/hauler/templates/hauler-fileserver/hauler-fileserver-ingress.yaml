@@ -15,7 +15,7 @@ spec:
           service:
             name: hauler-fileserver
             port:
-              number: 8080
+              number: {{ $.Values.haulerFileserver.service.ports.targetPort }}
         path: /
         pathType: Prefix
   {{- end }}

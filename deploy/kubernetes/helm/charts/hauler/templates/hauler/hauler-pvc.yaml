@@ -11,4 +11,6 @@ spec:
   resources:
     requests:
       storage: {{ .Values.hauler.data.pvc.storageRequest }}
+  {{- if .Values.hauler.data.pvc.storageClass }}
   storageClassName: {{ .Values.hauler.data.pvc.storageClass }}
+  {{- end }}

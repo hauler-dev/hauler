@@ -3,8 +3,8 @@
 
 hauler:
   image:
-    repository: zackbradys/hauler
-    tag: v1.0.2
+    repository: ghcr.io/rancherfederal/hauler
+    tag: v1.0.2-rc.4
   imagePullPolicy: Always
 
   initContainers:
@@ -19,6 +19,8 @@ hauler:
       accessModes: ReadWriteMany
       storageClass: longhorn
       storageRequest: 48Gi
+
+  port: 80
 
   ingress:
     enabled: true
@@ -38,7 +40,7 @@ hauler:
       targetPort: 80
 
 # Helm Chart Values for the Hauler Jobs
-# Docs: http://hauler.dev
+# Docs: https://rancherfederal.github.io/hauler-docs/docs/introduction/quickstart
 
 haulerJobs:
   image:
@@ -50,23 +52,25 @@ haulerJobs:
     enabled: true
     artifacts:
       - path: https://rancher-airgap.s3.amazonaws.com/longhorn.tar.zst
-        name: /hauls/longhorn.tar.zst
+        name: longhorn.tar.zst
       - path: https://rancher-airgap.s3.amazonaws.com/neuvector.tar.zst
-        name: /hauls/neuvector.tar.zst
+        name: neuvector.tar.zst
 
   manifests:
     enabled: true
-    stuff:
+    artifacts:
       - path: https://rancher-airgap.s3.amazonaws.com/rancher-airgap-cosign.yaml
-        name: /manifests/rancher-airgap-cosign.yaml
+        name: rancher-airgap-cosign.yaml
       - path: https://rancher-airgap.s3.amazonaws.com/rancher-airgap-helm.yaml
-        name: /manifests/rancher-airgap-helm.yaml
+        name: rancher-airgap-helm.yaml
 
 # Helm Chart Values for the Hauler Fileserver
-# Docs: http://hauler.dev
+# Docs: https://rancherfederal.github.io/hauler-docs/docs/guides-references/command-line/hauler-store#hauler-store-serve-fileserver
 
 haulerFileserver:
   enabled: true
+
+  port: 8080
 
   ingress:
     enabled: true
@@ -86,10 +90,12 @@ haulerFileserver:
       targetPort: 8080
 
 # Helm Chart Values for the Hauler Registry
-# Docs: http://hauler.dev
+# Docs: https://rancherfederal.github.io/hauler-docs/docs/guides-references/command-line/hauler-store#hauler-store-serve-registry
 
 haulerRegistry:
   enabled: true
+
+  port: 5000
 
   ingress:
     enabled: true

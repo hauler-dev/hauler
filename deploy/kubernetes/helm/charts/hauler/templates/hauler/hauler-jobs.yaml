@@ -16,9 +16,10 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              curl -o /hauls/longhorn.tar.zst https://rancher-airgap.s3.amazonaws.com/longhorn.tar.zst &&
-              curl -o /hauls/neuvector.tar.zst https://rancher-airgap.s3.amazonaws.com/neuvector.tar.zst &&
-              echo 'hauler fetch completed'
+              {{- range .Values.haulerJobs.hauls.artifacts }}
+              curl -o /hauls/{{ .name }} {{ .path }} &&
+              {{- end }}
+              echo hauler fetch completed
           volumeMounts:
             - name: hauler-data
               mountPath: /hauls
@@ -37,8 +38,9 @@ spec:
           args:
             - "store"
             - "load"
-            - "/hauls/longhorn.tar.zst"
-            - "/hauls/neuvector.tar.zst"
+            {{- range .Values.haulerJobs.hauls.artifacts }}
+            - "/hauls/{{ .name }}"
+            {{- end }}
           volumeMounts:
             - name: hauler-data
               mountPath: /hauls
@@ -77,9 +79,10 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              curl -o /manifests/rancher-airgap-cosign.yaml https://rancher-airgap.s3.amazonaws.com/rancher-airgap-cosign.yaml &&
-              curl -o /manifests/rancher-airgap-helm.yaml https://rancher-airgap.s3.amazonaws.com/rancher-airgap-helm.yaml &&
-              echo 'hauler fetch completed'
+              {{- range .Values.haulerJobs.manifests.artifacts }}
+              curl -o /manifests/{{ .name }} {{ .path }} &&
+              {{- end }}
+              echo hauler fetch completed
           volumeMounts:
             - name: hauler-data
               mountPath: /manifests
@@ -96,11 +99,12 @@ spec:
           image: {{ .Values.hauler.image.repository }}:{{ .Values.hauler.image.tag }}
           imagePullPolicy: {{ .Values.hauler.imagePullPolicy }}
           args:
+            {{- range .Values.haulerJobs.manifests.artifacts }}
             - "store"
             - "sync"
             - "--files"
-            - "/manifests/rancher-airgap-cosign.yaml"
-            - "/manifests/rancher-airgap-helm.yaml"
+            - "/manifests/{{ .name }}"
+            {{- end }}
           volumeMounts:
             - name: hauler-data
               mountPath: /manifests

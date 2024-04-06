@@ -16,7 +16,7 @@ spec:
           service:
             name: hauler-registry
             port:
-              number: 5000
+              number: {{ $.Values.haulerRegistry.service.ports.targetPort }}
         path: /
         pathType: Prefix
   {{- end }}
