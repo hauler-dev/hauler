@@ -7,7 +7,7 @@ metadata:
   labels:
     {{- include "hauler.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.haulerFileserver.replicas }}
   selector:
     matchLabels:
       app: hauler-fileserver

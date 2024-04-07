@@ -10,7 +10,7 @@ spec:
   selector:
     app: hauler-registry
   ports:
-    - name: {{ .Values.haulerRegistry.service.ports.name }}
+    - name: hauler-registry
       protocol: {{ .Values.haulerRegistry.service.ports.protocol }}
       port: {{ .Values.haulerRegistry.service.ports.port }}
       targetPort: {{ .Values.haulerRegistry.service.ports.targetPort }}

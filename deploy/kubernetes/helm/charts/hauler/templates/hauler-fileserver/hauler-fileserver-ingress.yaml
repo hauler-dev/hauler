@@ -3,28 +3,25 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: hauler-fileserver
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "hauler.labels" . | nindent 4 }}
 spec:
   rules:
-  {{- range .Values.haulerFileserver.ingress.hosts }}
-  - host: {{ . }}
+  - host: {{ .Values.haulerFileserver.ingress.hostname }}
     http:
       paths:
       - backend:
           service:
             name: hauler-fileserver
             port:
-              number: {{ $.Values.haulerFileserver.service.ports.targetPort }}
+              number: {{ .Values.haulerFileserver.service.ports.targetPort }}
         path: /
         pathType: Prefix
-  {{- end }}
   {{- if .Values.haulerFileserver.ingress.tls.enabled }}
   tls:
   - hosts:
-    {{- range .Values.haulerFileserver.ingress.hosts }}
-    - {{ . }}
-    {{- end }}
+    - {{ .Values.haulerFileserver.ingress.hostname }}
     secretName: {{ .Values.haulerFileserver.ingress.tls.secretName }}
   {{- end }}
 {{- end }}

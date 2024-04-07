@@ -8,24 +8,21 @@ metadata:
     {{- include "hauler.labels" . | nindent 4 }}
 spec:
   rules:
-  {{- range .Values.haulerRegistry.ingress.hosts }}
-  - host: {{ . }}
+  - host: {{ .Values.haulerRegistry.ingress.hostname }}
     http:
       paths:
       - backend:
           service:
             name: hauler-registry
             port:
-              number: {{ $.Values.haulerRegistry.service.ports.targetPort }}
+              number: {{ .Values.haulerRegistry.service.ports.targetPort }}
         path: /
         pathType: Prefix
-  {{- end }}
   {{- if .Values.haulerRegistry.ingress.tls.enabled }}
   tls:
   - hosts:
-    {{- range .Values.haulerRegistry.ingress.hosts }}
-    - {{ . }}
-    {{- end }}
+    - {{ .Values.haulerRegistry.ingress.hostname }}
     secretName: {{ .Values.haulerRegistry.ingress.tls.secretName }}
   {{- end }}
 {{- end }}
+
