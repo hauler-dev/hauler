@@ -18,10 +18,6 @@ artifacts
 local-artifacts
 airgap-scp.sh
 
-# test artifacts
-*.tar*
-*.out
-
 # generated
 dist/
 tmp/

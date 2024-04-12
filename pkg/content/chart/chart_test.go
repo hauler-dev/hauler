@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	chartpath = "../../../testdata/podinfo-6.0.3.tgz"
+	chartpath = "../../../testdata/rancher-cluster-templates-0.4.4.tgz"
 )
 
 func TestNewChart(t *testing.T) {
@@ -48,13 +48,13 @@ func TestNewChart(t *testing.T) {
 			},
 			want: v1.Descriptor{
 				MediaType: consts.ChartLayerMediaType,
-				Size:      13524,
+				Size:      13102,
 				Digest: v1.Hash{
 					Algorithm: "sha256",
-					Hex:       "e30b95a08787de69ffdad3c232d65cfb131b5b50c6fd44295f48a078fceaa44e",
+					Hex:       "4b3bb4e474b54bf9057b298f8f11c239bb561396716d8cd5fc369c407fba2965",
 				},
 				Annotations: map[string]string{
-					ocispec.AnnotationTitle: "podinfo-6.0.3.tgz",
+					ocispec.AnnotationTitle: "rancher-cluster-templates-0.4.4.tgz",
 				},
 			},
 			wantErr: false,
@@ -72,18 +72,18 @@ func TestNewChart(t *testing.T) {
 			// TODO: Use a mock helm server
 			name: "should fetch a remote chart",
 			args: args{
-				name: "ingress-nginx",
-				opts: &action.ChartPathOptions{RepoURL: "https://kubernetes.github.io/ingress-nginx", Version: "4.0.16"},
+				name: "cert-manager",
+				opts: &action.ChartPathOptions{RepoURL: "https://charts.jetstack.io", Version: "1.14.4"},
 			},
 			want: v1.Descriptor{
 				MediaType: consts.ChartLayerMediaType,
-				Size:      38591,
+				Size:      80674,
 				Digest: v1.Hash{
 					Algorithm: "sha256",
-					Hex:       "b0ea91f7febc6708ad9971871d2de6e8feb2072110c3add6dd7082d90753caa2",
+					Hex:       "5775fdbc1881d6e510df76d38753af54b86bd14caa8edb28fdbb79527042dede",
 				},
 				Annotations: map[string]string{
-					ocispec.AnnotationTitle: "ingress-nginx-4.0.16.tgz",
+					ocispec.AnnotationTitle: "cert-manager-v1.14.4.tgz",
 				},
 			},
 			wantErr: false,
