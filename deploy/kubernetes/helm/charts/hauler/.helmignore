@@ -1,0 +1,21 @@
+# HELM IGNORE OPTIONS:
+# Patterns to ignore when building Helm packages.
+# Supports shell glob matching, relative path matching, and negation (prefixed with !)
+
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.bzrignore
+.hg/
+.hgignore
+.svn/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.project
+.idea/
+*.tmproj
+.vscode/
