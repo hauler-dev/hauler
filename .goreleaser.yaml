@@ -10,7 +10,7 @@ release:
 
 env:
   - vpkg=github.com/rancherfederal/hauler/internal/version
-  - cosign_version=v2.2.3+carbide.1
+  - cosign_version=v2.2.3+carbide.2
 
 builds:
   - main: cmd/hauler/main.go
