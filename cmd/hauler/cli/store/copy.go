@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -23,6 +24,14 @@ type CopyOpts struct {
 	PlainHTTP bool
 }
 
+const directory string = "dir"
+
+const registry string = "registry"
+
+func getTargetPrefixes() []string {
+	return []string{directory, registry}
+}
+
 func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
@@ -36,8 +45,14 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 	l := log.FromContext(ctx)
 
 	components := strings.SplitN(targetRef, "://", 2)
-	switch components[0] {
-	case "dir":
+	targetPrefix := components[0]
+
+	if !slices.Contains(getTargetPrefixes(), targetPrefix) {
+		return fmt.Errorf("detecting registry protocol from [%s]; target URL must start with %v://location", targetRef, getTargetPrefixes())
+	}
+
+	switch targetPrefix {
+	case directory:
 		l.Debugf("identified directory target reference")
 		fs := content.NewFile(components[1])
 		defer fs.Close()
@@ -47,7 +62,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			return err
 		}
 
-	case "registry":
+	case registry:
 		l.Debugf("identified registry target reference")
 		ropts := content.RegistryOptions{
 			Username:  o.Username,
@@ -55,7 +70,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			Insecure:  o.Insecure,
 			PlainHTTP: o.PlainHTTP,
 		}
-		
+
 		if ropts.Username != "" {
 			err := cosign.RegistryLogin(ctx, s, components[1], ropts)
 			if err != nil {
@@ -67,9 +82,6 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 		if err != nil {
 			return err
 		}
-
-	default:
-		return fmt.Errorf("detecting protocol from [%s]", targetRef)
 	}
 
 	l.Infof("copied artifacts to [%s]", components[1])
