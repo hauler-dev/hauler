@@ -10,8 +10,8 @@ all: fmt vet install test
 build:
 	rm -rf cmd/hauler/binaries;\
 	mkdir -p cmd/hauler/binaries;\
-    wget -P cmd/hauler/binaries/ https://github.com/rancher-government-carbide/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH);\
-	mkdir bin;\
+    curl -Lo cmd/hauler/binaries/cosign-$(shell go env GOOS)-$(shell go env GOARCH) https://github.com/rancher-government-carbide/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH);\
+	mkdir -p bin;\
 	CGO_ENABLED=0 go build -o bin ./cmd/...;\
 
 build-all: fmt vet
@@ -20,7 +20,7 @@ build-all: fmt vet
 install:
 	rm -rf cmd/hauler/binaries;\
 	mkdir -p cmd/hauler/binaries;\
-	wget -P cmd/hauler/binaries/ https://github.com/rancher-government-carbide/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH);\
+	curl -Lo cmd/hauler/binaries/cosign-$(shell go env GOOS)-$(shell go env GOARCH) https://github.com/rancher-government-carbide/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH);\
 	CGO_ENABLED=0 go install ./cmd/...;\
 
 vet:

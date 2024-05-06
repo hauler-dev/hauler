@@ -17,6 +17,7 @@ import (
 type CopyOpts struct {
 	*RootOpts
 
+	Prefix    string
 	Username  string
 	Password  string
 	Insecure  bool
@@ -26,6 +27,7 @@ type CopyOpts struct {
 func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
+	f.StringVarP(&o.Prefix, "prepend-path", "", "", "Prepend path to all artifacts")
 	f.StringVarP(&o.Username, "username", "u", "", "Username when copying to an authenticated remote registry")
 	f.StringVarP(&o.Password, "password", "p", "", "Password when copying to an authenticated remote registry")
 	f.BoolVar(&o.Insecure, "insecure", false, "Toggle allowing insecure connections when copying to a remote registry")
@@ -55,7 +57,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			Insecure:  o.Insecure,
 			PlainHTTP: o.PlainHTTP,
 		}
-		
+
 		if ropts.Username != "" {
 			err := cosign.RegistryLogin(ctx, s, components[1], ropts)
 			if err != nil {
@@ -63,7 +65,12 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			}
 		}
 
-		err := cosign.LoadImages(ctx, s, components[1], ropts)
+		registryPath := components[1]
+		if o.Prefix != "" {
+			registryPath = registryPath + "/" + o.Prefix
+		}
+
+		err := cosign.LoadImages(ctx, s, registryPath, ropts)
 		if err != nil {
 			return err
 		}

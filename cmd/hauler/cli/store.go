@@ -1,9 +1,10 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
-	"fmt"
 
 	"github.com/rancherfederal/hauler/cmd/hauler/cli/store"
 )
@@ -125,11 +126,11 @@ func addStoreServe() *cobra.Command {
 
 // RegistryCmd serves the embedded registry
 func addStoreServeRegistry() *cobra.Command {
-    o := &store.ServeRegistryOpts{RootOpts: rootStoreOpts}
+	o := &store.ServeRegistryOpts{RootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
-        Use:   "registry",
-        Short: "Serve the embedded registry",
-        RunE: func(cmd *cobra.Command, args []string) error {
+		Use:   "registry",
+		Short: "Serve the embedded registry",
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
 			s, err := o.Store(ctx)
@@ -138,21 +139,21 @@ func addStoreServeRegistry() *cobra.Command {
 			}
 
 			return store.ServeRegistryCmd(ctx, o, s)
-        },
-    }
+		},
+	}
 
-    o.AddFlags(cmd)
+	o.AddFlags(cmd)
 
-    return cmd
+	return cmd
 }
 
 // FileServerCmd serves the file server
 func addStoreServeFiles() *cobra.Command {
-    o := &store.ServeFilesOpts{RootOpts: rootStoreOpts}
+	o := &store.ServeFilesOpts{RootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
-        Use:   "fileserver",
-        Short: "Serve the file server",
-        RunE: func(cmd *cobra.Command, args []string) error {
+		Use:   "fileserver",
+		Short: "Serve the file server",
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
 			s, err := o.Store(ctx)
@@ -161,12 +162,12 @@ func addStoreServeFiles() *cobra.Command {
 			}
 
 			return store.ServeFilesCmd(ctx, o, s)
-        },
-    }
+		},
+	}
 
-    o.AddFlags(cmd)
+	o.AddFlags(cmd)
 
-    return cmd
+	return cmd
 }
 
 func addStoreSave() *cobra.Command {
@@ -210,7 +211,7 @@ func addStoreInfo() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			
+
 			for _, allowed := range allowedValues {
 				if o.TypeFilter == allowed {
 					return store.InfoCmd(ctx, o, s)
@@ -230,7 +231,10 @@ func addStoreCopy() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "copy",
 		Short: "Copy all store contents to another OCI registry",
-		Args:  cobra.ExactArgs(1),
+		Example: `
+# Copy OCI artifacts to reg.example.com
+hauler store copy registry://reg.example.com -u bob -p haulin`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
