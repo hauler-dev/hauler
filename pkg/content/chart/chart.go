@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -15,17 +17,22 @@ import (
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rancherfederal/hauler/pkg/artifacts"
+	"github.com/rancherfederal/hauler/pkg/log"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/registry"
 
 	"github.com/rancherfederal/hauler/pkg/layer"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
 )
 
-var _ artifacts.OCI = (*Chart)(nil)
+var (
+	_        artifacts.OCI = (*Chart)(nil)
+	settings               = cli.New()
+)
 
 // Chart implements the  OCI interface for Chart API objects. API spec values are
 // stored into the Repo, Name, and Version fields.
@@ -36,22 +43,31 @@ type Chart struct {
 
 // NewChart is a helper method that returns NewLocalChart or NewRemoteChart depending on v1alpha1.Chart contents
 func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
-	cpo := action.ChartPathOptions{
-		RepoURL: opts.RepoURL,
-		Version: opts.Version,
-
-		CaFile:                opts.CaFile,
-		CertFile:              opts.CertFile,
-		KeyFile:               opts.KeyFile,
-		InsecureSkipTLSverify: opts.InsecureSkipTLSverify,
-		Keyring:               opts.Keyring,
-		Password:              opts.Password,
-		PassCredentialsAll:    opts.PassCredentialsAll,
-		Username:              opts.Username,
-		Verify:                opts.Verify,
+	chartRef := name
+	actionConfig := new(action.Configuration)
+	if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER"), log.NewLogger(os.Stdout).Debugf); err != nil {
+		return nil, err
 	}
 
-	chartPath, err := cpo.LocateChart(name, cli.New())
+	client := action.NewInstall(actionConfig)
+	client.ChartPathOptions.Version = opts.Version
+
+	registryClient, err := newRegistryClient(client.CertFile, client.KeyFile, client.CaFile,
+		client.InsecureSkipTLSverify, client.PlainHTTP)
+	if err != nil {
+		return nil, fmt.Errorf("missing registry client: %w", err)
+	}
+
+	client.SetRegistryClient(registryClient)
+	if registry.IsOCI(opts.RepoURL) {
+		chartRef = opts.RepoURL + "/" + name
+	} else if isUrl(opts.RepoURL) { // OCI Protocol registers as a valid URL
+		client.ChartPathOptions.RepoURL = opts.RepoURL
+	} else { // Handles cases like grafana/loki
+		chartRef = opts.RepoURL + "/" + name
+	}
+
+	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -216,4 +232,53 @@ func (h *Chart) chartData() (gv1.Layer, error) {
 		layer.WithAnnotations(annotations))
 
 	return chartDataLayer, err
+}
+func isUrl(name string) bool {
+	_, err := url.ParseRequestURI(name)
+	return err == nil
+}
+
+func newRegistryClient(certFile, keyFile, caFile string, insecureSkipTLSverify, plainHTTP bool) (*registry.Client, error) {
+	if certFile != "" && keyFile != "" || caFile != "" || insecureSkipTLSverify {
+		registryClient, err := newRegistryClientWithTLS(certFile, keyFile, caFile, insecureSkipTLSverify)
+		if err != nil {
+			return nil, err
+		}
+		return registryClient, nil
+	}
+	registryClient, err := newDefaultRegistryClient(plainHTTP)
+	if err != nil {
+		return nil, err
+	}
+	return registryClient, nil
+}
+
+func newDefaultRegistryClient(plainHTTP bool) (*registry.Client, error) {
+	opts := []registry.ClientOption{
+		registry.ClientOptDebug(settings.Debug),
+		registry.ClientOptEnableCache(true),
+		registry.ClientOptWriter(os.Stderr),
+		registry.ClientOptCredentialsFile(settings.RegistryConfig),
+	}
+	if plainHTTP {
+		opts = append(opts, registry.ClientOptPlainHTTP())
+	}
+
+	// Create a new registry client
+	registryClient, err := registry.NewClient(opts...)
+	if err != nil {
+		return nil, err
+	}
+	return registryClient, nil
+}
+
+func newRegistryClientWithTLS(certFile, keyFile, caFile string, insecureSkipTLSverify bool) (*registry.Client, error) {
+	// Create a new registry client
+	registryClient, err := registry.NewRegistryClientWithTLS(os.Stderr, certFile, keyFile, caFile, insecureSkipTLSverify,
+		settings.RegistryConfig, settings.Debug,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return registryClient, nil
 }
