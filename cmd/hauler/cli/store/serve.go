@@ -90,7 +90,7 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.IntVarP(&o.Port, "port", "p", 8080, "Port to listen on.")
-	f.IntVarP(&o.Timeout, "timeout", "t", 15, "Set the http request timeout duration for both reads and write. Defaults to 60 seconds.")
+	f.IntVarP(&o.Timeout, "timeout", "t", 60, "Set the http request timeout duration in seconds for both reads and write.")
 	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend.  Defaults to $PWD/fileserver")
 }
 
@@ -104,9 +104,9 @@ func ServeFilesCmd(ctx context.Context, o *ServeFilesOpts, s *store.Layout) erro
 	}
 
 	cfg := server.FileConfig{
-		Root: o.RootDir,
-		Port: o.Port,
-    Timeout: o.Timeout,
+		Root:    o.RootDir,
+		Port:    o.Port,
+		Timeout: o.Timeout,
 	}
 
 	f, err := server.NewFile(ctx, cfg)
