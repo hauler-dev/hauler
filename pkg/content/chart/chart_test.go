@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/mholt/archiver/v3"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
 
@@ -15,20 +14,12 @@ import (
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 )
 
-var (
-	chartpath = "../../../testdata/rancher-cluster-templates-0.4.4.tgz"
-)
-
 func TestNewChart(t *testing.T) {
 	tmpdir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdir)
-
-	if err := archiver.Unarchive(chartpath, tmpdir); err != nil {
-		t.Fatal(err)
-	}
 
 	type args struct {
 		name string
@@ -43,8 +34,8 @@ func TestNewChart(t *testing.T) {
 		{
 			name: "should create from a chart archive",
 			args: args{
-				name: chartpath,
-				opts: &action.ChartPathOptions{},
+				name: "rancher-cluster-templates-0.4.4.tgz",
+				opts: &action.ChartPathOptions{RepoURL: "../../../testdata"},
 			},
 			want: v1.Descriptor{
 				MediaType: consts.ChartLayerMediaType,
