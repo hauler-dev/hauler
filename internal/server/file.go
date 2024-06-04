@@ -12,9 +12,10 @@ import (
 )
 
 type FileConfig struct {
-	Root string
-	Host string
-	Port int
+	Root    string
+	Host    string
+	Port    int
+	Timeout int
 }
 
 // NewFile returns a fileserver
@@ -30,11 +31,15 @@ func NewFile(ctx context.Context, cfg FileConfig) (Server, error) {
 		cfg.Port = 8080
 	}
 
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 60
+	}
+
 	srv := &http.Server{
 		Handler:      r,
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		WriteTimeout: 15 * time.Second,
-		ReadTimeout:  15 * time.Second,
+		WriteTimeout: time.Duration(cfg.Timeout) * time.Second,
+		ReadTimeout:  time.Duration(cfg.Timeout) * time.Second,
 	}
 
 	return srv, nil
