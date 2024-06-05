@@ -1,9 +1,5 @@
 .DS_Store
-
-# Vagrant
-.vagrant
-
-# Editor directories and files
+**/.DS_Store
 .idea
 .vscode
 *.suo
@@ -12,13 +8,9 @@
 *.sln
 *.sw?
 *.dir-locals.el
-
-# old, ad-hoc ignores
 artifacts
 local-artifacts
 airgap-scp.sh
-
-# generated
 dist/
 tmp/
 bin/
