@@ -103,7 +103,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 	if err != nil {
 		return err
 	}
-	
+
 	err = cosign.SaveImage(ctx, s, r.Name(), platform)
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartNam
 func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
 	l.Infof("adding 'chart' [%s] to the store", cfg.Name)
-	
+
 	// TODO: This shouldn't be necessary
 	opts.RepoURL = cfg.RepoURL
 	opts.Version = cfg.Version

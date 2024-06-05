@@ -55,7 +55,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			Insecure:  o.Insecure,
 			PlainHTTP: o.PlainHTTP,
 		}
-		
+
 		if ropts.Username != "" {
 			err := cosign.RegistryLogin(ctx, s, components[1], ropts)
 			if err != nil {

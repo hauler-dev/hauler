@@ -54,27 +54,27 @@ func NewImage(name string, opts ...remote.Option) (*Image, error) {
 }
 
 func IsMultiArchImage(name string, opts ...remote.Option) (bool, error) {
-    ref, err := gname.ParseReference(name)
-    if err != nil {
-        return false, fmt.Errorf("parsing reference %q: %v", name, err)
-    }
+	ref, err := gname.ParseReference(name)
+	if err != nil {
+		return false, fmt.Errorf("parsing reference %q: %v", name, err)
+	}
 
 	defaultOpts := []remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 	}
 	opts = append(opts, defaultOpts...)
 
-    desc, err := remote.Get(ref, opts...)
-    if err != nil {
-        return false, fmt.Errorf("getting image %q: %v", name, err)
-    }
+	desc, err := remote.Get(ref, opts...)
+	if err != nil {
+		return false, fmt.Errorf("getting image %q: %v", name, err)
+	}
 
-    _, err = desc.ImageIndex()
-    if err != nil {
-        // If the descriptor could not be converted to an image index, it's not a multi-arch image
-        return false, nil
-    }
+	_, err = desc.ImageIndex()
+	if err != nil {
+		// If the descriptor could not be converted to an image index, it's not a multi-arch image
+		return false, nil
+	}
 
-    // If the descriptor could be converted to an image index, it's a multi-arch image
-    return true, nil
+	// If the descriptor could be converted to an image index, it's a multi-arch image
+	return true, nil
 }

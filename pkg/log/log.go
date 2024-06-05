@@ -30,13 +30,13 @@ type Fields map[string]string
 
 // NewLogger returns a new Logger
 func NewLogger(out io.Writer) Logger {
-    customTimeFormat := "2006-01-02 15:04:05"
-    zerolog.TimeFieldFormat = customTimeFormat
-    output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: customTimeFormat}
-    l := log.Output(output)
-    return &logger{
-        zl: l.With().Timestamp().Logger(),
-    }
+	customTimeFormat := "2006-01-02 15:04:05"
+	zerolog.TimeFieldFormat = customTimeFormat
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: customTimeFormat}
+	l := log.Output(output)
+	return &logger{
+		zl: l.With().Timestamp().Logger(),
+	}
 }
 
 // FromContext returns a Logger from a context if it exists
