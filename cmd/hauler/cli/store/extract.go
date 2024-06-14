@@ -2,18 +2,17 @@ package store
 
 import (
 	"context"
-	"strings"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/store"
-
 	"github.com/rancherfederal/hauler/internal/mapper"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/reference"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type ExtractOpts struct {
@@ -37,7 +36,7 @@ func ExtractCmd(ctx context.Context, o *ExtractOpts, s *store.Layout, ref string
 
 	found := false
 	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
-	
+
 		if !strings.Contains(reference, r.Name()) {
 			return nil
 		}

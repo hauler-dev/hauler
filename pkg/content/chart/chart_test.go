@@ -10,7 +10,6 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
-
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 )
 
