@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/olekukonko/tablewriter"
 	"os"
 	"sort"
 
+	"github.com/olekukonko/tablewriter"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
-
-	"github.com/rancherfederal/hauler/pkg/store"
-
 	"github.com/rancherfederal/hauler/pkg/reference"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type InfoOpts struct {

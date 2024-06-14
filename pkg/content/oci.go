@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -275,7 +274,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 
 	if _, err := os.Stat(blobPath); err == nil {
 		// file already exists, discard (but validate digest)
-		return content.NewIoContentWriter(ioutil.Discard, content.WithOutputHash(d.Digest)), nil
+		return content.NewIoContentWriter(io.Discard, content.WithOutputHash(d.Digest)), nil
 	}
 
 	f, err := os.Create(blobPath)

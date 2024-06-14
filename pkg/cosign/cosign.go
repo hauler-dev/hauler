@@ -13,10 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"oras.land/oras-go/pkg/content"
+
 	"github.com/rancherfederal/hauler/pkg/artifacts/image"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
-	"oras.land/oras-go/pkg/content"
 )
 
 const maxRetries = 3

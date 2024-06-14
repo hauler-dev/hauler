@@ -11,12 +11,9 @@ import (
 	"strings"
 
 	"github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/artifacts/image"
-
 	"github.com/rancherfederal/hauler/pkg/artifacts/file"
-
 	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
-
+	"github.com/rancherfederal/hauler/pkg/artifacts/image"
 	"github.com/rancherfederal/hauler/pkg/reference"
 )
 

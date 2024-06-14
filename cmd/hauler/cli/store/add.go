@@ -8,15 +8,13 @@ import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts/file"
-
-	"github.com/rancherfederal/hauler/pkg/store"
-
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"github.com/rancherfederal/hauler/pkg/artifacts/file"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
 	"github.com/rancherfederal/hauler/pkg/cosign"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/reference"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type AddFileOpts struct {

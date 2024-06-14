@@ -2,7 +2,7 @@ package mapper
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +59,7 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 
 	// If no custom mapper found, fall back to content.File mapper
 	if _, ok := s.mapper[desc.MediaType]; !ok {
-		return content.NewIoContentWriter(ioutil.Discard, content.WithOutputHash(desc.Digest)), nil
+		return content.NewIoContentWriter(io.Discard, content.WithOutputHash(desc.Digest)), nil
 	}
 
 	filename, err := s.mapper[desc.MediaType](desc)

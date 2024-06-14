@@ -3,11 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
-	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
 	"github.com/rancherfederal/hauler/pkg/cosign"

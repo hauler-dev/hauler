@@ -9,12 +9,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rancherfederal/hauler/pkg/log"
-
 	"github.com/google/go-containerregistry/pkg/name"
+
 	artifact "github.com/rancherfederal/hauler/pkg/artifacts"
 	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
 	"github.com/rancherfederal/hauler/pkg/artifacts/image"
+	"github.com/rancherfederal/hauler/pkg/log"
 )
 
 type ImageTxt struct {

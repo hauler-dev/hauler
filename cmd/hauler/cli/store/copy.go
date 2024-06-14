@@ -9,9 +9,8 @@ import (
 	"oras.land/oras-go/pkg/content"
 
 	"github.com/rancherfederal/hauler/pkg/cosign"
-	"github.com/rancherfederal/hauler/pkg/store"
-
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type CopyOpts struct {

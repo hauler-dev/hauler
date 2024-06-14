@@ -24,9 +24,8 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/registry"
 
-	"github.com/rancherfederal/hauler/pkg/layer"
-
 	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/layer"
 )
 
 var (
