@@ -62,3 +62,31 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+  chart-release:
+    name: Chart Release Job
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Authenticate to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Build Helm Chart
+        run: |
+          helm package deploy/kubernetes/helm/charts/hauler --destination deploy/kubernetes/helm/charts/hauler
+
+      - name: Push to GitHub Container Registry
+        run: |
+          helm push deploy/kubernetes/helm/charts/hauler/hauler-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
