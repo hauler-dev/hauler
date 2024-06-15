@@ -29,9 +29,10 @@ jobs:
         run: |
           mkdir -p cmd/hauler/binaries
           touch cmd/hauler/binaries/dummy.txt
-          go test -race -covermode=atomic -coverprofile=coverage.out ./pkg/... ./internal/... ./cmd/...
+          go test -race -covermode=atomic -coverprofile=coverage.out ./...
 
-      - name: On Failure, Launch Debug Session
-        if: ${{ failure() }}
-        uses: mxschmitt/action-tmate@v3
-        timeout-minutes: 10
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
