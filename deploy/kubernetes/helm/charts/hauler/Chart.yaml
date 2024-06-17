@@ -3,5 +3,5 @@ name: hauler
 description: Hauler Helm Chart - Airgap Swiss Army Knife
 icon: https://raw.githubusercontent.com/rancherfederal/hauler/main/static/rgs-hauler-logo-icon.svg
 type: application
-version: 0.1.0
-appVersion: 1.0.2
+version: 1.0.3
+appVersion: 1.0.3
