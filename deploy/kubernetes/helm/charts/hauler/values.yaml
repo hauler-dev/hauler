@@ -4,7 +4,7 @@
 hauler:
   image:
     repository: ghcr.io/rancherfederal/hauler
-    tag: v1.0.2
+    tag: v1.0.3
   imagePullPolicy: Always
 
   initContainers:
