@@ -26,8 +26,8 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
-          args: release --clean -p 1
+          version: "~> v2"
+          args: "release --clean -p 1"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
@@ -35,6 +35,7 @@ jobs:
   container-release:
     name: Container Release Job
     runs-on: ubuntu-latest
+    needs: [go-release]
     timeout-minutes: 30
     continue-on-error: true
     steps:
@@ -67,6 +68,7 @@ jobs:
   chart-release:
     name: Chart Release Job
     runs-on: ubuntu-latest
+    needs: [go-release]
     timeout-minutes: 30
     continue-on-error: true
     steps:
@@ -75,15 +77,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set Up Helm
+        uses: azure/setup-helm@v4
+
       - name: Authenticate to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set Up Helm
-        uses: azure/setup-helm@v4
 
       - name: Build Helm Chart
         run: |
