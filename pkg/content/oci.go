@@ -176,17 +176,31 @@ func (o *OCI) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 		return nil, err
 	}
 
-	var baseRef, hash string
-	parts := strings.SplitN(ref, "@", 2)
-	baseRef = parts[0]
-	if len(parts) > 1 {
-		hash = parts[1]
-	}
+	baseRef, hash := splitImageRef(ref)
+
 	return &ociPusher{
 		oci:    o,
 		ref:    baseRef,
 		digest: hash,
 	}, nil
+}
+
+// splitImageRef takes in an image ref and splits it into its two base parts,
+// a baseRef and a sha256 hash. This is done by splitting in the last "@" symbol
+// Ex:
+// ref := sha256:abc-library/hauler@sha256:abc-dev.cosignproject.cosign/imageIndex@sha256:abc
+// baseRef := sha256:abc-library/hauler@sha256:abc-dev.cosignproject.cosign/imageIndex
+// hash := sha256:abc
+func splitImageRef(ref string) (string, string) {
+	var baseRef, hash string
+
+	parts := strings.Split(ref, "@")
+	baseRef = strings.Join(parts[:len(parts)-1], "@")
+	if len(parts) > 1 {
+		hash = parts[len(parts)-1]
+	}
+
+	return baseRef, hash
 }
 
 func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) error {
