@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rancherfederal/hauler/pkg/store"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 const (

@@ -14,10 +14,9 @@ import (
 	"github.com/distribution/distribution/v3/version"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/store"
-
 	"github.com/rancherfederal/hauler/internal/server"
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type ServeRegistryOpts struct {
@@ -80,6 +79,7 @@ type ServeFilesOpts struct {
 	*RootOpts
 
 	Port    int
+	Timeout int
 	RootDir string
 
 	storedir string
@@ -89,6 +89,7 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.IntVarP(&o.Port, "port", "p", 8080, "Port to listen on.")
+	f.IntVarP(&o.Timeout, "timeout", "t", 60, "Set the http request timeout duration in seconds for both reads and write.")
 	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend.  Defaults to $PWD/fileserver")
 }
 
@@ -102,8 +103,9 @@ func ServeFilesCmd(ctx context.Context, o *ServeFilesOpts, s *store.Layout) erro
 	}
 
 	cfg := server.FileConfig{
-		Root: o.RootDir,
-		Port: o.Port,
+		Root:    o.RootDir,
+		Port:    o.Port,
+		Timeout: o.Timeout,
 	}
 
 	f, err := server.NewFile(ctx, cfg)

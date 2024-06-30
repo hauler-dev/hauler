@@ -2,20 +2,20 @@ package cli
 
 import (
 	"context"
-	"strings"
-	"os"
-	"io"
 	"fmt"
-	"github.com/spf13/cobra"
+	"io"
+	"os"
+	"strings"
 
+	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
 	"github.com/rancherfederal/hauler/pkg/cosign"
 )
 
 type Opts struct {
-	Username  string
-	Password  string
+	Username      string
+	Password      string
 	PasswordStdin bool
 }
 
@@ -35,7 +35,7 @@ func addLogin(parent *cobra.Command) {
 		Example: `
 # Log in to reg.example.com
 hauler login reg.example.com -u bob -p haulin`,
-		Args:    cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, arg []string) error {
 			ctx := cmd.Context()
 
@@ -47,7 +47,7 @@ hauler login reg.example.com -u bob -p haulin`,
 				o.Password = strings.TrimSuffix(string(contents), "\n")
 				o.Password = strings.TrimSuffix(o.Password, "\r")
 			}
-			
+
 			if o.Username == "" && o.Password == "" {
 				return fmt.Errorf("username and password required")
 			}
@@ -62,14 +62,14 @@ hauler login reg.example.com -u bob -p haulin`,
 
 func login(ctx context.Context, o *Opts, registry string) error {
 	ropts := content.RegistryOptions{
-		Username:  o.Username,
-		Password:  o.Password,
+		Username: o.Username,
+		Password: o.Password,
 	}
 
 	err := cosign.RegistryLogin(ctx, nil, registry, ropts)
 	if err != nil {
 		return err
 	}
-	
+
 	return nil
 }

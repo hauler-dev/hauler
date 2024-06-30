@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/olekukonko/tablewriter"
 	"os"
 	"sort"
 
+	"github.com/olekukonko/tablewriter"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
-
-	"github.com/rancherfederal/hauler/pkg/store"
-
 	"github.com/rancherfederal/hauler/pkg/reference"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type InfoOpts struct {
@@ -47,7 +45,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 		}
 		defer rc.Close()
 
-		// handle multi-arch images 
+		// handle multi-arch images
 		if desc.MediaType == consts.OCIImageIndexSchema || desc.MediaType == consts.DockerManifestListSchema2 {
 			var idx ocispec.Index
 			if err := json.NewDecoder(rc).Decode(&idx); err != nil {
@@ -72,13 +70,13 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 					items = append(items, i)
 				}
 			}
-		// handle "non" multi-arch images
+			// handle "non" multi-arch images
 		} else if desc.MediaType == consts.DockerManifestSchema2 || desc.MediaType == consts.OCIManifestSchema1 {
 			var m ocispec.Manifest
 			if err := json.NewDecoder(rc).Decode(&m); err != nil {
 				return err
 			}
-			
+
 			rc, err := s.FetchManifest(ctx, m)
 			if err != nil {
 				return err
@@ -90,7 +88,7 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 			if err := json.NewDecoder(rc).Decode(&internalManifest); err != nil {
 				return err
 			}
-			
+
 			if internalManifest.Architecture != "" {
 				i := newItem(s, desc, m, fmt.Sprintf("%s/%s", internalManifest.OS, internalManifest.Architecture), o)
 				var emptyItem item
@@ -104,8 +102,8 @@ func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
 					items = append(items, i)
 				}
 			}
-		// handle the rest
-		} else {  
+			// handle the rest
+		} else {
 			var m ocispec.Manifest
 			if err := json.NewDecoder(rc).Decode(&m); err != nil {
 				return err
@@ -144,7 +142,7 @@ func buildTable(items ...item) {
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 	table.SetRowLine(false)
 	table.SetAutoMergeCellsByColumnIndex([]int{0})
-	
+
 	totalSize := int64(0)
 	for _, i := range items {
 		if i.Type != "" {
@@ -173,11 +171,11 @@ func buildJson(item ...item) string {
 }
 
 type item struct {
-	Reference    string
-	Type         string
-	Platform     string
-	Layers       int
-	Size         int64
+	Reference string
+	Type      string
+	Platform  string
+	Layers    int
+	Size      int64
 }
 
 type byReferenceAndArch []item
@@ -227,7 +225,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	case "dev.cosignproject.cosign/sboms":
 		ctype = "sbom"
 	}
-	
+
 	ref, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
 	if err != nil {
 		return item{}
@@ -238,11 +236,11 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	}
 
 	return item{
-		Reference:    ref.Name(),
-		Type:         ctype,
-		Platform:     plat,
-		Layers:       len(m.Layers),
-		Size:         size,
+		Reference: ref.Name(),
+		Type:      ctype,
+		Platform:  plat,
+		Layers:    len(m.Layers),
+		Size:      size,
 	}
 }
 

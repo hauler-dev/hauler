@@ -2,7 +2,7 @@ package mapper
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +15,8 @@ import (
 )
 
 // NewMapperFileStore creates a new file store that uses mapper functions for each detected descriptor.
-// 		This extends content.File, and differs in that it allows much more functionality into how each descriptor is written.
+//
+//	This extends content.File, and differs in that it allows much more functionality into how each descriptor is written.
 func NewMapperFileStore(root string, mapper map[string]Fn) *store {
 	fs := content.NewFile(root)
 	return &store{
@@ -58,7 +59,7 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 
 	// If no custom mapper found, fall back to content.File mapper
 	if _, ok := s.mapper[desc.MediaType]; !ok {
-		return content.NewIoContentWriter(ioutil.Discard, content.WithOutputHash(desc.Digest)), nil
+		return content.NewIoContentWriter(io.Discard, content.WithOutputHash(desc.Digest)), nil
 	}
 
 	filename, err := s.mapper[desc.MediaType](desc)

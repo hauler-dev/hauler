@@ -1,3 +1,5 @@
+version: 2
+
 project_name: hauler
 before:
   hooks:
@@ -36,14 +38,14 @@ universal_binaries:
   - replace: false
 
 changelog:
-  skip: false
+  disable: false
   use: git
 
 brews:
   - name: hauler
-    tap:
+    repository:
       owner: rancherfederal
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    folder: Formula
+    directory: Formula
     description: "Hauler CLI"

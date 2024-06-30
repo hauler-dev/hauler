@@ -9,9 +9,8 @@ import (
 	"oras.land/oras-go/pkg/content"
 
 	"github.com/rancherfederal/hauler/pkg/cosign"
-	"github.com/rancherfederal/hauler/pkg/store"
-
 	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/rancherfederal/hauler/pkg/store"
 )
 
 type CopyOpts struct {
@@ -55,7 +54,7 @@ func CopyCmd(ctx context.Context, o *CopyOpts, s *store.Layout, targetRef string
 			Insecure:  o.Insecure,
 			PlainHTTP: o.PlainHTTP,
 		}
-		
+
 		if ropts.Username != "" {
 			err := cosign.RegistryLogin(ctx, s, components[1], ropts)
 			if err != nil {
