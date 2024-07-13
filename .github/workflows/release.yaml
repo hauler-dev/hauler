@@ -57,13 +57,23 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push to GitHub Container Registry
+      - name: Build and Push Release Container to GitHub Container Registry
         uses: docker/build-push-action@v5
         with:
           context: .
+          target: release
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+      - name: Build and Push Debug Container to GitHub Container Registry
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: debug
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository }}-debug:${{ github.ref_name }}
 
   chart-release:
     name: Chart Release Job
