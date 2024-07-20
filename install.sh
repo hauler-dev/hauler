@@ -19,7 +19,7 @@
 #
 # Documentation:
 #   - https://hauler.dev
-#   - https://github.com/rancherfederal/hauler
+#   - https://github.com/hauler-dev/hauler
 
 # set functions for debugging/logging
 function verbose {
@@ -48,7 +48,7 @@ done
 
 # set version environment variable
 if [ -z "${HAULER_VERSION}" ]; then
-    version="${HAULER_VERSION:-$(curl -s https://api.github.com/repos/rancherfederal/hauler/releases/latest | grep '"tag_name":' | sed 's/.*"v\([^"]*\)".*/\1/')}"
+    version="${HAULER_VERSION:-$(curl -s https://api.github.com/repos/hauler-dev/hauler/releases/latest | grep '"tag_name":' | sed 's/.*"v\([^"]*\)".*/\1/')}"
 else
     version="${HAULER_VERSION}"
 fi
@@ -110,12 +110,12 @@ fi
 cd "$HOME/.hauler" || fatal "Failed to Change Directory: ~/.hauler"
 
 # download the checksum file
-if ! curl -sfOL "https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_checksums.txt"; then
+if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${version}/hauler_${version}_checksums.txt"; then
     fatal "Failed to Download: hauler_${version}_checksums.txt"
 fi
 
 # download the archive file
-if ! curl -sfOL "https://github.com/rancherfederal/hauler/releases/download/v${version}/hauler_${version}_${platform}_${arch}.tar.gz"; then
+if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${version}/hauler_${version}_${platform}_${arch}.tar.gz"; then
     fatal "Failed to Download: hauler_${version}_${platform}_${arch}.tar.gz"
 fi
 

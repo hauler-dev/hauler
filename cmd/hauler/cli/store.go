@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/hauler/cmd/hauler/cli/store"
+	"github.com/hauler-dev/hauler/cmd/hauler/cli/store"
 )
 
 var rootStoreOpts = &store.RootOpts{}

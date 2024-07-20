@@ -18,7 +18,7 @@ import (
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/target"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/hauler-dev/hauler/pkg/consts"
 )
 
 var _ target.Target = (*OCI)(nil)

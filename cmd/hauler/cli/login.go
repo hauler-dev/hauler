@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
-	"github.com/rancherfederal/hauler/pkg/cosign"
+	"github.com/hauler-dev/hauler/pkg/cosign"
 )
 
 type Opts struct {

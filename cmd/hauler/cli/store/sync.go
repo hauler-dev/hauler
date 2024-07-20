@@ -13,16 +13,16 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
-	"github.com/rancherfederal/hauler/pkg/collection/imagetxt"
-	"github.com/rancherfederal/hauler/pkg/collection/k3s"
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/content"
-	"github.com/rancherfederal/hauler/pkg/cosign"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	tchart "github.com/hauler-dev/hauler/pkg/collection/chart"
+	"github.com/hauler-dev/hauler/pkg/collection/imagetxt"
+	"github.com/hauler-dev/hauler/pkg/collection/k3s"
+	"github.com/hauler-dev/hauler/pkg/consts"
+	"github.com/hauler-dev/hauler/pkg/content"
+	"github.com/hauler-dev/hauler/pkg/cosign"
+	"github.com/hauler-dev/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/reference"
+	"github.com/hauler-dev/hauler/pkg/store"
 )
 
 type SyncOpts struct {
