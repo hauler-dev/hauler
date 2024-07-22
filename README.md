@@ -10,7 +10,7 @@
 
 `Hauler` does this by storing contents and collections as OCI Artifacts and allows operators to serve contents and collections with an embedded registry and fileserver. Additionally, `Hauler` has the ability to store and inspect various non-image OCI Artifacts.
 
-For more information, please review the **[Hauler Documentation](https://rancherfederal.github.io/hauler-docs)!**
+For more information, please review the **[Hauler Documentation](https://hauler.dev)!**
 
 ## Installation
 
@@ -25,7 +25,7 @@ curl -sfL https://get.hauler.dev | bash
 
 ```bash
 # installs latest release
-brew tap rancherfederal/homebrew-tap
+brew tap hauler-dev/homebrew-tap
 brew install hauler
 ```
 
