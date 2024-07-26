@@ -1,7 +1,7 @@
 ---
 name: Feature Request
 about: Submit a feature request for us to improve!
-title: '[RFE]'
+title: '[feature]'
 labels: 'enhancement'
 assignees: ''
 ---
