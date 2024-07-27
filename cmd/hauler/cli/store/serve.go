@@ -25,6 +25,7 @@ type ServeRegistryOpts struct {
 	Port       int
 	RootDir    string
 	ConfigFile string
+	Writeable  bool
 
 	storedir string
 }
@@ -35,6 +36,8 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on.")
 	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for backend.  Defaults to $PWD/registry")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to a config file, will override all other configs")
+	// same as defining ConfigFile maintence.readonly.enable = true
+	f.BoolVar(&o.Writeable, "writeable", false, "Run registry in writeable mode. Defaults to false, readonly.")
 }
 
 func ServeRegistryCmd(ctx context.Context, o *ServeRegistryOpts, s *store.Layout) error {
@@ -137,8 +140,12 @@ func (o *ServeRegistryOpts) defaultRegistryConfig() *configuration.Configuration
 			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
 			"filesystem": configuration.Parameters{"rootdirectory": o.RootDir},
 
-			// TODO: Ensure this is toggleable via cli arg if necessary
-			// "maintenance": configuration.Parameters{"readonly.enabled": false},
+			// Default to readonly true (!false)
+			"maintenance": configuration.Parameters{
+				"readonly": map[interface{}]interface{}{
+					"enabled": !o.Writeable,
+				},
+			},
 		},
 	}
 
