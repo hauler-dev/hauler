@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/go-containerregistry/pkg/name"
 	"io"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"oras.land/oras-go/pkg/target"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/reference"
 )
 
 var _ target.Target = (*OCI)(nil)
@@ -44,8 +46,20 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 	if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
 		return fmt.Errorf("descriptor must contain a reference from the annotation: %s", ocispec.AnnotationRefName)
 	}
-	key := fmt.Sprintf("%s-%s-%s", desc.Digest.String(), desc.Annotations[ocispec.AnnotationRefName], desc.Annotations[consts.KindAnnotationName])
-	o.nameMap.Store(key, desc)
+
+	key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+	if err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(key.String()) != "--" {
+		switch key.(type) {
+		case name.Digest:
+			o.nameMap.Store(key.Context().String(), desc)
+		case name.Tag:
+			o.nameMap.Store(key.String(), desc)
+		}
+	}
 	return o.SaveIndex()
 }
 
@@ -71,11 +85,21 @@ func (o *OCI) LoadIndex() error {
 	}
 
 	for _, desc := range o.index.Manifests {
-		key := fmt.Sprintf("%s-%s-%s", desc.Digest.String(), desc.Annotations[ocispec.AnnotationRefName], desc.Annotations[consts.KindAnnotationName])
-		if strings.TrimSpace(key) != "--" {
-			o.nameMap.Store(key, desc)
+		key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+		if err != nil {
+			return err
+		}
+
+		if strings.TrimSpace(key.String()) != "--" {
+			switch key.(type) {
+			case name.Digest:
+				o.nameMap.Store(key.Context().String(), desc)
+			case name.Tag:
+				o.nameMap.Store(key.String(), desc)
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -176,30 +200,19 @@ func (o *OCI) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 		return nil, err
 	}
 
-	baseRef, hash := splitImageRef(ref)
+	var baseRef, hash string
+	parts := strings.SplitN(ref, "@", 2)
+	baseRef = parts[0]
+
+	if len(parts) > 1 {
+		hash = parts[1]
+	}
+
 	return &ociPusher{
 		oci:    o,
 		ref:    baseRef,
 		digest: hash,
 	}, nil
-}
-
-// splitImageRef takes in an image ref and splits it into its two base parts,
-// a baseRef and a sha256 hash. This is done by splitting in the last "@" symbol
-// Ex:
-// ref := sha256:abc-library/hauler@sha256:abc-dev.cosignproject.cosign/imageIndex@sha256:abc
-// baseRef := sha256:abc-library/hauler@sha256:abc-dev.cosignproject.cosign/imageIndex
-// hash := sha256:abc
-func splitImageRef(ref string) (string, string) {
-	var baseRef, hash string
-
-	parts := strings.Split(ref, "@")
-	baseRef = strings.Join(parts[:len(parts)-1], "@")
-	if len(parts) > 1 {
-		hash = parts[len(parts)-1]
-	}
-
-	return baseRef, hash
 }
 
 func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) error {
