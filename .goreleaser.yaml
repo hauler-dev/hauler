@@ -9,6 +9,7 @@ before:
 
 release:
   prerelease: auto
+  make_latest: false
 
 env:
   - vpkg=github.com/hauler-dev/hauler/internal/version
