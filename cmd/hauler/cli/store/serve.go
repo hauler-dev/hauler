@@ -134,7 +134,9 @@ func (o *ServeRegistryOpts) defaultRegistryConfig() *configuration.Configuration
 		Storage: configuration.Storage{
 			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
 			"filesystem": configuration.Parameters{"rootdirectory": o.RootDir},
-			"maintenance": configuration.Parameters{"readonly":
+			"maintenance": configuration.Parameters{
+				"readonly": map[any]any{"enabled": o.ReadOnly},
+			},
 				configuration.Parameters{"enabled": !o.ReadOnly},
 			},
 		},
