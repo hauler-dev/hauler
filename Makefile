@@ -15,7 +15,7 @@ build:
 	CGO_ENABLED=0 go build -o bin ./cmd/...;\
 
 build-all: fmt vet
-	goreleaser build --rm-dist --snapshot
+	goreleaser build --clean --snapshot
 
 install:
 	rm -rf cmd/hauler/binaries;\
