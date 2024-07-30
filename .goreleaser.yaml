@@ -9,9 +9,10 @@ before:
 
 release:
   prerelease: auto
+  make_latest: false
 
 env:
-  - vpkg=github.com/rancherfederal/hauler/internal/version
+  - vpkg=github.com/hauler-dev/hauler/internal/version
   - cosign_version=v2.2.3+carbide.2
 
 builds:
@@ -44,7 +45,7 @@ changelog:
 brews:
   - name: hauler
     repository:
-      owner: rancherfederal
+      owner: hauler-dev
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
