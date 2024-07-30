@@ -137,7 +137,6 @@ func (o *ServeRegistryOpts) defaultRegistryConfig() *configuration.Configuration
 			"maintenance": configuration.Parameters{"readonly":
 				configuration.Parameters{"enabled": !o.ReadOnly},
 			},
-			},
 		},
 	}
 
