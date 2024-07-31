@@ -36,11 +36,16 @@ function warn {
 
 function fatal {
     echo && echo "[ERROR] Hauler: $1"
-    exit 0
+    exit 1
 }
 
+# exit if unable to run with root privledges
+if [ "$(id -u)" -ne 0 ]; then
+    fatal "Root privledges are required to install Hauler"
+fi
+
 # check for required dependencies
-for cmd in sudo rm curl grep mkdir sed awk openssl tar; do
+for cmd in echo curl grep sed rm mkdir awk openssl tar; do
     if ! command -v "$cmd" &> /dev/null; then
         fatal "$cmd is not installed"
     fi
@@ -56,7 +61,7 @@ fi
 # set uninstall environment variable from argument or environment
 if [ "${HAULER_UNINSTALL}" = "true" ]; then
     # remove the hauler binary
-    sudo rm -f /usr/local/bin/hauler || fatal "Failed to Remove Hauler from /usr/local/bin"
+    rm -f /usr/local/bin/hauler || fatal "Failed to Remove Hauler from /usr/local/bin"
 
     # remove the installation directory
     rm -rf "$HOME/.hauler" || fatal "Failed to Remove Directory: $HOME/.hauler"
@@ -144,10 +149,10 @@ tar -xzf "hauler_${version}_${platform}_${arch}.tar.gz" || fatal "Failed to Extr
 # install the binary
 case "$platform" in
     linux)
-        sudo install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
+        install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
         ;;
     darwin)
-        sudo install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
+        install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
         ;;
     *)
         fatal "Unsupported Platform or Architecture: $platform/$arch"
