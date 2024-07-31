@@ -13,6 +13,10 @@
 #     - curl -sfL https://get.hauler.dev | HAULER_VERSION=1.0.0 bash
 #     - HAULER_VERSION=1.0.0 ./install.sh
 #
+#   Set Install Directory
+#     - curl -sfL https://get.hauler.dev | HAULER_INSTALL_DIR=/custom/path bash
+#     - HAULER_INSTALL_DIR=/custom/path ./install.sh
+#
 # Uninstall Usage:
 #   - curl -sfL https://get.hauler.dev | HAULER_UNINSTALL=true bash
 #   - HAULER_UNINSTALL=true ./install.sh
@@ -58,10 +62,13 @@ else
     version="${HAULER_VERSION}"
 fi
 
+# set install directory environment variable
+HAULER_INSTALL_DIR=${HAULER_INSTALL_DIR:-/usr/local/bin}
+
 # set uninstall environment variable from argument or environment
 if [ "${HAULER_UNINSTALL}" = "true" ]; then
     # remove the hauler binary
-    rm -f /usr/local/bin/hauler || fatal "Failed to Remove Hauler from /usr/local/bin"
+    rm -f "${HAULER_INSTALL_DIR}/hauler" || fatal "Failed to Remove Hauler from ${HAULER_INSTALL_DIR}"
 
     # remove the installation directory
     rm -rf "$HOME/.hauler" || fatal "Failed to Remove Directory: $HOME/.hauler"
@@ -147,37 +154,29 @@ fi
 tar -xzf "hauler_${version}_${platform}_${arch}.tar.gz" || fatal "Failed to Extract: hauler_${version}_${platform}_${arch}.tar.gz"
 
 # install the binary
-case "$platform" in
-    linux)
-        install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
-        ;;
-    darwin)
-        install -m 755 hauler /usr/local/bin || fatal "Failed to Install Hauler to /usr/local/bin"
-        ;;
-    *)
-        fatal "Unsupported Platform or Architecture: $platform/$arch"
-        ;;
-esac
+install -m 755 hauler "${HAULER_INSTALL_DIR}" || fatal "Failed to Install Hauler to ${HAULER_INSTALL_DIR}"
 
-# add hauler to the path
-if [ -f "$HOME/.bashrc" ]; then
-    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-elif [ -f "$HOME/.bash_profile" ]; then
-    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.bash_profile"
-    source "$HOME/.bash_profile"
-elif [ -f "$HOME/.zshrc" ]; then
-    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-elif [ -f "$HOME/.profile" ]; then
-    echo "export PATH=$PATH:/usr/local/bin/" >> "$HOME/.profile"
-    source "$HOME/.profile"
-else
-    echo "Failed to add /usr/local/bin to PATH: Unsupported Shell"
+# add hauler to the path if necessary
+if [[ ":$PATH:" != *":${HAULER_INSTALL_DIR}:"* ]]; then
+    if [ -f "$HOME/.bashrc" ]; then
+        echo "export PATH=\$PATH:${HAULER_INSTALL_DIR}" >> "$HOME/.bashrc"
+        source "$HOME/.bashrc"
+    elif [ -f "$HOME/.bash_profile" ]; then
+        echo "export PATH=\$PATH:${HAULER_INSTALL_DIR}" >> "$HOME/.bash_profile"
+        source "$HOME/.bash_profile"
+    elif [ -f "$HOME/.zshrc" ]; then
+        echo "export PATH=\$PATH:${HAULER_INSTALL_DIR}" >> "$HOME/.zshrc"
+        source "$HOME/.zshrc"
+    elif [ -f "$HOME/.profile" ]; then
+        echo "export PATH=\$PATH:${HAULER_INSTALL_DIR}" >> "$HOME/.profile"
+        source "$HOME/.profile"
+    else
+        echo "Failed to add ${HAULER_INSTALL_DIR} to PATH: Unsupported Shell"
+    fi
 fi
 
 # display success message
-info "Successfully Installed at /usr/local/bin/hauler"
+info "Successfully Installed at ${HAULER_INSTALL_DIR}/hauler"
 
 # display availability message
 verbose "- Hauler v${version} is now available for use!"
