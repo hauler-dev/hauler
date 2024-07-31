@@ -15,7 +15,7 @@
 #
 #   Set Install Directory
 #     - curl -sfL https://get.hauler.dev | HAULER_INSTALL_DIR=/custom/path bash
-#     - HAULER_INSTALL_DIR=/custom/path ./install.sh
+#     - HAULER_INSTALL_DIR=/path/to/directory ./install.sh
 #
 # Uninstall Usage:
 #   - curl -sfL https://get.hauler.dev | HAULER_UNINSTALL=true bash
@@ -43,24 +43,29 @@ function fatal {
     exit 1
 }
 
-# exit if unable to run with root privledges
+# exit if unable to run with root privileges
 if [ "$(id -u)" -ne 0 ]; then
-    fatal "Root privledges are required to install Hauler"
+    fatal "Root privileges are required to install Hauler"
 fi
 
 # check for required dependencies
 for cmd in echo curl grep sed rm mkdir awk openssl tar; do
     if ! command -v "$cmd" &> /dev/null; then
-        fatal "$cmd is not installed"
+        fatal "$cmd is required to install Hauler"
     fi
 done
 
 # set version environment variable
 if [ -z "${HAULER_VERSION}" ]; then
-    version="${HAULER_VERSION:-$(curl -s https://api.github.com/repos/hauler-dev/hauler/releases/latest | grep '"tag_name":' | sed 's/.*"v\([^"]*\)".*/\1/')}"
-else
-    version="${HAULER_VERSION}"
+    # attempt to retrieve the latest version from GitHub
+    HAULER_VERSION=$(curl -s https://api.github.com/repos/hauler-dev/hauler/releases/latest | grep '"tag_name":' | sed 's/.*"v\([^"]*\)".*/\1/')
+
+    # exit if the version could not be retrieved from GitHub
+    if [ -z "${HAULER_VERSION}" ]; then
+        fatal "HAULER_VERSION is not set and unable to detect the latest version from GitHub"
+    fi
 fi
+
 
 # set install directory environment variable
 HAULER_INSTALL_DIR=${HAULER_INSTALL_DIR:-/usr/local/bin}
@@ -109,7 +114,7 @@ esac
 info "Starting Installation..."
 
 # display the version, platform, and architecture
-verbose "- Version: v$version"
+verbose "- Version: v${HAULER_VERSION}"
 verbose "- Platform: $platform"
 verbose "- Architecture: $arch"
 
@@ -122,36 +127,36 @@ fi
 cd "$HOME/.hauler" || fatal "Failed to Change Directory: ~/.hauler"
 
 # download the checksum file
-if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${version}/hauler_${version}_checksums.txt"; then
-    fatal "Failed to Download: hauler_${version}_checksums.txt"
+if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_checksums.txt"; then
+    fatal "Failed to Download: hauler_${HAULER_VERSION}_checksums.txt"
 fi
 
 # download the archive file
-if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${version}/hauler_${version}_${platform}_${arch}.tar.gz"; then
-    fatal "Failed to Download: hauler_${version}_${platform}_${arch}.tar.gz"
+if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"; then
+    fatal "Failed to Download: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
 fi
 
 # start hauler checksum verification
 info "Starting Checksum Verification..."
 
 # verify the Hauler checksum
-expected_checksum=$(awk -v version="$version" -v platform="$platform" -v arch="$arch" '$2 == "hauler_"version"_"platform"_"arch".tar.gz" {print $1}' "hauler_${version}_checksums.txt")
-determined_checksum=$(openssl dgst -sha256 "hauler_${version}_${platform}_${arch}.tar.gz" | awk '{print $2}')
+expected_checksum=$(awk -v version="${HAULER_VERSION}" -v platform="$platform" -v arch="$arch" '$2 == "hauler_"version"_"platform"_"arch".tar.gz" {print $1}' "hauler_${HAULER_VERSION}_checksums.txt")
+determined_checksum=$(openssl dgst -sha256 "hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz" | awk '{print $2}')
 
 if [ -z "$expected_checksum" ]; then
-    fatal "Failed to Locate Checksum: hauler_${version}_${platform}_${arch}.tar.gz"
+    fatal "Failed to Locate Checksum: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
 elif [ "$determined_checksum" = "$expected_checksum" ]; then
     verbose "- Expected Checksum: $expected_checksum"
     verbose "- Determined Checksum: $determined_checksum"
-    verbose "- Successfully Verified Checksum: hauler_${version}_${platform}_${arch}.tar.gz"
+    verbose "- Successfully Verified Checksum: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
 else
     verbose "- Expected: $expected_checksum"
     verbose "- Determined: $determined_checksum"
-    fatal "Failed Checksum Verification: hauler_${version}_${platform}_${arch}.tar.gz"
+    fatal "Failed Checksum Verification: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
 fi
 
 # uncompress the archive
-tar -xzf "hauler_${version}_${platform}_${arch}.tar.gz" || fatal "Failed to Extract: hauler_${version}_${platform}_${arch}.tar.gz"
+tar -xzf "hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz" || fatal "Failed to Extract: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
 
 # install the binary
 install -m 755 hauler "${HAULER_INSTALL_DIR}" || fatal "Failed to Install Hauler to ${HAULER_INSTALL_DIR}"
@@ -179,7 +184,7 @@ fi
 info "Successfully Installed at ${HAULER_INSTALL_DIR}/hauler"
 
 # display availability message
-verbose "- Hauler v${version} is now available for use!"
+verbose "- Hauler v${HAULER_VERSION} is now available for use!"
 
 # display hauler docs message
 verbose "- Documentation: https://hauler.dev" && echo
