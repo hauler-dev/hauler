@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/go-containerregistry/pkg/name"
 	"io"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"oras.land/oras-go/pkg/target"
 
 	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/rancherfederal/hauler/pkg/reference"
 )
 
 var _ target.Target = (*OCI)(nil)
@@ -44,8 +46,20 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 	if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
 		return fmt.Errorf("descriptor must contain a reference from the annotation: %s", ocispec.AnnotationRefName)
 	}
-	key := fmt.Sprintf("%s-%s-%s", desc.Digest.String(), desc.Annotations[ocispec.AnnotationRefName], desc.Annotations[consts.KindAnnotationName])
-	o.nameMap.Store(key, desc)
+
+	key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+	if err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(key.String()) != "--" {
+		switch key.(type) {
+		case name.Digest:
+			o.nameMap.Store(key.Context().String(), desc)
+		case name.Tag:
+			o.nameMap.Store(key.String(), desc)
+		}
+	}
 	return o.SaveIndex()
 }
 
@@ -71,11 +85,21 @@ func (o *OCI) LoadIndex() error {
 	}
 
 	for _, desc := range o.index.Manifests {
-		key := fmt.Sprintf("%s-%s-%s", desc.Digest.String(), desc.Annotations[ocispec.AnnotationRefName], desc.Annotations[consts.KindAnnotationName])
-		if strings.TrimSpace(key) != "--" {
-			o.nameMap.Store(key, desc)
+		key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+		if err != nil {
+			return err
+		}
+
+		if strings.TrimSpace(key.String()) != "--" {
+			switch key.(type) {
+			case name.Digest:
+				o.nameMap.Store(key.Context().String(), desc)
+			case name.Tag:
+				o.nameMap.Store(key.String(), desc)
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -179,9 +203,11 @@ func (o *OCI) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 	var baseRef, hash string
 	parts := strings.SplitN(ref, "@", 2)
 	baseRef = parts[0]
+
 	if len(parts) > 1 {
 		hash = parts[1]
 	}
+
 	return &ociPusher{
 		oci:    o,
 		ref:    baseRef,
