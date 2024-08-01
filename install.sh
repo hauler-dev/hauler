@@ -29,7 +29,7 @@
 #   - https://hauler.dev
 #   - https://github.com/hauler-dev/hauler
 
-# set functions for debugging/logging
+# set functions for logging
 function verbose {
     echo "$1"
 }
@@ -55,13 +55,8 @@ fi
 # start hauler preflight checks
 info "Starting Preflight Checks..."
 
-# check for required root privileges
-if [ "$(id -u)" -ne 0 ]; then
-    fatal "Root privileges are required to install Hauler"
-fi
-
 # check for required packages and dependencies
-for cmd in echo curl grep sed rm mkdir awk openssl tar; do
+for cmd in echo curl grep sed rm mkdir awk openssl tar install source; do
     if ! command -v "$cmd" &> /dev/null; then
         fatal "$cmd is required to install Hauler"
     fi
@@ -70,13 +65,16 @@ done
 # set install directory from argument or environment variable
 HAULER_INSTALL_DIR=${HAULER_INSTALL_DIR:-/usr/local/bin}
 
-# ensure install directory exists and writable
+# ensure install directory exists
 if [ ! -d "${HAULER_INSTALL_DIR}" ]; then
     mkdir -p "${HAULER_INSTALL_DIR}" || fatal "Failed to Create Install Directory: ${HAULER_INSTALL_DIR}"
 fi
 
+# ensure install directory is writable (by user or root privileges)
 if [ ! -w "${HAULER_INSTALL_DIR}" ]; then
-    fatal "Installation Directory is not Writable: ${HAULER_INSTALL_DIR}"
+    if [ "$(id -u)" -ne 0 ]; then
+        fatal "Root privileges are required to install Hauler to Directory: ${HAULER_INSTALL_DIR}"
+    fi
 fi
 
 # uninstall hauler from argument or environment variable
