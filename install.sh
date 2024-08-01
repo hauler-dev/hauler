@@ -103,30 +103,30 @@ if [ -z "${HAULER_VERSION}" ]; then
 fi
 
 # detect the operating system
-platform=$(uname -s | tr '[:upper:]' '[:lower:]')
-case $platform in
+PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
+case $PLATFORM in
     linux)
-        platform="linux"
+        PLATFORM="linux"
         ;;
     darwin)
-        platform="darwin"
+        PLATFORM="darwin"
         ;;
     *)
-        fatal "Unsupported Platform: $platform"
+        fatal "Unsupported Platform: $PLATFORM"
         ;;
 esac
 
 # detect the architecture
-arch=$(uname -m)
-case $arch in
+ARCH=$(uname -m)
+case $ARCH in
     x86_64 | x86-32 | x64 | x32 | amd64)
-        arch="amd64"
+        ARCH="amd64"
         ;;
     aarch64 | arm64)
-        arch="arm64"
+        ARCH="arm64"
         ;;
     *)
-        fatal "Unsupported Architecture: $arch"
+        fatal "Unsupported Architecture: $ARCH"
         ;;
 esac
 
@@ -135,8 +135,8 @@ info "Starting Installation..."
 
 # display the version, platform, and architecture
 verbose "- Version: v${HAULER_VERSION}"
-verbose "- Platform: $platform"
-verbose "- Architecture: $arch"
+verbose "- Platform: $PLATFORM"
+verbose "- Architecture: $ARCH"
 verbose "- Install Directory: ${HAULER_INSTALL_DIR}"
 
 # check working directory and/or create it
@@ -159,31 +159,31 @@ if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULE
 fi
 
 # download the archive file
-if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"; then
-    fatal "Failed to Download: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
+if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"; then
+    fatal "Failed to Download: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
 fi
 
 # start hauler checksum verification
 info "Starting Checksum Verification..."
 
 # verify the Hauler checksum
-expected_checksum=$(awk -v version="${HAULER_VERSION}" -v platform="${platform}" -v arch="${arch}" '$2 == "hauler_"version"_"platform"_"arch".tar.gz" {print $1}' "hauler_${HAULER_VERSION}_checksums.txt")
-determined_checksum=$(openssl dgst -sha256 "hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz" | awk '{print $2}')
+EXPECTED_CHECKSUM=$(awk -v HAULER_VERSION="${HAULER_VERSION}" -v PLATFORM="${PLATFORM}" -v ARCH="${ARCH}" '$2 == "hauler_"HAULER_VERSION"_"PLATFORM"_"ARCH".tar.gz" {print $1}' "hauler_${HAULER_VERSION}_checksums.txt")
+DETERMINED_CHECKSUM=$(openssl dgst -sha256 "hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz" | awk '{print $2}')
 
-if [ -z "${expected_checksum}" ]; then
-    fatal "Failed to Locate Checksum: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
-elif [ "${determined_checksum}" = "${expected_checksum}" ]; then
-    verbose "- Expected Checksum: ${expected_checksum}"
-    verbose "- Determined Checksum: ${determined_checksum}"
-    verbose "- Successfully Verified Checksum: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
+if [ -z "${EXPECTED_CHECKSUM}" ]; then
+    fatal "Failed to Locate Checksum: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
+elif [ "${DETERMINED_CHECKSUM}" = "${EXPECTED_CHECKSUM}" ]; then
+    verbose "- Expected Checksum: ${EXPECTED_CHECKSUM}"
+    verbose "- Determined Checksum: ${DETERMINED_CHECKSUM}"
+    verbose "- Successfully Verified Checksum: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
 else
-    verbose "- Expected: ${expected_checksum}"
-    verbose "- Determined: ${determined_checksum}"
-    fatal "Failed Checksum Verification: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
+    verbose "- Expected: ${EXPECTED_CHECKSUM}"
+    verbose "- Determined: ${DETERMINED_CHECKSUM}"
+    fatal "Failed Checksum Verification: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
 fi
 
 # uncompress the hauler archive
-tar -xzf "hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz" || fatal "Failed to Extract: hauler_${HAULER_VERSION}_${platform}_${arch}.tar.gz"
+tar -xzf "hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz" || fatal "Failed to Extract: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
 
 # install the hauler binary
 install -m 755 hauler "${HAULER_INSTALL_DIR}" || fatal "Failed to Install Hauler: ${HAULER_INSTALL_DIR}"
