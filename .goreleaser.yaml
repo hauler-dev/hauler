@@ -12,7 +12,7 @@ release:
   make_latest: false
 
 env:
-  - vpkg=github.com/hauler-dev/hauler/internal/version
+  - vpkg=github.com/rancherfederal/hauler/internal/version
   - cosign_version=v2.2.3+carbide.2
 
 builds:
@@ -29,7 +29,7 @@ builds:
     hooks:
       pre:
         - mkdir -p cmd/hauler/binaries
-        - wget -P cmd/hauler/binaries/ https://github.com/rancher-government-carbide/cosign/releases/download/{{ .Env.cosign_version }}/cosign-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
+        - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
       post:
         - rm -rf cmd/hauler/binaries
     env:
