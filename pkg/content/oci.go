@@ -55,7 +55,7 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 	if strings.TrimSpace(key.String()) != "--" {
 		switch key.(type) {
 		case name.Digest:
-			o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), desc.Annotations[consts.KindAnnotationName]), desc)	
+			o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), desc.Annotations[consts.KindAnnotationName]), desc)
 		case name.Tag:
 			o.nameMap.Store(fmt.Sprintf("%s-%s", key.String(), desc.Annotations[consts.KindAnnotationName]), desc)
 		}
