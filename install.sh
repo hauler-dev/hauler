@@ -92,7 +92,7 @@ fi
 # set version environment variable
 if [ -z "${HAULER_VERSION}" ]; then
     # attempt to retrieve the latest version from GitHub
-    HAULER_VERSION=$(curl -sI https://github.com/hauler-dev/hauler/releases/latest | grep -i location | sed 's#.*tag/v##')
+    HAULER_VERSION=$(curl -sI https://github.com/hauler-dev/hauler/releases/latest | grep -i location | sed -e 's#.*tag/v##' -e 's/^[[:space:]]*//g' -e 's/[[:space:]]*$//g')
 
     # exit if the version could not be detected
     if [ -z "${HAULER_VERSION}" ]; then
