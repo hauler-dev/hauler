@@ -7,9 +7,9 @@ import (
 	"github.com/mholt/archiver/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/content"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/pkg/content"
+	"github.com/hauler-dev/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/store"
 )
 
 type LoadOpts struct {
