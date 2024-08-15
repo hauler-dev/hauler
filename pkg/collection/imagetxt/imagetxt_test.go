@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/artifacts/image"
+	"github.com/hauler-dev/hauler/pkg/artifacts"
+	"github.com/hauler-dev/hauler/pkg/artifacts/image"
 )
 
 var (

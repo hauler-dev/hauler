@@ -1,8 +1,8 @@
 package file
 
 import (
-	"github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
+	"github.com/hauler-dev/hauler/pkg/artifacts"
+	"github.com/hauler-dev/hauler/pkg/artifacts/file/getter"
 )
 
 type Option func(*File)
