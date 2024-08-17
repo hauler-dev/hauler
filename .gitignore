@@ -1,4 +1,3 @@
-.DS_Store
 **/.DS_Store
 .idea
 .vscode
@@ -8,12 +7,10 @@
 *.sln
 *.sw?
 *.dir-locals.el
-artifacts
-local-artifacts
-airgap-scp.sh
 dist/
 tmp/
 bin/
-/store/
-/registry/
+store/
+registry/
 cmd/hauler/binaries
+coverage.out
