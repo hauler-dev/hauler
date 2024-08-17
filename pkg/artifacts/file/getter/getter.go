@@ -11,9 +11,9 @@ import (
 	"github.com/pkg/errors"
 	"oras.land/oras-go/pkg/content"
 
-	content2 "github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/layer"
+	content2 "github.com/hauler-dev/hauler/pkg/artifacts"
+	"github.com/hauler-dev/hauler/pkg/consts"
+	"github.com/hauler-dev/hauler/pkg/layer"
 )
 
 type Client struct {

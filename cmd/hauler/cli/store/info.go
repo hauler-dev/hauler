@@ -11,9 +11,9 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/pkg/consts"
+	"github.com/hauler-dev/hauler/pkg/reference"
+	"github.com/hauler-dev/hauler/pkg/store"
 )
 
 type InfoOpts struct {

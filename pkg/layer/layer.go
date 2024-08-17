@@ -6,7 +6,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
+	"github.com/hauler-dev/hauler/pkg/consts"
 )
 
 type Opener func() (io.ReadCloser, error)

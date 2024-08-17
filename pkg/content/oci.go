@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/go-containerregistry/pkg/name"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/google/go-containerregistry/pkg/name"
 
 	ccontent "github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/remotes"
@@ -19,8 +20,8 @@ import (
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/target"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/reference"
+	"github.com/hauler-dev/hauler/pkg/consts"
+	"github.com/hauler-dev/hauler/pkg/reference"
 )
 
 var _ target.Target = (*OCI)(nil)

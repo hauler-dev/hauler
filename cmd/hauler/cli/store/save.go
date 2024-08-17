@@ -8,7 +8,7 @@ import (
 	"github.com/mholt/archiver/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/log"
 )
 
 type SaveOpts struct {

@@ -7,7 +7,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/opencontainers/go-digest"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts/memory"
+	"github.com/hauler-dev/hauler/pkg/artifacts/memory"
 )
 
 func TestMemory_Layers(t *testing.T) {
