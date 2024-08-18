@@ -33,18 +33,18 @@ func TestNewChart(t *testing.T) {
 		{
 			name: "should create from a chart archive",
 			args: args{
-				name: "rancher-cluster-templates-0.4.4.tgz",
+				name: "rancher-cluster-templates-0.5.2.tgz",
 				opts: &action.ChartPathOptions{RepoURL: "../../../testdata"},
 			},
 			want: v1.Descriptor{
 				MediaType: consts.ChartLayerMediaType,
-				Size:      13102,
+				Size:      14970,
 				Digest: v1.Hash{
 					Algorithm: "sha256",
-					Hex:       "4b3bb4e474b54bf9057b298f8f11c239bb561396716d8cd5fc369c407fba2965",
+					Hex:       "0905de044a6e57cf3cd27bfc8482753049920050b10347ae2315599bd982a0e3",
 				},
 				Annotations: map[string]string{
-					ocispec.AnnotationTitle: "rancher-cluster-templates-0.4.4.tgz",
+					ocispec.AnnotationTitle: "rancher-cluster-templates-0.5.2.tgz",
 				},
 			},
 			wantErr: false,
@@ -63,17 +63,17 @@ func TestNewChart(t *testing.T) {
 			name: "should fetch a remote chart",
 			args: args{
 				name: "cert-manager",
-				opts: &action.ChartPathOptions{RepoURL: "https://charts.jetstack.io", Version: "1.14.4"},
+				opts: &action.ChartPathOptions{RepoURL: "https://charts.jetstack.io", Version: "1.15.3"},
 			},
 			want: v1.Descriptor{
 				MediaType: consts.ChartLayerMediaType,
-				Size:      80674,
+				Size:      94751,
 				Digest: v1.Hash{
 					Algorithm: "sha256",
-					Hex:       "5775fdbc1881d6e510df76d38753af54b86bd14caa8edb28fdbb79527042dede",
+					Hex:       "016e68d9f7083d2c4fd302f951ee6490dbf4cb1ef44cfc06914c39cbfb01d858",
 				},
 				Annotations: map[string]string{
-					ocispec.AnnotationTitle: "cert-manager-v1.14.4.tgz",
+					ocispec.AnnotationTitle: "cert-manager-v1.15.3.tgz",
 				},
 			},
 			wantErr: false,

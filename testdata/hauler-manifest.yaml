@@ -5,6 +5,8 @@ metadata:
 spec:
   images:
     - name: busybox:latest
+    - name: docker.io/library/bash@sha256:05de6634ac35e4ac2edcb1af21889cec8afcc3798b11a9d538a6f0c315608c48
+      platform: linux/amd64
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1
 kind: Charts
@@ -14,7 +16,9 @@ spec:
   charts:
     - name: rancher
       repoURL: https://releases.rancher.com/server-charts/stable
-      version: 2.8.2
+      version: 2.8.5
+    - name: hauler-helm
+      repoURL: oci://ghcr.io/hauler-dev
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1
 kind: Files
@@ -24,3 +28,4 @@ spec:
   files:
     - path: https://get.rke2.io
       name: install.sh
+    - path: hauler-manifest.yaml
