@@ -1,0 +1,185 @@
+name: Tests Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Set Up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.21.x
+
+      - name: Install Go Releaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
+          sudo apt-get install -y build-essential
+
+      - name: Run Makefile Targets
+        run: |
+          make build-all
+
+      - name: Upload Hauler Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: hauler-binaries
+          path: dist/*
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: hauler-binaries
+          path: .
+
+      - name: Prepare Hauler Binary
+        run: |
+          sudo unzip -j hauler-binaries.zip "dist/hauler_linux_amd64_v1/hauler" -d /usr/local/bin/
+
+      - name: Verify - hauler version
+        run: |
+          hauler version
+
+      - name: Verify - hauler completion
+        run: |
+          hauler completion
+          hauler completion bash
+          hauler completion fish
+          hauler completion powershell
+          hauler completion zsh
+
+      - name: Verify - hauler help
+        run: |
+          hauler help
+
+      - name: Verify - hauler login
+        run: |
+          hauler login --help
+          hauler login docker.io --username bob --password haulin
+          echo "hauler" | hauler login docker.io -u bob --password-stdin
+
+      - name: Verify - hauler store
+        run: |
+          hauler store --help
+
+      - name: Verify - hauler store info
+        run: |
+          hauler store info --help
+          hauler store info --output table
+          hauler store info --output json
+
+      - name: Verify - hauler store add
+        run: |
+          hauler store add --help
+
+      - name: Verify - hauler store add chart
+        run: |
+          hauler store add chart --help
+          hauler store info
+          # verify via helm repository
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.3 --verify
+          # verify via oci helm repository
+          hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev
+          hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.6
+          hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.4 --verify
+          # verify via local helm repository
+          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.2/rancher-cluster-templates-0.5.2.tgz
+          hauler store add chart rancher-cluster-templates-0.5.2.tgz --repo .
+          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.1/rancher-cluster-templates-0.5.1.tgz
+          hauler store add chart rancher-cluster-templates-0.5.1.tgz --repo . --version 0.5.1
+          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.0/rancher-cluster-templates-0.5.0.tgz
+          hauler store add chart rancher-cluster-templates-0.5.0.tgz --repo . --version 0.5.0 --verify
+          # verify via the hauler store contents
+          hauler store info
+          # remove the hauler store
+          rm -rf store
+
+      - name: Verify - hauler store add file
+        run: |
+          hauler store add file --help
+          # verify via remote file
+          hauler store add file https://get.rke2.io/install.sh
+          hauler store add file https://get.rke2.io/install.sh --name rke2-install.sh
+          # verify via local file
+          hauler store add file testdata/hauler-manifest.yaml
+          hauler store add file testdata/hauler-manifest.yaml --name hauler-manifest-local.yaml
+          # verify via the hauler store contents
+          hauler store info
+          # remove the hauler store
+          rm -rf store
+
+      - name: Verify - hauler store add image
+        run: |
+          hauler store add image --help
+          hauler store add image busybox:latest
+          hauler store add image busybox:latest --platform linux/amd64
+          hauler store add image docker.io/library/bash@sha256:05de6634ac35e4ac2edcb1af21889cec8afcc3798b11a9d538a6f0c315608c48
+          hauler store add image docker.io/library/bash@sha256:05de6634ac35e4ac2edcb1af21889cec8afcc3798b11a9d538a6f0c315608c48 --platform linux/amd64
+          # verify via the hauler store contents
+          hauler store info
+          # remove the hauler store
+          rm -rf store
+
+      - name: Create Hauler Report
+        run: |
+          hauler version >> hauler-report.txt
+          hauler store info --output table >> hauler-report.txt
+
+      - name: Upload Hauler Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hauler-report
+          path: hauler-report.txt

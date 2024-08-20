@@ -17,7 +17,6 @@ build: install fmt vet test
 build-all: install fmt vet test
 	mkdir -p $(DIST_DIRECTORY)
 	goreleaser build --clean --snapshot
-	rm -rf $(BINARIES_DIRECTORY)
 
 install:
 	rm -rf $(BINARIES_DIRECTORY)
