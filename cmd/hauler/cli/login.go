@@ -23,7 +23,7 @@ func (o *Opts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Username, "username", "u", "", "Username")
 	f.StringVarP(&o.Password, "password", "p", "", "Password")
-	f.BoolVarP(&o.PasswordStdin, "password-stdin", "", false, "Take the password from stdin")
+	f.BoolVar(&o.PasswordStdin, "password-stdin", false, "Take the password from stdin")
 }
 
 func addLogin(parent *cobra.Command) {
