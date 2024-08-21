@@ -10,11 +10,11 @@ import (
 	"path"
 	"strings"
 
-	"github.com/hauler-dev/hauler/pkg/artifacts"
-	"github.com/hauler-dev/hauler/pkg/artifacts/file"
-	"github.com/hauler-dev/hauler/pkg/artifacts/file/getter"
-	"github.com/hauler-dev/hauler/pkg/artifacts/image"
-	"github.com/hauler-dev/hauler/pkg/reference"
+	"hauler.dev/hauler/pkg/artifacts"
+	"hauler.dev/hauler/pkg/artifacts/file"
+	"hauler.dev/hauler/pkg/artifacts/file/getter"
+	"hauler.dev/hauler/pkg/artifacts/image"
+	"hauler.dev/hauler/pkg/reference"
 )
 
 var _ artifacts.OCICollection = (*k3s)(nil)

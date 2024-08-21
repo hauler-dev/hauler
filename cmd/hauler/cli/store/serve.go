@@ -14,9 +14,9 @@ import (
 	"github.com/distribution/distribution/v3/version"
 	"github.com/spf13/cobra"
 
-	"github.com/hauler-dev/hauler/internal/server"
-	"github.com/hauler-dev/hauler/pkg/log"
-	"github.com/hauler-dev/hauler/pkg/store"
+	"hauler.dev/hauler/internal/server"
+	"hauler.dev/hauler/pkg/log"
+	"hauler.dev/hauler/pkg/store"
 )
 
 type ServeRegistryOpts struct {

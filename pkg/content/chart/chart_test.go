@@ -9,8 +9,8 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/hauler-dev/hauler/pkg/consts"
-	"github.com/hauler-dev/hauler/pkg/content/chart"
+	"hauler.dev/hauler/pkg/consts"
+	"hauler.dev/hauler/pkg/content/chart"
 )
 
 func TestNewChart(t *testing.T) {

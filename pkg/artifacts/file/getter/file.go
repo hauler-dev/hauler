@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hauler-dev/hauler/pkg/artifacts"
-	"github.com/hauler-dev/hauler/pkg/consts"
+	"hauler.dev/hauler/pkg/artifacts"
+	"hauler.dev/hauler/pkg/consts"
 )
 
 type File struct{}

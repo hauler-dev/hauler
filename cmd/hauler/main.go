@@ -5,9 +5,9 @@ import (
 	"embed"
 	"os"
 
-	"github.com/hauler-dev/hauler/cmd/hauler/cli"
-	"github.com/hauler-dev/hauler/pkg/cosign"
-	"github.com/hauler-dev/hauler/pkg/log"
+	"hauler.dev/hauler/cmd/hauler/cli"
+	"hauler.dev/hauler/pkg/cosign"
+	"hauler.dev/hauler/pkg/log"
 )
 
 //go:embed binaries/*

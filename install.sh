@@ -27,7 +27,7 @@
 #
 # Documentation:
 #   - https://hauler.dev
-#   - https://github.com/hauler-dev/hauler
+#   - https://hauler.dev/hauler-docs
 
 # set functions for logging
 function verbose {
@@ -92,7 +92,7 @@ fi
 # set version environment variable
 if [ -z "${HAULER_VERSION}" ]; then
     # attempt to retrieve the latest version from GitHub
-    HAULER_VERSION=$(curl -sI https://github.com/hauler-dev/hauler/releases/latest | grep -i location | sed -e 's#.*tag/v##' -e 's/^[[:space:]]*//g' -e 's/[[:space:]]*$//g')
+    HAULER_VERSION=$(curl -sI https://hauler.dev/hauler/releases/latest | grep -i location | sed -e 's#.*tag/v##' -e 's/^[[:space:]]*//g' -e 's/[[:space:]]*$//g')
 
     # exit if the version could not be detected
     if [ -z "${HAULER_VERSION}" ]; then
@@ -152,12 +152,12 @@ cd "$HOME/.hauler" || fatal "Failed to Change Directory: $HOME/.hauler"
 info "Starting Download..."
 
 # download the checksum file
-if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_checksums.txt"; then
+if ! curl -sfOL "https://hauler.dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_checksums.txt"; then
     fatal "Failed to Download: hauler_${HAULER_VERSION}_checksums.txt"
 fi
 
 # download the archive file
-if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"; then
+if ! curl -sfOL "https://hauler.dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"; then
     fatal "Failed to Download: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
 fi
 

@@ -20,8 +20,8 @@ import (
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/target"
 
-	"github.com/hauler-dev/hauler/pkg/consts"
-	"github.com/hauler-dev/hauler/pkg/reference"
+	"hauler.dev/hauler/pkg/consts"
+	"hauler.dev/hauler/pkg/reference"
 )
 
 var _ target.Target = (*OCI)(nil)

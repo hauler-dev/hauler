@@ -4,17 +4,17 @@ import (
 	"context"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/hauler-dev/hauler/pkg/artifacts/file/getter"
 	"github.com/spf13/cobra"
+	"hauler.dev/hauler/pkg/artifacts/file/getter"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/hauler-dev/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/hauler-dev/hauler/pkg/artifacts/file"
-	"github.com/hauler-dev/hauler/pkg/content/chart"
-	"github.com/hauler-dev/hauler/pkg/cosign"
-	"github.com/hauler-dev/hauler/pkg/log"
-	"github.com/hauler-dev/hauler/pkg/reference"
-	"github.com/hauler-dev/hauler/pkg/store"
+	"hauler.dev/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/hauler/pkg/artifacts/file"
+	"hauler.dev/hauler/pkg/content/chart"
+	"hauler.dev/hauler/pkg/cosign"
+	"hauler.dev/hauler/pkg/log"
+	"hauler.dev/hauler/pkg/reference"
+	"hauler.dev/hauler/pkg/store"
 )
 
 type AddFileOpts struct {

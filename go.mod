@@ -1,4 +1,4 @@
-module github.com/hauler-dev/hauler
+module hauler.dev/hauler
 
 go 1.21
 

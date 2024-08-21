@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
-	"github.com/hauler-dev/hauler/pkg/cosign"
-	"github.com/hauler-dev/hauler/pkg/log"
-	"github.com/hauler-dev/hauler/pkg/store"
+	"hauler.dev/hauler/pkg/cosign"
+	"hauler.dev/hauler/pkg/log"
+	"hauler.dev/hauler/pkg/store"
 )
 
 type CopyOpts struct {

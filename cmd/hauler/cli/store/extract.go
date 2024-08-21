@@ -9,10 +9,10 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
-	"github.com/hauler-dev/hauler/internal/mapper"
-	"github.com/hauler-dev/hauler/pkg/log"
-	"github.com/hauler-dev/hauler/pkg/reference"
-	"github.com/hauler-dev/hauler/pkg/store"
+	"hauler.dev/hauler/internal/mapper"
+	"hauler.dev/hauler/pkg/log"
+	"hauler.dev/hauler/pkg/reference"
+	"hauler.dev/hauler/pkg/store"
 )
 
 type ExtractOpts struct {

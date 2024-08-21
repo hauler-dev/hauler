@@ -13,8 +13,8 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 
-	"github.com/hauler-dev/hauler/pkg/artifacts"
-	"github.com/hauler-dev/hauler/pkg/consts"
+	"hauler.dev/hauler/pkg/artifacts"
+	"hauler.dev/hauler/pkg/consts"
 )
 
 type directory struct {

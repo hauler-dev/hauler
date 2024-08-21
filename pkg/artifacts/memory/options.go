@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/hauler-dev/hauler/pkg/artifacts"
+import "hauler.dev/hauler/pkg/artifacts"
 
 type Option func(*Memory)
 
