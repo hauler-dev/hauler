@@ -9,30 +9,12 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/spf13/cobra"
 
 	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/consts"
 	"github.com/rancherfederal/hauler/pkg/reference"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
-
-type InfoOpts struct {
-	*RootOpts
-
-	OutputFormat string
-	TypeFilter   string
-	SizeUnit     string
-}
-
-func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	f.StringVarP(&o.OutputFormat, "output", "o", "table", "Output format (table, json)")
-	f.StringVarP(&o.TypeFilter, "type", "t", "all", "Filter on type (image, chart, file, sigs, atts, sbom)")
-
-	// TODO: Regex/globbing
-}
 
 func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 	var items []item
