@@ -28,8 +28,8 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to a config file, will override all other configs")
 	f.BoolVar(&o.ReadOnly, "readonly", true, "Run the registry as readonly.")
 
-	f.StringVar(&o.TLSKey, "tls-key", "", "Key file.")
-	f.StringVar(&o.TLSCert, "tls-cert", "", "Cert file.")
+	f.StringVar(&o.TLSKey, "tls-key", "", "TLS key file location.")
+	f.StringVar(&o.TLSCert, "tls-cert", "", "TLS cert file location.")
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
 }
@@ -81,8 +81,8 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f.IntVarP(&o.Timeout, "timeout", "t", 60, "Set the http request timeout duration in seconds for both reads and write.")
 	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend.  Defaults to $PWD/fileserver")
 
-	f.StringVar(&o.TLSKey, "tls-key", "", "Key file.")
-	f.StringVar(&o.TLSCert, "tls-cert", "", "Cert file.")
+	f.StringVar(&o.TLSKey, "tls-key", "", "TLS key file location.")
+	f.StringVar(&o.TLSCert, "tls-cert", "", "TLS cert file location.")
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
 }
