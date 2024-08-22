@@ -7,6 +7,7 @@ import (
 	"github.com/mholt/archiver/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
@@ -29,7 +30,7 @@ func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
 
 // LoadCmd
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
-func LoadCmd(ctx context.Context, o *LoadOpts, archiveRefs ...string) error {
+func LoadCmd(ctx context.Context, o *flags.LoadOpts, archiveRefs ...string) error {
 	l := log.FromContext(ctx)
 
 	for _, archiveRef := range archiveRefs {
