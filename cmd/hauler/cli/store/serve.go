@@ -83,20 +83,21 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 		return err
 	}
 
-	cfg := server.FileConfig{
-		Root:    o.RootDir,
-		Port:    o.Port,
-		Timeout: o.Timeout,
-	}
-
-	f, err := server.NewFile(ctx, cfg)
+	f, err := server.NewFile(ctx, *o)
 	if err != nil {
 		return err
 	}
 
-	l.Infof("starting file server on port [%d]", o.Port)
-	if err := f.ListenAndServe(); err != nil {
-		return err
+	if o.TLSCert != "" && o.TLSKey != "" {
+		l.Infof("starting file server with tls on port [%d]", o.Port)
+		if err := f.ListenAndServeTLS(o.TLSCert, o.TLSKey); err != nil {
+			return err
+		}
+	} else {
+		l.Infof("starting file server on port [%d]", o.Port)
+		if err := f.ListenAndServe(); err != nil {
+			return err
+		}
 	}
 
 	return nil
