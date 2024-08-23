@@ -21,9 +21,9 @@ type Opts struct {
 
 func (o *Opts) AddArgs(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVarP(&o.Username, "username", "u", "", "Username")
-	f.StringVarP(&o.Password, "password", "p", "", "Password")
-	f.BoolVarP(&o.PasswordStdin, "password-stdin", "", false, "Take the password from stdin")
+	f.StringVarP(&o.Username, "username", "u", "", "Username to use for authentication")
+	f.StringVarP(&o.Password, "password", "p", "", "Password to use for authentication")
+	f.BoolVar(&o.PasswordStdin, "password-stdin", false, "Password to use for authentication (from stdin)")
 }
 
 func addLogin(parent *cobra.Command) {
