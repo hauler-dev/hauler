@@ -104,6 +104,11 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 		return err
 	}
 
+	if o.ListRepos {
+		buildListRepos(items...)
+		return nil
+	}
+
 	// sort items by ref and arch
 	sort.Sort(byReferenceAndArch(items))
 
@@ -116,6 +121,30 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 		buildTable(items...)
 	}
 	return nil
+}
+
+func buildListRepos(items ...item) {
+	// Create map to track unique repository names
+	repos := make(map[string]bool)
+
+	for _, i := range items {
+		repoName := ""
+		for j := 0; j < len(i.Reference); j++ {
+			if i.Reference[j] == '/' {
+				repoName = i.Reference[:j]
+				break
+			}
+		}
+		if repoName == "" {
+			repoName = i.Reference
+		}
+		repos[repoName] = true
+	}
+
+	// Collect and print unique repository names
+	for repoName := range repos {
+		fmt.Println(repoName)
+	}
 }
 
 func buildTable(items ...item) {
