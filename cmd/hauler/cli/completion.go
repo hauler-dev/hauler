@@ -9,7 +9,7 @@ import (
 
 func addCompletion(parent *cobra.Command) {
 	cmd := &cobra.Command{
-		Use:   "completion",
+		Use:   "hauler completion",
 		Short: "Generates completion scripts for various shells",
 		Long:  `The completion sub-command generates completion scripts for various shells.`,
 	}
