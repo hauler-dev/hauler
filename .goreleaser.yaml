@@ -30,8 +30,6 @@ builds:
       pre:
         - mkdir -p cmd/hauler/binaries
         - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
-      post:
-        - rm -rf cmd/hauler/binaries
     env:
       - CGO_ENABLED=0
 
