@@ -14,6 +14,7 @@ airgap-scp.sh
 dist/
 tmp/
 bin/
-/store/
-/registry/
+store/
+registry/
+fileserver/
 cmd/hauler/binaries

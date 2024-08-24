@@ -16,20 +16,20 @@ type ServeRegistryOpts struct {
 	ConfigFile string
 	ReadOnly   bool
 
-	TLSKey  string
 	TLSCert string
+	TLSKey  string
 }
 
 func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on.")
-	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for backend.  Defaults to $PWD/registry")
-	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to a config file, will override all other configs")
-	f.BoolVar(&o.ReadOnly, "readonly", true, "Run the registry as readonly.")
+	f.IntVarP(&o.Port, "port", "p", 5000, "Port used to accept incoming connections")
+	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for backend. Defaults to $PWD/registry")
+	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to config file, overrides all other flags")
+	f.BoolVar(&o.ReadOnly, "readonly", true, "Run the registry as readonly")
 
-	f.StringVar(&o.TLSKey, "tls-key", "", "TLS key file location.")
-	f.StringVar(&o.TLSCert, "tls-cert", "", "TLS cert file location.")
+	f.StringVar(&o.TLSCert, "tls-cert", "", "Location of the TLS Certificate")
+	f.StringVar(&o.TLSKey, "tls-key", "", "Location of the TLS Key")
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
 }
@@ -51,14 +51,13 @@ func (o *ServeRegistryOpts) DefaultRegistryConfig() *configuration.Configuration
 		cfg.HTTP.TLS.Key = o.TLSKey
 	}
 
-	// Add validation configuration
-	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
-
-	cfg.Log.Level = "info"
 	cfg.HTTP.Addr = fmt.Sprintf(":%d", o.Port)
 	cfg.HTTP.Headers = http.Header{
 		"X-Content-Type-Options": []string{"nosniff"},
 	}
+
+	cfg.Log.Level = "info"
+	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
 
 	return cfg
 }
@@ -70,19 +69,19 @@ type ServeFilesOpts struct {
 	Timeout int
 	RootDir string
 
-	TLSKey  string
 	TLSCert string
+	TLSKey  string
 }
 
 func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 8080, "Port to listen on.")
-	f.IntVarP(&o.Timeout, "timeout", "t", 60, "Set the http request timeout duration in seconds for both reads and write.")
-	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend.  Defaults to $PWD/fileserver")
+	f.IntVarP(&o.Port, "port", "p", 8080, "Port used to accept incoming connections")
+	f.IntVarP(&o.Timeout, "timeout", "t", 60, "Timeout duration for HTTP Requests in seconds for both reads/writes")
+	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend. Defaults to $PWD/fileserver")
 
-	f.StringVar(&o.TLSKey, "tls-key", "", "TLS key file location.")
-	f.StringVar(&o.TLSCert, "tls-cert", "", "TLS cert file location.")
+	f.StringVar(&o.TLSCert, "tls-cert", "", "Location of the TLS Certificate")
+	f.StringVar(&o.TLSKey, "tls-key", "", "Location of the TLS Key")
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
 }
