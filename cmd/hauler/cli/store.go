@@ -21,7 +21,7 @@ func addStore(parent *cobra.Command) {
 			return cmd.Help()
 		},
 	}
-	rootStoreOpts.AddArgs(cmd)
+	rootStoreOpts.AddFlags(cmd)
 
 	cmd.AddCommand(
 		addStoreSync(),
@@ -58,7 +58,7 @@ func addStoreExtract() *cobra.Command {
 			return store.ExtractCmd(ctx, o, s, args[0])
 		},
 	}
-	o.AddArgs(cmd)
+	o.AddFlags(cmd)
 
 	return cmd
 }
@@ -190,7 +190,7 @@ func addStoreSave() *cobra.Command {
 			return store.SaveCmd(ctx, o, o.FileName)
 		},
 	}
-	o.AddArgs(cmd)
+	o.AddFlags(cmd)
 
 	return cmd
 }

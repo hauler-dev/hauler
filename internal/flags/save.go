@@ -7,7 +7,7 @@ type SaveOpts struct {
 	FileName string
 }
 
-func (o *SaveOpts) AddArgs(cmd *cobra.Command) {
+func (o *SaveOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVarP(&o.FileName, "filename", "f", "haul.tar.zst", "Name of archive")

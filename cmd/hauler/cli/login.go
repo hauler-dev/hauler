@@ -43,7 +43,7 @@ hauler login reg.example.com -u bob -p haulin`,
 			return login(ctx, o, arg[0])
 		},
 	}
-	o.AddArgs(cmd)
+	o.AddFlags(cmd)
 
 	parent.AddCommand(cmd)
 }

@@ -17,7 +17,7 @@ type StoreRootOpts struct {
 	CacheDir string
 }
 
-func (o *StoreRootOpts) AddArgs(cmd *cobra.Command) {
+func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "Location to create store at")
 	pf.StringVar(&o.CacheDir, "cache", "", "(deprecated flag and currently not used)")

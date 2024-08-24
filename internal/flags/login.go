@@ -8,7 +8,7 @@ type LoginOpts struct {
 	PasswordStdin bool
 }
 
-func (o *LoginOpts) AddArgs(cmd *cobra.Command) {
+func (o *LoginOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Username, "username", "u", "", "Username to use for authentication")
 	f.StringVarP(&o.Password, "password", "p", "", "Password to use for authentication")
