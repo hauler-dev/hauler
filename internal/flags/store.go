@@ -12,18 +12,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type RootOpts struct {
+type StoreRootOpts struct {
 	StoreDir string
 	CacheDir string
 }
 
-func (o *RootOpts) AddArgs(cmd *cobra.Command) {
+func (o *StoreRootOpts) AddArgs(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "Location to create store at")
 	pf.StringVar(&o.CacheDir, "cache", "", "(deprecated flag and currently not used)")
 }
 
-func (o *RootOpts) Store(ctx context.Context) (*store.Layout, error) {
+func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 	l := log.FromContext(ctx)
 	dir := o.StoreDir
 

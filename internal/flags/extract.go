@@ -3,7 +3,7 @@ package flags
 import "github.com/spf13/cobra"
 
 type ExtractOpts struct {
-	*RootOpts
+	*StoreRootOpts
 	DestinationDir string
 }
 

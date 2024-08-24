@@ -3,7 +3,7 @@ package flags
 import "github.com/spf13/cobra"
 
 type LoadOpts struct {
-	*RootOpts
+	*StoreRootOpts
 	TempOverride string
 }
 

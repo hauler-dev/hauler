@@ -10,7 +10,7 @@ import (
 	"github.com/rancherfederal/hauler/internal/flags"
 )
 
-var rootStoreOpts = &flags.RootOpts{}
+var rootStoreOpts = &flags.StoreRootOpts{}
 
 func addStore(parent *cobra.Command) {
 	cmd := &cobra.Command{
@@ -40,7 +40,7 @@ func addStore(parent *cobra.Command) {
 }
 
 func addStoreExtract() *cobra.Command {
-	o := &flags.ExtractOpts{RootOpts: rootStoreOpts}
+	o := &flags.ExtractOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:     "extract",
@@ -64,7 +64,7 @@ func addStoreExtract() *cobra.Command {
 }
 
 func addStoreSync() *cobra.Command {
-	o := &flags.SyncOpts{RootOpts: rootStoreOpts}
+	o := &flags.SyncOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "sync",
@@ -86,7 +86,7 @@ func addStoreSync() *cobra.Command {
 }
 
 func addStoreLoad() *cobra.Command {
-	o := &flags.LoadOpts{RootOpts: rootStoreOpts}
+	o := &flags.LoadOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "load",
@@ -127,7 +127,7 @@ func addStoreServe() *cobra.Command {
 
 // RegistryCmd serves the embedded registry
 func addStoreServeRegistry() *cobra.Command {
-	o := &flags.ServeRegistryOpts{RootOpts: rootStoreOpts}
+	o := &flags.ServeRegistryOpts{StoreRootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
 		Use:   "registry",
 		Short: "Serve the embedded registry",
@@ -150,7 +150,7 @@ func addStoreServeRegistry() *cobra.Command {
 
 // FileServerCmd serves the file server
 func addStoreServeFiles() *cobra.Command {
-	o := &flags.ServeFilesOpts{RootOpts: rootStoreOpts}
+	o := &flags.ServeFilesOpts{StoreRootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
 		Use:   "fileserver",
 		Short: "Serve the file server",
@@ -172,7 +172,7 @@ func addStoreServeFiles() *cobra.Command {
 }
 
 func addStoreSave() *cobra.Command {
-	o := &flags.SaveOpts{RootOpts: rootStoreOpts}
+	o := &flags.SaveOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "save",
@@ -196,7 +196,7 @@ func addStoreSave() *cobra.Command {
 }
 
 func addStoreInfo() *cobra.Command {
-	o := &flags.InfoOpts{RootOpts: rootStoreOpts}
+	o := &flags.InfoOpts{StoreRootOpts: rootStoreOpts}
 
 	var allowedValues = []string{"image", "chart", "file", "sigs", "atts", "sbom", "all"}
 
@@ -227,7 +227,7 @@ func addStoreInfo() *cobra.Command {
 }
 
 func addStoreCopy() *cobra.Command {
-	o := &flags.CopyOpts{RootOpts: rootStoreOpts}
+	o := &flags.CopyOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "copy",
@@ -268,7 +268,7 @@ func addStoreAdd() *cobra.Command {
 }
 
 func addStoreAddFile() *cobra.Command {
-	o := &flags.AddFileOpts{RootOpts: rootStoreOpts}
+	o := &flags.AddFileOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "file",
@@ -291,7 +291,7 @@ func addStoreAddFile() *cobra.Command {
 }
 
 func addStoreAddImage() *cobra.Command {
-	o := &flags.AddImageOpts{RootOpts: rootStoreOpts}
+	o := &flags.AddImageOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
 		Use:   "image",
@@ -315,8 +315,8 @@ func addStoreAddImage() *cobra.Command {
 
 func addStoreAddChart() *cobra.Command {
 	o := &flags.AddChartOpts{
-		RootOpts:  rootStoreOpts,
-		ChartOpts: &action.ChartPathOptions{},
+		StoreRootOpts: rootStoreOpts,
+		ChartOpts:     &action.ChartPathOptions{},
 	}
 
 	cmd := &cobra.Command{

@@ -3,7 +3,7 @@ package flags
 import "github.com/spf13/cobra"
 
 type CopyOpts struct {
-	*RootOpts
+	*StoreRootOpts
 
 	Username  string
 	Password  string

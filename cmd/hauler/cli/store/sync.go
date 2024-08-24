@@ -49,7 +49,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout) error {
 		if err != nil {
 			return err
 		}
-		err = ExtractCmd(ctx, &flags.ExtractOpts{RootOpts: o.RootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
+		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
 		if err != nil {
 			return err
 		}

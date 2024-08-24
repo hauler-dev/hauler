@@ -9,7 +9,7 @@ import (
 )
 
 type ServeRegistryOpts struct {
-	*RootOpts
+	*StoreRootOpts
 
 	Port       int
 	RootDir    string
@@ -63,7 +63,7 @@ func (o *ServeRegistryOpts) DefaultRegistryConfig() *configuration.Configuration
 }
 
 type ServeFilesOpts struct {
-	*RootOpts
+	*StoreRootOpts
 
 	Port    int
 	Timeout int

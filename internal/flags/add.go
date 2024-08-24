@@ -6,7 +6,7 @@ import (
 )
 
 type AddImageOpts struct {
-	*RootOpts
+	*StoreRootOpts
 	Name     string
 	Key      string
 	Platform string
@@ -19,7 +19,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 }
 
 type AddFileOpts struct {
-	*RootOpts
+	*StoreRootOpts
 	Name string
 }
 
@@ -29,7 +29,7 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 }
 
 type AddChartOpts struct {
-	*RootOpts
+	*StoreRootOpts
 
 	ChartOpts *action.ChartPathOptions
 }

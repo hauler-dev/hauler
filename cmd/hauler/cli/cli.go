@@ -3,14 +3,11 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-type rootOpts struct {
-	logLevel string
-}
-
-var ro = &rootOpts{}
+var ro = &flags.CliRootOpts{}
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
@@ -18,7 +15,7 @@ func New() *cobra.Command {
 		Short: "Airgap Swiss Army Knife",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			l := log.FromContext(cmd.Context())
-			l.SetLevel(ro.logLevel)
+			l.SetLevel(ro.LogLevel)
 			l.Debugf("running cli command [%s]", cmd.CommandPath())
 			return nil
 		},
@@ -28,7 +25,7 @@ func New() *cobra.Command {
 	}
 
 	pf := cmd.PersistentFlags()
-	pf.StringVarP(&ro.logLevel, "log-level", "l", "info", "")
+	pf.StringVarP(&ro.LogLevel, "log-level", "l", "info", "")
 
 	// Add subcommands
 	addLogin(cmd)

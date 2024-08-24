@@ -3,7 +3,7 @@ package flags
 import "github.com/spf13/cobra"
 
 type SyncOpts struct {
-	*RootOpts
+	*StoreRootOpts
 	ContentFiles    []string
 	Key             string
 	Products        []string

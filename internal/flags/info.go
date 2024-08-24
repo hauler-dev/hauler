@@ -3,7 +3,7 @@ package flags
 import "github.com/spf13/cobra"
 
 type InfoOpts struct {
-	*RootOpts
+	*StoreRootOpts
 
 	OutputFormat string
 	TypeFilter   string
