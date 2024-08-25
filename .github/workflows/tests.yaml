@@ -85,13 +85,14 @@ jobs:
           name: hauler-binaries
           path: dist
 
-      - name: Prepare Hauler Binary
+      - name: Prepare Hauler for Tests
         run: |
           pwd
           ls -la
           ls -la dist/
-          chmod -R 755 dist/
+          chmod -R 755 dist/ testdata/certificate-script.sh
           sudo mv dist/hauler_linux_amd64_v1/hauler /usr/local/bin/hauler
+          ./testdata/certificate-script.sh && sudo chown -R $(whoami) testdata/certs/
 
       - name: Verify - hauler version
         run: |
@@ -260,6 +261,10 @@ jobs:
           hauler store serve registry --port 5001 --readonly &
           until curl -sf http://localhost:5001/v2/_catalog; do : ; done
           pkill -f "hauler store serve registry --port 5001 --readonly"
+          # verify via registry with different port with readonly with tls
+          # hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:5001/v2/_catalog; do : ; done
+          # pkill -f "hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
 
       - name: Verify - hauler store serve fileserver
         run: |
@@ -276,6 +281,10 @@ jobs:
           hauler store serve fileserver --port 8000 --timeout 120 &
           until curl -sf http://localhost:8000; do : ; done
           pkill -f "hauler store serve fileserver --port 8000 --timeout 120"
+          # verify via fileserver with different port with timeout and tls
+          # hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
+          # pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
 
       - name: Verify Hauler Store Contents
         run: |

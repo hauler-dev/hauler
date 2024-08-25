@@ -18,20 +18,18 @@ BINARIES_DIRECTORY=cmd/hauler/binaries
 # builds hauler for current platform
 # references other targets
 build: install fmt vet test
-	mkdir -p $(BIN_DIRECTORY)
-	CGO_ENABLED=0 go build -o $(BIN_DIRECTORY) ./cmd/...
+	goreleaser build --clean --snapshot --single-target
 
 # builds hauler for all platforms
 # references other targets
 build-all: install fmt vet test
-	mkdir -p $(DIST_DIRECTORY)
 	goreleaser build --clean --snapshot
 
 # install depedencies
 install:
 	rm -rf $(BINARIES_DIRECTORY)
 	mkdir -p $(BINARIES_DIRECTORY)
-	wget -q --show-progress -P $(BINARIES_DIRECTORY) https://github.com/hauler-dev/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH)
+	wget -P $(BINARIES_DIRECTORY) https://github.com/hauler-dev/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH)
 	go mod tidy
 	go mod download
 	CGO_ENABLED=0 go install ./cmd/...
