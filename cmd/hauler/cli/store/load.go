@@ -5,31 +5,16 @@ import (
 	"os"
 
 	"github.com/mholt/archiver/v3"
-	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/content"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type LoadOpts struct {
-	*RootOpts
-	TempOverride string
-}
-
-func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	// On Unix systems, the default is $TMPDIR if non-empty, else /tmp.
-	// On Windows, the default is GetTempPath, returning the first non-empty
-	// value from %TMP%, %TEMP%, %USERPROFILE%, or the Windows directory.
-	// On Plan 9, the default is /tmp.
-	f.StringVarP(&o.TempOverride, "tempdir", "t", "", "overrides the default directory for temporary files, as returned by your OS.")
-}
-
 // LoadCmd
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
-func LoadCmd(ctx context.Context, o *LoadOpts, archiveRefs ...string) error {
+func LoadCmd(ctx context.Context, o *flags.LoadOpts, archiveRefs ...string) error {
 	l := log.FromContext(ctx)
 
 	for _, archiveRef := range archiveRefs {

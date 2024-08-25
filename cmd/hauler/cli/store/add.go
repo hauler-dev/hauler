@@ -5,9 +5,9 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
-	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"github.com/rancherfederal/hauler/pkg/artifacts/file"
 	"github.com/rancherfederal/hauler/pkg/content/chart"
@@ -17,17 +17,7 @@ import (
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type AddFileOpts struct {
-	*RootOpts
-	Name string
-}
-
-func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-	f.StringVarP(&o.Name, "name", "n", "", "(Optional) Name to assign to file in store")
-}
-
-func AddFileCmd(ctx context.Context, o *AddFileOpts, s *store.Layout, reference string) error {
+func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
 	cfg := v1alpha1.File{
 		Path: reference,
 	}
@@ -61,20 +51,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 	return nil
 }
 
-type AddImageOpts struct {
-	*RootOpts
-	Name     string
-	Key      string
-	Platform string
-}
-
-func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for digital signature verification")
-	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specific platform to save. i.e. linux/amd64. Defaults to all if flag is omitted.")
-}
-
-func AddImageCmd(ctx context.Context, o *AddImageOpts, s *store.Layout, reference string) error {
+func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string) error {
 	l := log.FromContext(ctx)
 	cfg := v1alpha1.Image{
 		Name: reference,
@@ -111,27 +88,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 	return nil
 }
 
-type AddChartOpts struct {
-	*RootOpts
-
-	ChartOpts *action.ChartPathOptions
-}
-
-func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	f.StringVar(&o.ChartOpts.RepoURL, "repo", "", "chart repository url where to locate the requested chart")
-	f.StringVar(&o.ChartOpts.Version, "version", "", "specify a version constraint for the chart version to use. This constraint can be a specific tag (e.g. 1.1.1) or it may reference a valid range (e.g. ^2.0.0). If this is not specified, the latest version is used")
-	f.BoolVar(&o.ChartOpts.Verify, "verify", false, "verify the package before using it")
-	f.StringVar(&o.ChartOpts.Username, "username", "", "chart repository username where to locate the requested chart")
-	f.StringVar(&o.ChartOpts.Password, "password", "", "chart repository password where to locate the requested chart")
-	f.StringVar(&o.ChartOpts.CertFile, "cert-file", "", "identify HTTPS client using this SSL certificate file")
-	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "identify HTTPS client using this SSL key file")
-	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "skip tls certificate checks for the chart download")
-	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "verify certificates of HTTPS-enabled servers using this CA bundle")
-}
-
-func AddChartCmd(ctx context.Context, o *AddChartOpts, s *store.Layout, chartName string) error {
+func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string) error {
 	// TODO: Reduce duplicates between api chart and upstream helm opts
 	cfg := v1alpha1.Chart{
 		Name:    chartName,
