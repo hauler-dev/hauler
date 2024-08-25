@@ -10,24 +10,12 @@ import (
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/cosign"
 )
 
-type Opts struct {
-	Username      string
-	Password      string
-	PasswordStdin bool
-}
-
-func (o *Opts) AddArgs(cmd *cobra.Command) {
-	f := cmd.Flags()
-	f.StringVarP(&o.Username, "username", "u", "", "Username to use for authentication")
-	f.StringVarP(&o.Password, "password", "p", "", "Password to use for authentication")
-	f.BoolVar(&o.PasswordStdin, "password-stdin", false, "Password to use for authentication (from stdin)")
-}
-
 func addLogin(parent *cobra.Command) {
-	o := &Opts{}
+	o := &flags.LoginOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -55,12 +43,12 @@ hauler login reg.example.com -u bob -p haulin`,
 			return login(ctx, o, arg[0])
 		},
 	}
-	o.AddArgs(cmd)
+	o.AddFlags(cmd)
 
 	parent.AddCommand(cmd)
 }
 
-func login(ctx context.Context, o *Opts, registry string) error {
+func login(ctx context.Context, o *flags.LoginOpts, registry string) error {
 	ropts := content.RegistryOptions{
 		Username: o.Username,
 		Password: o.Password,

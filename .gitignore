@@ -12,5 +12,6 @@ tmp/
 bin/
 store/
 registry/
+fileserver/
 cmd/hauler/binaries
 coverage.out

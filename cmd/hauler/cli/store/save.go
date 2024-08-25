@@ -6,25 +6,14 @@ import (
 	"path/filepath"
 
 	"github.com/mholt/archiver/v3"
-	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/log"
 )
 
-type SaveOpts struct {
-	*RootOpts
-	FileName string
-}
-
-func (o *SaveOpts) AddArgs(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	f.StringVarP(&o.FileName, "filename", "f", "haul.tar.zst", "Name of archive")
-}
-
 // SaveCmd
 // TODO: Just use mholt/archiver for now, even though we don't need most of it
-func SaveCmd(ctx context.Context, o *SaveOpts, outputFile string) error {
+func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 	l := log.FromContext(ctx)
 
 	// TODO: Support more formats?

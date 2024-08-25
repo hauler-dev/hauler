@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/distribution/distribution/v3/configuration"
@@ -12,32 +10,14 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	"github.com/distribution/distribution/v3/version"
-	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/internal/server"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type ServeRegistryOpts struct {
-	*RootOpts
-
-	Port       int
-	RootDir    string
-	ConfigFile string
-	ReadOnly   bool
-}
-
-func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	f.IntVarP(&o.Port, "port", "p", 5000, "Port to listen on.")
-	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for backend.  Defaults to $PWD/registry")
-	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to a config file, will override all other configs")
-	f.BoolVar(&o.ReadOnly, "readonly", true, "Run the registry as readonly.")
-}
-
-func ServeRegistryCmd(ctx context.Context, o *ServeRegistryOpts, s *store.Layout) error {
+func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout) error {
 	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
@@ -46,14 +26,14 @@ func ServeRegistryCmd(ctx context.Context, o *ServeRegistryOpts, s *store.Layout
 		return err
 	}
 
-	opts := &CopyOpts{}
+	opts := &flags.CopyOpts{}
 	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry()); err != nil {
 		return err
 	}
 
 	tr.Close()
 
-	cfg := o.defaultRegistryConfig()
+	cfg := o.DefaultRegistryConfig()
 	if o.ConfigFile != "" {
 		ucfg, err := loadConfig(o.ConfigFile)
 		if err != nil {
@@ -75,45 +55,30 @@ func ServeRegistryCmd(ctx context.Context, o *ServeRegistryOpts, s *store.Layout
 	return nil
 }
 
-type ServeFilesOpts struct {
-	*RootOpts
-
-	Port    int
-	Timeout int
-	RootDir string
-}
-
-func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	f.IntVarP(&o.Port, "port", "p", 8080, "Port to listen on.")
-	f.IntVarP(&o.Timeout, "timeout", "t", 60, "Set the http request timeout duration in seconds for both reads and write.")
-	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend.  Defaults to $PWD/fileserver")
-}
-
-func ServeFilesCmd(ctx context.Context, o *ServeFilesOpts, s *store.Layout) error {
+func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout) error {
 	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
-	opts := &CopyOpts{}
+	opts := &flags.CopyOpts{}
 	if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir); err != nil {
 		return err
 	}
 
-	cfg := server.FileConfig{
-		Root:    o.RootDir,
-		Port:    o.Port,
-		Timeout: o.Timeout,
-	}
-
-	f, err := server.NewFile(ctx, cfg)
+	f, err := server.NewFile(ctx, *o)
 	if err != nil {
 		return err
 	}
 
-	l.Infof("starting file server on port [%d]", o.Port)
-	if err := f.ListenAndServe(); err != nil {
-		return err
+	if o.TLSCert != "" && o.TLSKey != "" {
+		l.Infof("starting file server with tls on port [%d]", o.Port)
+		if err := f.ListenAndServeTLS(o.TLSCert, o.TLSKey); err != nil {
+			return err
+		}
+	} else {
+		l.Infof("starting file server on port [%d]", o.Port)
+		if err := f.ListenAndServe(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -126,28 +91,4 @@ func loadConfig(filename string) (*configuration.Configuration, error) {
 	}
 
 	return configuration.Parse(f)
-}
-
-func (o *ServeRegistryOpts) defaultRegistryConfig() *configuration.Configuration {
-	cfg := &configuration.Configuration{
-		Version: "0.1",
-		Storage: configuration.Storage{
-			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
-			"filesystem": configuration.Parameters{"rootdirectory": o.RootDir},
-			"maintenance": configuration.Parameters{
-				"readonly": map[any]any{"enabled": o.ReadOnly},
-			},
-		},
-	}
-
-	// Add validation configuration
-	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
-
-	cfg.Log.Level = "info"
-	cfg.HTTP.Addr = fmt.Sprintf(":%d", o.Port)
-	cfg.HTTP.Headers = http.Header{
-		"X-Content-Type-Options": []string{"nosniff"},
-	}
-
-	return cfg
 }

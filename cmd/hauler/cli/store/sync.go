@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/mitchellh/go-homedir"
-	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
 	"github.com/rancherfederal/hauler/pkg/collection/imagetxt"
@@ -25,28 +25,7 @@ import (
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type SyncOpts struct {
-	*RootOpts
-	ContentFiles    []string
-	Key             string
-	Products        []string
-	Platform        string
-	Registry        string
-	ProductRegistry string
-}
-
-func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	f.StringSliceVarP(&o.ContentFiles, "files", "f", []string{}, "Path(s) to local content files (Manifests). i.e. '--files ./rke2-files.yml")
-	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Path to the key for signature verification")
-	f.StringSliceVar(&o.Products, "products", []string{}, "(Optional) Feature for RGS Carbide customers to fetch collections and content from the Carbide Registry. i.e. '--product rancher=v2.8.5,rke2=v1.28.11+rke2r1'")
-	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specific platform to save. i.e. linux/amd64. Defaults to all if flag is omitted.")
-	f.StringVarP(&o.Registry, "registry", "r", "", "(Optional) Default pull registry for image refs that are not specifying a registry name.")
-	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specific Product Registry to use. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us).")
-}
-
-func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
+func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout) error {
 	l := log.FromContext(ctx)
 
 	// if passed products, check for a remote manifest to retrieve and use.
@@ -70,7 +49,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 		if err != nil {
 			return err
 		}
-		err = ExtractCmd(ctx, &ExtractOpts{RootOpts: o.RootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
+		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
 		if err != nil {
 			return err
 		}
@@ -102,7 +81,7 @@ func SyncCmd(ctx context.Context, o *SyncOpts, s *store.Layout) error {
 	return nil
 }
 
-func processContent(ctx context.Context, fi *os.File, o *SyncOpts, s *store.Layout) error {
+func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout) error {
 	l := log.FromContext(ctx)
 
 	reader := yaml.NewYAMLReader(bufio.NewReader(fi))

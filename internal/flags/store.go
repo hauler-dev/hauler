@@ -1,4 +1,4 @@
-package store
+package flags
 
 import (
 	"context"
@@ -6,28 +6,24 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
-
+	"github.com/rancherfederal/hauler/pkg/consts"
 	"github.com/rancherfederal/hauler/pkg/log"
 	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/spf13/cobra"
 )
 
-const (
-	DefaultStoreName = "store"
-)
-
-type RootOpts struct {
+type StoreRootOpts struct {
 	StoreDir string
 	CacheDir string
 }
 
-func (o *RootOpts) AddArgs(cmd *cobra.Command) {
+func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
-	pf.StringVarP(&o.StoreDir, "store", "s", DefaultStoreName, "Location to create store at")
+	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "Location to create store at")
 	pf.StringVar(&o.CacheDir, "cache", "", "(deprecated flag and currently not used)")
 }
 
-func (o *RootOpts) Store(ctx context.Context) (*store.Layout, error) {
+func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 	l := log.FromContext(ctx)
 	dir := o.StoreDir
 

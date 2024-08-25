@@ -9,22 +9,16 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/rancherfederal/hauler/internal/flags"
 )
-
-type FileConfig struct {
-	Root    string
-	Host    string
-	Port    int
-	Timeout int
-}
 
 // NewFile returns a fileserver
 // TODO: Better configs
-func NewFile(ctx context.Context, cfg FileConfig) (Server, error) {
+func NewFile(ctx context.Context, cfg flags.ServeFilesOpts) (Server, error) {
 	r := mux.NewRouter()
-	r.PathPrefix("/").Handler(handlers.LoggingHandler(os.Stdout, http.StripPrefix("/", http.FileServer(http.Dir(cfg.Root)))))
-	if cfg.Root == "" {
-		cfg.Root = "."
+	r.PathPrefix("/").Handler(handlers.LoggingHandler(os.Stdout, http.StripPrefix("/", http.FileServer(http.Dir(cfg.RootDir)))))
+	if cfg.RootDir == "" {
+		cfg.RootDir = "."
 	}
 
 	if cfg.Port == 0 {

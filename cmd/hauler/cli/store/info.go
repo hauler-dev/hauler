@@ -9,33 +9,14 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/spf13/cobra"
 
+	"github.com/rancherfederal/hauler/internal/flags"
 	"github.com/rancherfederal/hauler/pkg/consts"
 	"github.com/rancherfederal/hauler/pkg/reference"
 	"github.com/rancherfederal/hauler/pkg/store"
 )
 
-type InfoOpts struct {
-	*RootOpts
-
-	OutputFormat string
-	TypeFilter   string
-	SizeUnit     string
-	ListRepos    bool
-}
-
-func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-
-	f.StringVarP(&o.OutputFormat, "output", "o", "table", "Output format (table, json)")
-	f.StringVarP(&o.TypeFilter, "type", "t", "all", "Filter on type (image, chart, file, sigs, atts, sbom)")
-	f.BoolVar(&o.ListRepos, "list-repos", false, "List all repository names")
-
-	// TODO: Regex/globbing
-}
-
-func InfoCmd(ctx context.Context, o *InfoOpts, s *store.Layout) error {
+func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 	var items []item
 	if err := s.Walk(func(ref string, desc ocispec.Descriptor) error {
 		if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
@@ -229,7 +210,7 @@ func (a byReferenceAndArch) Less(i, j int) bool {
 	return a[i].Reference < a[j].Reference
 }
 
-func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *InfoOpts) item {
+func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *flags.InfoOpts) item {
 	var size int64 = 0
 	for _, l := range m.Layers {
 		size += l.Size
