@@ -7,10 +7,10 @@ import (
 
 	"oras.land/oras-go/pkg/content"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/pkg/cosign"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/internal/flags"
+	"github.com/hauler-dev/hauler/pkg/cosign"
+	"github.com/hauler-dev/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/store"
 )
 
 func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef string) error {

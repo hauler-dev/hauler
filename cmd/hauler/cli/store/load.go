@@ -6,10 +6,10 @@ import (
 
 	"github.com/mholt/archiver/v3"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/pkg/content"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/internal/flags"
+	"github.com/hauler-dev/hauler/pkg/content"
+	"github.com/hauler-dev/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/store"
 )
 
 // LoadCmd

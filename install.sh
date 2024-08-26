@@ -10,8 +10,8 @@
 #     - ./install.sh
 #
 #   Install Specific Release
-#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=1.0.0 bash
-#     - HAULER_VERSION=1.0.0 ./install.sh
+#     - curl -sfL https://get.hauler.dev | HAULER_VERSION=1.1.0 bash
+#     - HAULER_VERSION=1.1.0 ./install.sh
 #
 #   Set Install Directory
 #     - curl -sfL https://get.hauler.dev | HAULER_INSTALL_DIR=/usr/local/bin bash
@@ -26,7 +26,7 @@
 #   - HAULER_UNINSTALL=true ./install.sh
 #
 # Documentation:
-#   - https://hauler.dev
+#   - https://docs.hauler.dev
 #   - https://github.com/hauler-dev/hauler
 
 # set functions for logging
@@ -212,4 +212,4 @@ info "Successfully Installed Hauler at ${HAULER_INSTALL_DIR}/hauler"
 info "Hauler v${HAULER_VERSION} is now available for use!"
 
 # display hauler docs message
-verbose "- Documentation: https://hauler.dev" && echo
+verbose "- Documentation: https://docs.hauler.dev" && echo

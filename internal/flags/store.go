@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/pkg/consts"
+	"github.com/hauler-dev/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/store"
 	"github.com/spf13/cobra"
 )
 

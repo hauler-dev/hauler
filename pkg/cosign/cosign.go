@@ -15,9 +15,9 @@ import (
 
 	"oras.land/oras-go/pkg/content"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts/image"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/pkg/artifacts/image"
+	"github.com/hauler-dev/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/store"
 )
 
 const maxRetries = 3

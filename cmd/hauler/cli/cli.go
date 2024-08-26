@@ -3,8 +3,8 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/internal/flags"
+	"github.com/hauler-dev/hauler/pkg/log"
 )
 
 var ro = &flags.CliRootOpts{}

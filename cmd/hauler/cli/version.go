@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rancherfederal/hauler/internal/version"
+	"github.com/hauler-dev/hauler/internal/version"
 )
 
 func addVersion(parent *cobra.Command) {

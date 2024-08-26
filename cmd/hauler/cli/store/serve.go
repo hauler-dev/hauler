@@ -11,10 +11,10 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	"github.com/distribution/distribution/v3/version"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/internal/server"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"github.com/hauler-dev/hauler/internal/flags"
+	"github.com/hauler-dev/hauler/internal/server"
+	"github.com/hauler-dev/hauler/pkg/log"
+	"github.com/hauler-dev/hauler/pkg/store"
 )
 
 func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout) error {

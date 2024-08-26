@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/hauler/cmd/hauler/cli/store"
-	"github.com/rancherfederal/hauler/internal/flags"
+	"github.com/hauler-dev/hauler/cmd/hauler/cli/store"
+	"github.com/hauler-dev/hauler/internal/flags"
 )
 
 var rootStoreOpts = &flags.StoreRootOpts{}

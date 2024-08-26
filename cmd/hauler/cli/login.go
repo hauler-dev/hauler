@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/pkg/content"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/pkg/cosign"
+	"github.com/hauler-dev/hauler/internal/flags"
+	"github.com/hauler-dev/hauler/pkg/cosign"
 )
 
 func addLogin(parent *cobra.Command) {

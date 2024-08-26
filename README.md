@@ -10,7 +10,7 @@
 
 `Hauler` does this by storing contents and collections as OCI Artifacts and allows operators to serve contents and collections with an embedded registry and fileserver. Additionally, `Hauler` has the ability to store and inspect various non-image OCI Artifacts.
 
-For more information, please review the **[Hauler Documentation](https://hauler.dev)!**
+For more information, please review the **[Hauler Documentation](https://docs.hauler.dev)!**
 
 ## Installation
 
