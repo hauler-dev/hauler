@@ -4,7 +4,10 @@ metadata:
   name: hauler-content-images-example
 spec:
   images:
-    - name: busybox:latest
+    - name: busybox
+    - name: busybox:stable
+      platform: linux/amd64
+    - name: gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1
 kind: Charts
@@ -14,7 +17,9 @@ spec:
   charts:
     - name: rancher
       repoURL: https://releases.rancher.com/server-charts/stable
-      version: 2.8.2
+      version: 2.8.5
+    - name: hauler-helm
+      repoURL: oci://ghcr.io/hauler-dev
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1
 kind: Files
@@ -24,3 +29,4 @@ spec:
   files:
     - path: https://get.rke2.io
       name: install.sh
+    - path: testdata/hauler-manifest.yaml
