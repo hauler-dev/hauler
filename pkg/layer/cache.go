@@ -7,7 +7,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts"
+	"hauler.dev/go/hauler/pkg/artifacts"
 )
 
 /*

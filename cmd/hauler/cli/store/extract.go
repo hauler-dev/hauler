@@ -8,11 +8,11 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/internal/mapper"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/internal/mapper"
+	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/pkg/reference"
+	"hauler.dev/go/hauler/pkg/store"
 )
 
 func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref string) error {

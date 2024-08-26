@@ -11,10 +11,10 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 
-	artifact "github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
-	"github.com/rancherfederal/hauler/pkg/artifacts/image"
-	"github.com/rancherfederal/hauler/pkg/log"
+	artifact "hauler.dev/go/hauler/pkg/artifacts"
+	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
+	"hauler.dev/go/hauler/pkg/artifacts/image"
+	"hauler.dev/go/hauler/pkg/log"
 )
 
 type ImageTxt struct {

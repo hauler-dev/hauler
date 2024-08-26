@@ -1,4 +1,4 @@
-module github.com/rancherfederal/hauler
+module hauler.dev/go/hauler
 
 go 1.21
 

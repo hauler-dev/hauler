@@ -12,17 +12,17 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	tchart "github.com/rancherfederal/hauler/pkg/collection/chart"
-	"github.com/rancherfederal/hauler/pkg/collection/imagetxt"
-	"github.com/rancherfederal/hauler/pkg/collection/k3s"
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/content"
-	"github.com/rancherfederal/hauler/pkg/cosign"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	tchart "hauler.dev/go/hauler/pkg/collection/chart"
+	"hauler.dev/go/hauler/pkg/collection/imagetxt"
+	"hauler.dev/go/hauler/pkg/collection/k3s"
+	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/content"
+	"hauler.dev/go/hauler/pkg/cosign"
+	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/pkg/reference"
+	"hauler.dev/go/hauler/pkg/store"
 )
 
 func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout) error {
