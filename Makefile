@@ -1,39 +1,51 @@
-SHELL:=/bin/bash
-GO_FILES=$(shell go list ./... | grep -v /vendor/)
+# Makefile for hauler
 
+# set shell
+SHELL=/bin/bash
+
+# set go variables
+GO_FILES=$(shell go list ./... | grep -v /vendor/)
+GO_COVERPROFILE=coverage.out
+
+# set cosign variables
 COSIGN_VERSION=v2.2.3+carbide.2
 
-.SILENT:
+# set build variables
+BIN_DIRECTORY=bin
+DIST_DIRECTORY=dist
+BINARIES_DIRECTORY=cmd/hauler/binaries
 
-all: fmt vet install test
+# builds hauler for current platform
+# references other targets
+build: install fmt vet test
+	goreleaser build --clean --snapshot --single-target
 
-build:
-	rm -rf cmd/hauler/binaries;\
-	mkdir -p cmd/hauler/binaries;\
-    wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH);\
-	mkdir bin;\
-	CGO_ENABLED=0 go build -o bin ./cmd/...;\
-
-build-all: fmt vet
+# builds hauler for all platforms
+# references other targets
+build-all: install fmt vet test
 	goreleaser build --clean --snapshot
 
+# install depedencies
 install:
-	rm -rf cmd/hauler/binaries;\
-	mkdir -p cmd/hauler/binaries;\
-	wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH);\
-	CGO_ENABLED=0 go install ./cmd/...;\
+	rm -rf $(BINARIES_DIRECTORY)
+	mkdir -p $(BINARIES_DIRECTORY)
+	wget -P $(BINARIES_DIRECTORY) https://github.com/hauler-dev/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH)
+	go mod tidy
+	go mod download
+	CGO_ENABLED=0 go install ./cmd/...
 
-vet:
-	go vet $(GO_FILES)
-
+# format go code
 fmt:
 	go fmt $(GO_FILES)
 
+# vet go code
+vet:
+	go vet $(GO_FILES)
+
+# test go code
 test:
-	go test $(GO_FILES) -cover
+	go test $(GO_FILES) -cover -race -covermode=atomic -coverprofile=$(GO_COVERPROFILE)
 
-integration_test:
-	go test -tags=integration $(GO_FILES)
-
+# cleanup artifacts
 clean:
-	rm -rf bin 2> /dev/null
+	rm -rf $(BIN_DIRECTORY) $(BINARIES_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE)
