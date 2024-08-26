@@ -9,7 +9,7 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/rancherfederal/hauler/internal/flags"
+	"hauler.dev/go/hauler/internal/flags"
 )
 
 // NewFile returns a fileserver

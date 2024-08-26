@@ -4,17 +4,17 @@ import (
 	"context"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
+	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/hauler/internal/flags"
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/artifacts/file"
-	"github.com/rancherfederal/hauler/pkg/content/chart"
-	"github.com/rancherfederal/hauler/pkg/cosign"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/reference"
-	"github.com/rancherfederal/hauler/pkg/store"
+	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/artifacts/file"
+	"hauler.dev/go/hauler/pkg/content/chart"
+	"hauler.dev/go/hauler/pkg/cosign"
+	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/pkg/reference"
+	"hauler.dev/go/hauler/pkg/store"
 )
 
 func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {

@@ -12,7 +12,7 @@ release:
   make_latest: false
 
 env:
-  - vpkg=github.com/rancherfederal/hauler/internal/version
+  - vpkg=hauler.dev/go/hauler/internal/version
   - cosign_version=v2.2.3+carbide.2
 
 builds:

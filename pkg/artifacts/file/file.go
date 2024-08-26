@@ -7,9 +7,9 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/artifacts/file/getter"
-	"github.com/rancherfederal/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/artifacts"
+	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 // interface guard

@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/util/jsonpath"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 )
 
 var defaultKnownImagePaths = []string{

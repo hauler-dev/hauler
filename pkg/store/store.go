@@ -15,10 +15,10 @@ import (
 	"oras.land/oras-go/pkg/oras"
 	"oras.land/oras-go/pkg/target"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/content"
-	"github.com/rancherfederal/hauler/pkg/layer"
+	"hauler.dev/go/hauler/pkg/artifacts"
+	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/content"
+	"hauler.dev/go/hauler/pkg/layer"
 )
 
 type Layout struct {

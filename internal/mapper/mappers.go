@@ -6,7 +6,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/pkg/target"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 type Fn func(desc ocispec.Descriptor) (string, error)

@@ -3,11 +3,11 @@ package chart
 import (
 	"helm.sh/helm/v3/pkg/action"
 
-	"github.com/rancherfederal/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/artifacts/image"
-	"github.com/rancherfederal/hauler/pkg/content/chart"
-	"github.com/rancherfederal/hauler/pkg/reference"
+	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/artifacts"
+	"hauler.dev/go/hauler/pkg/artifacts/image"
+	"hauler.dev/go/hauler/pkg/content/chart"
+	"hauler.dev/go/hauler/pkg/reference"
 )
 
 var _ artifacts.OCICollection = (*tchart)(nil)

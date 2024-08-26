@@ -6,8 +6,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 
-	"github.com/rancherfederal/hauler/pkg/artifacts"
-	"github.com/rancherfederal/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/artifacts"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 var _ artifacts.OCI = (*Memory)(nil)

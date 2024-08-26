@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rancherfederal/hauler/pkg/consts"
-	"github.com/rancherfederal/hauler/pkg/log"
-	"github.com/rancherfederal/hauler/pkg/store"
 	"github.com/spf13/cobra"
+	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/pkg/store"
 )
 
 type StoreRootOpts struct {
