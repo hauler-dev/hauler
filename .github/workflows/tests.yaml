@@ -1,0 +1,314 @@
+name: Tests Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Set Up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.21.x
+
+      - name: Install Go Releaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
+          sudo apt-get install -y build-essential
+
+      - name: Run Makefile Targets
+        run: |
+          make build-all
+
+      - name: Upload Hauler Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: hauler-binaries
+          path: dist/*
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          sudo apt-get install -y tree
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: hauler-binaries
+          path: dist
+
+      - name: Prepare Hauler for Tests
+        run: |
+          pwd
+          ls -la
+          ls -la dist/
+          chmod -R 755 dist/ testdata/certificate-script.sh
+          sudo mv dist/hauler_linux_amd64_v1/hauler /usr/local/bin/hauler
+          ./testdata/certificate-script.sh && sudo chown -R $(whoami) testdata/certs/
+
+      - name: Verify - hauler version
+        run: |
+          hauler version
+
+      - name: Verify - hauler completion
+        run: |
+          hauler completion
+          hauler completion bash
+          hauler completion fish
+          hauler completion powershell
+          hauler completion zsh
+
+      - name: Verify - hauler help
+        run: |
+          hauler help
+
+      - name: Verify - hauler login
+        run: |
+          hauler login --help
+          hauler login docker.io --username bob --password haulin
+          echo "hauler" | hauler login docker.io -u bob --password-stdin
+
+      - name: Remove Hauler Store Credentials
+        run: |
+          rm -rf ~/.docker/config.json
+
+      - name: Verify - hauler store
+        run: |
+          hauler store --help
+
+      - name: Verify - hauler store add
+        run: |
+          hauler store add --help
+
+      - name: Verify - hauler store add chart
+        run: |
+          hauler store add chart --help
+          # verify via helm repository
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.3 --verify
+          # verify via oci helm repository
+          hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev
+          hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.6
+          hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.4 --verify
+          # verify via local helm repository
+          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.2/rancher-cluster-templates-0.5.2.tgz
+          hauler store add chart rancher-cluster-templates-0.5.2.tgz --repo .
+          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.1/rancher-cluster-templates-0.5.1.tgz
+          hauler store add chart rancher-cluster-templates-0.5.1.tgz --repo . --version 0.5.1
+          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.0/rancher-cluster-templates-0.5.0.tgz
+          hauler store add chart rancher-cluster-templates-0.5.0.tgz --repo . --version 0.5.0 --verify
+          # verify via the hauler store contents
+          hauler store info
+
+      - name: Verify - hauler store add file
+        run: |
+          hauler store add file --help
+          # verify via remote file
+          hauler store add file https://get.rke2.io/install.sh
+          hauler store add file https://get.rke2.io/install.sh --name rke2-install.sh
+          # verify via local file
+          hauler store add file testdata/hauler-manifest.yaml
+          hauler store add file testdata/hauler-manifest.yaml --name hauler-manifest-local.yaml
+          # verify via the hauler store contents
+          hauler store info
+
+      - name: Verify - hauler store add image
+        run: |
+          hauler store add image --help
+          # verify via image reference
+          hauler store add image busybox
+          # verify via image reference with version and platform
+          hauler store add image busybox:stable --platform linux/amd64
+          # verify via image reference with full reference
+          hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+          # verify via the hauler store contents
+          hauler store info
+
+      - name: Verify - hauler store copy
+        run: |
+          hauler store copy --help
+          # need more tests here
+
+      - name: Verify - hauler store extract
+        run: |
+          hauler store extract --help
+          # verify via hauler store content
+          hauler store extract hauler/hauler-manifest-local.yaml:latest
+
+      - name: Verify - hauler store info
+        run: |
+          hauler store info --help
+          # verify via table output
+          hauler store info --output table
+          # verify via json output
+          hauler store info --output json
+          # verify via filtered output (chart)
+          hauler store info --type chart
+          # verify via filtered output (file)
+          hauler store info --type file
+          # verify via filtered output (image)
+          hauler store info --type image
+          # verify store directory structure
+          tree -hC store
+
+      - name: Verify - hauler store save
+        run: |
+          hauler store save --help
+          # verify via save
+          hauler store save
+          # verify via save with filename
+          hauler store save --filename store.tar.zst
+
+      - name: Remove Hauler Store Contents
+        run: |
+          rm -rf store
+          hauler store info
+
+      - name: Verify - hauler store load
+        run: |
+          hauler store load --help
+          # verify via load
+          hauler store load haul.tar.zst
+          # verify via load with different temp directory
+          hauler store load store.tar.zst --tempdir /opt
+
+      - name: Verify Hauler Store Contents
+        run: |
+          # verify store
+          hauler store info
+          # verify store directory structure
+          tree -hC store
+
+      - name: Remove Hauler Store Contents
+        run: |
+          rm -rf store haul.tar.zst store.tar.zst
+          hauler store info
+
+      - name: Verify - hauler store sync
+        run: |
+          hauler store sync --help
+          # download local helm repository
+          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.2/rancher-cluster-templates-0.5.2.tgz
+          # verify via sync
+          hauler store sync --files testdata/hauler-manifest-pipeline.yaml
+          # need more tests here
+
+      - name: Verify - hauler store serve
+        run: |
+          hauler store serve --help
+
+      - name: Verify - hauler store serve registry
+        run: |
+          hauler store serve registry --help
+          # verify via registry
+          hauler store serve registry &
+          until curl -sf http://localhost:5000/v2/_catalog; do : ; done
+          pkill -f "hauler store serve registry"
+          # verify via registry with different port
+          hauler store serve registry --port 5001 &
+          until curl -sf http://localhost:5001/v2/_catalog; do : ; done
+          pkill -f "hauler store serve registry --port 5001"
+          # verify via registry with different port and readonly
+          hauler store serve registry --port 5001 --readonly &
+          until curl -sf http://localhost:5001/v2/_catalog; do : ; done
+          pkill -f "hauler store serve registry --port 5001 --readonly"
+          # verify via registry with different port with readonly with tls
+          # hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:5001/v2/_catalog; do : ; done
+          # pkill -f "hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+
+      - name: Verify - hauler store serve fileserver
+        run: |
+          hauler store serve fileserver --help
+          # verify via fileserver
+          hauler store serve fileserver &
+          until curl -sf http://localhost:8080; do : ; done
+          pkill -f "hauler store serve fileserver"
+          # verify via fileserver with different port
+          hauler store serve fileserver --port 8000 &
+          until curl -sf http://localhost:8000; do : ; done
+          pkill -f "hauler store serve fileserver --port 8000"
+          # verify via fileserver with different port and timeout
+          hauler store serve fileserver --port 8000 --timeout 120 &
+          until curl -sf http://localhost:8000; do : ; done
+          pkill -f "hauler store serve fileserver --port 8000 --timeout 120"
+          # verify via fileserver with different port with timeout and tls
+          # hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
+          # pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+
+      - name: Verify Hauler Store Contents
+        run: |
+          # verify store
+          hauler store info
+          # verify store directory structure
+          tree -hC store
+          # verify registry directory structure
+          tree -hC registry
+          # verify fileserver directory structure
+          tree -hC fileserver
+
+      - name: Create Hauler Report
+        run: |
+          hauler version >> hauler-report.txt
+          hauler store info --output table >> hauler-report.txt
+
+      - name: Remove Hauler Store Contents
+        run: |
+          rm -rf store registry fileserver
+          hauler store info
+
+      - name: Upload Hauler Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hauler-report
+          path: hauler-report.txt
