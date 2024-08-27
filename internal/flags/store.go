@@ -19,7 +19,7 @@ type StoreRootOpts struct {
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
-	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "Location to create store at")
+	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "(Optional) Specify the directory to use for the content store")
 	pf.StringVar(&o.CacheDir, "cache", "", "(deprecated flag and currently not used)")
 }
 

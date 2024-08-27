@@ -16,7 +16,7 @@ func addStore(parent *cobra.Command) {
 	cmd := &cobra.Command{
 		Use:     "store",
 		Aliases: []string{"s"},
-		Short:   "Interact with hauler's embedded content store",
+		Short:   "Interact with the embedded content store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -31,8 +31,6 @@ func addStore(parent *cobra.Command) {
 		addStoreServe(),
 		addStoreInfo(),
 		addStoreCopy(),
-
-		// TODO: Remove this in favor of sync?
 		addStoreAdd(),
 	)
 
@@ -44,7 +42,7 @@ func addStoreExtract() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "extract",
-		Short:   "Extract content from the store to disk",
+		Short:   "Extract individual content outside the store to disk",
 		Aliases: []string{"x"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -112,7 +110,7 @@ func addStoreLoad() *cobra.Command {
 func addStoreServe() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Expose the content of a local store through an OCI compliant registry or file server",
+		Short: "Expose the local content store via an OCI Compliant Registry or Fileserver",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -130,7 +128,7 @@ func addStoreServeRegistry() *cobra.Command {
 	o := &flags.ServeRegistryOpts{StoreRootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
 		Use:   "registry",
-		Short: "Serve the embedded registry",
+		Short: "Expose the embedded OCI Compliant Registry",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -153,7 +151,7 @@ func addStoreServeFiles() *cobra.Command {
 	o := &flags.ServeFilesOpts{StoreRootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
 		Use:   "fileserver",
-		Short: "Serve the file server",
+		Short: "Expose the embedded Fileserver",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -231,7 +229,7 @@ func addStoreCopy() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "copy",
-		Short: "Copy all store contents to another OCI registry",
+		Short: "Copy all store content outside the store",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -252,7 +250,7 @@ func addStoreCopy() *cobra.Command {
 func addStoreAdd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
-		Short: "Add content to store",
+		Short: "Add content to the store",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -271,9 +269,10 @@ func addStoreAddFile() *cobra.Command {
 	o := &flags.AddFileOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
-		Use:   "file",
-		Short: "Add a file to the content store",
-		Args:  cobra.ExactArgs(1),
+		Use:     "file",
+		Short:   "Add a file to the store",
+		Example: "# fetch local file\nhauler store add file file.txt\n\n# fetch remote file\nhauler store add file https://get.rke2.io/install.sh\n\n# fetch remote file and assign new name\nhauler store add file https://get.hauler.dev --name hauler-install.sh",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -294,9 +293,10 @@ func addStoreAddImage() *cobra.Command {
 	o := &flags.AddImageOpts{StoreRootOpts: rootStoreOpts}
 
 	cmd := &cobra.Command{
-		Use:   "image",
-		Short: "Add an image to the content store",
-		Args:  cobra.ExactArgs(1),
+		Use:     "image",
+		Short:   "Add a image to the store",
+		Example: "# fetch image\nhauler store add image busybox\n\n# fetch image with repository and tag\nhauler store add image library/busybox:stable\n\n# fetch image with full image reference and specific platform\nhauler store add image ghcr.io/hauler-dev/hauler-debug:v1.0.7 --platform linux/amd74\n\n# fetch image with full image reference via digest\nhauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5\n\n# fetch image with full image reference, specific platform, and signature verification\nhauler store add image rgcrprod.azurecr.us/hauler/rke2-manifest.yaml:v1.28.12-rke2r1 --platform linux/amd64 --key carbide-key.pub",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -320,22 +320,10 @@ func addStoreAddChart() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:   "chart",
-		Short: "Add a local or remote chart to the content store",
-		Example: `
-# add a local chart
-hauler store add chart path/to/chart/directory
-
-# add a local compressed chart
-hauler store add chart path/to/chart.tar.gz
-
-# add a remote chart
-hauler store add chart longhorn --repo "https://charts.longhorn.io"
-
-# add a specific version of a chart
-hauler store add chart rancher --repo "https://releases.rancher.com/server-charts/latest" --version "2.6.2"
-`,
-		Args: cobra.ExactArgs(1),
+		Use:     "chart",
+		Short:   "Add a helm chart to the store",
+		Example: "# fetch local helm chart\nhauler store add chart path/to/chart/directory\n\n# fetch local compressed helm chart\nhauler store add chart path/to/chart.tar.gz\n\n# fetch remote oci helm chart\nhauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev\n\n# fetch remote oci helm chart with version\nhauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.6\n\n# fetch remote helm chart\nhauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable\n\n# fetch remote helm chart with specific version\nhauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.9.1",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

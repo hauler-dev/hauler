@@ -10,7 +10,7 @@ type LoginOpts struct {
 
 func (o *LoginOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVarP(&o.Username, "username", "u", "", "Username to use for authentication")
-	f.StringVarP(&o.Password, "password", "p", "", "Password to use for authentication")
-	f.BoolVar(&o.PasswordStdin, "password-stdin", false, "Password to use for authentication (from stdin)")
+	f.StringVarP(&o.Username, "username", "u", "", "(Optional) Username to use for authentication")
+	f.StringVarP(&o.Password, "password", "p", "", "(Optional) Password to use for authentication")
+	f.BoolVar(&o.PasswordStdin, "password-stdin", false, "(Optional) Password to use for authentication (from stdin)")
 }

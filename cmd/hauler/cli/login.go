@@ -18,12 +18,11 @@ func addLogin(parent *cobra.Command) {
 	o := &flags.LoginOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "login",
-		Short: "Log in to a registry",
-		Example: `
-# Log in to reg.example.com
-hauler login reg.example.com -u bob -p haulin`,
-		Args: cobra.ExactArgs(1),
+		Use:     "login",
+		Short:   "Login to a registry",
+		Long:    "Login to an OCI Compliant Registry (stored at ~/.docker/config.json)",
+		Example: "# login to registry.example.com\nhauler login registry.example.com -u bob -p haulin",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, arg []string) error {
 			ctx := cmd.Context()
 

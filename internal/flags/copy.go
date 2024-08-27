@@ -14,8 +14,8 @@ type CopyOpts struct {
 func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.Username, "username", "u", "", "Username when copying to an authenticated remote registry")
-	f.StringVarP(&o.Password, "password", "p", "", "Password when copying to an authenticated remote registry")
-	f.BoolVar(&o.Insecure, "insecure", false, "Toggle allowing insecure connections when copying to a remote registry")
-	f.BoolVar(&o.PlainHTTP, "plain-http", false, "Toggle allowing plain http connections when copying to a remote registry")
+	f.StringVarP(&o.Username, "username", "u", "", "(Optional) Username to use for authentication")
+	f.StringVarP(&o.Password, "password", "p", "", "(Optional) Password to use for authentication")
+	f.BoolVar(&o.Insecure, "insecure", false, "(Optional) Allow insecure connections")
+	f.BoolVar(&o.PlainHTTP, "plain-http", false, "(Optional) Allow plain HTTP connections")
 }

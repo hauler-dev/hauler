@@ -23,13 +23,13 @@ type ServeRegistryOpts struct {
 func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 5000, "Port used to accept incoming connections")
-	f.StringVar(&o.RootDir, "directory", "registry", "Directory to use for backend. Defaults to $PWD/registry")
-	f.StringVarP(&o.ConfigFile, "config", "c", "", "Path to config file, overrides all other flags")
-	f.BoolVar(&o.ReadOnly, "readonly", true, "Run the registry as readonly")
+	f.IntVarP(&o.Port, "port", "p", 5000, "(Optional) Specify the port to use for incoming connections")
+	f.StringVar(&o.RootDir, "directory", "registry", "(Optional) Directory to use for backend. Defaults to $PWD/registry")
+	f.StringVarP(&o.ConfigFile, "config", "c", "", "(Optional) Location of config file (overrides all flags)")
+	f.BoolVar(&o.ReadOnly, "readonly", true, "(Optional) Run the registry as readonly")
 
-	f.StringVar(&o.TLSCert, "tls-cert", "", "Location of the TLS Certificate")
-	f.StringVar(&o.TLSKey, "tls-key", "", "Location of the TLS Key")
+	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authenication")
+	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authenication")
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
 }
@@ -76,12 +76,12 @@ type ServeFilesOpts struct {
 func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 8080, "Port used to accept incoming connections")
-	f.IntVarP(&o.Timeout, "timeout", "t", 60, "Timeout duration for HTTP Requests in seconds for both reads/writes")
-	f.StringVar(&o.RootDir, "directory", "fileserver", "Directory to use for backend. Defaults to $PWD/fileserver")
+	f.IntVarP(&o.Port, "port", "p", 8080, "(Optional) Specify the port to use for incoming connections")
+	f.IntVarP(&o.Timeout, "timeout", "t", 60, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
+	f.StringVar(&o.RootDir, "directory", "fileserver", "(Optional) Directory to use for backend. Defaults to $PWD/fileserver")
 
-	f.StringVar(&o.TLSCert, "tls-cert", "", "Location of the TLS Certificate")
-	f.StringVar(&o.TLSKey, "tls-key", "", "Location of the TLS Key")
+	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authenication")
+	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authenication")
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
 }
