@@ -9,7 +9,7 @@ import (
 
 func addCompletion(parent *cobra.Command) {
 	cmd := &cobra.Command{
-		Use:   "hauler completion",
+		Use:   "completion",
 		Short: "Generates completion scripts for various shells",
 		Long:  `The completion sub-command generates completion scripts for various shells.`,
 	}
@@ -22,11 +22,6 @@ func addCompletion(parent *cobra.Command) {
 	)
 
 	parent.AddCommand(cmd)
-}
-
-func completionError(err error) ([]string, cobra.ShellCompDirective) {
-	cobra.CompError(err.Error())
-	return nil, cobra.ShellCompDirectiveError
 }
 
 func addCompletionZsh() *cobra.Command {
@@ -51,7 +46,7 @@ func addCompletionZsh() *cobra.Command {
 	mv _hauler ~/.oh-my-zsh/completions  # oh-my-zsh
 	mv _hauler ~/.zprezto/modules/completion/external/src/  # zprezto`,
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.GenZshCompletion(os.Stdout)
+			cmd.Root().GenZshCompletion(os.Stdout)
 			// Cobra doesn't source zsh completion file, explicitly doing it here
 			fmt.Println("compdef _hauler hauler")
 		},
@@ -73,7 +68,7 @@ func addCompletionBash() *cobra.Command {
 	# ~/.bashrc or ~/.profile
 	command -v hauler >/dev/null && . <(hauler completion bash)`,
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.GenBashCompletion(os.Stdout)
+			cmd.Root().GenBashCompletion(os.Stdout)
 		},
 	}
 	return cmd
@@ -90,7 +85,7 @@ func addCompletionFish() *cobra.Command {
 
 	See http://fishshell.com/docs/current/index.html#completion-own for more details`,
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.GenFishCompletion(os.Stdout, true)
+			cmd.Root().GenFishCompletion(os.Stdout, true)
 		},
 	}
 	return cmd
@@ -117,7 +112,7 @@ func addCompletionPowershell() *cobra.Command {
 	cd "${XDG_CONFIG_HOME:-"$HOME/.config/"}/powershell/modules"
 	hauler completion powershell >> hauler-completions.ps1`,
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.GenPowerShellCompletion(os.Stdout)
+			cmd.Root().GenPowerShellCompletion(os.Stdout)
 		},
 	}
 	return cmd
