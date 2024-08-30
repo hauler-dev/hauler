@@ -23,11 +23,6 @@ func addCompletion(parent *cobra.Command) {
 	parent.AddCommand(cmd)
 }
 
-func completionError(err error) ([]string, cobra.ShellCompDirective) {
-	cobra.CompError(err.Error())
-	return nil, cobra.ShellCompDirectiveError
-}
-
 func addCompletionZsh() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "zsh",
