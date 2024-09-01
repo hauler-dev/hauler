@@ -322,7 +322,7 @@ func addStoreAddChart() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "chart",
 		Short:   "Add a helm chart to the store",
-		Example: "# fetch local helm chart\nhauler store add chart path/to/chart/directory\n\n# fetch local compressed helm chart\nhauler store add chart path/to/chart.tar.gz\n\n# fetch remote oci helm chart\nhauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev\n\n# fetch remote oci helm chart with version\nhauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.6\n\n# fetch remote helm chart\nhauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable\n\n# fetch remote helm chart with specific version\nhauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.9.1",
+		Example: "# fetch local helm chart\nhauler store add chart path/to/chart/directory --repo .\n\n# fetch local compressed helm chart\nhauler store add chart path/to/chart.tar.gz --repo .\n\n# fetch remote oci helm chart\nhauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev\n\n# fetch remote oci helm chart with version\nhauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.6\n\n# fetch remote helm chart\nhauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable\n\n# fetch remote helm chart with specific version\nhauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.9.1",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
