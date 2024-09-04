@@ -92,7 +92,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		// read command's stderr line by line
 		errors := bufio.NewScanner(stderr)
 		for errors.Scan() {
-			l.Errorf(errors.Text()) // write each line to your log, or anything you need
+			l.Warnf(errors.Text()) // write each line to your log, or anything you need
 		}
 		if err := errors.Err(); err != nil {
 			cmd.Wait()
@@ -200,7 +200,7 @@ func RetryOperation(ctx context.Context, operation func() error) error {
 		}
 
 		// Log the error for the current attempt.
-		l.Errorf("error (attempt %d/%d): %v", attempt, maxRetries, err)
+		l.Warnf("error (attempt %d/%d): %v", attempt, maxRetries, err)
 
 		// If this is not the last attempt, wait before retrying.
 		if attempt < maxRetries {
