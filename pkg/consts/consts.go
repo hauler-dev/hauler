@@ -47,8 +47,9 @@ const (
 	HaulerVendorPrefix = "vnd.hauler"
 	OCIImageIndexFile  = "index.json"
 
-	KindAnnotationName = "kind"
-	KindAnnotation     = "dev.cosignproject.cosign/image"
+	KindAnnotationName  = "kind"
+	KindAnnotationImage = "dev.cosignproject.cosign/image"
+	KindAnnotationIndex = "dev.cosignproject.cosign/imageIndex"
 
 	CarbideRegistry         = "rgcrprod.azurecr.us"
 	ImageAnnotationKey      = "hauler.dev/key"
