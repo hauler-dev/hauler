@@ -238,7 +238,11 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		ctype = "sbom"
 	}
 
-	ref, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+	refName := desc.Annotations["io.containerd.image.name"]
+	if refName == "" {
+		refName = desc.Annotations[ocispec.AnnotationRefName]
+	}
+	ref, err := reference.Parse(refName)
 	if err != nil {
 		return item{}
 	}
