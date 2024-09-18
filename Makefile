@@ -8,7 +8,7 @@ GO_FILES=$(shell go list ./... | grep -v /vendor/)
 GO_COVERPROFILE=coverage.out
 
 # set cosign variables
-COSIGN_VERSION=v2.2.3+carbide.2
+COSIGN_VERSION=v2.2.3+carbide.3
 
 # set build variables
 BIN_DIRECTORY=bin
