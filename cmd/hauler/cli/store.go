@@ -42,7 +42,7 @@ func addStoreExtract() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "extract",
-		Short:   "Extract artifacts from the store to disk",
+		Short:   "Extract artifacts from the content store to disk",
 		Aliases: []string{"x"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -110,7 +110,7 @@ func addStoreLoad() *cobra.Command {
 func addStoreServe() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Expose the content store via an OCI Compliant Registry or Fileserver",
+		Short: "Serve the content store via an OCI Compliant Registry or Fileserver",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -128,7 +128,7 @@ func addStoreServeRegistry() *cobra.Command {
 	o := &flags.ServeRegistryOpts{StoreRootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
 		Use:   "registry",
-		Short: "Expose the OCI Compliant Registry",
+		Short: "Serve the OCI Compliant Registry",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -151,7 +151,7 @@ func addStoreServeFiles() *cobra.Command {
 	o := &flags.ServeFilesOpts{StoreRootOpts: rootStoreOpts}
 	cmd := &cobra.Command{
 		Use:   "fileserver",
-		Short: "Expose the Fileserver",
+		Short: "Serve the Fileserver",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
