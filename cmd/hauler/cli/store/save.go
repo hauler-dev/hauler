@@ -96,7 +96,7 @@ func writeExportsManifest(ctx context.Context, dir string) error {
 		if desc.Annotations != nil {
 			// we only care about images that cosign has added to the layout index
 			if kind, hasKind := desc.Annotations[consts.KindAnnotationName]; hasKind {
-				if refName, hasRefName := desc.Annotations[imagev1.AnnotationRefName]; hasRefName {
+				if refName, hasRefName := desc.Annotations["io.containerd.image.name"]; hasRefName {
 					// branch on image (aka image manifest) or image index
 					switch kind {
 					case consts.KindAnnotationImage:
