@@ -114,8 +114,8 @@ func writeExportsManifest(ctx context.Context, dir string) error {
 							return err
 						}
 						for _, ixd := range ixm.Manifests {
-							if ixd.Platform.Architecture != "unknown" && ixd.Platform.OS != "unknown" { // skip 'unknown' platforms... docker hates
-								if ixd.MediaType.IsImage() {
+							if ixd.MediaType.IsImage() {
+								if ixd.Platform.Architecture != "unknown" && ixd.Platform.OS != "unknown" { // skip 'unknown' platforms... docker hates
 									if err := x.record(ctx, iix, ixd, refName); err != nil {
 										return err
 									}
