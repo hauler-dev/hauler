@@ -124,9 +124,9 @@ func (o *OCI) SaveIndex() error {
 		kindJ := descs[j].Annotations["kind"]
 
 		// Objects with the prefix of "dev.cosignproject.cosign/image" should be at the top.
-		if strings.HasPrefix(kindI, consts.KindAnnotation) && !strings.HasPrefix(kindJ, consts.KindAnnotation) {
+		if strings.HasPrefix(kindI, consts.KindAnnotationImage) && !strings.HasPrefix(kindJ, consts.KindAnnotationImage) {
 			return true
-		} else if !strings.HasPrefix(kindI, consts.KindAnnotation) && strings.HasPrefix(kindJ, consts.KindAnnotation) {
+		} else if !strings.HasPrefix(kindI, consts.KindAnnotationImage) && strings.HasPrefix(kindJ, consts.KindAnnotationImage) {
 			return false
 		}
 		return false // Default: maintain the order.
