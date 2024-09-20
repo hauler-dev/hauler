@@ -10,8 +10,7 @@ import (
 func addCompletion(parent *cobra.Command) {
 	cmd := &cobra.Command{
 		Use:   "completion",
-		Short: "Generates completion scripts for various shells",
-		Long:  `The completion sub-command generates completion scripts for various shells.`,
+		Short: "Generate auto-completion scripts for various shells",
 	}
 
 	cmd.AddCommand(
@@ -27,8 +26,7 @@ func addCompletion(parent *cobra.Command) {
 func addCompletionZsh() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "zsh",
-		Short: "Generates zsh completion scripts",
-		Long:  `The completion sub-command generates completion scripts for zsh.`,
+		Short: "Generates auto-completion scripts for zsh",
 		Example: `To load completion run
 
 	. <(hauler completion zsh)
@@ -57,8 +55,7 @@ func addCompletionZsh() *cobra.Command {
 func addCompletionBash() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bash",
-		Short: "Generates bash completion scripts",
-		Long:  `The completion sub-command generates completion scripts for bash.`,
+		Short: "Generates auto-completion scripts for bash",
 		Example: `To load completion run
 
 	. <(hauler completion bash)
@@ -77,8 +74,7 @@ func addCompletionBash() *cobra.Command {
 func addCompletionFish() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fish",
-		Short: "Generates fish completion scripts",
-		Long:  `The completion sub-command generates completion scripts for fish.`,
+		Short: "Generates auto-completion scripts for fish",
 		Example: `To configure your fish shell to load completions for each session write this script to your completions dir:
 
 	hauler completion fish > ~/.config/fish/completions/hauler.fish
@@ -94,8 +90,7 @@ func addCompletionFish() *cobra.Command {
 func addCompletionPowershell() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "powershell",
-		Short: "Generates powershell completion scripts",
-		Long:  `The completion sub-command generates completion scripts for powershell.`,
+		Short: "Generates auto-completion scripts for powershell",
 		Example: `To load completion run
 
 	. <(hauler completion powershell)

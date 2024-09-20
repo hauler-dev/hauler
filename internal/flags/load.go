@@ -14,5 +14,5 @@ func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
 	// On Windows, the default is GetTempPath, returning the first non-empty
 	// value from %TMP%, %TEMP%, %USERPROFILE%, or the Windows directory.
 	// On Plan 9, the default is /tmp.
-	f.StringVarP(&o.TempOverride, "tempdir", "t", "", "overrides the default directory for temporary files, as returned by your OS.")
+	f.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directiory determined by the OS")
 }
