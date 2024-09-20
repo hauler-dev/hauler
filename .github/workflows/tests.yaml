@@ -228,6 +228,17 @@ jobs:
           # verify store directory structure
           tree -hC store
 
+      - name: Verify - docker load
+        run: |
+          docker load --help
+          # verify via load
+          docker load --input haul.tar.zst
+      - name: Verify Docker Images Contents
+        run: |
+          docker images --help
+          # verify images
+          docker images --all
+
       - name: Remove Hauler Store Contents
         run: |
           rm -rf store haul.tar.zst store.tar.zst
