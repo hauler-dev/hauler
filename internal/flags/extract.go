@@ -10,5 +10,5 @@ type ExtractOpts struct {
 func (o *ExtractOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.DestinationDir, "output", "o", "", "Directory to save contents to (defaults to current directory)")
+	f.StringVarP(&o.DestinationDir, "output", "o", "", "(Optional) Specify the directory to output (defaults to current directory)")
 }

@@ -14,9 +14,7 @@ type InfoOpts struct {
 func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.OutputFormat, "output", "o", "table", "Output format (table, json)")
-	f.StringVarP(&o.TypeFilter, "type", "t", "all", "Filter on type (image, chart, file, sigs, atts, sbom)")
-	f.BoolVar(&o.ListRepos, "list-repos", false, "List all repository names")
-
-	// TODO: Regex/globbing
+	f.StringVarP(&o.OutputFormat, "output", "o", "table", "(Optional) Specify the output format (table | json)")
+	f.StringVarP(&o.TypeFilter, "type", "t", "all", "(Optional) Filter on content type (image | chart | file | sigs | atts | sbom)")
+	f.BoolVar(&o.ListRepos, "list-repos", false, "(Optional) List all repository names")
 }
