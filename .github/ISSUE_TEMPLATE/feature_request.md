@@ -8,7 +8,7 @@ assignees: ''
 
 <!-- Thank you for helping us to improve Hauler! We welcome all requests for enhancements (RFEs). Please fill out each area of the template so we can better assist you. Comments like this will be hidden when you submit, but you can delete them if you wish. -->
 
-**Is this RFE related to an Existing Problem? If so, please describe:**
+**Is this Feature/Enhancement related to an Existing Problem? If so, please describe:**
 
 <!-- Provide a clear and concise description of the problem -->
 
