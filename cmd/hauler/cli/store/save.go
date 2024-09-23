@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	referencev3 "github.com/distribution/distribution/v3/reference"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -66,10 +64,11 @@ type exports struct {
 	records map[string]tarball.Descriptor
 }
 
-func writeExportsManifest(ctx context.Context, dir string, platform string) error {
+func writeExportsManifest(ctx context.Context, dir string, platformStr string) error {
 	l := log.FromContext(ctx)
 
-	os, architecture, err := splitPlatform(platform)
+	// validate platform format
+	platform, err := libv1.ParsePlatform(platformStr)
 	if err != nil {
 		return err
 	}
@@ -113,8 +112,9 @@ func writeExportsManifest(ctx context.Context, dir string, platform string) erro
 					case consts.KindAnnotationIndex:
 						l.Debugf("index [%s]: digest=%s, type=%s, size=%d", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
-						if platform == "" {
-							l.Warnf("index [%s]: contains multiple platforms and could cause issues when importing into docker/containerd", refName)
+						// when no platform is provided, warn the user of potential mismatch on import
+						if platform.String() == "" {
+							l.Warnf("index [%s]: provide an export platform to prevent potential platform mismatch on import", refName)
 						}
 
 						iix, err := idx.ImageIndex(desc.Digest)
@@ -128,8 +128,8 @@ func writeExportsManifest(ctx context.Context, dir string, platform string) erro
 						for _, ixd := range ixm.Manifests {
 							if ixd.MediaType.IsImage() {
 								// check if platform is provided, if so, skip anything that doesn't match
-								if platform != "" {
-									if ixd.Platform.Architecture != architecture || ixd.Platform.OS != os {
+								if platform.String() != "" {
+									if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
 										l.Warnf("index [%s]: digest=%s, platform=%s/%s: does not match the supplied platform, skipping", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
 										continue
 									}
@@ -234,16 +234,4 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 	x.records[digest] = xd
 
 	return nil
-}
-
-func splitPlatform(platform string) (string, string, error) {
-	if platform == "" {
-		return "", "", nil // Skip processing if no platform is provided
-	}
-
-	parts := strings.Split(platform, "/")
-	if len(parts) != 2 {
-		return "", "", errors.New("invalid platform format")
-	}
-	return parts[0], parts[1], nil
 }
