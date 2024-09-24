@@ -46,7 +46,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 
-	if err := writeExportsManifest(ctx, "."); err != nil {
+	if err := writeExportsManifest(ctx, ".", o.Platform); err != nil {
 		return err
 	}
 
@@ -64,8 +64,14 @@ type exports struct {
 	records map[string]tarball.Descriptor
 }
 
-func writeExportsManifest(ctx context.Context, dir string) error {
+func writeExportsManifest(ctx context.Context, dir string, platformStr string) error {
 	l := log.FromContext(ctx)
+
+	// validate platform format
+	platform, err := libv1.ParsePlatform(platformStr)
+	if err != nil {
+		return err
+	}
 
 	oci, err := layout.FromPath(dir)
 	if err != nil {
@@ -105,6 +111,12 @@ func writeExportsManifest(ctx context.Context, dir string) error {
 						}
 					case consts.KindAnnotationIndex:
 						l.Debugf("index [%s]: digest=%s, type=%s, size=%d", refName, desc.Digest.String(), desc.MediaType, desc.Size)
+
+						// when no platform is provided, warn the user of potential mismatch on import
+						if platform.String() == "" {
+							l.Warnf("index [%s]: provide an export platform to prevent potential platform mismatch on import", refName)
+						}
+
 						iix, err := idx.ImageIndex(desc.Digest)
 						if err != nil {
 							return err
@@ -115,6 +127,20 @@ func writeExportsManifest(ctx context.Context, dir string) error {
 						}
 						for _, ixd := range ixm.Manifests {
 							if ixd.MediaType.IsImage() {
+								// check if platform is provided, if so, skip anything that doesn't match
+								if platform.String() != "" {
+									if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
+										l.Warnf("index [%s]: digest=%s, platform=%s/%s: does not match the supplied platform, skipping", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+										continue
+									}
+								}
+
+								// skip 'unknown' platforms... docker hates
+								if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
+									l.Warnf("index [%s]: digest=%s, platform=%s/%s: skipping 'unknown/unknown' platform", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+									continue
+								}
+
 								if err := x.record(ctx, iix, ixd, refName); err != nil {
 									return err
 								}
