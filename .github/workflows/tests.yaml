@@ -183,8 +183,10 @@ jobs:
       - name: Verify - hauler store extract
         run: |
           hauler store extract --help
-          # verify via hauler store content
+          # verify via extracting hauler store content
           hauler store extract hauler/hauler-manifest-local.yaml:latest
+          # view extracted content from store
+          cat hauler-manifest-local.yaml
 
       - name: Verify - hauler store info
         run: |
@@ -209,6 +211,8 @@ jobs:
           hauler store save
           # verify via save with filename
           hauler store save --filename store.tar.zst
+          # verify via save with filename and platform (amd64)
+          hauler store save --filename store-amd64.tar.zst --platform linux/amd64
 
       - name: Remove Hauler Store Contents
         run: |
@@ -220,8 +224,10 @@ jobs:
           hauler store load --help
           # verify via load
           hauler store load haul.tar.zst
-          # verify via load with different temp directory
+          # verify via load with filename and temp directory
           hauler store load store.tar.zst --tempdir /opt
+          # verify via load with filename and platform (amd64)
+          hauler store load store-amd64.tar.zst
 
       - name: Verify Hauler Store Contents
         run: |
@@ -234,7 +240,7 @@ jobs:
         run: |
           docker load --help
           # verify via load
-          docker load --input haul.tar.zst
+          docker load --input store-amd64.tar.zst
 
       - name: Verify Docker Images Contents
         run: |
@@ -244,7 +250,7 @@ jobs:
 
       - name: Remove Hauler Store Contents
         run: |
-          rm -rf store haul.tar.zst store.tar.zst
+          rm -rf store haul.tar.zst store.tar.zst store-amd64.tar.zst
           hauler store info
 
       - name: Verify - hauler store sync
