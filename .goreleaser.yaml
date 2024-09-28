@@ -6,6 +6,13 @@ before:
     - go mod tidy
     - go mod download
     - rm -rf cmd/hauler/binaries
+    - mkdir -p cmd/hauler/binaries
+    - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-linux-amd64
+    - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-linux-arm64
+    - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-darwin-amd64
+    - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-darwin-arm64
+    - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-windows-amd64.exe
+    - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-windows-arm64.exe
 
 release:
   prerelease: auto
@@ -26,9 +33,6 @@ builds:
       - arm64
     ldflags:
       - -s -w -X {{ .Env.vpkg }}.gitVersion={{ .Version }} -X {{ .Env.vpkg }}.gitCommit={{ .ShortCommit }} -X {{ .Env.vpkg }}.gitTreeState={{if .IsGitDirty}}dirty{{else}}clean{{end}} -X {{ .Env.vpkg }}.buildDate={{ .Date }}
-    hooks:
-      pre:
-        - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
     env:
       - CGO_ENABLED=0
 
