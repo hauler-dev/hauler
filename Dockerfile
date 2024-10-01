@@ -1,9 +1,8 @@
 # builder stage
 FROM registry.suse.com/bci/golang:1.23 AS builder
 
-RUN zypper --non-interactive install make bash wget ca-certificates
-
-RUN go install github.com/goreleaser/goreleaser/v2@latest
+RUN echo -e "[goreleaser]\nname=GoReleaser\nbaseurl=https://repo.goreleaser.com/yum/\nenabled=1\ngpgcheck=0" > /etc/zypp/repos.d/GoReleaser.repo
+RUN zypper --non-interactive install make bash wget git goreleaser ca-certificates
 
 COPY . /build
 WORKDIR /build
