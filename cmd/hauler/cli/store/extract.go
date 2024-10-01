@@ -23,10 +23,12 @@ func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref 
 		return err
 	}
 
+	// use the repository from the context and the identifier from the reference
+	repo := r.Context().RepositoryStr() + ":" + r.Identifier()
+
 	found := false
 	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
-
-		if !strings.Contains(reference, r.Name()) {
+		if !strings.Contains(reference, repo) {
 			return nil
 		}
 		found = true
