@@ -29,7 +29,7 @@ build-all: install fmt vet test
 install:
 	rm -rf $(BINARIES_DIRECTORY)
 	mkdir -p $(BINARIES_DIRECTORY)
-	wget -P $(BINARIES_DIRECTORY) https://github.com/hauler-dev/cosign/releases/download/$(COSIGN_VERSION)/cosign-$(shell go env GOOS)-$(shell go env GOARCH)
+	date > $(BINARIES_DIRECTORY)/date.txt
 	go mod tidy
 	go mod download
 	CGO_ENABLED=0 go install ./cmd/...
