@@ -75,19 +75,37 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Release Container to GitHub Container Registry
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           target: release
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}, docker.io/hauler/hauler:${{ github.ref_name }}
+
+      - name: Build and Push Release Container to GitHub Container Registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: release
+          platforms: linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}, docker.io/hauler/hauler:${{ github.ref_name }}
 
       - name: Build and Push Debug Container to GitHub Container Registry
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           target: debug
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}-debug:${{ github.ref_name }}, docker.io/hauler/hauler-debug:${{ github.ref_name }}
+
+      - name: Build and Push Debug Container to GitHub Container Registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: debug
+          platforms: linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}-debug:${{ github.ref_name }}, docker.io/hauler/hauler-debug:${{ github.ref_name }}

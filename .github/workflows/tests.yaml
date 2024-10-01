@@ -31,7 +31,6 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
-
       - name: Install Go Releaser
         uses: goreleaser/goreleaser-action@v6
         with:
