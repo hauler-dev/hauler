@@ -18,12 +18,12 @@ BINARIES_DIRECTORY=cmd/hauler/binaries
 # builds hauler for current platform
 # references other targets
 build: install fmt vet test
-	goreleaser build --clean --snapshot --single-target
+	goreleaser build --clean --snapshot --parallelism 1 --single-target
 
 # builds hauler for all platforms
 # references other targets
 build-all: install fmt vet test
-	goreleaser build --clean --snapshot
+	goreleaser build --clean --snapshot --parallelism 1
 
 # install depedencies
 install:

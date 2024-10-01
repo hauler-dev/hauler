@@ -33,7 +33,7 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: "release --clean -p 1"
+          args: "release --clean --parallelism 1"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
