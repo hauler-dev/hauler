@@ -15,17 +15,17 @@ BINARIES_DIRECTORY=cmd/hauler/binaries
 # local build of hauler for current platform
 # references/configuration from .goreleaser.yaml
 build:
-	goreleaser build --clean --snapshot --parallelism 1 --single-target
+	goreleaser build --clean --snapshot --parallelism 1 --timeout 60m --single-target
 
 # local build of hauler for all platforms
 # references/configuration from .goreleaser.yaml
 build-all:
-	goreleaser build --clean --snapshot --parallelism 1
+	goreleaser build --clean --snapshot --parallelism 1 --timeout 60m
 
 # local release of hauler for all platforms
 # references/configuration from .goreleaser.yaml
 release:
-	goreleaser release --clean --snapshot --parallelism 1
+	goreleaser release --clean --snapshot --parallelism 1 --timeout 60m
 
 # install depedencies
 install:
