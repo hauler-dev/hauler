@@ -15,12 +15,12 @@ BINARIES_DIRECTORY=cmd/hauler/binaries
 # builds hauler for current platform
 # references other targets
 build:
-	goreleaser build --clean --snapshot --parallelism 1 --single-target
+	goreleaser build --clean --snapshot --parallelism 1 --timeout 240m --single-target
 
 # builds hauler for all platforms
 # references other targets
 build-all:
-	goreleaser build --clean --snapshot --parallelism 1
+	goreleaser build --clean --snapshot --parallelism 1 --timeout 240m
 
 # install depedencies
 install:
