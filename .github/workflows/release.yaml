@@ -7,10 +7,10 @@ on:
       - '*'
 
 jobs:
-  go-release:
-    name: Go Release Job
+  goreleaser:
+    name: GoReleaser Job
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,32 +27,6 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
-
-      - name: Run Go Releaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: "release --clean --parallelism 1"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-
-  container-release:
-    name: Container Release Job
-    runs-on: ubuntu-latest
-    needs: [go-release]
-    timeout-minutes: 240
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Set Up QEMU
         uses: docker/setup-qemu-action@v3
@@ -74,20 +48,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push Release Container to GitHub Container Registry/DockerHub Container Registry
-        uses: docker/build-push-action@v6
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          context: .
-          target: release
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}, docker.io/hauler/hauler:${{ github.ref_name }}
-
-      - name: Build and Push Debug Container to GitHub Container Registry/DockerHub Container Registry
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: debug
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/${{ github.repository }}-debug:${{ github.ref_name }}, docker.io/hauler/hauler-debug:${{ github.ref_name }}
+          distribution: goreleaser
+          version: "~> v2"
+          args: "release --clean --parallelism 1 --timeout 60m"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          DOCKER_CLI_EXPERIMENTAL: "enabled"

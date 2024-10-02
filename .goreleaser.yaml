@@ -55,3 +55,75 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     description: "Hauler CLI"
+
+dockers:
+  - id: hauler-amd64
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--target=release"
+    image_templates:
+      - "docker.io/hauler/hauler-amd64:{{ .Version }}"
+      - "ghcr.io/hauler-dev/hauler-amd64:{{ .Version }}"
+  - id: hauler-arm64
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--target=release"
+    image_templates:
+      - "docker.io/hauler/hauler-arm64:{{ .Version }}"
+      - "ghcr.io/hauler-dev/hauler-arm64:{{ .Version }}"
+  - id: hauler-debug-amd64
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--target=debug"
+    image_templates:
+      - "docker.io/hauler/hauler-debug-amd64:{{ .Version }}"
+      - "ghcr.io/hauler-dev/hauler-debug-amd64:{{ .Version }}"
+  - id: hauler-debug-arm64
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--target=debug"
+    image_templates:
+      - "docker.io/hauler/hauler-debug-arm64:{{ .Version }}"
+      - "ghcr.io/hauler-dev/hauler-debug-arm64:{{ .Version }}"
+
+docker_manifests:
+  - id: hauler-docker
+    use: docker
+    name_template: "docker.io/hauler/hauler:{{ .Version }}"
+    image_templates:
+      - "docker.io/hauler/hauler-amd64:{{ .Version }}"
+      - "docker.io/hauler/hauler-arm64:{{ .Version }}"
+  - id: hauler-ghcr
+    use: docker
+    name_template: "ghcr.io/hauler-dev/hauler:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/hauler-dev/hauler-amd64:{{ .Version }}"
+      - "ghcr.io/hauler-dev/hauler-arm64:{{ .Version }}"
+  - id: hauler-debug-docker
+    use: docker
+    name_template: "docker.io/hauler/hauler-debug:{{ .Version }}"
+    image_templates:
+      - "docker.io/hauler/hauler-debug-amd64:{{ .Version }}"
+      - "docker.io/hauler/hauler-debug-arm64:{{ .Version }}"
+  - id: hauler-debug-ghcr
+    use: docker
+    name_template: "ghcr.io/hauler-dev/hauler-debug:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/hauler-dev/hauler-debug-amd64:{{ .Version }}"
+      - "ghcr.io/hauler-dev/hauler-debug-arm64:{{ .Version }}"
