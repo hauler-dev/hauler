@@ -1,17 +1,8 @@
 # builder stage
-FROM registry.suse.com/bci/golang:1.23 AS builder
+FROM registry.suse.com/bci/bci-base:15.5 AS builder
 
-RUN echo -e "[goreleaser]\nname=GoReleaser\nbaseurl=https://repo.goreleaser.com/yum/\nenabled=1\ngpgcheck=0" > /etc/zypp/repos.d/GoReleaser.repo
-RUN zypper --non-interactive install make bash wget git goreleaser ca-certificates
-
-COPY . /build
-WORKDIR /build
-RUN make build
-
-ARG TARGETOS
-ARG TARGETARCH
-
-RUN cp /build/dist/hauler_${TARGETOS}_${TARGETARCH}*/hauler /hauler
+# fetched from goreleaser build proccess
+COPY hauler /hauler
 
 RUN echo "hauler:x:1001:1001::/home/hauler:" > /etc/passwd \
 && echo "hauler:x:1001:hauler" > /etc/group \
@@ -43,7 +34,7 @@ COPY --from=builder /var/lib/ca-certificates/ca-bundle.pem /etc/ssl/certs/ca-cer
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 COPY --from=builder --chown=hauler:hauler /home/hauler/. /home/hauler
-COPY --from=builder --chown=hauler:hauler /hauler /hauler
+COPY --from=builder --chown=hauler:hauler /hauler /usr/local/bin/hauler
 
 RUN apk --no-cache add curl
 

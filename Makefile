@@ -12,15 +12,20 @@ BIN_DIRECTORY=bin
 DIST_DIRECTORY=dist
 BINARIES_DIRECTORY=cmd/hauler/binaries
 
-# builds hauler for current platform
-# references other targets
+# local build of hauler for current platform
+# references/configuration from .goreleaser.yaml
 build:
-	goreleaser build --clean --snapshot --parallelism 1 --timeout 240m --single-target
+	goreleaser build --clean --snapshot --parallelism 1 --single-target
 
-# builds hauler for all platforms
-# references other targets
+# local build of hauler for all platforms
+# references/configuration from .goreleaser.yaml
 build-all:
-	goreleaser build --clean --snapshot --parallelism 1 --timeout 240m
+	goreleaser build --clean --snapshot --parallelism 1
+
+# local release of hauler for all platforms
+# references/configuration from .goreleaser.yaml
+release:
+	goreleaser release --clean --snapshot --parallelism 1
 
 # install depedencies
 install:
