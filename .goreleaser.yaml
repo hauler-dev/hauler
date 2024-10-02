@@ -3,8 +3,14 @@ version: 2
 project_name: hauler
 before:
   hooks:
+    - rm -rf cmd/hauler/binaries
+    - mkdir -p cmd/hauler/binaries
+    - touch cmd/hauler/binaries/file
     - go mod tidy
     - go mod download
+    - go fmt ./...
+    - go vet ./...
+    - go test ./... -cover -race -covermode=atomic -coverprofile=coverage.out
     - rm -rf cmd/hauler/binaries
 
 release:

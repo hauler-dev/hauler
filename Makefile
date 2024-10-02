@@ -4,11 +4,8 @@
 SHELL=/bin/bash
 
 # set go variables
-GO_FILES=$(shell go list ./... | grep -v /vendor/)
+GO_FILES=./...
 GO_COVERPROFILE=coverage.out
-
-# set cosign variables
-COSIGN_VERSION=v2.2.3+carbide.3
 
 # set build variables
 BIN_DIRECTORY=bin
@@ -17,19 +14,19 @@ BINARIES_DIRECTORY=cmd/hauler/binaries
 
 # builds hauler for current platform
 # references other targets
-build: install fmt vet test
+build:
 	goreleaser build --clean --snapshot --parallelism 1 --single-target
 
 # builds hauler for all platforms
 # references other targets
-build-all: install fmt vet test
+build-all:
 	goreleaser build --clean --snapshot --parallelism 1
 
 # install depedencies
 install:
 	rm -rf $(BINARIES_DIRECTORY)
 	mkdir -p $(BINARIES_DIRECTORY)
-	date > $(BINARIES_DIRECTORY)/date.txt
+	touch cmd/hauler/binaries/file
 	go mod tidy
 	go mod download
 	CGO_ENABLED=0 go install ./cmd/...
