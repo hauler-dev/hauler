@@ -22,7 +22,7 @@ env:
   - cosign_version=v2.2.3+carbide.3
 
 builds:
-  - main: cmd/hauler/main.go
+  - dir: ./cmd/hauler/.
     goos:
       - linux
       - darwin
@@ -39,6 +39,7 @@ builds:
         - rm -rf cmd/hauler/binaries
     env:
       - CGO_ENABLED=0
+      - GOEXPERIMENT=boringcrypto
 
 universal_binaries:
   - replace: false
