@@ -8,11 +8,7 @@ import (
 	"strings"
 
 	gname "github.com/google/go-containerregistry/pkg/name"
-)
-
-const (
-	DefaultNamespace = "hauler"
-	DefaultTag       = "latest"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 type Reference interface {
@@ -36,14 +32,14 @@ func NewTagged(n string, tag string) (gname.Reference, error) {
 
 // Parse will parse a reference and return a name.Reference namespaced with DefaultNamespace if necessary
 func Parse(ref string) (gname.Reference, error) {
-	r, err := gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(DefaultTag))
+	r, err := gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(consts.DefaultTag))
 	if err != nil {
 		return nil, err
 	}
 
 	if !strings.ContainsRune(r.String(), '/') {
-		ref = DefaultNamespace + "/" + r.String()
-		return gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(DefaultTag))
+		ref = consts.DefaultNamespace + "/" + r.String()
+		return gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(consts.DefaultTag))
 	}
 
 	return r, nil

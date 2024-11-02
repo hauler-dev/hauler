@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
+	"hauler.dev/go/hauler/pkg/consts"
 	"helm.sh/helm/v3/pkg/action"
 
 	"hauler.dev/go/hauler/internal/flags"
@@ -35,7 +36,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 	}
 
 	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)))
-	ref, err := reference.NewTagged(f.Name(fi.Path), reference.DefaultTag)
+	ref, err := reference.NewTagged(f.Name(fi.Path), consts.DefaultTag)
 	if err != nil {
 		return err
 	}
