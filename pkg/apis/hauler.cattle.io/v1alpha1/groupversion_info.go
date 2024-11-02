@@ -6,8 +6,6 @@ import (
 )
 
 var (
-	ContentGroupVersion = schema.GroupVersion{Group: consts.ContentGroup, Version: consts.APIVersion}
-	// SchemeBuilder       = &scheme.Builder{GroupVersion: ContentGroupVersion}
-
+	ContentGroupVersion    = schema.GroupVersion{Group: consts.ContentGroup, Version: consts.APIVersion}
 	CollectionGroupVersion = schema.GroupVersion{Group: consts.CollectionGroup, Version: consts.APIVersion}
 )
