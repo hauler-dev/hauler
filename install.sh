@@ -17,6 +17,10 @@
 #     - curl -sfL https://get.hauler.dev | HAULER_INSTALL_DIR=/usr/local/bin bash
 #     - HAULER_INSTALL_DIR=/usr/local/bin ./install.sh
 #
+#   Set Hauler Directory
+#     - curl -sfL https://get.hauler.dev | HAULER_DIR=$HOME/hauler bash
+#     - HAULER_DIR=$HOME/hauler ./install.sh
+#
 # Debug Usage:
 #   - curl -sfL https://get.hauler.dev | HAULER_DEBUG=true bash
 #   - HAULER_DEBUG=true ./install.sh
@@ -83,7 +87,7 @@ if [ "${HAULER_UNINSTALL}" = "true" ]; then
     rm -rf "${HAULER_INSTALL_DIR}/hauler" || fatal "Failed to Remove Hauler from ${HAULER_INSTALL_DIR}"
 
     # remove the working directory
-    rm -rf "$HOME/.hauler" || fatal "Failed to Remove Hauler Directory: $HOME/.hauler"
+    rm -rf "$HAULER_DIR" || fatal "Failed to Remove Hauler Directory: $HAULER_DIR"
 
     info "Successfully Uninstalled Hauler" && echo
     exit 0
@@ -137,16 +141,19 @@ verbose "- Platform: $PLATFORM"
 verbose "- Architecture: $ARCH"
 verbose "- Install Directory: ${HAULER_INSTALL_DIR}"
 
+# set hauler directory from argument or environment variable
+HAULER_DIR=${HAULER_INSTALL_DIR:-$HOME/.hauler}
+
 # check working directory and/or create it
-if [ ! -d "$HOME/.hauler" ]; then
-    mkdir -p "$HOME/.hauler" || fatal "Failed to Create Directory: $HOME/.hauler"
+if [ ! -d "$HAULER_DIR" ]; then
+    mkdir -p "$HAULER_DIR" || fatal "Failed to Create Directory: $HAULER_DIR"
 fi
 
 # update permissions of working directory
-chmod -R 777 "$HOME/.hauler" || fatal "Failed to Update Permissions of Directory: $HOME/.hauler"
+chmod -R 777 "$HAULER_DIR" || fatal "Failed to Update Permissions of Directory: $HAULER_DIR"
 
 # change to working directory
-cd "$HOME/.hauler" || fatal "Failed to Change Directory: $HOME/.hauler"
+cd "$HAULER_DIR" || fatal "Failed to Change Directory: $HAULER_DIR"
 
 # start hauler artifacts download
 info "Starting Download..."
