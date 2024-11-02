@@ -63,16 +63,16 @@ func TestLayout_AddOCI(t *testing.T) {
 }
 
 func setup(t *testing.T) func() error {
-	tmpdir, err := os.MkdirTemp("", "hauler")
+	tempDir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		t.Fatal(err)
 	}
-	root = tmpdir
+	root = tempDir
 
 	ctx = context.Background()
 
 	return func() error {
-		os.RemoveAll(tmpdir)
+		os.RemoveAll(tempDir)
 		return nil
 	}
 }

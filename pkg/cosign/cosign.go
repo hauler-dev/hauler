@@ -256,7 +256,10 @@ func getCosignPath() (string, error) {
 	homeDir := currentUser.HomeDir
 
 	// Construct the path to the .hauler directory
-	haulerDir := filepath.Join(homeDir, ".hauler")
+	haulerDir := os.Getenv("HAULER_DIR")
+	if haulerDir == "" {
+		haulerDir = filepath.Join(homeDir, ".hauler")
+	}
 
 	// Create the .hauler directory if it doesn't exist
 	if _, err := os.Stat(haulerDir); os.IsNotExist(err) {

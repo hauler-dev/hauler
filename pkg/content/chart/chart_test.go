@@ -14,11 +14,11 @@ import (
 )
 
 func TestNewChart(t *testing.T) {
-	tmpdir, err := os.MkdirTemp("", "hauler")
+	tempDir, err := os.MkdirTemp("", "hauler")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpdir)
+	defer os.RemoveAll(tempDir)
 
 	type args struct {
 		name string
@@ -53,7 +53,7 @@ func TestNewChart(t *testing.T) {
 		// {
 		// 	name:    "should create from a chart directory",
 		// 	args:    args{
-		// 		path: filepath.Join(tmpdir, "podinfo"),
+		// 		path: filepath.Join(tempDir, "podinfo"),
 		// 	},
 		// 	want:    want,
 		// 	wantErr: false,

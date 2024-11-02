@@ -11,8 +11,9 @@ var ro = &flags.CliRootOpts{}
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "hauler",
-		Short: "Airgap Swiss Army Knife",
+		Use:     "hauler",
+		Short:   "Airgap Swiss Army Knife",
+		Example: "  View the Docs: https://docs.hauler.dev\n  Environment Variables: HAULER_DIR | HAULER_TEMP_DIR",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			l := log.FromContext(cmd.Context())
 			l.SetLevel(ro.LogLevel)
