@@ -109,7 +109,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 
 		// TODO: Should type switch instead...
 		switch obj.GroupVersionKind().Kind {
-		case consts.APIVersion + consts.FilesContentKind:
+		case consts.APIVersion + "." + consts.FilesContentKind:
 			var cfg v1alpha1.Files
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -122,7 +122,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 			}
 
-		case consts.APIVersion + consts.ImagesContentKind:
+		case consts.APIVersion + "." + consts.ImagesContentKind:
 			var cfg v1alpha1.Images
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -196,7 +196,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			// sync with local index
 			s.CopyAll(ctx, s.OCI, nil)
 
-		case consts.APIVersion + consts.ChartsContentKind:
+		case consts.APIVersion + "." + consts.ChartsContentKind:
 			var cfg v1alpha1.Charts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -210,7 +210,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 			}
 
-		case consts.APIVersion + consts.ChartsCollectionKind:
+		case consts.APIVersion + "." + consts.ChartsCollectionKind:
 			var cfg v1alpha1.ThickCharts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -230,7 +230,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 			}
 
-		case consts.APIVersion + consts.ImageTxtsContentKind:
+		case consts.APIVersion + "." + consts.ImageTxtsContentKind:
 			var cfg v1alpha1.ImageTxts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
