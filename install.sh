@@ -18,8 +18,8 @@
 #     - HAULER_INSTALL_DIR=/usr/local/bin ./install.sh
 #
 #   Set Hauler Directory
-#     - curl -sfL https://get.hauler.dev | HAULER_DIR=$HOME/.hauler bash
-#     - HAULER_DIR=$HOME/.hauler ./install.sh
+#     - curl -sfL https://get.hauler.dev | HAULER_HOME=$HOME/.hauler bash
+#     - HAULER_HOME=$HOME/.hauler ./install.sh
 #
 # Debug Usage:
 #   - curl -sfL https://get.hauler.dev | HAULER_DEBUG=true bash
@@ -87,7 +87,7 @@ if [ "${HAULER_UNINSTALL}" = "true" ]; then
     rm -rf "${HAULER_INSTALL_DIR}/hauler" || fatal "Failed to Remove Hauler from ${HAULER_INSTALL_DIR}"
 
     # remove the hauler directory
-    rm -rf "${HAULER_DIR}" || fatal "Failed to Remove Hauler Directory: ${HAULER_DIR}"
+    rm -rf "${HAULER_HOME}" || fatal "Failed to Remove Hauler Directory: ${HAULER_HOME}"
 
     info "Successfully Uninstalled Hauler" && echo
     exit 0
@@ -133,7 +133,7 @@ case $ARCH in
 esac
 
 # set hauler directory from argument or environment variable
-HAULER_DIR=${HAULER_DIR:-$HOME/.hauler}
+HAULER_HOME=${HAULER_HOME:-$HOME/.hauler}
 
 # start hauler installation
 info "Starting Installation..."
@@ -143,18 +143,18 @@ verbose "- Version: v${HAULER_VERSION}"
 verbose "- Platform: ${PLATFORM}"
 verbose "- Architecture: ${ARCH}"
 verbose "- Install Directory: ${HAULER_INSTALL_DIR}"
-verbose "- Hauler Directory: ${HAULER_DIR}"
+verbose "- Hauler Directory: ${HAULER_HOME}"
 
 # ensure hauler directory exists and/or create it
-if [ ! -d "${HAULER_DIR}" ]; then
-    mkdir -p "${HAULER_DIR}" || fatal "Failed to Create Hauler Directory: ${HAULER_DIR}"
+if [ ! -d "${HAULER_HOME}" ]; then
+    mkdir -p "${HAULER_HOME}" || fatal "Failed to Create Hauler Directory: ${HAULER_HOME}"
 fi
 
 # ensure hauler directory is writable (by user or root privileges)
-chmod -R 777 "${HAULER_DIR}" || fatal "Failed to Update Permissions of Hauler Directory: ${HAULER_DIR}"
+chmod -R 777 "${HAULER_HOME}" || fatal "Failed to Update Permissions of Hauler Directory: ${HAULER_HOME}"
 
 # change to hauler directory
-cd "${HAULER_DIR}" || fatal "Failed to Change Directory to Hauler Directory: ${HAULER_DIR}"
+cd "${HAULER_HOME}" || fatal "Failed to Change Directory to Hauler Directory: ${HAULER_HOME}"
 
 # start hauler artifacts download
 info "Starting Download..."
