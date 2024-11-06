@@ -16,7 +16,6 @@ import (
 	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	tchart "hauler.dev/go/hauler/pkg/collection/chart"
 	"hauler.dev/go/hauler/pkg/collection/imagetxt"
-	"hauler.dev/go/hauler/pkg/collection/k3s"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/cosign"
@@ -209,21 +208,6 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err != nil {
 					return err
 				}
-			}
-
-		case v1alpha1.K3sCollectionKind:
-			var cfg v1alpha1.K3s
-			if err := yaml.Unmarshal(doc, &cfg); err != nil {
-				return err
-			}
-
-			k, err := k3s.NewK3s(cfg.Spec.Version)
-			if err != nil {
-				return err
-			}
-
-			if _, err := s.AddOCICollection(ctx, k); err != nil {
-				return err
 			}
 
 		case v1alpha1.ChartsCollectionKind:
