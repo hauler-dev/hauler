@@ -109,7 +109,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 
 		// TODO: Should type switch instead...
 		switch obj.GroupVersionKind().Kind {
-		case v1alpha1.FilesContentKind:
+		case consts.FilesContentKind:
 			var cfg v1alpha1.Files
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -122,7 +122,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 			}
 
-		case v1alpha1.ImagesContentKind:
+		case consts.ImagesContentKind:
 			var cfg v1alpha1.Images
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -196,7 +196,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			// sync with local index
 			s.CopyAll(ctx, s.OCI, nil)
 
-		case v1alpha1.ChartsContentKind:
+		case consts.ChartsContentKind:
 			var cfg v1alpha1.Charts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -210,7 +210,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 			}
 
-		case v1alpha1.ChartsCollectionKind:
+		case consts.ChartsCollectionKind:
 			var cfg v1alpha1.ThickCharts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -230,7 +230,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 			}
 
-		case v1alpha1.ImageTxtsContentKind:
+		case consts.ImageTxtsContentKind:
 			var cfg v1alpha1.ImageTxts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
@@ -251,7 +251,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			}
 
 		default:
-			return fmt.Errorf("unrecognized content/collection type: %s", obj.GroupVersionKind().String())
+			return fmt.Errorf("unrecognized content or collection type: %s", obj.GroupVersionKind().String())
 		}
 	}
 	return nil

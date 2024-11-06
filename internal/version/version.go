@@ -28,9 +28,8 @@ import (
 	"time"
 
 	"github.com/common-nighthawk/go-figure"
+	"hauler.dev/go/hauler/pkg/consts"
 )
-
-const unknown = "unknown"
 
 // Base version information.
 //
@@ -41,19 +40,19 @@ var (
 	// branch should be tagged using the correct versioning strategy.
 	gitVersion = "devel"
 	// SHA1 from git, output of $(git rev-parse HEAD)
-	gitCommit = unknown
+	gitCommit = consts.Unknown
 	// State of git tree, either "clean" or "dirty"
-	gitTreeState = unknown
+	gitTreeState = consts.Unknown
 	// Build date in ISO8601 format, output of $(date -u +'%Y-%m-%dT%H:%M:%SZ')
-	buildDate = unknown
+	buildDate = consts.Unknown
 	// flag to print the ascii name banner
 	asciiName = "true"
 	// goVersion is the used golang version.
-	goVersion = unknown
+	goVersion = consts.Unknown
 	// compiler is the used golang compiler.
-	compiler = unknown
+	compiler = consts.Unknown
 	// platform is the used os/arch identifier.
-	platform = unknown
+	platform = consts.Unknown
 
 	once sync.Once
 	info = Info{}
@@ -84,7 +83,7 @@ func getBuildInfo() *debug.BuildInfo {
 
 func getGitVersion(bi *debug.BuildInfo) string {
 	if bi == nil {
-		return unknown
+		return consts.Unknown
 	}
 
 	// TODO: remove this when the issue https://github.com/golang/go/issues/29228 is fixed
@@ -107,28 +106,28 @@ func getDirty(bi *debug.BuildInfo) string {
 	if modified == "false" {
 		return "clean"
 	}
-	return unknown
+	return consts.Unknown
 }
 
 func getBuildDate(bi *debug.BuildInfo) string {
 	buildTime := getKey(bi, "vcs.time")
 	t, err := time.Parse("2006-01-02T15:04:05Z", buildTime)
 	if err != nil {
-		return unknown
+		return consts.Unknown
 	}
 	return t.Format("2006-01-02T15:04:05")
 }
 
 func getKey(bi *debug.BuildInfo, key string) string {
 	if bi == nil {
-		return unknown
+		return consts.Unknown
 	}
 	for _, iter := range bi.Settings {
 		if iter.Key == key {
 			return iter.Value
 		}
 	}
-	return unknown
+	return consts.Unknown
 }
 
 // GetVersionInfo represents known information on how this binary was built.
@@ -136,27 +135,27 @@ func GetVersionInfo() Info {
 	once.Do(func() {
 		buildInfo := getBuildInfo()
 		gitVersion = getGitVersion(buildInfo)
-		if gitCommit == unknown {
+		if gitCommit == consts.Unknown {
 			gitCommit = getCommit(buildInfo)
 		}
 
-		if gitTreeState == unknown {
+		if gitTreeState == consts.Unknown {
 			gitTreeState = getDirty(buildInfo)
 		}
 
-		if buildDate == unknown {
+		if buildDate == consts.Unknown {
 			buildDate = getBuildDate(buildInfo)
 		}
 
-		if goVersion == unknown {
+		if goVersion == consts.Unknown {
 			goVersion = runtime.Version()
 		}
 
-		if compiler == unknown {
+		if compiler == consts.Unknown {
 			compiler = runtime.Compiler
 		}
 
-		if platform == unknown {
+		if platform == consts.Unknown {
 			platform = fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
 		}
 
