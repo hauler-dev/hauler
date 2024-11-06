@@ -16,12 +16,10 @@ import (
 	"oras.land/oras-go/pkg/content"
 
 	"hauler.dev/go/hauler/pkg/artifacts/image"
+	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
 )
-
-const maxRetries = 3
-const retryDelay = time.Second * 5
 
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
 func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string) error {
@@ -192,7 +190,7 @@ func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts 
 
 func RetryOperation(ctx context.Context, operation func() error) error {
 	l := log.FromContext(ctx)
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	for attempt := 1; attempt <= consts.DefaultRetries; attempt++ {
 		err := operation()
 		if err == nil {
 			// If the operation succeeds, return nil (no error).
@@ -200,16 +198,16 @@ func RetryOperation(ctx context.Context, operation func() error) error {
 		}
 
 		// Log the error for the current attempt.
-		l.Warnf("error (attempt %d/%d): %v", attempt, maxRetries, err)
+		l.Warnf("error (attempt %d/%d): %v", attempt, consts.DefaultRetries, err)
 
 		// If this is not the last attempt, wait before retrying.
-		if attempt < maxRetries {
-			time.Sleep(retryDelay)
+		if attempt < consts.DefaultRetries {
+			time.Sleep(time.Second * consts.RetriesInterval)
 		}
 	}
 
 	// If all attempts fail, return an error.
-	return fmt.Errorf("operation failed after %d attempts", maxRetries)
+	return fmt.Errorf("operation failed after %d attempts", consts.DefaultRetries)
 }
 
 func EnsureBinaryExists(ctx context.Context, bin embed.FS) error {

@@ -1,18 +1,11 @@
 package v1alpha1
 
 import (
+	"hauler.dev/go/hauler/pkg/consts"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-const (
-	Version         = "v1alpha1"
-	ContentGroup    = "content.hauler.cattle.io"
-	CollectionGroup = "collection.hauler.cattle.io"
-)
-
 var (
-	ContentGroupVersion = schema.GroupVersion{Group: ContentGroup, Version: Version}
-	// SchemeBuilder       = &scheme.Builder{GroupVersion: ContentGroupVersion}
-
-	CollectionGroupVersion = schema.GroupVersion{Group: CollectionGroup, Version: Version}
+	ContentGroupVersion    = schema.GroupVersion{Group: consts.ContentGroup, Version: consts.APIVersion}
+	CollectionGroupVersion = schema.GroupVersion{Group: consts.CollectionGroup, Version: consts.APIVersion}
 )
