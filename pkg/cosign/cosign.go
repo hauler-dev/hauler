@@ -256,7 +256,7 @@ func getCosignPath() (string, error) {
 	homeDir := currentUser.HomeDir
 
 	// Construct the path to the .hauler directory
-	haulerDir := os.Getenv("HAULER_HOME")
+	haulerDir := os.Getenv("HAULER_DIR")
 	if haulerDir == "" {
 		haulerDir = filepath.Join(homeDir, ".hauler")
 	}

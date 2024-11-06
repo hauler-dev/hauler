@@ -31,7 +31,7 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, archiveRefs ...string) erro
 // unarchiveLayoutTo accepts an archived oci layout and extracts the contents to an existing oci layout, preserving the index
 func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tempOverride string) error {
 	if tempOverride == "" {
-		tempOverride = os.Getenv("HAULER_TEMP")
+		tempOverride = os.Getenv("HAULER_TEMP_DIR")
 	}
 
 	tempDir, err := os.MkdirTemp(tempOverride, "hauler")
