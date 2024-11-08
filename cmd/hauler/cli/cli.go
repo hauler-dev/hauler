@@ -25,8 +25,7 @@ func New() *cobra.Command {
 		},
 	}
 
-	pf := cmd.PersistentFlags()
-	pf.StringVarP(&ro.LogLevel, "log-level", "l", "info", "")
+	flags.AddRootFlags(cmd, ro)
 
 	// Add subcommands
 	addLogin(cmd)
