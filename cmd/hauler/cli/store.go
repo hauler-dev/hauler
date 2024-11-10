@@ -11,6 +11,7 @@ import (
 )
 
 var rootStoreOpts = &flags.StoreRootOpts{}
+var ro = &flags.CliRootOpts{}
 
 func addStore(parent *cobra.Command) {
 	cmd := &cobra.Command{
@@ -75,7 +76,7 @@ func addStoreSync() *cobra.Command {
 				return err
 			}
 
-			return store.SyncCmd(ctx, o, s)
+			return store.SyncCmd(ctx, o, s, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -126,6 +127,7 @@ func addStoreServe() *cobra.Command {
 // RegistryCmd serves the registry
 func addStoreServeRegistry() *cobra.Command {
 	o := &flags.ServeRegistryOpts{StoreRootOpts: rootStoreOpts}
+
 	cmd := &cobra.Command{
 		Use:   "registry",
 		Short: "Serve the OCI Compliant Registry",
@@ -137,7 +139,7 @@ func addStoreServeRegistry() *cobra.Command {
 				return err
 			}
 
-			return store.ServeRegistryCmd(ctx, o, s)
+			return store.ServeRegistryCmd(ctx, o, s, ro)
 		},
 	}
 
@@ -149,6 +151,7 @@ func addStoreServeRegistry() *cobra.Command {
 // FileServerCmd serves the file server
 func addStoreServeFiles() *cobra.Command {
 	o := &flags.ServeFilesOpts{StoreRootOpts: rootStoreOpts}
+
 	cmd := &cobra.Command{
 		Use:   "fileserver",
 		Short: "Serve the Fileserver",
@@ -160,7 +163,7 @@ func addStoreServeFiles() *cobra.Command {
 				return err
 			}
 
-			return store.ServeFilesCmd(ctx, o, s)
+			return store.ServeFilesCmd(ctx, o, s, ro)
 		},
 	}
 
@@ -239,7 +242,7 @@ func addStoreCopy() *cobra.Command {
 				return err
 			}
 
-			return store.CopyCmd(ctx, o, s, args[0])
+			return store.CopyCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -325,7 +328,7 @@ hauler store add image rgcrprod.azurecr.us/hauler/rke2-manifest.yaml:v1.28.12-rk
 				return err
 			}
 
-			return store.AddImageCmd(ctx, o, s, args[0])
+			return store.AddImageCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)

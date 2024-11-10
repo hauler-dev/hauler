@@ -15,6 +15,7 @@ import (
 
 	"oras.land/oras-go/pkg/content"
 
+	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/log"
@@ -22,9 +23,9 @@ import (
 )
 
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
-func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string) error {
+func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string, ro *flags.CliRootOpts) error {
 	operation := func() error {
-		cosignBinaryPath, err := getCosignPath()
+		cosignBinaryPath, err := getCosignPath(ro.HaulerDir)
 		if err != nil {
 			return err
 		}
@@ -42,10 +43,10 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 }
 
 // SaveImage saves image and any signatures/attestations to the store.
-func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string) error {
+func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	operation := func() error {
-		cosignBinaryPath, err := getCosignPath()
+		cosignBinaryPath, err := getCosignPath(ro.HaulerDir)
 		if err != nil {
 			return err
 		}
@@ -110,10 +111,10 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 }
 
 // LoadImage loads store to a remote registry.
-func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
+func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	cosignBinaryPath, err := getCosignPath()
+	cosignBinaryPath, err := getCosignPath(ro.HaulerDir)
 	if err != nil {
 		return err
 	}
@@ -171,9 +172,9 @@ func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts con
 }
 
 // RegistryLogin - performs cosign login
-func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions) error {
+func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions, ro *flags.CliRootOpts) error {
 	log := log.FromContext(ctx)
-	cosignBinaryPath, err := getCosignPath()
+	cosignBinaryPath, err := getCosignPath(ro.HaulerDir)
 	if err != nil {
 		return err
 	}
@@ -210,9 +211,9 @@ func RetryOperation(ctx context.Context, operation func() error) error {
 	return fmt.Errorf("operation failed after %d attempts", consts.DefaultRetries)
 }
 
-func EnsureBinaryExists(ctx context.Context, bin embed.FS) error {
+func EnsureBinaryExists(ctx context.Context, bin embed.FS, ro *flags.CliRootOpts) error {
 	// Set up a path for the binary to be copied.
-	binaryPath, err := getCosignPath()
+	binaryPath, err := getCosignPath(ro.HaulerDir)
 	if err != nil {
 		return fmt.Errorf("error: %v", err)
 	}
@@ -243,38 +244,38 @@ func EnsureBinaryExists(ctx context.Context, bin embed.FS) error {
 }
 
 // getCosignPath returns the binary path
-func getCosignPath() (string, error) {
-	// Get the current user's information
-	currentUser, err := user.Current()
-	if err != nil {
-		return "", fmt.Errorf("error: %v", err)
+func getCosignPath(haulerDir string) (string, error) {
+	if haulerDir == "" {
+		haulerDir = os.Getenv("HAULER_DIR")
 	}
 
-	// Get the user's home directory
-	homeDir := currentUser.HomeDir
-
-	// Construct the path to the .hauler directory
-	haulerDir := os.Getenv("HAULER_DIR")
 	if haulerDir == "" {
+		// Get the current user's information
+		currentUser, err := user.Current()
+		if err != nil {
+			return "", fmt.Errorf("error: %v", err)
+		}
+
+		// Get the current user's home directory
+		homeDir := currentUser.HomeDir
 		haulerDir = filepath.Join(homeDir, ".hauler")
 	}
 
-	// Create the .hauler directory if it doesn't exist
+	// Create the .hauler directory (if it doesn't exist)
 	if _, err := os.Stat(haulerDir); os.IsNotExist(err) {
-		// .hauler directory does not exist, create it
 		if err := os.MkdirAll(haulerDir, 0755); err != nil {
 			return "", fmt.Errorf("error creating .hauler directory: %v", err)
 		}
 	}
 
-	// Determine the binary name.
+	// Determine the binary name
 	rOS := runtime.GOOS
 	binaryName := "cosign"
 	if rOS == "windows" {
 		binaryName = "cosign.exe"
 	}
 
-	// construct path to binary
+	// Construct the path to the binary
 	binaryPath := filepath.Join(haulerDir, binaryName)
 
 	return binaryPath, nil

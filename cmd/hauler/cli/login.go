@@ -39,7 +39,7 @@ func addLogin(parent *cobra.Command) {
 				return fmt.Errorf("username and password required")
 			}
 
-			return login(ctx, o, arg[0])
+			return login(ctx, o, arg[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -47,13 +47,13 @@ func addLogin(parent *cobra.Command) {
 	parent.AddCommand(cmd)
 }
 
-func login(ctx context.Context, o *flags.LoginOpts, registry string) error {
+func login(ctx context.Context, o *flags.LoginOpts, registry string, ro *flags.CliRootOpts) error {
 	ropts := content.RegistryOptions{
 		Username: o.Username,
 		Password: o.Password,
 	}
 
-	err := cosign.RegistryLogin(ctx, nil, registry, ropts)
+	err := cosign.RegistryLogin(ctx, nil, registry, ropts, ro)
 	if err != nil {
 		return err
 	}

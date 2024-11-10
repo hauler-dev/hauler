@@ -13,7 +13,7 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef string) error {
+func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	components := strings.SplitN(targetRef, "://", 2)
@@ -38,13 +38,13 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 		}
 
 		if ropts.Username != "" {
-			err := cosign.RegistryLogin(ctx, s, components[1], ropts)
+			err := cosign.RegistryLogin(ctx, s, components[1], ropts, ro)
 			if err != nil {
 				return err
 			}
 		}
 
-		err := cosign.LoadImages(ctx, s, components[1], ropts)
+		err := cosign.LoadImages(ctx, s, components[1], ropts, ro)
 		if err != nil {
 			return err
 		}

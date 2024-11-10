@@ -52,7 +52,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 	return nil
 }
 
-func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string) error {
+func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	cfg := v1alpha1.Image{
 		Name: reference,
@@ -61,17 +61,17 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	// Check if the user provided a key.
 	if o.Key != "" {
 		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, s, o.Key, cfg.Name)
+		err := cosign.VerifySignature(ctx, s, o.Key, cfg.Name, ro)
 		if err != nil {
 			return err
 		}
 		l.Infof("signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg, o.Platform)
+	return storeImage(ctx, s, cfg, o.Platform, ro)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	l.Infof("adding 'image' [%s] to the store", i.Name)
 
@@ -81,7 +81,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 		return nil
 	}
 
-	err = cosign.SaveImage(ctx, s, r.Name(), platform)
+	err = cosign.SaveImage(ctx, s, r.Name(), platform, ro)
 	if err != nil {
 		l.Warnf("unable to add 'image' [%s] to store.  skipping...", r.Name())
 		return nil
