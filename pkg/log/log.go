@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 // Logger provides an interface for all used logger features regardless of logging backend
@@ -30,9 +31,8 @@ type Fields map[string]string
 
 // NewLogger returns a new Logger
 func NewLogger(out io.Writer) Logger {
-	customTimeFormat := "2006-01-02 15:04:05"
-	zerolog.TimeFieldFormat = customTimeFormat
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: customTimeFormat}
+	zerolog.TimeFieldFormat = consts.CustomTimeFormat
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: consts.CustomTimeFormat}
 	l := log.Output(output)
 	return &logger{
 		zl: l.With().Timestamp().Logger(),

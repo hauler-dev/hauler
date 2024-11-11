@@ -10,7 +10,9 @@ import (
 	"hauler.dev/go/hauler/internal/flags"
 )
 
-func addStore(parent *cobra.Command, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) {
+func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
+	rso := &flags.StoreRootOpts{}
+
 	cmd := &cobra.Command{
 		Use:     "store",
 		Aliases: []string{"s"},

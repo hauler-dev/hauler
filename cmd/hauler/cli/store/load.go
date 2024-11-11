@@ -7,6 +7,7 @@ import (
 	"github.com/mholt/archiver/v3"
 
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
@@ -33,10 +34,10 @@ func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tem
 	l := log.FromContext(ctx)
 
 	if tempOverride == "" {
-		tempOverride = os.Getenv("HAULER_TEMP_DIR")
+		tempOverride = os.Getenv(consts.HaulerTempDir)
 	}
 
-	tempDir, err := os.MkdirTemp(tempOverride, "hauler")
+	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
 		return err
 	}

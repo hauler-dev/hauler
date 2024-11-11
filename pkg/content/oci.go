@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/go-containerregistry/pkg/name"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/google/go-containerregistry/pkg/name"
 
 	ccontent "github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/remotes"
@@ -258,7 +259,7 @@ func (o *OCI) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
 }
 
 func (o *OCI) ensureBlob(alg string, hex string) (string, error) {
-	dir := o.path("blobs", alg)
+	dir := o.path(consts.OCIImageBlobsDir, alg)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
 		return "", err
 	}

@@ -7,15 +7,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/cosign"
 	"hauler.dev/go/hauler/pkg/log"
 )
 
-func New(ctx context.Context, binaries embed.FS, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+func New(ctx context.Context, binaries embed.FS, ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "hauler",
 		Short:   "Airgap Swiss Army Knife",
-		Example: "  View the Docs: https://docs.hauler.dev\n  Environment Variables: HAULER_DIR | HAULER_TEMP_DIR",
+		Example: "  View the Docs: https://docs.hauler.dev\n  Environment Variables: " + consts.HaulerDir + " | " + consts.HaulerTempDir,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			l := log.FromContext(ctx)
 			l.SetLevel(ro.LogLevel)
@@ -37,7 +38,7 @@ func New(ctx context.Context, binaries embed.FS, rso *flags.StoreRootOpts, ro *f
 	flags.AddRootFlags(cmd, ro)
 
 	addLogin(cmd, ro)
-	addStore(cmd, rso, ro)
+	addStore(cmd, ro)
 	addVersion(cmd, ro)
 	addCompletion(cmd, ro)
 
