@@ -14,7 +14,7 @@ import (
 	"hauler.dev/go/hauler/pkg/cosign"
 )
 
-func addLogin(parent *cobra.Command) {
+func addLogin(parent *cobra.Command, ro *flags.CliRootOpts) {
 	o := &flags.LoginOpts{}
 
 	cmd := &cobra.Command{

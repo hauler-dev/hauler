@@ -62,12 +62,13 @@ const (
 	CollectionGroup = "collection.hauler.cattle.io"
 
 	// other constraints
-	CarbideRegistry   = "rgcrprod.azurecr.us"
-	APIVersion        = "v1alpha1"
-	DefaultNamespace  = "hauler"
-	DefaultTag        = "latest"
-	DefaultStoreName  = "store"
-	DefaultRetries    = 3
-	RetriesInterval   = 5
-	OCIImageIndexFile = "index.json"
+	CarbideRegistry      = "rgcrprod.azurecr.us"
+	APIVersion           = "v1alpha1"
+	DefaultNamespace     = "hauler"
+	DefaultTag           = "latest"
+	DefaultStoreName     = "store"
+	DefaultHaulerDirName = ".hauler"
+	DefaultRetries       = 3
+	RetriesInterval      = 5
+	OCIImageIndexFile    = "index.json"
 )

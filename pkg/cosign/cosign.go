@@ -45,6 +45,7 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 // SaveImage saves image and any signatures/attestations to the store.
 func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
+
 	operation := func() error {
 		cosignBinaryPath, err := getCosignPath(ro.HaulerDir)
 		if err != nil {
@@ -191,6 +192,7 @@ func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts 
 
 func RetryOperation(ctx context.Context, operation func() error) error {
 	l := log.FromContext(ctx)
+
 	for attempt := 1; attempt <= consts.DefaultRetries; attempt++ {
 		err := operation()
 		if err == nil {
@@ -212,13 +214,17 @@ func RetryOperation(ctx context.Context, operation func() error) error {
 }
 
 func EnsureBinaryExists(ctx context.Context, bin embed.FS, ro *flags.CliRootOpts) error {
-	// Set up a path for the binary to be copied.
+	l := log.FromContext(ctx)
+
+	// Set up a path for the binary to be copied
 	binaryPath, err := getCosignPath(ro.HaulerDir)
 	if err != nil {
 		return fmt.Errorf("error: %v", err)
 	}
 
-	// Determine the architecture so that we pull the correct embedded binary.
+	l.Debugf("using hauler directory at %s", filepath.Dir(binaryPath))
+
+	// Determine the architecture so that we pull the correct embedded binary
 	arch := runtime.GOARCH
 	rOS := runtime.GOOS
 	binaryName := "cosign"
@@ -253,18 +259,18 @@ func getCosignPath(haulerDir string) (string, error) {
 		// Get the current user's information
 		currentUser, err := user.Current()
 		if err != nil {
-			return "", fmt.Errorf("error: %v", err)
+			return "", fmt.Errorf("error retrieving user information: %v", err)
 		}
 
 		// Get the current user's home directory
 		homeDir := currentUser.HomeDir
-		haulerDir = filepath.Join(homeDir, ".hauler")
+		haulerDir = filepath.Join(homeDir, consts.DefaultHaulerDirName)
 	}
 
 	// Create the .hauler directory (if it doesn't exist)
 	if _, err := os.Stat(haulerDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(haulerDir, 0755); err != nil {
-			return "", fmt.Errorf("error creating .hauler directory: %v", err)
+			return "", fmt.Errorf("error creating %s directory: %v", consts.DefaultHaulerDirName, err)
 		}
 	}
 

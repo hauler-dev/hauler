@@ -11,7 +11,7 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 )
 
-func New(ctx context.Context, binaries embed.FS, ro *flags.CliRootOpts) *cobra.Command {
+func New(ctx context.Context, binaries embed.FS, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "hauler",
 		Short:   "Airgap Swiss Army Knife",
@@ -36,10 +36,10 @@ func New(ctx context.Context, binaries embed.FS, ro *flags.CliRootOpts) *cobra.C
 
 	flags.AddRootFlags(cmd, ro)
 
-	addLogin(cmd)
-	addStore(cmd)
-	addVersion(cmd)
-	addCompletion(cmd)
+	addLogin(cmd, ro)
+	addStore(cmd, rso, ro)
+	addVersion(cmd, ro)
+	addCompletion(cmd, ro)
 
 	return cmd
 }

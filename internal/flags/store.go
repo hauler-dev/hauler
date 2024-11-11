@@ -23,14 +23,16 @@ func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 
 func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 	l := log.FromContext(ctx)
-	dir := o.StoreDir
 
-	abs, err := filepath.Abs(dir)
+	storeDir := o.StoreDir
+
+	abs, err := filepath.Abs(storeDir)
 	if err != nil {
 		return nil, err
 	}
 
 	l.Debugf("using store at %s", abs)
+
 	if _, err := os.Stat(abs); errors.Is(err, os.ErrNotExist) {
 		err := os.Mkdir(abs, os.ModePerm)
 		if err != nil {

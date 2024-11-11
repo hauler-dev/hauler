@@ -21,7 +21,7 @@ func main() {
 	ctx = logger.WithContext(ctx)
 
 	// pass the embedded binaries to the cli package
-	if err := cli.New(ctx, binaries, &flags.CliRootOpts{}).ExecuteContext(ctx); err != nil {
+	if err := cli.New(ctx, binaries, &flags.StoreRootOpts{}, &flags.CliRootOpts{}).ExecuteContext(ctx); err != nil {
 		logger.Errorf("%v", err)
 		cancel()
 		os.Exit(1)

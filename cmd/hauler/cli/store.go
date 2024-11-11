@@ -10,10 +10,7 @@ import (
 	"hauler.dev/go/hauler/internal/flags"
 )
 
-var rootStoreOpts = &flags.StoreRootOpts{}
-var ro = &flags.CliRootOpts{}
-
-func addStore(parent *cobra.Command) {
+func addStore(parent *cobra.Command, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) {
 	cmd := &cobra.Command{
 		Use:     "store",
 		Aliases: []string{"s"},
@@ -22,24 +19,24 @@ func addStore(parent *cobra.Command) {
 			return cmd.Help()
 		},
 	}
-	rootStoreOpts.AddFlags(cmd)
+	rso.AddFlags(cmd)
 
 	cmd.AddCommand(
-		addStoreSync(),
-		addStoreExtract(),
-		addStoreLoad(),
-		addStoreSave(),
-		addStoreServe(),
-		addStoreInfo(),
-		addStoreCopy(),
-		addStoreAdd(),
+		addStoreSync(rso, ro),
+		addStoreExtract(rso, ro),
+		addStoreLoad(rso, ro),
+		addStoreSave(rso, ro),
+		addStoreServe(rso, ro),
+		addStoreInfo(rso, ro),
+		addStoreCopy(rso, ro),
+		addStoreAdd(rso, ro),
 	)
 
 	parent.AddCommand(cmd)
 }
 
-func addStoreExtract() *cobra.Command {
-	o := &flags.ExtractOpts{StoreRootOpts: rootStoreOpts}
+func addStoreExtract(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.ExtractOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:     "extract",
@@ -62,8 +59,8 @@ func addStoreExtract() *cobra.Command {
 	return cmd
 }
 
-func addStoreSync() *cobra.Command {
-	o := &flags.SyncOpts{StoreRootOpts: rootStoreOpts}
+func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.SyncOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "sync",
@@ -84,8 +81,8 @@ func addStoreSync() *cobra.Command {
 	return cmd
 }
 
-func addStoreLoad() *cobra.Command {
-	o := &flags.LoadOpts{StoreRootOpts: rootStoreOpts}
+func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.LoadOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "load",
@@ -108,7 +105,7 @@ func addStoreLoad() *cobra.Command {
 	return cmd
 }
 
-func addStoreServe() *cobra.Command {
+func addStoreServe(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the content store via an OCI Compliant Registry or Fileserver",
@@ -117,16 +114,16 @@ func addStoreServe() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(
-		addStoreServeRegistry(),
-		addStoreServeFiles(),
+		addStoreServeRegistry(rso, ro),
+		addStoreServeFiles(rso, ro),
 	)
 
 	return cmd
 }
 
 // RegistryCmd serves the registry
-func addStoreServeRegistry() *cobra.Command {
-	o := &flags.ServeRegistryOpts{StoreRootOpts: rootStoreOpts}
+func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.ServeRegistryOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "registry",
@@ -149,8 +146,8 @@ func addStoreServeRegistry() *cobra.Command {
 }
 
 // FileServerCmd serves the file server
-func addStoreServeFiles() *cobra.Command {
-	o := &flags.ServeFilesOpts{StoreRootOpts: rootStoreOpts}
+func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.ServeFilesOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "fileserver",
@@ -172,8 +169,8 @@ func addStoreServeFiles() *cobra.Command {
 	return cmd
 }
 
-func addStoreSave() *cobra.Command {
-	o := &flags.SaveOpts{StoreRootOpts: rootStoreOpts}
+func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.SaveOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "save",
@@ -196,8 +193,8 @@ func addStoreSave() *cobra.Command {
 	return cmd
 }
 
-func addStoreInfo() *cobra.Command {
-	o := &flags.InfoOpts{StoreRootOpts: rootStoreOpts}
+func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.InfoOpts{StoreRootOpts: rso}
 
 	var allowedValues = []string{"image", "chart", "file", "sigs", "atts", "sbom", "all"}
 
@@ -227,8 +224,8 @@ func addStoreInfo() *cobra.Command {
 	return cmd
 }
 
-func addStoreCopy() *cobra.Command {
-	o := &flags.CopyOpts{StoreRootOpts: rootStoreOpts}
+func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.CopyOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "copy",
@@ -250,7 +247,7 @@ func addStoreCopy() *cobra.Command {
 	return cmd
 }
 
-func addStoreAdd() *cobra.Command {
+func addStoreAdd(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add content to the store",
@@ -260,16 +257,16 @@ func addStoreAdd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		addStoreAddFile(),
-		addStoreAddImage(),
-		addStoreAddChart(),
+		addStoreAddFile(rso, ro),
+		addStoreAddImage(rso, ro),
+		addStoreAddChart(rso, ro),
 	)
 
 	return cmd
 }
 
-func addStoreAddFile() *cobra.Command {
-	o := &flags.AddFileOpts{StoreRootOpts: rootStoreOpts}
+func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.AddFileOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "file",
@@ -299,8 +296,8 @@ hauler store add file https://get.hauler.dev --name hauler-install.sh`,
 	return cmd
 }
 
-func addStoreAddImage() *cobra.Command {
-	o := &flags.AddImageOpts{StoreRootOpts: rootStoreOpts}
+func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.AddImageOpts{StoreRootOpts: rso}
 
 	cmd := &cobra.Command{
 		Use:   "image",
@@ -336,11 +333,8 @@ hauler store add image rgcrprod.azurecr.us/hauler/rke2-manifest.yaml:v1.28.12-rk
 	return cmd
 }
 
-func addStoreAddChart() *cobra.Command {
-	o := &flags.AddChartOpts{
-		StoreRootOpts: rootStoreOpts,
-		ChartOpts:     &action.ChartPathOptions{},
-	}
+func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.AddChartOpts{StoreRootOpts: rso, ChartOpts: &action.ChartPathOptions{}}
 
 	cmd := &cobra.Command{
 		Use:   "chart",

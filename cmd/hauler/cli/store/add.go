@@ -54,6 +54,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 
 func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
+
 	cfg := v1alpha1.Image{
 		Name: reference,
 	}
@@ -73,6 +74,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 
 func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
+
 	l.Infof("adding 'image' [%s] to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
@@ -104,6 +106,7 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 
 func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
+
 	l.Infof("adding 'chart' [%s] to the store", cfg.Name)
 
 	// TODO: This shouldn't be necessary
