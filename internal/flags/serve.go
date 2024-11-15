@@ -6,6 +6,7 @@ import (
 
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/spf13/cobra"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 type ServeRegistryOpts struct {
@@ -23,8 +24,8 @@ type ServeRegistryOpts struct {
 func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 5000, "(Optional) Specify the port to use for incoming connections")
-	f.StringVar(&o.RootDir, "directory", "registry", "(Optional) Directory to use for backend. Defaults to $PWD/registry")
+	f.IntVarP(&o.Port, "port", "p", consts.DefaultRegistryPort, "(Optional) Specify the port to use for incoming connections")
+	f.StringVar(&o.RootDir, "directory", consts.DefaultRegistryRootDir, "(Optional) Directory to use for backend. Defaults to $PWD/registry")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "(Optional) Location of config file (overrides all flags)")
 	f.BoolVar(&o.ReadOnly, "readonly", true, "(Optional) Run the registry as readonly")
 
@@ -76,9 +77,9 @@ type ServeFilesOpts struct {
 func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", 8080, "(Optional) Specify the port to use for incoming connections")
-	f.IntVarP(&o.Timeout, "timeout", "t", 60, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
-	f.StringVar(&o.RootDir, "directory", "fileserver", "(Optional) Directory to use for backend. Defaults to $PWD/fileserver")
+	f.IntVarP(&o.Port, "port", "p", consts.DefaultFileserverPort, "(Optional) Specify the port to use for incoming connections")
+	f.IntVarP(&o.Timeout, "timeout", "t", consts.DefaultFileserverTimeout, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
+	f.StringVar(&o.RootDir, "directory", consts.DefaultFileserverRootDir, "(Optional) Directory to use for backend. Defaults to $PWD/fileserver")
 
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authenication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authenication")

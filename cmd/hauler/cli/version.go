@@ -5,10 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/internal/version"
 )
 
-func addVersion(parent *cobra.Command) {
+func addVersion(parent *cobra.Command, ro *flags.CliRootOpts) {
 	var json bool
 
 	cmd := &cobra.Command{

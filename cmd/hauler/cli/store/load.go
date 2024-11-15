@@ -7,6 +7,7 @@ import (
 	"github.com/mholt/archiver/v3"
 
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
@@ -30,17 +31,25 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, archiveRefs ...string) erro
 
 // unarchiveLayoutTo accepts an archived oci layout and extracts the contents to an existing oci layout, preserving the index
 func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tempOverride string) error {
-	tmpdir, err := os.MkdirTemp(tempOverride, "hauler")
+	l := log.FromContext(ctx)
+
+	if tempOverride == "" {
+		tempOverride = os.Getenv(consts.HaulerTempDir)
+	}
+
+	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmpdir)
+	defer os.RemoveAll(tempDir)
 
-	if err := archiver.Unarchive(archivePath, tmpdir); err != nil {
+	l.Debugf("using temporary directory at %s", tempDir)
+
+	if err := archiver.Unarchive(archivePath, tempDir); err != nil {
 		return err
 	}
 
-	s, err := store.NewLayout(tmpdir)
+	s, err := store.NewLayout(tempDir)
 	if err != nil {
 		return err
 	}

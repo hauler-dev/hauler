@@ -17,6 +17,10 @@
 #     - curl -sfL https://get.hauler.dev | HAULER_INSTALL_DIR=/usr/local/bin bash
 #     - HAULER_INSTALL_DIR=/usr/local/bin ./install.sh
 #
+#   Set Hauler Directory
+#     - curl -sfL https://get.hauler.dev | HAULER_DIR=$HOME/.hauler bash
+#     - HAULER_DIR=$HOME/.hauler ./install.sh
+#
 # Debug Usage:
 #   - curl -sfL https://get.hauler.dev | HAULER_DEBUG=true bash
 #   - HAULER_DEBUG=true ./install.sh
@@ -65,7 +69,7 @@ done
 # set install directory from argument or environment variable
 HAULER_INSTALL_DIR=${HAULER_INSTALL_DIR:-/usr/local/bin}
 
-# ensure install directory exists
+# ensure install directory exists and/or create it
 if [ ! -d "${HAULER_INSTALL_DIR}" ]; then
     mkdir -p "${HAULER_INSTALL_DIR}" || fatal "Failed to Create Install Directory: ${HAULER_INSTALL_DIR}"
 fi
@@ -82,8 +86,8 @@ if [ "${HAULER_UNINSTALL}" = "true" ]; then
     # remove the hauler binary
     rm -rf "${HAULER_INSTALL_DIR}/hauler" || fatal "Failed to Remove Hauler from ${HAULER_INSTALL_DIR}"
 
-    # remove the working directory
-    rm -rf "$HOME/.hauler" || fatal "Failed to Remove Hauler Directory: $HOME/.hauler"
+    # remove the hauler directory
+    rm -rf "${HAULER_DIR}" || fatal "Failed to Remove Hauler Directory: ${HAULER_DIR}"
 
     info "Successfully Uninstalled Hauler" && echo
     exit 0
@@ -110,7 +114,7 @@ case $PLATFORM in
         PLATFORM="darwin"
         ;;
     *)
-        fatal "Unsupported Platform: $PLATFORM"
+        fatal "Unsupported Platform: ${PLATFORM}"
         ;;
 esac
 
@@ -124,29 +128,33 @@ case $ARCH in
         ARCH="arm64"
         ;;
     *)
-        fatal "Unsupported Architecture: $ARCH"
+        fatal "Unsupported Architecture: ${ARCH}"
         ;;
 esac
+
+# set hauler directory from argument or environment variable
+HAULER_DIR=${HAULER_DIR:-$HOME/.hauler}
 
 # start hauler installation
 info "Starting Installation..."
 
 # display the version, platform, and architecture
 verbose "- Version: v${HAULER_VERSION}"
-verbose "- Platform: $PLATFORM"
-verbose "- Architecture: $ARCH"
+verbose "- Platform: ${PLATFORM}"
+verbose "- Architecture: ${ARCH}"
 verbose "- Install Directory: ${HAULER_INSTALL_DIR}"
+verbose "- Hauler Directory: ${HAULER_DIR}"
 
-# check working directory and/or create it
-if [ ! -d "$HOME/.hauler" ]; then
-    mkdir -p "$HOME/.hauler" || fatal "Failed to Create Directory: $HOME/.hauler"
+# ensure hauler directory exists and/or create it
+if [ ! -d "${HAULER_DIR}" ]; then
+    mkdir -p "${HAULER_DIR}" || fatal "Failed to Create Hauler Directory: ${HAULER_DIR}"
 fi
 
-# update permissions of working directory
-chmod -R 777 "$HOME/.hauler" || fatal "Failed to Update Permissions of Directory: $HOME/.hauler"
+# ensure hauler directory is writable (by user or root privileges)
+chmod -R 777 "${HAULER_DIR}" || fatal "Failed to Update Permissions of Hauler Directory: ${HAULER_DIR}"
 
-# change to working directory
-cd "$HOME/.hauler" || fatal "Failed to Change Directory: $HOME/.hauler"
+# change to hauler directory
+cd "${HAULER_DIR}" || fatal "Failed to Change Directory to Hauler Directory: ${HAULER_DIR}"
 
 # start hauler artifacts download
 info "Starting Download..."

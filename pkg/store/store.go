@@ -151,17 +151,17 @@ func (l *Layout) AddOCICollection(ctx context.Context, collection artifacts.OCIC
 //	This can be a highly destructive operation if the store's directory happens to be inline with other non-store contents
 //	To reduce the blast radius and likelihood of deleting things we don't own, Flush explicitly deletes oci-layout content only
 func (l *Layout) Flush(ctx context.Context) error {
-	blobs := filepath.Join(l.Root, "blobs")
+	blobs := filepath.Join(l.Root, consts.OCIImageBlobsDir)
 	if err := os.RemoveAll(blobs); err != nil {
 		return err
 	}
 
-	index := filepath.Join(l.Root, "index.json")
+	index := filepath.Join(l.Root, consts.OCIImageIndexFile)
 	if err := os.RemoveAll(index); err != nil {
 		return err
 	}
 
-	layout := filepath.Join(l.Root, "oci-layout")
+	layout := filepath.Join(l.Root, consts.OCIImageLayoutFile)
 	if err := os.RemoveAll(layout); err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func (l *Layout) writeLayer(layer v1.Layer) error {
 		return err
 	}
 
-	dir := filepath.Join(l.Root, "blobs", d.Algorithm)
+	dir := filepath.Join(l.Root, consts.OCIImageBlobsDir, d.Algorithm)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
 		return err
 	}

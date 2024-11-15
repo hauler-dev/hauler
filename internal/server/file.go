@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 // NewFile returns a fileserver
@@ -22,11 +23,11 @@ func NewFile(ctx context.Context, cfg flags.ServeFilesOpts) (Server, error) {
 	}
 
 	if cfg.Port == 0 {
-		cfg.Port = 8080
+		cfg.Port = consts.DefaultFileserverPort
 	}
 
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 60
+		cfg.Timeout = consts.DefaultFileserverTimeout
 	}
 
 	srv := &http.Server{

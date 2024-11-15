@@ -17,7 +17,7 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout) error {
+func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
@@ -27,7 +27,7 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 	}
 
 	opts := &flags.CopyOpts{}
-	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry()); err != nil {
+	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), ro); err != nil {
 		return err
 	}
 
@@ -55,12 +55,12 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 	return nil
 }
 
-func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout) error {
+func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
 	opts := &flags.CopyOpts{}
-	if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir); err != nil {
+	if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir, ro); err != nil {
 		return err
 	}
 

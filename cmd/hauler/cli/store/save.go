@@ -161,7 +161,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 		return err
 	}
 
-	return oci.WriteFile("manifest.json", buf.Bytes(), 0666)
+	return oci.WriteFile(consts.OCIImageManifestFile, buf.Bytes(), 0666)
 }
 
 func (x *exports) describe() tarball.Manifest {

@@ -5,25 +5,26 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"hauler.dev/go/hauler/internal/flags"
 )
 
-func addCompletion(parent *cobra.Command) {
+func addCompletion(parent *cobra.Command, ro *flags.CliRootOpts) {
 	cmd := &cobra.Command{
 		Use:   "completion",
 		Short: "Generate auto-completion scripts for various shells",
 	}
 
 	cmd.AddCommand(
-		addCompletionZsh(),
-		addCompletionBash(),
-		addCompletionFish(),
-		addCompletionPowershell(),
+		addCompletionZsh(ro),
+		addCompletionBash(ro),
+		addCompletionFish(ro),
+		addCompletionPowershell(ro),
 	)
 
 	parent.AddCommand(cmd)
 }
 
-func addCompletionZsh() *cobra.Command {
+func addCompletionZsh(ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "zsh",
 		Short: "Generates auto-completion scripts for zsh",
@@ -52,7 +53,7 @@ func addCompletionZsh() *cobra.Command {
 	return cmd
 }
 
-func addCompletionBash() *cobra.Command {
+func addCompletionBash(ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bash",
 		Short: "Generates auto-completion scripts for bash",
@@ -71,7 +72,7 @@ func addCompletionBash() *cobra.Command {
 	return cmd
 }
 
-func addCompletionFish() *cobra.Command {
+func addCompletionFish(ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fish",
 		Short: "Generates auto-completion scripts for fish",
@@ -87,7 +88,7 @@ func addCompletionFish() *cobra.Command {
 	return cmd
 }
 
-func addCompletionPowershell() *cobra.Command {
+func addCompletionPowershell(ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "powershell",
 		Short: "Generates auto-completion scripts for powershell",

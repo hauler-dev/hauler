@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"hauler.dev/go/hauler/cmd/hauler/cli"
-	"hauler.dev/go/hauler/pkg/cosign"
+	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/log"
 )
 
@@ -20,13 +20,8 @@ func main() {
 	logger := log.NewLogger(os.Stdout)
 	ctx = logger.WithContext(ctx)
 
-	// ensure cosign binary is available
-	if err := cosign.EnsureBinaryExists(ctx, binaries); err != nil {
-		logger.Errorf("%v", err)
-		os.Exit(1)
-	}
-
-	if err := cli.New().ExecuteContext(ctx); err != nil {
+	// pass the embedded binaries to the cli package
+	if err := cli.New(ctx, binaries, &flags.CliRootOpts{}).ExecuteContext(ctx); err != nil {
 		logger.Errorf("%v", err)
 		cancel()
 		os.Exit(1)
