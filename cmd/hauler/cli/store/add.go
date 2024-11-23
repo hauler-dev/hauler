@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"os"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
@@ -75,18 +76,35 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
+	if !ro.StrictMode {
+		envVar := os.Getenv(consts.HaulerStrictMode)
+		if envVar == "true" {
+			ro.StrictMode = true
+		}
+	}
+
 	l.Infof("adding 'image' [%s] to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
-		l.Warnf("unable to parse 'image' [%s], skipping...", r.Name())
-		return nil
+		if ro.StrictMode {
+			l.Errorf("error parsing 'image' [%s]: %v", i.Name, err)
+			return err
+		} else {
+			l.Warnf("warning parsing 'image' [%s], skipping...", i.Name)
+			return nil
+		}
 	}
 
 	err = cosign.SaveImage(ctx, s, r.Name(), platform, ro)
 	if err != nil {
-		l.Warnf("unable to add 'image' [%s] to store.  skipping...", r.Name())
-		return nil
+		if ro.StrictMode {
+			l.Errorf("error adding 'image' [%s] to store: %v", r.Name(), err)
+			return err
+		} else {
+			l.Warnf("warning adding 'image' [%s] to store. skipping...", r.Name())
+			return nil
+		}
 	}
 
 	l.Infof("successfully added 'image' [%s]", r.Name())

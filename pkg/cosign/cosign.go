@@ -33,18 +33,25 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 		cmd := exec.Command(cosignBinaryPath, "verify", "--insecure-ignore-tlog", "--key", keyPath, ref)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("error verifying signature: %v, output: %s", err, output)
+			return fmt.Errorf("error verifying signature: %v\n%s", err, output)
 		}
 
 		return nil
 	}
 
-	return RetryOperation(ctx, operation)
+	return RetryOperation(ctx, ro, operation)
 }
 
 // SaveImage saves image and any signatures/attestations to the store.
 func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
+
+	if !ro.StrictMode {
+		envVar := os.Getenv(consts.HaulerStrictMode)
+		if envVar == "true" {
+			ro.StrictMode = true
+		}
+	}
 
 	operation := func() error {
 		cosignBinaryPath, err := getCosignPath(ro.HaulerDir)
@@ -92,7 +99,10 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		// read command's stderr line by line
 		errors := bufio.NewScanner(stderr)
 		for errors.Scan() {
-			l.Warnf(errors.Text()) // write each line to your log, or anything you need
+			if ro.StrictMode {
+				l.Errorf(errors.Text())
+			}
+			l.Warnf(errors.Text())
 		}
 		if err := errors.Err(); err != nil {
 			cmd.Wait()
@@ -108,7 +118,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		return nil
 	}
 
-	return RetryOperation(ctx, operation)
+	return RetryOperation(ctx, ro, operation)
 }
 
 // LoadImage loads store to a remote registry.
@@ -190,26 +200,36 @@ func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts 
 	return nil
 }
 
-func RetryOperation(ctx context.Context, operation func() error) error {
+func RetryOperation(ctx context.Context, ro *flags.CliRootOpts, operation func() error) error {
 	l := log.FromContext(ctx)
+
+	if !ro.StrictMode {
+		envVar := os.Getenv(consts.HaulerStrictMode)
+		if envVar == "true" {
+			ro.StrictMode = true
+		}
+	}
 
 	for attempt := 1; attempt <= consts.DefaultRetries; attempt++ {
 		err := operation()
 		if err == nil {
-			// If the operation succeeds, return nil (no error).
+			// If the operation succeeds, return nil (no error)
 			return nil
 		}
 
-		// Log the error for the current attempt.
-		l.Warnf("error (attempt %d/%d): %v", attempt, consts.DefaultRetries, err)
+		if ro.StrictMode {
+			l.Errorf("error (attempt %d/%d)... %v", attempt, consts.DefaultRetries, err)
+		} else {
+			l.Warnf("warning (attempt %d/%d)... %v", attempt, consts.DefaultRetries, err)
+		}
 
-		// If this is not the last attempt, wait before retrying.
+		// If this is not the last attempt, wait before retrying
 		if attempt < consts.DefaultRetries {
 			time.Sleep(time.Second * consts.RetriesInterval)
 		}
 	}
 
-	// If all attempts fail, return an error.
+	// If all attempts fail, return an error
 	return fmt.Errorf("operation failed after %d attempts", consts.DefaultRetries)
 }
 
