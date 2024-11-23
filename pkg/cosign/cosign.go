@@ -23,7 +23,7 @@ import (
 )
 
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
-func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string, ro *flags.CliRootOpts) error {
+func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	operation := func() error {
 		cosignBinaryPath, err := getCosignPath(ro.HaulerDir)
 		if err != nil {
@@ -39,11 +39,11 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 		return nil
 	}
 
-	return RetryOperation(ctx, ro, operation)
+	return RetryOperation(ctx, rso, ro, operation)
 }
 
 // SaveImage saves image and any signatures/attestations to the store.
-func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string, ro *flags.CliRootOpts) error {
+func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	if !ro.StrictMode {
@@ -118,7 +118,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		return nil
 	}
 
-	return RetryOperation(ctx, ro, operation)
+	return RetryOperation(ctx, rso, ro, operation)
 }
 
 // LoadImage loads store to a remote registry.
@@ -200,7 +200,7 @@ func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts 
 	return nil
 }
 
-func RetryOperation(ctx context.Context, ro *flags.CliRootOpts, operation func() error) error {
+func RetryOperation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, operation func() error) error {
 	l := log.FromContext(ctx)
 
 	if !ro.StrictMode {
@@ -210,7 +210,13 @@ func RetryOperation(ctx context.Context, ro *flags.CliRootOpts, operation func()
 		}
 	}
 
-	for attempt := 1; attempt <= consts.DefaultRetries; attempt++ {
+	// Validate retries and fall back to a default
+	retries := rso.Retries
+	if retries <= 0 {
+		retries = consts.DefaultRetries
+	}
+
+	for attempt := 1; attempt <= rso.Retries; attempt++ {
 		err := operation()
 		if err == nil {
 			// If the operation succeeds, return nil (no error)
@@ -218,19 +224,19 @@ func RetryOperation(ctx context.Context, ro *flags.CliRootOpts, operation func()
 		}
 
 		if ro.StrictMode {
-			l.Errorf("error (attempt %d/%d)... %v", attempt, consts.DefaultRetries, err)
+			l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
 		} else {
-			l.Warnf("warning (attempt %d/%d)... %v", attempt, consts.DefaultRetries, err)
+			l.Warnf("warning (attempt %d/%d)... %v", attempt, rso.Retries, err)
 		}
 
 		// If this is not the last attempt, wait before retrying
-		if attempt < consts.DefaultRetries {
+		if attempt < rso.Retries {
 			time.Sleep(time.Second * consts.RetriesInterval)
 		}
 	}
 
 	// If all attempts fail, return an error
-	return fmt.Errorf("operation failed after %d attempts", consts.DefaultRetries)
+	return fmt.Errorf("operation failed after %d attempts", rso.Retries)
 }
 
 func EnsureBinaryExists(ctx context.Context, bin embed.FS, ro *flags.CliRootOpts) error {

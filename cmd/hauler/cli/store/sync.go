@@ -24,7 +24,7 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, ro *flags.CliRootOpts) error {
+func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	// if passed products, check for a remote manifest to retrieve and use.
@@ -44,7 +44,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, ro *flags.
 		img := v1alpha1.Image{
 			Name: manifestLoc,
 		}
-		err := storeImage(ctx, s, img, o.Platform, ro)
+		err := storeImage(ctx, s, img, o.Platform, rso, ro)
 		if err != nil {
 			return err
 		}
@@ -58,7 +58,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, ro *flags.
 		if err != nil {
 			return err
 		}
-		err = processContent(ctx, fi, o, s, ro)
+		err = processContent(ctx, fi, o, s, rso, ro)
 		if err != nil {
 			return err
 		}
@@ -71,7 +71,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, ro *flags.
 		if err != nil {
 			return err
 		}
-		err = processContent(ctx, fi, o, s, ro)
+		err = processContent(ctx, fi, o, s, rso, ro)
 		if err != nil {
 			return err
 		}
@@ -80,7 +80,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, ro *flags.
 	return nil
 }
 
-func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, ro *flags.CliRootOpts) error {
+func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	reader := yaml.NewYAMLReader(bufio.NewReader(fi))
@@ -169,7 +169,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					l.Debugf("key for image [%s]", key)
 
 					// verify signature using the provided key.
-					err := cosign.VerifySignature(ctx, s, key, i.Name, ro)
+					err := cosign.VerifySignature(ctx, s, key, i.Name, rso, ro)
 					if err != nil {
 						l.Errorf("signature verification failed for image [%s]. ** hauler will skip adding this image to the store **:\n%v", i.Name, err)
 						continue
@@ -188,7 +188,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					platform = i.Platform
 				}
 
-				err = storeImage(ctx, s, i, platform, ro)
+				err = storeImage(ctx, s, i, platform, rso, ro)
 				if err != nil {
 					return err
 				}
