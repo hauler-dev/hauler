@@ -66,11 +66,11 @@ const (
 	HaulerTempDir = "HAULER_TEMP_DIR"
 
 	// container files and directories
-	OCIImageIndexFile    = "index.json"
-	OCIImageManifestFile = "manifest.json"
-	OCIImageConfigFile   = "config.json"
-	OCIImageLayoutFile   = "oci-layout"
-	OCIImageBlobsDir     = "blobs"
+	OCIImageIndexFile  = "index.json"
+	OCIImageLayoutFile = "oci-layout"
+	OCIImageBlobsDir   = "blobs"
+	ImageManifestFile  = "manifest.json"
+	ImageConfigFile    = "config.json"
 
 	// other constraints
 	CarbideRegistry          = "rgcrprod.azurecr.us"
