@@ -10,7 +10,7 @@ import (
 )
 
 func addVersion(parent *cobra.Command, ro *flags.CliRootOpts) {
-	var json bool
+	o := &flags.VersionOpts{}
 
 	cmd := &cobra.Command{
 		Use:     "version",
@@ -23,7 +23,7 @@ func addVersion(parent *cobra.Command, ro *flags.CliRootOpts) {
 			v.FontName = "starwars"
 			cmd.SetOut(cmd.OutOrStdout())
 
-			if json {
+			if o.JSON {
 				out, err := v.JSONString()
 				if err != nil {
 					return fmt.Errorf("unable to generate JSON from version info: %w", err)
@@ -35,7 +35,7 @@ func addVersion(parent *cobra.Command, ro *flags.CliRootOpts) {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&json, "json", false, "toggle output in JSON")
+	o.AddFlags(cmd)
 
 	parent.AddCommand(cmd)
 }
