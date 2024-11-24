@@ -64,6 +64,7 @@ const (
 	// environment variables
 	HaulerDir        = "HAULER_DIR"
 	HaulerTempDir    = "HAULER_TEMP_DIR"
+	HaulerStoreDir   = "HAULER_STORE_DIR"
 	HaulerStrictMode = "HAULER_STRICT_MODE"
 
 	// container files and directories
