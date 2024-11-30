@@ -62,9 +62,9 @@ const (
 	CollectionGroup = "collection.hauler.cattle.io"
 
 	// environment variables
-	HaulerDir        = "HAULER_DIR"
-	HaulerTempDir    = "HAULER_TEMP_DIR"
-	HaulerStrictMode = "HAULER_STRICT_MODE"
+	HaulerDir          = "HAULER_DIR"
+	HaulerTempDir      = "HAULER_TEMP_DIR"
+	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
 
 	// container files and directories
 	OCIImageIndexFile    = "index.json"

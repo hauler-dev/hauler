@@ -76,10 +76,10 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	if !ro.StrictMode {
-		envVar := os.Getenv(consts.HaulerStrictMode)
+	if !ro.IgnoreErrors {
+		envVar := os.Getenv(consts.HaulerIgnoreErrors)
 		if envVar == "true" {
-			ro.StrictMode = true
+			ro.IgnoreErrors = true
 		}
 	}
 
@@ -87,22 +87,22 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
-		if ro.StrictMode {
-			l.Errorf("error parsing 'image' [%s]: %v", i.Name, err)
+		if ro.IgnoreErrors {
+			l.Warnf("warning parsing 'image' [%s]: %v", i.Name, err)
 			return err
 		} else {
-			l.Warnf("warning parsing 'image' [%s], skipping...", i.Name)
+			l.Errorf("error parsing 'image' [%s], skipping...", i.Name)
 			return nil
 		}
 	}
 
 	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
 	if err != nil {
-		if ro.StrictMode {
-			l.Errorf("error adding 'image' [%s] to store: %v", r.Name(), err)
+		if ro.IgnoreErrors {
+			l.Warnf("warning adding 'image' [%s] to store: %v", r.Name(), err)
 			return err
 		} else {
-			l.Warnf("warning adding 'image' [%s] to store. skipping...", r.Name())
+			l.Errorf("error adding 'image' [%s] to store. skipping...", r.Name())
 			return nil
 		}
 	}

@@ -46,10 +46,10 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref s
 func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	if !ro.StrictMode {
-		envVar := os.Getenv(consts.HaulerStrictMode)
+	if !ro.IgnoreErrors {
+		envVar := os.Getenv(consts.HaulerIgnoreErrors)
 		if envVar == "true" {
-			ro.StrictMode = true
+			ro.IgnoreErrors = true
 		}
 	}
 
@@ -99,10 +99,10 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		// read command's stderr line by line
 		errors := bufio.NewScanner(stderr)
 		for errors.Scan() {
-			if ro.StrictMode {
-				l.Errorf(errors.Text())
+			if ro.IgnoreErrors {
+				l.Warnf(errors.Text())
 			}
-			l.Warnf(errors.Text())
+			l.Errorf(errors.Text())
 		}
 		if err := errors.Err(); err != nil {
 			cmd.Wait()
@@ -203,10 +203,10 @@ func RegistryLogin(ctx context.Context, s *store.Layout, registry string, ropts 
 func RetryOperation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, operation func() error) error {
 	l := log.FromContext(ctx)
 
-	if !ro.StrictMode {
-		envVar := os.Getenv(consts.HaulerStrictMode)
+	if !ro.IgnoreErrors {
+		envVar := os.Getenv(consts.HaulerIgnoreErrors)
 		if envVar == "true" {
-			ro.StrictMode = true
+			ro.IgnoreErrors = true
 		}
 	}
 
@@ -223,10 +223,10 @@ func RetryOperation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.Cli
 			return nil
 		}
 
-		if ro.StrictMode {
-			l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
-		} else {
+		if ro.IgnoreErrors {
 			l.Warnf("warning (attempt %d/%d)... %v", attempt, rso.Retries, err)
+		} else {
+			l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
 		}
 
 		// If this is not the last attempt, wait before retrying
