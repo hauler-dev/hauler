@@ -13,5 +13,5 @@ func AddRootFlags(cmd *cobra.Command, ro *CliRootOpts) {
 
 	pf.StringVarP(&ro.LogLevel, "log-level", "l", "info", "Set the logging level (i.e. info, debug, warn)")
 	pf.StringVarP(&ro.HaulerDir, "haulerdir", "d", "", "Set the location of the hauler directory (default $HOME/.hauler)")
-	pf.BoolVar(&ro.IgnoreErrors, "ignore-errors", false, "Ignore/Bypass errors (i.e. exit processes on error) (defaults false)")
+	pf.BoolVar(&ro.IgnoreErrors, "ignore-errors", false, "Ignore/Bypass errors (i.e. warn on error) (defaults false)")
 }
