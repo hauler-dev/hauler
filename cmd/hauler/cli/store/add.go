@@ -88,22 +88,22 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
 		if ro.IgnoreErrors {
-			l.Warnf("warning parsing 'image' [%s]: %v", i.Name, err)
-			return err
-		} else {
-			l.Errorf("error parsing 'image' [%s], skipping...", i.Name)
+			l.Warnf("unable to parse 'image' [%s]: %v... skipping...", i.Name, err)
 			return nil
+		} else {
+			l.Errorf("unable to parse 'image' [%s]: %v", i.Name, err)
+			return err
 		}
 	}
 
 	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
 	if err != nil {
 		if ro.IgnoreErrors {
-			l.Warnf("warning adding 'image' [%s] to store: %v", r.Name(), err)
-			return err
-		} else {
-			l.Errorf("error adding 'image' [%s] to store. skipping...", r.Name())
+			l.Warnf("unable to add 'image' [%s] to store: %v... skipping...", r.Name(), err)
 			return nil
+		} else {
+			l.Errorf("unable to add 'image' [%s] to store: %v", r.Name(), err)
+			return err
 		}
 	}
 

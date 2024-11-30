@@ -236,7 +236,7 @@ func RetryOperation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.Cli
 	}
 
 	// If all attempts fail, return an error
-	return fmt.Errorf("operation failed after %d attempts", rso.Retries)
+	return fmt.Errorf("operation unsuccessful after %d attempts", rso.Retries)
 }
 
 func EnsureBinaryExists(ctx context.Context, bin embed.FS, ro *flags.CliRootOpts) error {
