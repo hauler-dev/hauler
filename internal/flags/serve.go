@@ -24,7 +24,7 @@ type ServeRegistryOpts struct {
 func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", consts.DefaultRegistryPort, "(Optional) Specify the port to use for incoming connections")
+	f.IntVarP(&o.Port, "port", "p", consts.DefaultRegistryPort, "(Optional) Set the port to use for incoming connections")
 	f.StringVar(&o.RootDir, "directory", consts.DefaultRegistryRootDir, "(Optional) Directory to use for backend. Defaults to $PWD/registry")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "(Optional) Location of config file (overrides all flags)")
 	f.BoolVar(&o.ReadOnly, "readonly", true, "(Optional) Run the registry as readonly")
@@ -77,7 +77,7 @@ type ServeFilesOpts struct {
 func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.IntVarP(&o.Port, "port", "p", consts.DefaultFileserverPort, "(Optional) Specify the port to use for incoming connections")
+	f.IntVarP(&o.Port, "port", "p", consts.DefaultFileserverPort, "(Optional) Set the port to use for incoming connections")
 	f.IntVarP(&o.Timeout, "timeout", "t", consts.DefaultFileserverTimeout, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
 	f.StringVar(&o.RootDir, "directory", consts.DefaultFileserverRootDir, "(Optional) Directory to use for backend. Defaults to $PWD/fileserver")
 
