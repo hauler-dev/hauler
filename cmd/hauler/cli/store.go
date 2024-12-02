@@ -75,7 +75,7 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return err
 			}
 
-			return store.SyncCmd(ctx, o, s, ro)
+			return store.SyncCmd(ctx, o, s, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -327,7 +327,7 @@ hauler store add image rgcrprod.azurecr.us/hauler/rke2-manifest.yaml:v1.28.12-rk
 				return err
 			}
 
-			return store.AddImageCmd(ctx, o, s, args[0], ro)
+			return store.AddImageCmd(ctx, o, s, args[0], rso, ro)
 		},
 	}
 	o.AddFlags(cmd)

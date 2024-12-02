@@ -14,11 +14,13 @@ import (
 
 type StoreRootOpts struct {
 	StoreDir string
+	Retries  int
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
-	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "(Optional) Specify the directory to use for the content store")
+	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "Set the directory to use for the content store")
+	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
 }
 
 func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
