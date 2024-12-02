@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"os"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
@@ -52,7 +53,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 	return nil
 }
 
-func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string, ro *flags.CliRootOpts) error {
+func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	cfg := v1alpha1.Image{
@@ -62,31 +63,48 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	// Check if the user provided a key.
 	if o.Key != "" {
 		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, s, o.Key, cfg.Name, ro)
+		err := cosign.VerifySignature(ctx, s, o.Key, cfg.Name, rso, ro)
 		if err != nil {
 			return err
 		}
 		l.Infof("signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg, o.Platform, ro)
+	return storeImage(ctx, s, cfg, o.Platform, rso, ro)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string, ro *flags.CliRootOpts) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
+
+	if !ro.IgnoreErrors {
+		envVar := os.Getenv(consts.HaulerIgnoreErrors)
+		if envVar == "true" {
+			ro.IgnoreErrors = true
+		}
+	}
 
 	l.Infof("adding 'image' [%s] to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
-		l.Warnf("unable to parse 'image' [%s], skipping...", r.Name())
-		return nil
+		if ro.IgnoreErrors {
+			l.Warnf("unable to parse 'image' [%s]: %v... skipping...", i.Name, err)
+			return nil
+		} else {
+			l.Errorf("unable to parse 'image' [%s]: %v", i.Name, err)
+			return err
+		}
 	}
 
-	err = cosign.SaveImage(ctx, s, r.Name(), platform, ro)
+	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
 	if err != nil {
-		l.Warnf("unable to add 'image' [%s] to store.  skipping...", r.Name())
-		return nil
+		if ro.IgnoreErrors {
+			l.Warnf("unable to add 'image' [%s] to store: %v... skipping...", r.Name(), err)
+			return nil
+		} else {
+			l.Errorf("unable to add 'image' [%s] to store: %v", r.Name(), err)
+			return err
+		}
 	}
 
 	l.Infof("successfully added 'image' [%s]", r.Name())
