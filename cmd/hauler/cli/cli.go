@@ -16,7 +16,7 @@ func New(ctx context.Context, binaries embed.FS, ro *flags.CliRootOpts) *cobra.C
 	cmd := &cobra.Command{
 		Use:     "hauler",
 		Short:   "Airgap Swiss Army Knife",
-		Example: "  View the Docs: https://docs.hauler.dev\n  Environment Variables: " + consts.HaulerDir + " | " + consts.HaulerTempDir + " | " + consts.HaulerStrictMode,
+		Example: "  View the Docs: https://docs.hauler.dev\n  Environment Variables: " + consts.HaulerDir + " | " + consts.HaulerTempDir + " | " + consts.HaulerIgnoreErrors,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			l := log.FromContext(ctx)
 			l.SetLevel(ro.LogLevel)
