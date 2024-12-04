@@ -18,9 +18,19 @@ import (
 func LoadCmd(ctx context.Context, o *flags.LoadOpts, archiveRefs ...string) error {
 	l := log.FromContext(ctx)
 
+	storeDir := o.StoreDir
+
+	if storeDir == "" {
+		storeDir = os.Getenv(consts.HaulerStoreDir)
+	}
+
+	if storeDir == "" {
+		storeDir = consts.DefaultStoreName
+	}
+
 	for _, archiveRef := range archiveRefs {
-		l.Infof("loading content from [%s] to [%s]", archiveRef, o.StoreDir)
-		err := unarchiveLayoutTo(ctx, archiveRef, o.StoreDir, o.TempOverride)
+		l.Infof("loading content from [%s] to [%s]", archiveRef, storeDir)
+		err := unarchiveLayoutTo(ctx, archiveRef, storeDir, o.TempOverride)
 		if err != nil {
 			return err
 		}

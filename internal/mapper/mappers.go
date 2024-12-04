@@ -36,7 +36,7 @@ func Images() map[string]Fn {
 	m := make(map[string]Fn)
 
 	manifestMapperFn := Fn(func(desc ocispec.Descriptor) (string, error) {
-		return consts.OCIImageManifestFile, nil
+		return consts.ImageManifestFile, nil
 	})
 
 	for _, l := range []string{consts.DockerManifestSchema2, consts.DockerManifestListSchema2, consts.OCIManifestSchema1} {
@@ -52,7 +52,7 @@ func Images() map[string]Fn {
 	}
 
 	configMapperFn := Fn(func(desc ocispec.Descriptor) (string, error) {
-		return consts.OCIImageConfigFile, nil
+		return consts.ImageConfigFile, nil
 	})
 
 	for _, l := range []string{consts.DockerConfigJSON} {

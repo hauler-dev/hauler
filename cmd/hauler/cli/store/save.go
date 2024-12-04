@@ -28,6 +28,16 @@ import (
 func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 	l := log.FromContext(ctx)
 
+	storeDir := o.StoreDir
+
+	if storeDir == "" {
+		storeDir = os.Getenv(consts.HaulerStoreDir)
+	}
+
+	if storeDir == "" {
+		storeDir = consts.DefaultStoreName
+	}
+
 	// TODO: Support more formats?
 	a := archiver.NewTarZstd()
 	a.OverwriteExisting = true
@@ -42,7 +52,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 	defer os.Chdir(cwd)
-	if err := os.Chdir(o.StoreDir); err != nil {
+	if err := os.Chdir(storeDir); err != nil {
 		return err
 	}
 
@@ -55,7 +65,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 
-	l.Infof("saved store [%s] -> [%s]", o.StoreDir, absOutputfile)
+	l.Infof("saved store [%s] -> [%s]", storeDir, absOutputfile)
 	return nil
 }
 
@@ -161,7 +171,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 		return err
 	}
 
-	return oci.WriteFile(consts.OCIImageManifestFile, buf.Bytes(), 0666)
+	return oci.WriteFile(consts.ImageManifestFile, buf.Bytes(), 0666)
 }
 
 func (x *exports) describe() tarball.Manifest {
