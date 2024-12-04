@@ -277,6 +277,7 @@ func EnsureBinaryExists(ctx context.Context, bin embed.FS, ro *flags.CliRootOpts
 
 // getCosignPath returns the binary path
 func getCosignPath(haulerDir string) (string, error) {
+
 	if haulerDir == "" {
 		haulerDir = os.Getenv(consts.HaulerDir)
 	}
