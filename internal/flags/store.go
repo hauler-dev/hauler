@@ -19,7 +19,7 @@ type StoreRootOpts struct {
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
-	pf.StringVarP(&o.StoreDir, "store", "s", consts.DefaultStoreName, "Set the directory to use for the content store")
+	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
 }
 
@@ -27,6 +27,14 @@ func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 	l := log.FromContext(ctx)
 
 	storeDir := o.StoreDir
+
+	if storeDir == "" {
+		storeDir = os.Getenv(consts.HaulerStoreDir)
+	}
+
+	if storeDir == "" {
+		storeDir = consts.DefaultStoreName
+	}
 
 	abs, err := filepath.Abs(storeDir)
 	if err != nil {
@@ -36,8 +44,7 @@ func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 	l.Debugf("using store at %s", abs)
 
 	if _, err := os.Stat(abs); errors.Is(err, os.ErrNotExist) {
-		err := os.Mkdir(abs, os.ModePerm)
-		if err != nil {
+		if err := os.MkdirAll(abs, os.ModePerm); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
