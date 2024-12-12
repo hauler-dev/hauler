@@ -1,10 +1,6 @@
 package flags
 
 import (
-	"fmt"
-	"net/http"
-
-	"github.com/distribution/distribution/v3/configuration"
 	"github.com/spf13/cobra"
 	"hauler.dev/go/hauler/pkg/consts"
 )
@@ -33,34 +29,6 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authenication")
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
-}
-
-func (o *ServeRegistryOpts) DefaultRegistryConfig() *configuration.Configuration {
-	cfg := &configuration.Configuration{
-		Version: "0.1",
-		Storage: configuration.Storage{
-			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
-			"filesystem": configuration.Parameters{"rootdirectory": o.RootDir},
-			"maintenance": configuration.Parameters{
-				"readonly": map[any]any{"enabled": o.ReadOnly},
-			},
-		},
-	}
-
-	if o.TLSCert != "" && o.TLSKey != "" {
-		cfg.HTTP.TLS.Certificate = o.TLSCert
-		cfg.HTTP.TLS.Key = o.TLSKey
-	}
-
-	cfg.HTTP.Addr = fmt.Sprintf(":%d", o.Port)
-	cfg.HTTP.Headers = http.Header{
-		"X-Content-Type-Options": []string{"nosniff"},
-	}
-
-	cfg.Log.Level = "info"
-	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
-
-	return cfg
 }
 
 type ServeFilesOpts struct {
