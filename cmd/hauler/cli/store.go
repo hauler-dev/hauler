@@ -138,7 +138,7 @@ func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cob
 				return err
 			}
 
-			return store.ServeRegistryCmd(ctx, o, s, ro)
+			return store.ServeRegistryCmd(ctx, o, s, rso, ro)
 		},
 	}
 
