@@ -32,6 +32,8 @@ type AddChartOpts struct {
 	*StoreRootOpts
 
 	ChartOpts *action.ChartPathOptions
+
+	AddImages bool
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -46,4 +48,6 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authenication")
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
+
+	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Add images referenced in helm template")
 }

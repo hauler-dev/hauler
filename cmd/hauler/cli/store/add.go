@@ -3,11 +3,14 @@ package store
 import (
 	"context"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/consts"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v3/pkg/engine"
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
@@ -111,27 +114,16 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 	return nil
 }
 
-func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string) error {
-	// TODO: Reduce duplicates between api chart and upstream helm opts
-	cfg := v1alpha1.Chart{
-		Name:    chartName,
-		RepoURL: o.ChartOpts.RepoURL,
-		Version: o.ChartOpts.Version,
-	}
-
-	return storeChart(ctx, s, cfg, o.ChartOpts)
+func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+	return storeChart(ctx, s, chartName, o, rso, ro)
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
+func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	l.Infof("adding 'chart' [%s] to the store", cfg.Name)
+	l.Infof("adding 'chart' [%s] to the store", chartName)
 
-	// TODO: This shouldn't be necessary
-	opts.RepoURL = cfg.RepoURL
-	opts.Version = cfg.Version
-
-	chrt, err := chart.NewChart(cfg.Name, opts)
+	chrt, err := chart.NewChart(chartName, opts.ChartOpts)
 	if err != nil {
 		return err
 	}
@@ -151,5 +143,36 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *
 	}
 
 	l.Infof("successfully added 'chart' [%s]", ref.Name())
+
+	if opts.AddImages {
+		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, &chartutil.Capabilities{})
+		if err != nil {
+			return err
+		}
+
+		template, err := engine.Render(c, values)
+		if err != nil {
+			return err
+		}
+
+		images := []string{}
+
+		for _, manifest := range template {
+			m := strings.Split(manifest, "\n")
+			for _, l := range m {
+				l := strings.ReplaceAll(l, " ", "")
+				if strings.HasPrefix(l, "image:") {
+					images = append(images, l[6:])
+				}
+			}
+		}
+
+		slices.Sort(images)
+		images = slices.Compact(images)
+		for _, image := range images {
+			storeImage(ctx, s, v1alpha1.Image{Name: image}, "", rso, ro)
+		}
+	}
+
 	return nil
 }
