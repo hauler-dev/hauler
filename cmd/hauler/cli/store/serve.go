@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/distribution/distribution/v3/configuration"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -79,7 +80,7 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 	if err != nil {
 		l.Errorf("failed to validate/output registry configuration: %v", err)
 	} else {
-		l.Infof("using registry configuration...\n%s", string(yamlConfig))
+		l.Infof("using registry configuration... \n%s", strings.TrimSpace(string(yamlConfig)))
 	}
 
 	l.Debugf("detailed registry configuration: %+v", cfg)
