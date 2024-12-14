@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	gname "github.com/google/go-containerregistry/pkg/name"
+
 	"hauler.dev/go/hauler/pkg/consts"
 )
 

@@ -5,13 +5,13 @@ import (
 	"os"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
-	"hauler.dev/go/hauler/pkg/consts"
 	"helm.sh/helm/v3/pkg/action"
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 	"hauler.dev/go/hauler/pkg/artifacts/file"
+	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
+	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content/chart"
 	"hauler.dev/go/hauler/pkg/cosign"
 	"hauler.dev/go/hauler/pkg/log"

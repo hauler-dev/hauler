@@ -53,7 +53,7 @@ func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tem
 	}
 	defer os.RemoveAll(tempDir)
 
-	l.Debugf("using temporary directory at %s", tempDir)
+	l.Debugf("using temporary directory at [%s]", tempDir)
 
 	if err := archiver.Unarchive(archivePath, tempDir); err != nil {
 		return err

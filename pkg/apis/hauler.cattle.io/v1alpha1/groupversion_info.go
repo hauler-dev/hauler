@@ -1,8 +1,9 @@
 package v1alpha1
 
 import (
-	"hauler.dev/go/hauler/pkg/consts"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 var (
