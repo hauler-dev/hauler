@@ -145,7 +145,18 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 	l.Infof("successfully added 'chart' [%s]", ref.Name())
 
 	if opts.AddImages {
-		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, &chartutil.Capabilities{})
+		if opts.HelmValues != "" {
+			values, err := chartutil.ReadValuesFile(opts.HelmValues)
+			if err != nil {
+				return err
+			}
+			c.Values = values
+		}
+
+		// mock kubeversion?
+		kubeversion := chartutil.KubeVersion{Version: "1", Major: "31", Minor: "0"}
+
+		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, &chartutil.Capabilities{KubeVersion: kubeversion})
 		if err != nil {
 			return err
 		}

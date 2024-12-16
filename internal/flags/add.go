@@ -33,7 +33,8 @@ type AddChartOpts struct {
 
 	ChartOpts *action.ChartPathOptions
 
-	AddImages bool
+	AddImages  bool
+	HelmValues string
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -50,4 +51,6 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 
 	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Add images referenced in helm template")
+	f.StringVarP(&o.HelmValues, "values", "f", "", "(Optional) Specify values in a YAML file or a URL (can specify multiple)")
+
 }

@@ -16,3 +16,4 @@ fileserver/
 cmd/hauler/binaries
 testdata/certs/
 coverage.out
+ebug
