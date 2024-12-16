@@ -161,6 +161,7 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 			m := strings.Split(manifest, "\n")
 			for _, l := range m {
 				l := strings.ReplaceAll(l, " ", "")
+				l = strings.ReplaceAll(l, "\"", "")
 				if strings.HasPrefix(l, "image:") {
 					images = append(images, l[6:])
 				}
