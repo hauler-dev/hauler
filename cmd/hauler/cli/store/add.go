@@ -153,10 +153,10 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 			c.Values = values
 		}
 
-		// mock kubeversion?
-		kubeversion := chartutil.KubeVersion{Version: "1", Major: "31", Minor: "0"}
+		kubeVersion := chartutil.KubeVersion{Version: "1", Major: "31", Minor: "3"}
+		l.Debugf("setting kubernetes version... [v%s.%s.%s]", kubeVersion.Version, kubeVersion.Major, kubeVersion.Minor)
 
-		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, &chartutil.Capabilities{KubeVersion: kubeversion})
+		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, &chartutil.Capabilities{KubeVersion: kubeVersion})
 		if err != nil {
 			return err
 		}
@@ -181,6 +181,9 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 
 		slices.Sort(images)
 		images = slices.Compact(images)
+
+		l.Infof("successfully found images... %v", images)
+
 		for _, image := range images {
 			storeImage(ctx, s, v1alpha1.Image{Name: image}, "", rso, ro)
 		}

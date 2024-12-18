@@ -50,7 +50,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 
-	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Add images referenced in helm template")
-	f.StringVarP(&o.HelmValues, "values", "f", "", "(Optional) Specify values in a YAML file or a URL (can specify multiple)")
+	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in a helm chart (tech preview)")
+	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images (tech preview)")
 
 }
