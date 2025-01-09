@@ -106,7 +106,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 	for _, desc := range imx.Manifests {
 		l.Debugf("descriptor [%s] >>> %s", desc.Digest.String(), desc.MediaType)
 		if artifactType := types.MediaType(desc.ArtifactType); artifactType != "" && !artifactType.IsImage() && !artifactType.IsIndex() {
-			l.Debugf("descriptor [%s] <<< SKIPPING ARTIFACT (%q)", desc.Digest.String(), desc.ArtifactType)
+			l.Debugf("descriptor [%s] <<< SKIPPING ARTIFACT [%q]", desc.Digest.String(), desc.ArtifactType)
 			continue
 		}
 		if desc.Annotations != nil {
@@ -157,7 +157,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 							}
 						}
 					default:
-						l.Debugf("descriptor [%s] <<< SKIPPING KIND (%q)", desc.Digest.String(), kind)
+						l.Debugf("descriptor [%s] <<< SKIPPING KIND [%q]", desc.Digest.String(), kind)
 					}
 				}
 			}

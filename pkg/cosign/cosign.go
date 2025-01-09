@@ -64,7 +64,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		if err != nil {
 			return err
 		}
-		l.Debugf("multi-arch image: %v", isMultiArch)
+		l.Debugf("multi-arch image [%v]", isMultiArch)
 
 		cmd := exec.Command(cosignBinaryPath, "save", ref, "--dir", s.Root)
 		// Conditionally add platform.
@@ -248,7 +248,7 @@ func EnsureBinaryExists(ctx context.Context, bin embed.FS, ro *flags.CliRootOpts
 		return fmt.Errorf("error: %v", err)
 	}
 
-	l.Debugf("using hauler directory at %s", filepath.Dir(binaryPath))
+	l.Debugf("using hauler directory at [%s]", filepath.Dir(binaryPath))
 
 	// Determine the architecture so that we pull the correct embedded binary
 	arch := runtime.GOARCH

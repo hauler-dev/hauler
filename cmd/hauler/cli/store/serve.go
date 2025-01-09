@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
+	"strings"
 
 	"github.com/distribution/distribution/v3/configuration"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -10,6 +13,7 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	"github.com/distribution/distribution/v3/version"
+	"gopkg.in/yaml.v3"
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/internal/server"
@@ -17,7 +21,35 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout, ro *flags.CliRootOpts) error {
+func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *configuration.Configuration {
+	cfg := &configuration.Configuration{
+		Version: "0.1",
+		Storage: configuration.Storage{
+			"cache":      configuration.Parameters{"blobdescriptor": "inmemory"},
+			"filesystem": configuration.Parameters{"rootdirectory": o.RootDir},
+			"maintenance": configuration.Parameters{
+				"readonly": map[any]any{"enabled": o.ReadOnly},
+			},
+		},
+	}
+
+	if o.TLSCert != "" && o.TLSKey != "" {
+		cfg.HTTP.TLS.Certificate = o.TLSCert
+		cfg.HTTP.TLS.Key = o.TLSKey
+	}
+
+	cfg.HTTP.Addr = fmt.Sprintf(":%d", o.Port)
+	cfg.HTTP.Headers = http.Header{
+		"X-Content-Type-Options": []string{"nosniff"},
+	}
+
+	cfg.Log.Level = configuration.Loglevel(ro.LogLevel)
+	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
+
+	return cfg
+}
+
+func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
@@ -33,7 +65,7 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 
 	tr.Close()
 
-	cfg := o.DefaultRegistryConfig()
+	cfg := DefaultRegistryConfig(o, rso, ro)
 	if o.ConfigFile != "" {
 		ucfg, err := loadConfig(o.ConfigFile)
 		if err != nil {
@@ -43,6 +75,16 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 	}
 
 	l.Infof("starting registry on port [%d]", o.Port)
+
+	yamlConfig, err := yaml.Marshal(cfg)
+	if err != nil {
+		l.Errorf("failed to validate/output registry configuration: %v", err)
+	} else {
+		l.Infof("using registry configuration... \n%s", strings.TrimSpace(string(yamlConfig)))
+	}
+
+	l.Debugf("detailed registry configuration: %+v", cfg)
+
 	r, err := server.NewRegistry(ctx, cfg)
 	if err != nil {
 		return err
