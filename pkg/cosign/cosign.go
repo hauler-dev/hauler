@@ -58,7 +58,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 		if err != nil {
 			return err
 		}
-		l.Debugf("multi-arch image: %v", isMultiArch)
+		l.Debugf("multi-arch image [%v]", isMultiArch)
 
 		// Conditionally add platform.
 		if platform != "" && isMultiArch {

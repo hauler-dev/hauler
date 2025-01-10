@@ -19,7 +19,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
 	case "dir":
-		l.Debugf("identified directory target reference")
+		l.Debugf("identified directory target reference of [%s]", components[1])
 		fs := content.NewFile(components[1])
 		defer fs.Close()
 
@@ -29,7 +29,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 		}
 
 	case "registry":
-		l.Debugf("identified registry target reference")
+		l.Debugf("identified registry target reference of [%s]", components[1])
 		ropts := content.RegistryOptions{
 			Username:  o.Username,
 			Password:  o.Password,
