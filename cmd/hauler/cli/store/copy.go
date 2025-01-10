@@ -37,13 +37,6 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			PlainHTTP: o.PlainHTTP,
 		}
 
-		if ropts.Username != "" {
-			err := cosign.RegistryLogin(ctx, s, components[1], ropts, ro)
-			if err != nil {
-				return err
-			}
-		}
-
 		err := cosign.LoadImages(ctx, s, components[1], ropts, ro)
 		if err != nil {
 			return err

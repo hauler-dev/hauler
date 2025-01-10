@@ -2,17 +2,15 @@ package cli
 
 import (
 	"context"
-	"embed"
 
+	cranecmd "github.com/google/go-containerregistry/cmd/crane/cmd"
 	"github.com/spf13/cobra"
-
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/cosign"
 	"hauler.dev/go/hauler/pkg/log"
 )
 
-func New(ctx context.Context, binaries embed.FS, ro *flags.CliRootOpts) *cobra.Command {
+func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "hauler",
 		Short:   "Airgap Swiss Army Knife",
@@ -21,12 +19,6 @@ func New(ctx context.Context, binaries embed.FS, ro *flags.CliRootOpts) *cobra.C
 			l := log.FromContext(ctx)
 			l.SetLevel(ro.LogLevel)
 			l.Debugf("running cli command [%s]", cmd.CommandPath())
-
-			// ensure cosign binary is available
-			if err := cosign.EnsureBinaryExists(ctx, binaries, ro); err != nil {
-				l.Errorf("cosign binary missing: %v", err)
-				return err
-			}
 
 			return nil
 		},
@@ -37,7 +29,7 @@ func New(ctx context.Context, binaries embed.FS, ro *flags.CliRootOpts) *cobra.C
 
 	flags.AddRootFlags(cmd, ro)
 
-	addLogin(cmd, ro)
+	cmd.AddCommand(cranecmd.NewCmdAuthLogin("hauler"))
 	addStore(cmd, ro)
 	addVersion(cmd, ro)
 	addCompletion(cmd, ro)

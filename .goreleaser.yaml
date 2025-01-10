@@ -3,15 +3,11 @@ version: 2
 project_name: hauler
 before:
   hooks:
-    - rm -rf cmd/hauler/binaries
-    - mkdir -p cmd/hauler/binaries
-    - touch cmd/hauler/binaries/file
     - go mod tidy
     - go mod download
     - go fmt ./...
     - go vet ./...
     - go test ./... -cover -race -covermode=atomic -coverprofile=coverage.out
-    - rm -rf cmd/hauler/binaries
 
 release:
   prerelease: auto
@@ -32,11 +28,6 @@ builds:
       - arm64
     ldflags:
       - -s -w -X {{ .Env.vpkg }}.gitVersion={{ .Version }} -X {{ .Env.vpkg }}.gitCommit={{ .ShortCommit }} -X {{ .Env.vpkg }}.gitTreeState={{if .IsGitDirty}}dirty{{else}}clean{{end}} -X {{ .Env.vpkg }}.buildDate={{ .Date }}
-    hooks:
-      pre:
-        - wget -P cmd/hauler/binaries/ https://github.com/hauler-dev/cosign/releases/download/{{ .Env.cosign_version }}/cosign-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
-      post:
-        - rm -rf cmd/hauler/binaries
     env:
       - CGO_ENABLED=0
       - GOEXPERIMENT=boringcrypto
