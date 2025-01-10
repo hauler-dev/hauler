@@ -10,7 +10,7 @@
 dist/
 tmp/
 bin/
-store/
+/store/
 registry/
 fileserver/
 cmd/hauler/binaries
