@@ -10,28 +10,24 @@ GO_COVERPROFILE=coverage.out
 # set build variables
 BIN_DIRECTORY=bin
 DIST_DIRECTORY=dist
-BINARIES_DIRECTORY=cmd/hauler/binaries
 
 # local build of hauler for current platform
 # references/configuration from .goreleaser.yaml
 build:
-	goreleaser build --clean --snapshot --parallelism 1 --timeout 60m --single-target
+	goreleaser build --clean --snapshot --timeout 60m --single-target
 
 # local build of hauler for all platforms
 # references/configuration from .goreleaser.yaml
 build-all:
-	goreleaser build --clean --snapshot --parallelism 1 --timeout 60m
+	goreleaser build --clean --snapshot --timeout 60m
 
 # local release of hauler for all platforms
 # references/configuration from .goreleaser.yaml
 release:
-	goreleaser release --clean --snapshot --parallelism 1 --timeout 60m
+	goreleaser release --clean --snapshot --timeout 60m
 
 # install depedencies
 install:
-	rm -rf $(BINARIES_DIRECTORY)
-	mkdir -p $(BINARIES_DIRECTORY)
-	touch cmd/hauler/binaries/file
 	go mod tidy
 	go mod download
 	CGO_ENABLED=0 go install ./cmd/...
@@ -50,4 +46,4 @@ test:
 
 # cleanup artifacts
 clean:
-	rm -rf $(BIN_DIRECTORY) $(BINARIES_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE)
+	rm -rf $(BIN_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE)
