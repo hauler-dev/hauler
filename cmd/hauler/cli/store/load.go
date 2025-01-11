@@ -4,9 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/mholt/archiver/v3"
-
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/archives"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/log"
@@ -55,7 +54,7 @@ func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tem
 
 	l.Debugf("using temporary directory at [%s]", tempDir)
 
-	if err := archiver.Unarchive(archivePath, tempDir); err != nil {
+	if err := archives.Unarchive(ctx, archivePath, tempDir); err != nil {
 		return err
 	}
 
