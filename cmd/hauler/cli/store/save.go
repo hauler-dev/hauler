@@ -15,10 +15,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/mholt/archiver/v3"
 	imagev1 "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/archives"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/log"
 )
@@ -38,9 +38,14 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		storeDir = consts.DefaultStoreName
 	}
 
+	// Maps to handle compression and archival types
+	compressionMap := archives.CompressionMap
+	archivalMap := archives.ArchivalMap
+
 	// TODO: Support more formats?
-	a := archiver.NewTarZstd()
-	a.OverwriteExisting = true
+	// Select the correct compression and archival type based on user input
+	compression := compressionMap["zst"]
+	archival := archivalMap["tar"]
 
 	absOutputfile, err := filepath.Abs(outputFile)
 	if err != nil {
@@ -56,11 +61,13 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 
+	// create the manifest.json file
 	if err := writeExportsManifest(ctx, ".", o.Platform); err != nil {
 		return err
 	}
 
-	err = a.Archive([]string{"."}, absOutputfile)
+	// create the archive
+	err = archives.Archive(ctx, ".", absOutputfile, compression, archival)
 	if err != nil {
 		return err
 	}
