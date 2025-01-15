@@ -35,6 +35,7 @@ type AddChartOpts struct {
 
 	AddImages  bool
 	HelmValues string
+	Platform   string
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -52,5 +53,5 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 
 	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in a helm chart (tech preview)")
 	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images (tech preview)")
-
+	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specifiy the platform of the image... i.e. linux/amd64 (defaults to all)")
 }

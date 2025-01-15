@@ -187,7 +187,7 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		l.Infof("successfully found images... %v", images)
 
 		for _, image := range images {
-			storeImage(ctx, s, v1alpha1.Image{Name: image}, "", rso, ro)
+			storeImage(ctx, s, v1alpha1.Image{Name: image, Platform: opts.Platform}, "", rso, ro)
 		}
 	}
 
