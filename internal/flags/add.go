@@ -32,6 +32,10 @@ type AddChartOpts struct {
 	*StoreRootOpts
 
 	ChartOpts *action.ChartPathOptions
+
+	AddImages  bool
+	HelmValues string
+	Platform   string
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -46,4 +50,8 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authenication")
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
+
+	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in a helm chart (tech preview)")
+	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images (tech preview)")
+	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specifiy the platform of the image... i.e. linux/amd64 (defaults to all)")
 }

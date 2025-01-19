@@ -204,7 +204,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 
 			for _, ch := range cfg.Spec.Charts {
 				// TODO: Provide a way to configure syncs
-				err := storeChart(ctx, s, ch, &action.ChartPathOptions{})
+
+				err := storeChart(ctx, s, ch.Name, &flags.AddChartOpts{ChartOpts: &action.ChartPathOptions{RepoURL: ch.RepoURL, Version: ch.Version}}, rso, ro)
 				if err != nil {
 					return err
 				}
