@@ -4,7 +4,7 @@ go 1.23
 
 toolchain go1.23.4
 
-replace github.com/sigstore/cosign/v2 => github.com/hauler-dev/cosign/v2 v2.4.2-0.20250118012335-ee9b762a922a
+replace github.com/sigstore/cosign/v2 => github.com/hauler-dev/cosign/v2 v2.4.2-0.20250126162449-3b34bda542a5
 
 require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
