@@ -584,8 +584,8 @@ github.com/hashicorp/hcl v1.0.1-vault-5 h1:kI3hhbbyzr4dldA8UdTb7ZlVVlI2DACdCfz31
 github.com/hashicorp/hcl v1.0.1-vault-5/go.mod h1:XYhtn6ijBSAj6n4YqAaf7RBPS4I06AItNorpy+MoQNM=
 github.com/hashicorp/vault/api v1.14.0 h1:Ah3CFLixD5jmjusOgm8grfN9M0d+Y8fVR2SW0K6pJLU=
 github.com/hashicorp/vault/api v1.14.0/go.mod h1:pV9YLxBGSz+cItFDd8Ii4G17waWOQ32zVjMWHe/cOqk=
-github.com/hauler-dev/cosign/v2 v2.4.2-0.20250118012335-ee9b762a922a h1:/l+VaobyY00HyBYvOEtu6o9EQUDygmK89SDJ6k++/q8=
-github.com/hauler-dev/cosign/v2 v2.4.2-0.20250118012335-ee9b762a922a/go.mod h1:GvzjBeUKigI+XYnsoVQDmMAsMMc6engxztRSuxE+x9I=
+github.com/hauler-dev/cosign/v2 v2.4.2-0.20250126162449-3b34bda542a5 h1:63LHOtdOrHCo9gvU1LETG4qJfWnJMmwWefkO4Vy57u4=
+github.com/hauler-dev/cosign/v2 v2.4.2-0.20250126162449-3b34bda542a5/go.mod h1:GvzjBeUKigI+XYnsoVQDmMAsMMc6engxztRSuxE+x9I=
 github.com/howeyc/gopass v0.0.0-20210920133722-c8aef6fb66ef h1:A9HsByNhogrvm9cWb28sjiS3i7tcKCkflWFEkHfuAgM=
 github.com/howeyc/gopass v0.0.0-20210920133722-c8aef6fb66ef/go.mod h1:lADxMC39cJJqL93Duh1xhAs4I2Zs8mKS89XWXFGp9cs=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
