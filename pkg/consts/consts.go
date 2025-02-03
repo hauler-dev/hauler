@@ -68,11 +68,8 @@ const (
 	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
 
 	// container files and directories
-	OCIImageIndexFile  = "index.json"
-	OCIImageLayoutFile = "oci-layout"
-	OCIImageBlobsDir   = "blobs"
-	ImageManifestFile  = "manifest.json"
-	ImageConfigFile    = "config.json"
+	ImageManifestFile = "manifest.json"
+	ImageConfigFile   = "config.json"
 
 	// other constraints
 	CarbideRegistry          = "rgcrprod.azurecr.us"
