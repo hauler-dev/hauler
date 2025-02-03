@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mitchellh/go-homedir"
@@ -14,6 +16,7 @@ import (
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	tchart "hauler.dev/go/hauler/pkg/collection/chart"
 	"hauler.dev/go/hauler/pkg/collection/imagetxt"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -24,8 +27,20 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, tempOverride string) error {
 	l := log.FromContext(ctx)
+
+	if tempOverride == "" {
+		tempOverride = os.Getenv(consts.HaulerTempDir)
+	}
+
+	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	l.Debugf("using temporary directory at [%s]", tempDir)
 
 	// if passed products, check for a remote manifest to retrieve and use.
 	for _, product := range o.Products {
@@ -64,10 +79,22 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		}
 	}
 
-	// if passed a local manifest, process it
-	for _, filename := range o.ContentFiles {
-		l.Debugf("processing content file: [%s]", filename)
-		fi, err := os.Open(filename)
+	// if passed a manifest... process it
+	for _, filename := range o.Filename {
+		l.Infof("processing manifest [%s] to store [%s]", filename, o.StoreDir)
+		var localFilename string
+
+		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
+			l.Debugf("detected remote manifest... starting download... [%s]", filename)
+			var err error
+			localFilename, err = downloadRemote(ctx, filename, tempDir)
+			if err != nil {
+				return err
+			}
+		} else {
+			localFilename = filename
+		}
+		fi, err := os.Open(localFilename)
 		if err != nil {
 			return err
 		}
@@ -105,7 +132,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			continue
 		}
 
-		l.Infof("syncing [%s] to store", obj.GroupVersionKind().String())
+		l.Infof("syncing [%s]", obj.GroupVersionKind().String())
 
 		// TODO: Should type switch instead...
 		switch obj.GroupVersionKind().Kind {
@@ -255,4 +282,36 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 	}
 	return nil
+}
+
+// downloadRemote downloads the remote file using the existing getter
+func downloadRemote(ctx context.Context, remoteURL, tempDirDest string) (string, error) {
+	parsedURL, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", err
+	}
+	h := getter.NewHttp()
+	rc, err := h.Open(ctx, parsedURL)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	fileName := h.Name(parsedURL)
+	if fileName == "" {
+		fileName = filepath.Base(parsedURL.Path)
+	}
+
+	localPath := filepath.Join(tempDirDest, fileName)
+	out, err := os.Create(localPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, rc); err != nil {
+		return "", err
+	}
+
+	return localPath, nil
 }

@@ -75,20 +75,21 @@ const (
 	ImageConfigFile    = "config.json"
 
 	// other constraints
-	CarbideRegistry          = "rgcrprod.azurecr.us"
-	APIVersion               = "v1alpha1"
-	DefaultNamespace         = "hauler"
-	DefaultTag               = "latest"
-	DefaultStoreName         = "store"
-	DefaultHaulerDirName     = ".hauler"
-	DefaultHaulerTempDirName = "hauler"
-	DefaultRegistryRootDir   = "registry"
-	DefaultRegistryPort      = 5000
-	DefaultFileserverRootDir = "fileserver"
-	DefaultFileserverPort    = 8080
-	DefaultFileserverTimeout = 60
-	DefaultHaulArchiveName   = "haul.tar.zst"
-	DefaultRetries           = 3
-	RetriesInterval          = 5
-	CustomTimeFormat         = "2006-01-02 15:04:05"
+	CarbideRegistry           = "rgcrprod.azurecr.us"
+	APIVersion                = "v1alpha1"
+	DefaultNamespace          = "hauler"
+	DefaultTag                = "latest"
+	DefaultStoreName          = "store"
+	DefaultHaulerDirName      = ".hauler"
+	DefaultHaulerTempDirName  = "hauler"
+	DefaultRegistryRootDir    = "registry"
+	DefaultRegistryPort       = 5000
+	DefaultFileserverRootDir  = "fileserver"
+	DefaultFileserverPort     = 8080
+	DefaultFileserverTimeout  = 60
+	DefaultHaulArchiveName    = "haul.tar.zst"
+	DefaultHaulerManifestName = "hauler-manifest.yaml"
+	DefaultRetries            = 3
+	RetriesInterval           = 5
+	CustomTimeFormat          = "2006-01-02 15:04:05"
 )

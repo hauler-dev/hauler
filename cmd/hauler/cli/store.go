@@ -67,6 +67,7 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Sync content to the content store",
+		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -75,7 +76,7 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return err
 			}
 
-			return store.SyncCmd(ctx, o, s, rso, ro)
+			return store.SyncCmd(ctx, o, s, rso, ro, o.TempOverride)
 		},
 	}
 	o.AddFlags(cmd)
