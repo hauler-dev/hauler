@@ -23,20 +23,9 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 )
 
-// SaveCmd
-// TODO: Just use mholt/archiver for now, even though we don't need most of it
-func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
+// saves a content store to store archives
+func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
-
-	storeDir := o.StoreDir
-
-	if storeDir == "" {
-		storeDir = os.Getenv(consts.HaulerStoreDir)
-	}
-
-	if storeDir == "" {
-		storeDir = consts.DefaultStoreName
-	}
 
 	// Maps to handle compression and archival types
 	compressionMap := archives.CompressionMap
@@ -47,7 +36,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 	compression := compressionMap["zst"]
 	archival := archivalMap["tar"]
 
-	absOutputfile, err := filepath.Abs(outputFile)
+	absOutputfile, err := filepath.Abs(o.FileName)
 	if err != nil {
 		return err
 	}
@@ -57,7 +46,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 	defer os.Chdir(cwd)
-	if err := os.Chdir(storeDir); err != nil {
+	if err := os.Chdir(o.StoreDir); err != nil {
 		return err
 	}
 
@@ -72,7 +61,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 
-	l.Infof("saved store [%s] -> [%s]", storeDir, absOutputfile)
+	l.Infof("saved store [%s] -> [%s]", o.StoreDir, absOutputfile)
 	return nil
 }
 
@@ -154,7 +143,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 
 								// skip 'unknown' platforms... docker hates
 								if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
-									l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: mathces unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+									l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: matches unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
 									continue
 								}
 

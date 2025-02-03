@@ -17,23 +17,13 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-// loads a content store from one or more store archives.
-func LoadCmd(ctx context.Context, o *flags.LoadOpts) error {
+// loads a content store from one or more store archives
+func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	storeDir := o.StoreDir
-
-	if storeDir == "" {
-		storeDir = os.Getenv(consts.HaulerStoreDir)
-	}
-
-	if storeDir == "" {
-		storeDir = consts.DefaultStoreName
-	}
-
 	for _, archiveRef := range o.FileName {
-		l.Infof("loading archive [%s] to store [%s]", archiveRef, storeDir)
-		if err := unarchiveLayoutTo(ctx, archiveRef, storeDir, o.TempOverride); err != nil {
+		l.Infof("loading archive [%s] to store [%s]", archiveRef, o.StoreDir)
+		if err := unarchiveLayoutTo(ctx, archiveRef, o.StoreDir, o.TempOverride); err != nil {
 			return err
 		}
 	}
