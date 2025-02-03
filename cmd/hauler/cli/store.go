@@ -99,7 +99,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			}
 			_ = s
 
-			return store.LoadCmd(ctx, o, o.FileName)
+			return store.LoadCmd(ctx, o)
 		},
 	}
 	o.AddFlags(cmd)

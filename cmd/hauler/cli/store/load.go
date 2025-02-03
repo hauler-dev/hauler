@@ -17,24 +17,25 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-// LoadCmd
-// TODO: Just use mholt/archiver for now, even though we don't need most of it
-func LoadCmd(ctx context.Context, o *flags.LoadOpts, archiveRefs ...string) error {
+// loads a content store from one or more store archives.
+func LoadCmd(ctx context.Context, o *flags.LoadOpts) error {
 	l := log.FromContext(ctx)
 
 	storeDir := o.StoreDir
+
 	if storeDir == "" {
 		storeDir = os.Getenv(consts.HaulerStoreDir)
 	}
+
 	if storeDir == "" {
 		storeDir = consts.DefaultStoreName
 	}
 
-	archiveRef := o.FileName
-
-	l.Infof("loading archive [%s] to store [%s]", archiveRef, storeDir)
-	if err := unarchiveLayoutTo(ctx, archiveRef, storeDir, o.TempOverride); err != nil {
-		return err
+	for _, archiveRef := range o.FileName {
+		l.Infof("loading archive [%s] to store [%s]", archiveRef, storeDir)
+		if err := unarchiveLayoutTo(ctx, archiveRef, storeDir, o.TempOverride); err != nil {
+			return err
+		}
 	}
 
 	return nil

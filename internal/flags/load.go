@@ -7,7 +7,7 @@ import (
 
 type LoadOpts struct {
 	*StoreRootOpts
-	FileName     string
+	FileName     []string
 	TempOverride string
 }
 
@@ -16,6 +16,6 @@ func (o *LoadOpts) AddFlags(cmd *cobra.Command) {
 
 	// On Unix, the default is $TMPDIR if non-empty, else /tmp.
 	// On Windows, the default is GetTempPath, returning the first non-empty value from %TMP%, %TEMP%, %USERPROFILE%, or the Windows directory.
-	f.StringVarP(&o.FileName, "filename", "f", consts.DefaultHaulArchiveName, "(Optional) Specify the name of inputted archive")
-	f.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directiory determined by the OS")
+	f.StringSliceVarP(&o.FileName, "filename", "f", []string{consts.DefaultHaulArchiveName}, "(Optional) Specify the name of inputted archive(s)")
+	f.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
 }
