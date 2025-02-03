@@ -66,7 +66,7 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 
 // LoadIndex will load the index from disk
 func (o *OCI) LoadIndex() error {
-	path := o.path(consts.OCIImageIndexFile)
+	path := o.path(ocispec.ImageIndexFile)
 	idx, err := os.Open(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -138,7 +138,7 @@ func (o *OCI) SaveIndex() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(o.path(consts.OCIImageIndexFile), data, 0644)
+	return os.WriteFile(o.path(ocispec.ImageIndexFile), data, 0644)
 }
 
 // Resolve attempts to resolve the reference into a name and descriptor.
@@ -259,7 +259,7 @@ func (o *OCI) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
 }
 
 func (o *OCI) ensureBlob(alg string, hex string) (string, error) {
-	dir := o.path(consts.OCIImageBlobsDir, alg)
+	dir := o.path(ocispec.ImageBlobsDir, alg)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
 		return "", err
 	}
