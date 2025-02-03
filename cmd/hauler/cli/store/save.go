@@ -111,7 +111,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 	}
 
 	for _, desc := range imx.Manifests {
-		l.Debugf("descriptor [%s] >>> %s", desc.Digest.String(), desc.MediaType)
+		l.Debugf("descriptor [%s] = [%s]", desc.Digest.String(), desc.MediaType)
 		if artifactType := types.MediaType(desc.ArtifactType); artifactType != "" && !artifactType.IsImage() && !artifactType.IsIndex() {
 			l.Debugf("descriptor [%s] <<< SKIPPING ARTIFACT [%q]", desc.Digest.String(), desc.ArtifactType)
 			continue
@@ -127,11 +127,11 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 							return err
 						}
 					case consts.KindAnnotationIndex:
-						l.Debugf("index [%s]: digest=%s, type=%s, size=%d", refName, desc.Digest.String(), desc.MediaType, desc.Size)
+						l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
 						// when no platform is provided, warn the user of potential mismatch on import
 						if platform.String() == "" {
-							l.Warnf("index [%s]: provide an export platform to prevent potential platform mismatch on import", refName)
+							l.Warnf("specify an export platform to prevent potential platform mismatch on import of index [%s]", refName)
 						}
 
 						iix, err := idx.ImageIndex(desc.Digest)
@@ -147,14 +147,14 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 								// check if platform is provided, if so, skip anything that doesn't match
 								if platform.String() != "" {
 									if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
-										l.Warnf("index [%s]: digest=%s, platform=%s/%s: does not match the supplied platform, skipping", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+										l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: does not match the supplied platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
 										continue
 									}
 								}
 
 								// skip 'unknown' platforms... docker hates
 								if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
-									l.Warnf("index [%s]: digest=%s, platform=%s/%s: skipping 'unknown/unknown' platform", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+									l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: mathces unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
 									continue
 								}
 
