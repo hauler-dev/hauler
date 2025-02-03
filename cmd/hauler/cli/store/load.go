@@ -2,10 +2,15 @@ package store
 
 import (
 	"context"
+	"io"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/archives"
+	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/log"
@@ -18,41 +23,53 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, archiveRefs ...string) erro
 	l := log.FromContext(ctx)
 
 	storeDir := o.StoreDir
-
 	if storeDir == "" {
 		storeDir = os.Getenv(consts.HaulerStoreDir)
 	}
-
 	if storeDir == "" {
 		storeDir = consts.DefaultStoreName
 	}
 
-	for _, archiveRef := range archiveRefs {
-		l.Infof("loading content from [%s] to [%s]", archiveRef, storeDir)
-		err := unarchiveLayoutTo(ctx, archiveRef, storeDir, o.TempOverride)
-		if err != nil {
-			return err
-		}
+	archiveRef := o.FileName
+
+	l.Infof("loading archive [%s] to store [%s]", archiveRef, storeDir)
+	if err := unarchiveLayoutTo(ctx, archiveRef, storeDir, o.TempOverride); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-// unarchiveLayoutTo accepts an archived oci layout and extracts the contents to an existing oci layout, preserving the index
+// unarchiveLayoutTo accepts an archived OCI layout, extracts the contents to an existing OCI layout, and preserves the index
 func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tempOverride string) error {
 	l := log.FromContext(ctx)
 
-	if tempOverride == "" {
-		tempOverride = os.Getenv(consts.HaulerTempDir)
+	var tempDir string
+
+	if tempOverride != "" {
+		tempDir = tempOverride
+	} else {
+
+		parent := os.Getenv(consts.HaulerTempDir)
+		var err error
+		tempDir, err = os.MkdirTemp(parent, consts.DefaultHaulerTempDirName)
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tempDir)
 	}
 
-	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tempDir)
+	l.Debugf("using temporary directory [%s]", tempDir)
 
-	l.Debugf("using temporary directory at [%s]", tempDir)
+	// if archivePath detects a remote URL... download it
+	if strings.HasPrefix(archivePath, "http://") || strings.HasPrefix(archivePath, "https://") {
+		l.Debugf("detected remote archive... starting download... [%s]", archivePath)
+		var err error
+		archivePath, err = downloadRemote(ctx, archivePath, tempDir)
+		if err != nil {
+			return err
+		}
+	}
 
 	if err := archives.Unarchive(ctx, archivePath, tempDir); err != nil {
 		return err
@@ -70,4 +87,36 @@ func unarchiveLayoutTo(ctx context.Context, archivePath string, dest string, tem
 
 	_, err = s.CopyAll(ctx, ts, nil)
 	return err
+}
+
+// downloadRemote downloads the remote file using the existing getter
+func downloadRemote(ctx context.Context, remoteURL, tempDirDest string) (string, error) {
+	parsedURL, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", err
+	}
+	h := getter.NewHttp()
+	rc, err := h.Open(ctx, parsedURL)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	fileName := h.Name(parsedURL)
+	if fileName == "" {
+		fileName = filepath.Base(parsedURL.Path)
+	}
+
+	localPath := filepath.Join(tempDirDest, fileName)
+	out, err := os.Create(localPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, rc); err != nil {
+		return "", err
+	}
+
+	return localPath, nil
 }
