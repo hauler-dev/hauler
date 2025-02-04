@@ -124,7 +124,6 @@ func addStoreServe(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comma
 	return cmd
 }
 
-// RegistryCmd serves the registry
 func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.ServeRegistryOpts{StoreRootOpts: rso}
 
@@ -148,7 +147,6 @@ func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cob
 	return cmd
 }
 
-// FileServerCmd serves the file server
 func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.ServeFilesOpts{StoreRootOpts: rso}
 
