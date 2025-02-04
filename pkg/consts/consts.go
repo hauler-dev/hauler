@@ -73,7 +73,7 @@ const (
 
 	// other constraints
 	CarbideRegistry          = "rgcrprod.azurecr.us"
-	APIVersion               = "v1alpha1"
+	APIVersion               = "v1"
 	DefaultNamespace         = "hauler"
 	DefaultTag               = "latest"
 	DefaultStoreName         = "store"

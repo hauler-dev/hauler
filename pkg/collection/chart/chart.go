@@ -3,7 +3,7 @@ package chart
 import (
 	"helm.sh/helm/v3/pkg/action"
 
-	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
 	"hauler.dev/go/hauler/pkg/content/chart"
@@ -15,13 +15,13 @@ var _ artifacts.OCICollection = (*tchart)(nil)
 // tchart is a thick chart that includes all the dependent images as well as the chart itself
 type tchart struct {
 	chart  *chart.Chart
-	config v1alpha1.ThickChart
+	config v1.ThickChart
 
 	computed bool
 	contents map[string]artifacts.OCI
 }
 
-func NewThickChart(cfg v1alpha1.ThickChart, opts *action.ChartPathOptions) (artifacts.OCICollection, error) {
+func NewThickChart(cfg v1.ThickChart, opts *action.ChartPathOptions) (artifacts.OCICollection, error) {
 	o, err := chart.NewChart(cfg.Chart.Name, opts)
 	if err != nil {
 		return nil, err

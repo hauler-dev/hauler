@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	tchart "hauler.dev/go/hauler/pkg/collection/chart"
 	"hauler.dev/go/hauler/pkg/collection/imagetxt"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -41,7 +41,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 
 		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", ProductRegistry, parts[0], tag)
 		l.Infof("retrieving product manifest from [%s]", manifestLoc)
-		img := v1alpha1.Image{
+		img := v1.Image{
 			Name: manifestLoc,
 		}
 		err := storeImage(ctx, s, img, o.Platform, rso, ro)
@@ -110,7 +110,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		// TODO: Should type switch instead...
 		switch obj.GroupVersionKind().Kind {
 		case consts.FilesContentKind:
-			var cfg v1alpha1.Files
+			var cfg v1.Files
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
 			}
@@ -123,7 +123,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			}
 
 		case consts.ImagesContentKind:
-			var cfg v1alpha1.Images
+			var cfg v1.Images
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
 			}
@@ -197,7 +197,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			s.CopyAll(ctx, s.OCI, nil)
 
 		case consts.ChartsContentKind:
-			var cfg v1alpha1.Charts
+			var cfg v1.Charts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
 			}
@@ -211,7 +211,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			}
 
 		case consts.ChartsCollectionKind:
-			var cfg v1alpha1.ThickCharts
+			var cfg v1.ThickCharts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
 			}
@@ -231,7 +231,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			}
 
 		case consts.ImageTxtsContentKind:
-			var cfg v1alpha1.ImageTxts
+			var cfg v1.ImageTxts
 			if err := yaml.Unmarshal(doc, &cfg); err != nil {
 				return err
 			}
