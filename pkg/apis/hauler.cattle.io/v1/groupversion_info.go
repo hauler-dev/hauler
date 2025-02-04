@@ -7,6 +7,6 @@ import (
 )
 
 var (
-	ContentGroupVersion    = schema.GroupVersion{Group: consts.ContentGroup, Version: consts.APIVersion}
-	CollectionGroupVersion = schema.GroupVersion{Group: consts.CollectionGroup, Version: consts.APIVersion}
+	ContentGroupVersion    = schema.GroupVersion{Group: consts.ContentGroup, Version: "v1"}
+	CollectionGroupVersion = schema.GroupVersion{Group: consts.CollectionGroup, Version: "v1"}
 )

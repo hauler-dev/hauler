@@ -8,7 +8,7 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 
 	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
+	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts/file"
 	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -112,7 +112,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string) error {
-	// TODO: Reduce duplicates between api chart and upstream helm opts
 	cfg := v1.Chart{
 		Name:    chartName,
 		RepoURL: o.ChartOpts.RepoURL,
