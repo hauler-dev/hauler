@@ -209,9 +209,9 @@ jobs:
           # verify via save
           hauler store save
           # verify via save with filename
-          hauler store save --filename store.tar.zst
+          hauler store save store.tar.zst
           # verify via save with filename and platform (amd64)
-          hauler store save --filename store-amd64.tar.zst --platform linux/amd64
+          hauler store save store-amd64.tar.zst --platform linux/amd64
 
       - name: Remove Hauler Store Contents
         run: |
@@ -222,11 +222,11 @@ jobs:
         run: |
           hauler store load --help
           # verify via load
-          hauler store load --filename haul.tar.zst
+          hauler store load haul.tar.zst
           # verify via load with filename and temp directory
-          hauler store load --filename store.tar.zst --tempdir /opt
+          hauler store load store.tar.zst --tempdir /opt
           # verify via load with filename and platform (amd64)
-          hauler store load --filename store-amd64.tar.zst
+          hauler store load store-amd64.tar.zst
 
       - name: Verify Hauler Store Contents
         run: |
