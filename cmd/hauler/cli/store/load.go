@@ -18,12 +18,12 @@ import (
 )
 
 // loads a content store from one or more store archives
-func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, fileNames ...string) error {
 	l := log.FromContext(ctx)
 
-	for _, archiveRef := range o.FileName {
-		l.Infof("loading archive [%s] to store [%s]", archiveRef, o.StoreDir)
-		if err := unarchiveLayoutTo(ctx, archiveRef, o.StoreDir, o.TempOverride); err != nil {
+	for _, fileName := range fileNames {
+		l.Infof("loading archive [%s] to store [%s]", fileName, o.StoreDir)
+		if err := unarchiveLayoutTo(ctx, fileName, o.StoreDir, o.TempOverride); err != nil {
 			return err
 		}
 	}
