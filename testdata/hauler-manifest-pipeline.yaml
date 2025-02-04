@@ -1,3 +1,4 @@
+# v1 manifests
 apiVersion: content.hauler.cattle.io/v1
 kind: Images
 metadata:
@@ -35,6 +36,56 @@ spec:
       repoURL: .
 ---
 apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: hauler-content-files-example
+spec:
+  files:
+    - path: https://get.rke2.io/install.sh
+    - path: https://get.rke2.io/install.sh
+      name: rke2-install.sh
+    - path: ../testdata/hauler-manifest.yaml
+    - path: ../testdata/hauler-manifest.yaml
+      name: hauler-manifest-local.yaml
+---
+# v1alpha1 manifests
+apiVersion: content.hauler.cattle.io/v1alpha1
+kind: Images
+metadata:
+  name: hauler-content-images-example
+spec:
+  images:
+    - name: busybox
+    - name: busybox:stable
+      platform: linux/amd64
+    - name: gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+---
+apiVersion: content.hauler.cattle.io/v1alpha1
+kind: Charts
+metadata:
+  name: hauler-content-charts-example
+spec:
+  charts:
+    - name: rancher
+      repoURL: https://releases.rancher.com/server-charts/stable
+    - name: rancher
+      repoURL: https://releases.rancher.com/server-charts/stable
+      version: 2.8.4
+    - name: rancher
+      repoURL: https://releases.rancher.com/server-charts/stable
+      version: 2.8.3
+    - name: hauler-helm
+      repoURL: oci://ghcr.io/hauler-dev
+    - name: hauler-helm
+      repoURL: oci://ghcr.io/hauler-dev
+      version: 1.0.6
+    - name: hauler-helm
+      repoURL: oci://ghcr.io/hauler-dev
+      version: 1.0.4
+    - name: rancher-cluster-templates-0.5.2.tgz
+      repoURL: .
+---
+apiVersion: content.hauler.cattle.io/v1alpha1
 kind: Files
 metadata:
   name: hauler-content-files-example
