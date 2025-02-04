@@ -24,7 +24,7 @@ import (
 )
 
 // saves a content store to store archives
-func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, fileName string) error {
 	l := log.FromContext(ctx)
 
 	// Maps to handle compression and archival types
@@ -36,7 +36,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 	compression := compressionMap["zst"]
 	archival := archivalMap["tar"]
 
-	absOutputfile, err := filepath.Abs(o.FileName)
+	absOutputfile, err := filepath.Abs(fileName)
 	if err != nil {
 		return err
 	}

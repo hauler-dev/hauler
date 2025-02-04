@@ -8,6 +8,7 @@ import (
 
 	"hauler.dev/go/hauler/cmd/hauler/cli/store"
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
@@ -175,7 +176,7 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "save",
 		Short: "Save a content store to a store archive",
-		Args:  cobra.ExactArgs(0),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -185,7 +186,8 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			}
 			_ = s
 
-			return store.SaveCmd(ctx, o, rso, ro)
+			fileName := append([]string{consts.DefaultHaulerArchiveName}, args...)[0]
+			return store.SaveCmd(ctx, o, rso, ro, fileName)
 		},
 	}
 	o.AddFlags(cmd)
