@@ -186,7 +186,11 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			}
 			_ = s
 
-			fileName := append([]string{consts.DefaultHaulerArchiveName}, args...)[0]
+			fileName := consts.DefaultHaulerArchiveName
+			if len(args) > 0 && args[0] != "" {
+				fileName = args[0]
+			}
+
 			return store.SaveCmd(ctx, o, rso, ro, fileName)
 		},
 	}

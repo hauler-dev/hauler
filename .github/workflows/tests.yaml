@@ -222,7 +222,7 @@ jobs:
         run: |
           hauler store load --help
           # verify via load
-          hauler store load haul.tar.zst
+          hauler store load
           # verify via load with filename and temp directory
           hauler store load store.tar.zst --tempdir /opt
           # verify via load with filename and platform (amd64)
