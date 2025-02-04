@@ -77,6 +77,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
+		l.Infof("processing completed successfully")
 	}
 
 	// if passed a manifest... process it
@@ -102,6 +103,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
+		l.Infof("processing completed successfully")
 	}
 
 	return nil
