@@ -21,7 +21,7 @@ import (
 func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, fileNames ...string) error {
 	l := log.FromContext(ctx)
 
-	for _, fileName := range fileNames {
+	for _, fileName := range o.FileName {
 		l.Infof("loading archive [%s] to store [%s]", fileName, o.StoreDir)
 		if err := unarchiveLayoutTo(ctx, fileName, o.StoreDir, o.TempOverride); err != nil {
 			return err
