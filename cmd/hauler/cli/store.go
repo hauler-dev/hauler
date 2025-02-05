@@ -67,6 +67,7 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Sync content to the content store",
+		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -89,7 +90,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "load",
 		Short: "Load a content store from a store archive",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -99,7 +100,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			}
 			_ = s
 
-			return store.LoadCmd(ctx, o, args...)
+			return store.LoadCmd(ctx, o, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -123,7 +124,6 @@ func addStoreServe(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comma
 	return cmd
 }
 
-// RegistryCmd serves the registry
 func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.ServeRegistryOpts{StoreRootOpts: rso}
 
@@ -147,7 +147,6 @@ func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cob
 	return cmd
 }
 
-// FileServerCmd serves the file server
 func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.ServeFilesOpts{StoreRootOpts: rso}
 
