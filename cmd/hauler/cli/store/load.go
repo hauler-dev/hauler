@@ -10,9 +10,9 @@ import (
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/archives"
-	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
+	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
 )
@@ -50,12 +50,33 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDir string) error {
 	l := log.FromContext(ctx)
 
-	// if archivePath detects a remote URL... download it
 	if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 		l.Debugf("detected remote archive... starting download... [%s]", haulPath)
-		var err error
-		haulPath, err = downloadRemote(ctx, haulPath, tempDir)
+
+		h := getter.NewHttp()
+		parsedURL, err := url.Parse(haulPath)
 		if err != nil {
+			return err
+		}
+		rc, err := h.Open(ctx, parsedURL)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		fileName := h.Name(parsedURL)
+		if fileName == "" {
+			fileName = filepath.Base(parsedURL.Path)
+		}
+		haulPath = filepath.Join(tempDir, fileName)
+
+		out, err := os.Create(haulPath)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+
+		if _, err = io.Copy(out, rc); err != nil {
 			return err
 		}
 	}
@@ -76,36 +97,4 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 
 	_, err = s.CopyAll(ctx, ts, nil)
 	return err
-}
-
-// downloadRemote downloads the remote file using the existing getter
-func downloadRemote(ctx context.Context, remoteURL, tempDirDest string) (string, error) {
-	parsedURL, err := url.Parse(remoteURL)
-	if err != nil {
-		return "", err
-	}
-	h := getter.NewHttp()
-	rc, err := h.Open(ctx, parsedURL)
-	if err != nil {
-		return "", err
-	}
-	defer rc.Close()
-
-	fileName := h.Name(parsedURL)
-	if fileName == "" {
-		fileName = filepath.Base(parsedURL.Path)
-	}
-
-	localPath := filepath.Join(tempDirDest, fileName)
-	out, err := os.Create(localPath)
-	if err != nil {
-		return "", err
-	}
-	defer out.Close()
-
-	if _, err = io.Copy(out, rc); err != nil {
-		return "", err
-	}
-
-	return localPath, nil
 }
