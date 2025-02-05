@@ -44,8 +44,8 @@ spec:
     - path: https://get.rke2.io/install.sh
     - path: https://get.rke2.io/install.sh
       name: rke2-install.sh
-    - path: ../testdata/hauler-manifest.yaml
-    - path: ../testdata/hauler-manifest.yaml
+    - path: testdata/hauler-manifest.yaml
+    - path: testdata/hauler-manifest.yaml
       name: hauler-manifest-local.yaml
 ---
 # v1alpha1 manifests
