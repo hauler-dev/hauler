@@ -42,13 +42,13 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 		return err
 	}
 
-	l.Infof("adding 'file' [%s] to the store as [%s]", fi.Path, ref.Name())
+	l.Infof("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
 	_, err = s.AddOCI(ctx, f, ref.Name())
 	if err != nil {
 		return err
 	}
 
-	l.Infof("successfully added 'file' [%s]", ref.Name())
+	l.Infof("successfully added file [%s]", ref.Name())
 
 	return nil
 }
@@ -83,15 +83,15 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
-	l.Infof("adding 'image' [%s] to the store", i.Name)
+	l.Infof("adding image [%s] to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
 		if ro.IgnoreErrors {
-			l.Warnf("unable to parse 'image' [%s]: %v... skipping...", i.Name, err)
+			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
 			return nil
 		} else {
-			l.Errorf("unable to parse 'image' [%s]: %v", i.Name, err)
+			l.Errorf("unable to parse image [%s]: %v", i.Name, err)
 			return err
 		}
 	}
@@ -99,15 +99,15 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
 	if err != nil {
 		if ro.IgnoreErrors {
-			l.Warnf("unable to add 'image' [%s] to store: %v... skipping...", r.Name(), err)
+			l.Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
 			return nil
 		} else {
-			l.Errorf("unable to add 'image' [%s] to store: %v", r.Name(), err)
+			l.Errorf("unable to add image [%s] to store: %v", r.Name(), err)
 			return err
 		}
 	}
 
-	l.Infof("successfully added 'image' [%s]", r.Name())
+	l.Infof("successfully added image [%s]", r.Name())
 	return nil
 }
 
@@ -124,7 +124,7 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
 
-	l.Infof("adding 'chart' [%s] to the store", cfg.Name)
+	l.Infof("adding chart [%s] to the store", cfg.Name)
 
 	// TODO: This shouldn't be necessary
 	opts.RepoURL = cfg.RepoURL
@@ -149,6 +149,6 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 		return err
 	}
 
-	l.Infof("successfully added 'chart' [%s]", ref.Name())
+	l.Infof("successfully added chart [%s]", ref.Name())
 	return nil
 }
