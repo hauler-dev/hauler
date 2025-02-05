@@ -83,7 +83,7 @@ const (
 	DefaultFileserverRootDir = "fileserver"
 	DefaultFileserverPort    = 8080
 	DefaultFileserverTimeout = 60
-	DefaultHaulArchiveName   = "haul.tar.zst"
+	DefaultHaulerArchiveName = "haul.tar.zst"
 	DefaultRetries           = 3
 	RetriesInterval          = 5
 	CustomTimeFormat         = "2006-01-02 15:04:05"
