@@ -12,8 +12,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 
 	artifact "hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
+	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 )
 
