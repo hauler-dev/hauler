@@ -30,9 +30,9 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	l := log.FromContext(ctx)
 
 	// if passed products, check for a remote manifest to retrieve and use.
-	for _, product := range o.Products {
-		l.Infof("processing content for product [%s]", product)
-		parts := strings.Split(product, "=")
+	for _, productName := range o.Products {
+		l.Infof("processing product manifest for [%s] to store [%s]", productName, o.StoreDir)
+		parts := strings.Split(productName, "=")
 		tag := strings.ReplaceAll(parts[1], "+", "-")
 
 		ProductRegistry := o.ProductRegistry // cli flag
@@ -42,7 +42,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		}
 
 		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", ProductRegistry, parts[0], tag)
-		l.Infof("retrieving product manifest from [%s]", manifestLoc)
+		l.Infof("fetching product manifest from [%s]", manifestLoc)
 		img := v1.Image{
 			Name: manifestLoc,
 		}
@@ -64,12 +64,13 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
+		l.Infof("processing completed successfully")
 	}
 
 	// if passed a local manifest, process it
-	for _, filename := range o.ContentFiles {
-		l.Infof("processing content [%s]", filename)
-		fi, err := os.Open(filename)
+	for _, fileName := range o.FileName {
+		l.Infof("processing manifest for [%s] to store [%s]", fileName, o.StoreDir)
+		fi, err := os.Open(fileName)
 		if err != nil {
 			return err
 		}
@@ -77,6 +78,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
+		l.Infof("processing completed successfully")
 	}
 
 	return nil

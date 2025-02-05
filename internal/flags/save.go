@@ -14,6 +14,6 @@ type SaveOpts struct {
 func (o *SaveOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringVarP(&o.FileName, "filename", "f", consts.DefaultHaulerArchiveName, "(Optional) Specify the name of inputted haul(s)")
+	f.StringVarP(&o.FileName, "filename", "f", consts.DefaultHaulerArchiveName, "(Optional) Specify the name of outputted haul")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform for runtime imports... i.e. linux/amd64 (unspecified implies all)")
 }
