@@ -186,7 +186,7 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			}
 			_ = s
 
-			return store.SaveCmd(ctx, o, o.FileName)
+			return store.SaveCmd(ctx, o, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)

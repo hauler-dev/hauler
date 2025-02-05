@@ -23,22 +23,11 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 )
 
-// SaveCmd
-// TODO: Just use mholt/archiver for now, even though we don't need most of it
-func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
+// saves a content store to store archives
+func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	storeDir := o.StoreDir
-
-	if storeDir == "" {
-		storeDir = os.Getenv(consts.HaulerStoreDir)
-	}
-
-	if storeDir == "" {
-		storeDir = consts.DefaultStoreName
-	}
-
-	// Maps to handle compression and archival types
+	// maps to handle compression and archival types
 	compressionMap := archives.CompressionMap
 	archivalMap := archives.ArchivalMap
 
@@ -47,7 +36,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 	compression := compressionMap["zst"]
 	archival := archivalMap["tar"]
 
-	absOutputfile, err := filepath.Abs(outputFile)
+	absOutputfile, err := filepath.Abs(o.FileName)
 	if err != nil {
 		return err
 	}
@@ -57,7 +46,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 	defer os.Chdir(cwd)
-	if err := os.Chdir(storeDir); err != nil {
+	if err := os.Chdir(o.StoreDir); err != nil {
 		return err
 	}
 
@@ -72,7 +61,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, outputFile string) error {
 		return err
 	}
 
-	l.Infof("saved store [%s] -> [%s]", storeDir, absOutputfile)
+	l.Infof("saving store [%s] to archive [%s]", o.StoreDir, o.FileName)
 	return nil
 }
 
@@ -111,7 +100,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 	}
 
 	for _, desc := range imx.Manifests {
-		l.Debugf("descriptor [%s] >>> %s", desc.Digest.String(), desc.MediaType)
+		l.Debugf("descriptor [%s] = [%s]", desc.Digest.String(), desc.MediaType)
 		if artifactType := types.MediaType(desc.ArtifactType); artifactType != "" && !artifactType.IsImage() && !artifactType.IsIndex() {
 			l.Debugf("descriptor [%s] <<< SKIPPING ARTIFACT [%q]", desc.Digest.String(), desc.ArtifactType)
 			continue
@@ -127,11 +116,11 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 							return err
 						}
 					case consts.KindAnnotationIndex:
-						l.Debugf("index [%s]: digest=%s, type=%s, size=%d", refName, desc.Digest.String(), desc.MediaType, desc.Size)
+						l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
 						// when no platform is provided, warn the user of potential mismatch on import
 						if platform.String() == "" {
-							l.Warnf("index [%s]: provide an export platform to prevent potential platform mismatch on import", refName)
+							l.Warnf("specify an export platform to prevent potential platform mismatch on import of index [%s]", refName)
 						}
 
 						iix, err := idx.ImageIndex(desc.Digest)
@@ -147,14 +136,14 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 								// check if platform is provided, if so, skip anything that doesn't match
 								if platform.String() != "" {
 									if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
-										l.Warnf("index [%s]: digest=%s, platform=%s/%s: does not match the supplied platform, skipping", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+										l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: does not match the supplied platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
 										continue
 									}
 								}
 
 								// skip 'unknown' platforms... docker hates
 								if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
-									l.Warnf("index [%s]: digest=%s, platform=%s/%s: skipping 'unknown/unknown' platform", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+									l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: matches unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
 									continue
 								}
 
