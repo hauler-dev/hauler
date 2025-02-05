@@ -83,7 +83,7 @@ const (
 	DefaultFileserverRootDir  = "fileserver"
 	DefaultFileserverPort     = 8080
 	DefaultFileserverTimeout  = 60
-	DefaultHaulArchiveName    = "haul.tar.zst"
+	DefaultHaulerArchiveName  = "haul.tar.zst"
 	DefaultHaulerManifestName = "hauler-manifest.yaml"
 	DefaultRetries            = 3
 	RetriesInterval           = 5

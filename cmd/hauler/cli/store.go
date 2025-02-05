@@ -90,7 +90,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "load",
 		Short: "Load a content store from a store archive",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -100,7 +100,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			}
 			_ = s
 
-			return store.LoadCmd(ctx, o, args...)
+			return store.LoadCmd(ctx, o, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)

@@ -222,11 +222,13 @@ jobs:
         run: |
           hauler store load --help
           # verify via load
-          hauler store load haul.tar.zst
+          hauler store load
+          # verify via load with multiple files
+          hauler store load --filename haul.tar.zst --filename store.tar.zst
           # verify via load with filename and temp directory
-          hauler store load store.tar.zst --tempdir /opt
+          hauler store load --filename store.tar.zst --tempdir /opt
           # verify via load with filename and platform (amd64)
-          hauler store load store-amd64.tar.zst
+          hauler store load --filename store-amd64.tar.zst
 
       - name: Verify Hauler Store Contents
         run: |
