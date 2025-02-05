@@ -18,12 +18,12 @@ import (
 	convert "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/convert"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	v1alpha1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	tchart "hauler.dev/go/hauler/pkg/collection/chart"
 	"hauler.dev/go/hauler/pkg/collection/imagetxt"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/cosign"
+	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/reference"
 	"hauler.dev/go/hauler/pkg/store"
@@ -84,29 +84,53 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		l.Infof("processing completed successfully")
 	}
 
-	// if passed a local manifest, process it
+	// If passed a local manifest, process it
 	for _, fileName := range o.FileName {
 		l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
-		var localFileName string
 
-		if strings.HasPrefix(fileName, "http://") || strings.HasPrefix(fileName, "https://") {
-			l.Debugf("detected remote manifest... starting download... [%s]", fileName)
-			var err error
-			localFileName, err = downloadRemote(ctx, fileName, tempDir)
+		haulPath := fileName
+		if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
+			l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
+
+			h := getter.NewHttp()
+			parsedURL, err := url.Parse(haulPath)
 			if err != nil {
 				return err
 			}
-		} else {
-			localFileName = fileName
+			rc, err := h.Open(ctx, parsedURL)
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+
+			fileName := h.Name(parsedURL)
+			if fileName == "" {
+				fileName = filepath.Base(parsedURL.Path)
+			}
+			haulPath = filepath.Join(tempDir, fileName)
+
+			out, err := os.Create(haulPath)
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+
+			if _, err = io.Copy(out, rc); err != nil {
+				return err
+			}
 		}
-		fi, err := os.Open(localFileName)
+
+		fi, err := os.Open(haulPath)
 		if err != nil {
 			return err
 		}
+		defer fi.Close()
+
 		err = processContent(ctx, fi, o, s, rso, ro)
 		if err != nil {
 			return err
 		}
+
 		l.Infof("processing completed successfully")
 	}
 
@@ -445,36 +469,4 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 	}
 	return nil
-}
-
-// downloadRemote downloads the remote file using the existing getter
-func downloadRemote(ctx context.Context, remoteURL, tempDirDest string) (string, error) {
-	parsedURL, err := url.Parse(remoteURL)
-	if err != nil {
-		return "", err
-	}
-	h := getter.NewHttp()
-	rc, err := h.Open(ctx, parsedURL)
-	if err != nil {
-		return "", err
-	}
-	defer rc.Close()
-
-	fileName := h.Name(parsedURL)
-	if fileName == "" {
-		fileName = filepath.Base(parsedURL.Path)
-	}
-
-	localPath := filepath.Join(tempDirDest, fileName)
-	out, err := os.Create(localPath)
-	if err != nil {
-		return "", err
-	}
-	defer out.Close()
-
-	if _, err = io.Copy(out, rc); err != nil {
-		return "", err
-	}
-
-	return localPath, nil
 }

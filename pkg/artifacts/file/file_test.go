@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/afero"
 
 	"hauler.dev/go/hauler/pkg/artifacts/file"
-	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/getter"
 )
 
 var (

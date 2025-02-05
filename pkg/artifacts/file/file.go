@@ -8,8 +8,8 @@ import (
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 
 	"hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/getter"
 )
 
 // interface guard
