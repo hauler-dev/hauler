@@ -31,7 +31,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 
 	// if passed products, check for a remote manifest to retrieve and use.
 	for _, product := range o.Products {
-		l.Infof("processing content file for product [%s]", product)
+		l.Infof("processing content for product [%s]", product)
 		parts := strings.Split(product, "=")
 		tag := strings.ReplaceAll(parts[1], "+", "-")
 
@@ -68,7 +68,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 
 	// if passed a local manifest, process it
 	for _, filename := range o.ContentFiles {
-		l.Infof("processing content file: [%s]", filename)
+		l.Infof("processing content [%s]", filename)
 		fi, err := os.Open(filename)
 		if err != nil {
 			return err
@@ -107,13 +107,15 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 
 		gvk := obj.GroupVersionKind()
-		l.Infof("syncing [%s] to store [%s]", gvk.String(), o.StoreDir)
+		l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, o.StoreDir)
 
 		switch gvk.Kind {
 
 		case consts.FilesContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+
 				var alphaCfg v1alpha1.Files
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
 					return err
@@ -146,6 +148,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ImagesContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+
 				var alphaCfg v1alpha1.Images
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
 					return err
@@ -278,6 +282,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ChartsContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+
 				var alphaCfg v1alpha1.Charts
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
 					return err
@@ -310,6 +316,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ChartsCollectionKind:
 			switch gvk.Version {
 			case "v1alpha1":
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+
 				var alphaCfg v1alpha1.ThickCharts
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
 					return err
@@ -356,6 +364,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ImageTxtsContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+
 				var alphaCfg v1alpha1.ImageTxts
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
 					return err

@@ -31,7 +31,7 @@ func Load(data []byte) (schema.ObjectKind, error) {
 		gv != v1.CollectionGroupVersion &&
 		gv != v1alpha1.ContentGroupVersion &&
 		gv != v1alpha1.CollectionGroupVersion {
-		return nil, fmt.Errorf("unrecognized content/collection [%s] with kind=%s]", tm.APIVersion, tm.Kind)
+		return nil, fmt.Errorf("unrecognized content/collection [%s] with [kind=%s]", tm.APIVersion, tm.Kind)
 	}
 
 	return &tm, nil
