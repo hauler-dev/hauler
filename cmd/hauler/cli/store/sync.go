@@ -68,7 +68,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	}
 
 	// if passed a local manifest, process it
-	for _, filename := range o.Filename {
+	for _, filename := range o.FileName {
 		l.Infof("processing manifest for [%s] to store [%s]", filename, o.StoreDir)
 		fi, err := os.Open(filename)
 		if err != nil {
