@@ -41,6 +41,8 @@ func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 		return nil, err
 	}
 
+	o.StoreDir = abs
+
 	l.Debugf("using store at [%s]", abs)
 
 	if _, err := os.Stat(abs); errors.Is(err, os.ErrNotExist) {

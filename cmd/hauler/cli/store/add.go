@@ -8,7 +8,7 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 
 	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts/file"
 	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -20,7 +20,7 @@ import (
 )
 
 func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
-	cfg := v1alpha1.File{
+	cfg := v1.File{
 		Path: reference,
 	}
 	if len(o.Name) > 0 {
@@ -29,7 +29,7 @@ func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, refe
 	return storeFile(ctx, s, cfg)
 }
 
-func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
+func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 	l := log.FromContext(ctx)
 
 	copts := getter.ClientOptions{
@@ -56,7 +56,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1alpha1.File) error {
 func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	cfg := v1alpha1.Image{
+	cfg := v1.Image{
 		Name: reference,
 	}
 
@@ -73,7 +73,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	return storeImage(ctx, s, cfg, o.Platform, rso, ro)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	if !ro.IgnoreErrors {
@@ -112,8 +112,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1alpha1.Image, platform
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string) error {
-	// TODO: Reduce duplicates between api chart and upstream helm opts
-	cfg := v1alpha1.Chart{
+	cfg := v1.Chart{
 		Name:    chartName,
 		RepoURL: o.ChartOpts.RepoURL,
 		Version: o.ChartOpts.Version,
@@ -122,7 +121,7 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 	return storeChart(ctx, s, cfg, o.ChartOpts)
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1alpha1.Chart, opts *action.ChartPathOptions) error {
+func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action.ChartPathOptions) error {
 	l := log.FromContext(ctx)
 
 	l.Infof("adding 'chart' [%s] to the store", cfg.Name)

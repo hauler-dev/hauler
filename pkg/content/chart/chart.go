@@ -40,7 +40,7 @@ type Chart struct {
 	annotations map[string]string
 }
 
-// NewChart is a helper method that returns NewLocalChart or NewRemoteChart depending on v1alpha1.Chart contents
+// NewChart is a helper method that returns NewLocalChart or NewRemoteChart depending on chart contents
 func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	chartRef := name
 	actionConfig := new(action.Configuration)

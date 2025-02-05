@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/util/jsonpath"
 
-	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 )
 
 var defaultKnownImagePaths = []string{
@@ -29,13 +29,13 @@ var defaultKnownImagePaths = []string{
 }
 
 // ImagesInChart will render a chart and identify all dependent images from it
-func ImagesInChart(c *helmchart.Chart) (v1alpha1.Images, error) {
+func ImagesInChart(c *helmchart.Chart) (v1.Images, error) {
 	docs, err := template(c)
 	if err != nil {
-		return v1alpha1.Images{}, err
+		return v1.Images{}, err
 	}
 
-	var images []v1alpha1.Image
+	var images []v1.Image
 	reader := yaml.NewYAMLReader(bufio.NewReader(strings.NewReader(docs)))
 	for {
 		raw, err := reader.Read()
@@ -43,17 +43,17 @@ func ImagesInChart(c *helmchart.Chart) (v1alpha1.Images, error) {
 			break
 		}
 		if err != nil {
-			return v1alpha1.Images{}, err
+			return v1.Images{}, err
 		}
 
 		found := find(raw, defaultKnownImagePaths...)
 		for _, f := range found {
-			images = append(images, v1alpha1.Image{Name: f})
+			images = append(images, v1.Image{Name: f})
 		}
 	}
 
-	ims := v1alpha1.Images{
-		Spec: v1alpha1.ImageSpec{
+	ims := v1.Images{
+		Spec: v1.ImageSpec{
 			Images: images,
 		},
 	}
