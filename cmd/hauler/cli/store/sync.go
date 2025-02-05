@@ -30,9 +30,9 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	l := log.FromContext(ctx)
 
 	// if passed products, check for a remote manifest to retrieve and use.
-	for _, product := range o.Products {
-		l.Infof("processing product manifest for [%s] to store [%s]", product, o.StoreDir)
-		parts := strings.Split(product, "=")
+	for _, productName := range o.Products {
+		l.Infof("processing product manifest for [%s] to store [%s]", productName, o.StoreDir)
+		parts := strings.Split(productName, "=")
 		tag := strings.ReplaceAll(parts[1], "+", "-")
 
 		ProductRegistry := o.ProductRegistry // cli flag
@@ -68,9 +68,9 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	}
 
 	// if passed a local manifest, process it
-	for _, filename := range o.FileName {
-		l.Infof("processing manifest for [%s] to store [%s]", filename, o.StoreDir)
-		fi, err := os.Open(filename)
+	for _, fileName := range o.FileName {
+		l.Infof("processing manifest for [%s] to store [%s]", fileName, o.StoreDir)
+		fi, err := os.Open(fileName)
 		if err != nil {
 			return err
 		}
