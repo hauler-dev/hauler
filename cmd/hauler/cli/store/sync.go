@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mitchellh/go-homedir"
@@ -16,6 +18,7 @@ import (
 	convert "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/convert"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	v1alpha1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
+	"hauler.dev/go/hauler/pkg/artifacts/file/getter"
 	tchart "hauler.dev/go/hauler/pkg/collection/chart"
 	"hauler.dev/go/hauler/pkg/collection/imagetxt"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -29,7 +32,21 @@ import (
 func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	// if passed products, check for a remote manifest to retrieve and use.
+	tempOverride := o.TempOverride
+
+	if tempOverride == "" {
+		tempOverride = os.Getenv(consts.HaulerTempDir)
+	}
+
+	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	l.Debugf("using temporary directory at [%s]", tempDir)
+
+	// if passed products, check for a remote manifest to retrieve and use
 	for _, productName := range o.Products {
 		l.Infof("processing product manifest for [%s] to store [%s]", productName, o.StoreDir)
 		parts := strings.Split(productName, "=")
@@ -54,9 +71,9 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
-		filename := fmt.Sprintf("%s-manifest.yaml", parts[0])
+		fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
 
-		fi, err := os.Open(filename)
+		fi, err := os.Open(fileName)
 		if err != nil {
 			return err
 		}
@@ -69,8 +86,20 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 
 	// if passed a local manifest, process it
 	for _, fileName := range o.FileName {
-		l.Infof("processing manifest for [%s] to store [%s]", fileName, o.StoreDir)
-		fi, err := os.Open(fileName)
+		l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
+		var localFileName string
+
+		if strings.HasPrefix(fileName, "http://") || strings.HasPrefix(fileName, "https://") {
+			l.Debugf("detected remote manifest... starting download... [%s]", fileName)
+			var err error
+			localFileName, err = downloadRemote(ctx, fileName, tempDir)
+			if err != nil {
+				return err
+			}
+		} else {
+			localFileName = fileName
+		}
+		fi, err := os.Open(localFileName)
 		if err != nil {
 			return err
 		}
@@ -416,4 +445,36 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 	}
 	return nil
+}
+
+// downloadRemote downloads the remote file using the existing getter
+func downloadRemote(ctx context.Context, remoteURL, tempDirDest string) (string, error) {
+	parsedURL, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", err
+	}
+	h := getter.NewHttp()
+	rc, err := h.Open(ctx, parsedURL)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	fileName := h.Name(parsedURL)
+	if fileName == "" {
+		fileName = filepath.Base(parsedURL.Path)
+	}
+
+	localPath := filepath.Join(tempDirDest, fileName)
+	out, err := os.Create(localPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, rc); err != nil {
+		return "", err
+	}
+
+	return localPath, nil
 }
