@@ -15,7 +15,7 @@ For more information, please review the **[Hauler Documentation](https://hauler.
 ### In Hauler v1.2.0...
 
 - Upgraded the `apiVersion` to `v1` from `v1alpha1`
-  - Users are able to use `v1` and `v1alpha1`, but `v1alpha1` is now deprecated and will be removed in a future release. We will make to update the community when we fully deprecate and remove the functionality of `v1alpha1`
+  - Users are able to use `v1` and `v1alpha1`, but `v1alpha1` is now deprecated and will be removed in a future release. We will update the community when we fully deprecate and remove the functionality of `v1alpha1`
   - Users will see logging notices when using the old `apiVersion` such as...
   - `!!! DEPRECATION WARNING !!! apiVersion [v1alpha1] will be removed in a future release !!! DEPRECATION WARNING !!!`
 ---
