@@ -68,6 +68,16 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Use:   "sync",
 		Short: "Sync content to the content store",
 		Args:  cobra.ExactArgs(0),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Check if the products flag was passed
+			if len(o.Products) > 0 {
+				// Only clear the default if the user did NOT explicitly set --filename
+				if !cmd.Flags().Changed("filename") {
+					o.FileName = []string{}
+				}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
