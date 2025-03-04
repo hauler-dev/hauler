@@ -51,10 +51,14 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 	operation := func() error {
 		o := &options.SaveOptions{
 			Directory: s.Root,
+			Registry: options.RegistryOptions{
+				AllowHTTPRegistry: rso.AllowHTTPRegistry,
+				AllowInsecure:     rso.AllowInsecure,
+			},
 		}
 
 		// check to see if the image is multi-arch
-		isMultiArch, err := image.IsMultiArchImage(ref)
+		isMultiArch, err := image.IsMultiArchImage(ref, rso.AllowInsecure || rso.AllowHTTPRegistry)
 		if err != nil {
 			return err
 		}

@@ -53,8 +53,16 @@ func NewImage(name string, opts ...remote.Option) (*Image, error) {
 	}, nil
 }
 
-func IsMultiArchImage(name string, opts ...remote.Option) (bool, error) {
-	ref, err := gname.ParseReference(name)
+func IsMultiArchImage(name string, insecure bool, opts ...remote.Option) (bool, error) {
+	var ref gname.Reference
+	var err error
+
+	if insecure {
+		ref, err = gname.ParseReference(name, gname.Insecure)
+	} else {
+		ref, err = gname.ParseReference(name)
+	}
+
 	if err != nil {
 		return false, fmt.Errorf("parsing reference %q: %v", name, err)
 	}

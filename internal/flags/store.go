@@ -13,14 +13,18 @@ import (
 )
 
 type StoreRootOpts struct {
-	StoreDir string
-	Retries  int
+	StoreDir          string
+	Retries           int
+	AllowHTTPRegistry bool
+	AllowInsecure     bool
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
+	pf.BoolVarP(&o.AllowHTTPRegistry, "allow-http-registry", "", false, "Allow registry to use http endpoints")
+	pf.BoolVarP(&o.AllowInsecure, "allow-insecure", "", false, "Allow insecure http endpoints")
 }
 
 func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
