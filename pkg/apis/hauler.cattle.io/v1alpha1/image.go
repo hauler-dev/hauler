@@ -23,6 +23,10 @@ type Image struct {
 	//Key string `json:"key,omitempty"`
 	Key string `json:"key"`
 
+	// Path is the path to the cosign public key used for verifying image signatures
+	//Tlog string `json:"use-tlog-verify,omitempty"`
+	Tlog bool `json:"use-tlog-verify"`
+
 	// Platform of the image to be pulled.  If not specified, all platforms will be pulled.
 	//Platform string `json:"key,omitempty"`
 	Platform string `json:"platform"`

@@ -248,7 +248,16 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("key for image [%s]", key)
 
-						if err := cosign.VerifySignature(ctx, s, key, i.Name, rso, ro); err != nil {
+						tlog := o.Tlog
+						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+							tlog = true
+						}
+						if i.Tlog {
+							tlog = i.Tlog
+						}
+						l.Debugf("transparency log for verification [%b]", tlog)
+
+						if err := cosign.VerifySignature(ctx, s, key, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
 							continue
 						}
@@ -309,7 +318,16 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("key for image [%s]", key)
 
-						if err := cosign.VerifySignature(ctx, s, key, i.Name, rso, ro); err != nil {
+						tlog := o.Tlog
+						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+							tlog = true
+						}
+						if i.Tlog {
+							tlog = i.Tlog
+						}
+						l.Debugf("transparency log for verification [%b]", tlog)
+
+						if err := cosign.VerifySignature(ctx, s, key, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
 							continue
 						}
