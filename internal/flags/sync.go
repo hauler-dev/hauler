@@ -27,5 +27,5 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
 	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specify the product registry. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us)")
 	f.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directiory determined by the OS")
-	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification. (defaults to false))")
+	f.BoolVarP(&o.Tlog, "use-tlog-verify", "v", false, "(Optional) Allow transparency log verification. (defaults to false)")
 }
