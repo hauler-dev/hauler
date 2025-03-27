@@ -9,12 +9,14 @@ type AddImageOpts struct {
 	*StoreRootOpts
 	Name     string
 	Key      string
+	Tlog     bool
 	Platform string
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Location of public key to use for signature verification")
+	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification. (defaults to false))")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specifiy the platform of the image... i.e. linux/amd64 (defaults to all)")
 }
 

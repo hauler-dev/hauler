@@ -17,11 +17,17 @@ import (
 )
 
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
-func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, useTlog bool, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	operation := func() error {
 		v := &verify.VerifyCommand{
-			KeyRef: keyPath,
+			KeyRef:     keyPath,
+			IgnoreTlog: true, // Ignore transparency log by default.
+		}
+
+		// if the user wants to use the transparency log, set the flag to false
+		if useTlog {
+			v.IgnoreTlog = false
 		}
 
 		err := log.CaptureOutput(l, true, func() error {

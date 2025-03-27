@@ -63,7 +63,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	// Check if the user provided a key.
 	if o.Key != "" {
 		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, s, o.Key, cfg.Name, rso, ro)
+		err := cosign.VerifySignature(ctx, s, o.Key, o.Tlog, cfg.Name, rso, ro)
 		if err != nil {
 			return err
 		}
