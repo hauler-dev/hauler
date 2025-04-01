@@ -3,6 +3,10 @@ package cosign
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
@@ -12,8 +16,6 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
 	"oras.land/oras-go/pkg/content"
-	"os"
-	"time"
 )
 
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
@@ -143,9 +145,17 @@ func RetryOperation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.Cli
 		}
 
 		if ro.IgnoreErrors {
-			l.Warnf("warning (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures") {
+				l.Warnf("warning (attempt %d/%d)... failed tlog verification", attempt, rso.Retries)
+			} else {
+				l.Warnf("warning (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			}
 		} else {
-			l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures") {
+				l.Errorf("error (attempt %d/%d)... failed tlog verification", attempt, rso.Retries)
+			} else {
+				l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			}
 		}
 
 		// If this is not the last attempt, wait before retrying
