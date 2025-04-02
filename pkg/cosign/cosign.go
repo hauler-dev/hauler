@@ -145,13 +145,13 @@ func RetryOperation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.Cli
 		}
 
 		if ro.IgnoreErrors {
-			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures") {
+			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures: rekor client not provided for online verification") {
 				l.Warnf("warning (attempt %d/%d)... failed tlog verification", attempt, rso.Retries)
 			} else {
 				l.Warnf("warning (attempt %d/%d)... %v", attempt, rso.Retries, err)
 			}
 		} else {
-			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures") {
+			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures: rekor client not provided for online verification") {
 				l.Errorf("error (attempt %d/%d)... failed tlog verification", attempt, rso.Retries)
 			} else {
 				l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
