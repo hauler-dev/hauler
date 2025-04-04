@@ -48,6 +48,7 @@ const (
 	ImageAnnotationKey      = "hauler.dev/key"
 	ImageAnnotationPlatform = "hauler.dev/platform"
 	ImageAnnotationRegistry = "hauler.dev/registry"
+	ImageAnnotationTlog     = "hauler.dev/use-tlog-verify"
 
 	// content kinds
 	ImagesContentKind    = "Images"

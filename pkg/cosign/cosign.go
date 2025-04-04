@@ -3,6 +3,10 @@ package cosign
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
@@ -12,16 +16,20 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
 	"oras.land/oras-go/pkg/content"
-	"os"
-	"time"
 )
 
 // VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
-func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, useTlog bool, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	operation := func() error {
 		v := &verify.VerifyCommand{
-			KeyRef: keyPath,
+			KeyRef:     keyPath,
+			IgnoreTlog: true, // Ignore transparency log by default.
+		}
+
+		// if the user wants to use the transparency log, set the flag to false
+		if useTlog {
+			v.IgnoreTlog = false
 		}
 
 		err := log.CaptureOutput(l, true, func() error {
@@ -141,9 +149,17 @@ func RetryOperation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.Cli
 		}
 
 		if ro.IgnoreErrors {
-			l.Warnf("warning (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures: rekor client not provided for online verification") {
+				l.Warnf("warning (attempt %d/%d)... failed tlog verification", attempt, rso.Retries)
+			} else {
+				l.Warnf("warning (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			}
 		} else {
-			l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			if strings.HasPrefix(err.Error(), "function execution failed: no matching signatures: rekor client not provided for online verification") {
+				l.Errorf("error (attempt %d/%d)... failed tlog verification", attempt, rso.Retries)
+			} else {
+				l.Errorf("error (attempt %d/%d)... %v", attempt, rso.Retries, err)
+			}
 		}
 
 		// If this is not the last attempt, wait before retrying
