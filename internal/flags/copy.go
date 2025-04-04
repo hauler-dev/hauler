@@ -9,6 +9,7 @@ type CopyOpts struct {
 	Password  string
 	Insecure  bool
 	PlainHTTP bool
+	Only      string
 }
 
 func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
@@ -18,4 +19,5 @@ func (o *CopyOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Password, "password", "p", "", "(Optional) Password to use for authentication")
 	f.BoolVar(&o.Insecure, "insecure", false, "(Optional) Allow insecure connections")
 	f.BoolVar(&o.PlainHTTP, "plain-http", false, "(Optional) Allow plain HTTP connections")
+	f.StringVarP(&o.Only, "only", "o", "", "(Optional) Custom string array to only copy specific 'image' items, this flag is comma delimited. ex: --only=sig,att,sbom")
 }

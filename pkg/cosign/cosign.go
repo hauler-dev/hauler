@@ -87,7 +87,7 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 }
 
 // LoadImage loads store to a remote registry.
-func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts content.RegistryOptions, ro *flags.CliRootOpts) error {
+func LoadImages(ctx context.Context, s *store.Layout, registry string, only string, ropts content.RegistryOptions, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	o := &options.LoadOptions{
@@ -97,10 +97,15 @@ func LoadImages(ctx context.Context, s *store.Layout, registry string, ropts con
 		},
 	}
 
-	// Conditionally add extra registry flags.
+	// Conditionally add extra flags.
+	if len(only) > 0 {
+		o.LoadOnly = only
+	}
+
 	if ropts.Insecure {
 		o.Registry.AllowInsecure = true
 	}
+
 	if ropts.PlainHTTP {
 		o.Registry.AllowHTTPRegistry = true
 	}
