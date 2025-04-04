@@ -37,7 +37,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			PlainHTTP: o.PlainHTTP,
 		}
 
-		err := cosign.LoadImages(ctx, s, components[1], ropts, ro)
+		err := cosign.LoadImages(ctx, s, components[1], o.Only, ropts, ro)
 		if err != nil {
 			return err
 		}
