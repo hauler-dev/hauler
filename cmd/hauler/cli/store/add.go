@@ -68,6 +68,14 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 			return err
 		}
 		l.Infof("signature verified for image [%s]", cfg.Name)
+	} else if o.CertIdentityRegexp != "" || o.CertIdentity != "" {
+		// verify signature using the provided keyless details
+		l.Infof("verifying keyless signature for [%s]", cfg.Name)
+		err := cosign.VerifyKeylessSignature(ctx, s, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, o.Tlog, cfg.Name, rso, ro)
+		if err != nil {
+			return err
+		}
+		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
 
 	return storeImage(ctx, s, cfg, o.Platform, rso, ro)

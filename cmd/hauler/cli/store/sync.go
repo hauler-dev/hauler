@@ -264,6 +264,69 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Infof("signature verified for image [%s]", i.Name)
 					}
 
+					//Keyless signature verification
+					if a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != "" || o.CertIdentityRegexp != "" || o.CertIdentity != "" || i.CertIdentityRegexp != "" || i.CertIdentity != "" {
+						certIdentityRegexp := o.CertIdentityRegexp
+						if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
+							certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
+						}
+						if i.CertIdentityRegexp != "" {
+							certIdentityRegexp = i.CertIdentityRegexp
+						}
+						l.Debugf("certIdentityRegexp for image [%s]", certIdentityRegexp)
+
+						certIdentity := o.CertIdentity
+						if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
+							certIdentity = a[consts.ImageAnnotationCertIdentity]
+						}
+						if i.CertIdentity != "" {
+							certIdentity = i.CertIdentity
+						}
+						l.Debugf("certIdentity for image [%s]", certIdentity)
+
+						certOidcIssuer := o.CertOidcIssuer
+						if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
+							certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
+						}
+						if i.CertOidcIssuer != "" {
+							certOidcIssuer = i.CertOidcIssuer
+						}
+						l.Debugf("certOidcIssuer for image [%s]", certOidcIssuer)
+
+						certOidcIssuerRegexp := o.CertOidcIssuerRegexp
+						if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
+							certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
+						}
+						if i.CertOidcIssuerRegexp != "" {
+							certOidcIssuerRegexp = i.CertOidcIssuerRegexp
+						}
+						l.Debugf("certOidcIssuerRegexp for image [%s]", certOidcIssuerRegexp)
+
+						certGithubWorkflowRepository := o.CertGithubWorkflowRepository
+						if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
+							certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
+						}
+						if i.CertGithubWorkflowRepository != "" {
+							certGithubWorkflowRepository = i.CertGithubWorkflowRepository
+						}
+						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
+
+						tlog := o.Tlog
+						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+							tlog = true
+						}
+						if i.Tlog {
+							tlog = i.Tlog
+						}
+						l.Debugf("transparency log for verification [%b]", tlog)
+						
+						if err := cosign.VerifyKeylessSignature(ctx, s, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
+							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
+							continue
+						}
+						l.Infof("keyless signature verified for image [%s]", i.Name)
+					}
+
 					platform := o.Platform
 					if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
 						platform = a[consts.ImageAnnotationPlatform]
@@ -332,6 +395,69 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							continue
 						}
 						l.Infof("signature verified for image [%s]", i.Name)
+					}
+
+					//Keyless signature verification
+					if a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != "" || o.CertIdentityRegexp != "" || o.CertIdentity != "" || i.CertIdentityRegexp != "" || i.CertIdentity != "" {
+						certIdentityRegexp := o.CertIdentityRegexp
+						if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
+							certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
+						}
+						if i.CertIdentityRegexp != "" {
+							certIdentityRegexp = i.CertIdentityRegexp
+						}
+						l.Debugf("certIdentityRegexp for image [%s]", certIdentityRegexp)
+
+						certIdentity := o.CertIdentity
+						if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
+							certIdentity = a[consts.ImageAnnotationCertIdentity]
+						}
+						if i.CertIdentity != "" {
+							certIdentity = i.CertIdentity
+						}
+						l.Debugf("certIdentity for image [%s]", certIdentity)
+
+						certOidcIssuer := o.CertOidcIssuer
+						if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
+							certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
+						}
+						if i.CertOidcIssuer != "" {
+							certOidcIssuer = i.CertOidcIssuer
+						}
+						l.Debugf("certOidcIssuer for image [%s]", certOidcIssuer)
+
+						certOidcIssuerRegexp := o.CertOidcIssuerRegexp
+						if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
+							certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
+						}
+						if i.CertOidcIssuerRegexp != "" {
+							certOidcIssuerRegexp = i.CertOidcIssuerRegexp
+						}
+						l.Debugf("certOidcIssuerRegexp for image [%s]", certOidcIssuerRegexp)
+
+						certGithubWorkflowRepository := o.CertGithubWorkflowRepository
+						if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
+							certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
+						}
+						if i.CertGithubWorkflowRepository != "" {
+							certGithubWorkflowRepository = i.CertGithubWorkflowRepository
+						}
+						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
+
+						tlog := o.Tlog
+						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+							tlog = true
+						}
+						if i.Tlog {
+							tlog = i.Tlog
+						}
+						l.Debugf("transparency log for verification [%b]", tlog)
+						
+						if err := cosign.VerifyKeylessSignature(ctx, s, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
+							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
+							continue
+						}
+						l.Infof("keyless signature verified for image [%s]", i.Name)
 					}
 
 					platform := o.Platform
