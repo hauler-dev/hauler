@@ -51,16 +51,16 @@ func VerifyKeylessSignature(ctx context.Context, s *store.Layout, identity strin
 	operation := func() error {
 
 		certVerifyOptions := options.CertVerifyOptions{
-			CertOidcIssuer: oidcIssuer,
-			CertOidcIssuerRegexp: oidcIssuer,
-			CertIdentity: identity,
-			CertIdentityRegexp:	identityRegexp,
+			CertOidcIssuer:               oidcIssuer,
+			CertOidcIssuerRegexp:         oidcIssuer,
+			CertIdentity:                 identity,
+			CertIdentityRegexp:           identityRegexp,
 			CertGithubWorkflowRepository: ghWorkflowRepository,
 		}
 
 		v := &verify.VerifyCommand{
-			CertVerifyOptions: certVerifyOptions,       
-			IgnoreTlog: false, // Ignore transparency log is set to false by default for keyless signature verification
+			CertVerifyOptions:            certVerifyOptions,
+			IgnoreTlog:                   false, // Ignore transparency log is set to false by default for keyless signature verification
 			CertGithubWorkflowRepository: ghWorkflowRepository,
 		}
 

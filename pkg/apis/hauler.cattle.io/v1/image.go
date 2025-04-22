@@ -28,10 +28,10 @@ type Image struct {
 	Tlog bool `json:"use-tlog-verify"`
 
 	// cosign keyless validation options
-	CertIdentity string `json:"certificate-identity"`
-	CertIdentityRegexp string `json:"certificate-identity-regexp"`
-	CertOidcIssuer string `json:"certificate-oidc-issuer"`
-	CertOidcIssuerRegexp string `json:"certificate-oidc-issuer-regexp"`
+	CertIdentity                 string `json:"certificate-identity"`
+	CertIdentityRegexp           string `json:"certificate-identity-regexp"`
+	CertOidcIssuer               string `json:"certificate-oidc-issuer"`
+	CertOidcIssuerRegexp         string `json:"certificate-oidc-issuer-regexp"`
 	CertGithubWorkflowRepository string `json:"certificate-github-workflow-repository"`
 
 	// Platform of the image to be pulled.  If not specified, all platforms will be pulled.

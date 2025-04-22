@@ -51,11 +51,11 @@ const (
 	ImageAnnotationTlog     = "hauler.dev/use-tlog-verify"
 
 	// cosign keyless validation options
-	ImageAnnotationCertIdentity     				= "hauler.dev/certificate-identity"
-	ImageAnnotationCertIdentityRegexp     			= "hauler.dev/certificate-identity-regexp"
-	ImageAnnotationCertOidcIssuer     				= "hauler.dev/certificate-oidc-issuer"
-	ImageAnnotationCertOidcIssuerRegexp				= "hauler.dev/certificate-oidc-issuer-regexp"
-	ImageAnnotationCertGithubWorkflowRepository		= "hauler.dev/certificate-github-workflow-repository"
+	ImageAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
+	ImageAnnotationCertIdentityRegexp           = "hauler.dev/certificate-identity-regexp"
+	ImageAnnotationCertOidcIssuer               = "hauler.dev/certificate-oidc-issuer"
+	ImageAnnotationCertOidcIssuerRegexp         = "hauler.dev/certificate-oidc-issuer-regexp"
+	ImageAnnotationCertGithubWorkflowRepository = "hauler.dev/certificate-github-workflow-repository"
 
 	// content kinds
 	ImagesContentKind    = "Images"
