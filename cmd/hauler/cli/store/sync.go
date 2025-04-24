@@ -496,7 +496,13 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := convert.ConvertCharts(&alphaCfg, &v1Cfg); err != nil {
 					return err
 				}
+
+				a := alphaCfg.GetAnnotations() // needs to be the alpha crd as annotations are not copied in the convert
 				for _, ch := range v1Cfg.Spec.Charts {
+					crdNamespace := a[consts.ChartAnnotationOverrideNamespace]
+					if crdNamespace != "" {
+						ch.OverrideNamespace = crdNamespace
+					}
 					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}); err != nil {
 						return err
 					}
@@ -507,7 +513,13 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
+
+				a := cfg.GetAnnotations()
 				for _, ch := range cfg.Spec.Charts {
+					crdNamespace := a[consts.ChartAnnotationOverrideNamespace]
+					if crdNamespace != "" {
+						ch.OverrideNamespace = crdNamespace
+					}
 					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}); err != nil {
 						return err
 					}

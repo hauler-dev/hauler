@@ -121,9 +121,11 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string) error {
 	cfg := v1.Chart{
-		Name:    chartName,
-		RepoURL: o.ChartOpts.RepoURL,
-		Version: o.ChartOpts.Version,
+		Name:              chartName,
+		OverrideName:      o.OverrideName,
+		OverrideNamespace: o.OverrideNamespace,
+		RepoURL:           o.ChartOpts.RepoURL,
+		Version:           o.ChartOpts.Version,
 	}
 
 	return storeChart(ctx, s, cfg, o.ChartOpts)
@@ -148,7 +150,18 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 		return err
 	}
 
-	ref, err := reference.NewTagged(c.Name(), c.Metadata.Version)
+	name := c.Name()
+	if cfg.OverrideName != "" {
+		name = cfg.OverrideName
+	}
+
+	namespacePrepend := ""
+	if cfg.OverrideNamespace != "" {
+		namespacePrepend = cfg.OverrideNamespace + "/"
+	}
+	name = namespacePrepend + name
+
+	ref, err := reference.NewTagged(name, c.Metadata.Version)
 	if err != nil {
 		return err
 	}
@@ -157,6 +170,6 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 		return err
 	}
 
-	l.Infof("successfully added chart [%s]", ref.Name())
+	l.Infof("successfully added chart [%s]", cfg.Name)
 	return nil
 }

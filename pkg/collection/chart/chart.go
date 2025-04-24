@@ -3,7 +3,7 @@ package chart
 import (
 	"helm.sh/helm/v3/pkg/action"
 
-	"hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
+	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
 	"hauler.dev/go/hauler/pkg/content/chart"
@@ -66,7 +66,16 @@ func (c *tchart) chartContents() error {
 		return err
 	}
 
-	ref, err := reference.NewTagged(ch.Name(), ch.Metadata.Version)
+	name := ch.Name()
+	if c.config.OverrideName != "" {
+		name = c.config.OverrideName
+	}
+
+	if c.config.OverrideNamespace != "" {
+		name = c.config.OverrideNamespace + "/" + name
+	}
+
+	ref, err := reference.NewTagged(name, ch.Metadata.Version)
 	if err != nil {
 		return err
 	}

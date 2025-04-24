@@ -16,9 +16,11 @@ type ChartSpec struct {
 }
 
 type Chart struct {
-	Name    string `json:"name,omitempty"`
-	RepoURL string `json:"repoURL,omitempty"`
-	Version string `json:"version,omitempty"`
+	Name              string `json:"name,omitempty"`
+	OverrideName      string `json:"override-name,omitempty"`
+	OverrideNamespace string `json:"override-namespace,omitempty"`
+	RepoURL           string `json:"repoURL,omitempty"`
+	Version           string `json:"version,omitempty"`
 }
 
 type ThickCharts struct {
