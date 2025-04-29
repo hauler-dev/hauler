@@ -7,14 +7,19 @@ import (
 
 type SyncOpts struct {
 	*StoreRootOpts
-	FileName        []string
-	Key             string
-	Products        []string
-	Platform        string
-	Registry        string
-	ProductRegistry string
-	TempOverride    string
-	Tlog            bool
+	FileName                     []string
+	Key                          string
+	CertOidcIssuer               string
+	CertOidcIssuerRegexp         string
+	CertIdentity                 string
+	CertIdentityRegexp           string
+	CertGithubWorkflowRepository string
+	Products                     []string
+	Platform                     string
+	Registry                     string
+	ProductRegistry              string
+	TempOverride                 string
+	Tlog                         bool
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -22,6 +27,11 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 
 	f.StringSliceVarP(&o.FileName, "filename", "f", []string{consts.DefaultHaulerManifestName}, "Specify the name of manifest(s) to sync")
 	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Location of public key to use for signature verification")
+	f.StringVar(&o.CertIdentity, "certificate-identity", "", "(Optional) Cosign certificate-identity (either --certificate-identity or --certificate-identity-regexp required for keyless verification)")
+	f.StringVar(&o.CertIdentityRegexp, "certificate-identity-regexp", "", "(Optional) Cosign certificate-identity-regexp (either --certificate-identity or --certificate-identity-regexp required for keyless verification)")
+	f.StringVar(&o.CertOidcIssuer, "certificate-oidc-issuer", "", "(Optional) Cosign option to validate oidc issuer")
+	f.StringVar(&o.CertOidcIssuerRegexp, "certificate-oidc-issuer-regexp", "", "(Optional) Cosign option to validate oidc issuer with regex")
+	f.StringVar(&o.CertGithubWorkflowRepository, "certificate-github-workflow-repository", "", "(Optional) Cosign certificate-github-workflow-repository option")
 	f.StringSliceVar(&o.Products, "products", []string{}, "(Optional) Specify the product name to fetch collections from the product registry i.e. rancher=v2.10.1,rke2=v1.31.5+rke2r1")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image... i.e linux/amd64 (defaults to all)")
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")

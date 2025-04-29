@@ -27,6 +27,13 @@ type Image struct {
 	//Tlog string `json:"use-tlog-verify,omitempty"`
 	Tlog bool `json:"use-tlog-verify"`
 
+	// cosign keyless validation options
+	CertIdentity                 string `json:"certificate-identity"`
+	CertIdentityRegexp           string `json:"certificate-identity-regexp"`
+	CertOidcIssuer               string `json:"certificate-oidc-issuer"`
+	CertOidcIssuerRegexp         string `json:"certificate-oidc-issuer-regexp"`
+	CertGithubWorkflowRepository string `json:"certificate-github-workflow-repository"`
+
 	// Platform of the image to be pulled.  If not specified, all platforms will be pulled.
 	//Platform string `json:"key,omitempty"`
 	Platform string `json:"platform"`

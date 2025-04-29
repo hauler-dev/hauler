@@ -18,13 +18,50 @@ import (
 	"oras.land/oras-go/pkg/content"
 )
 
-// VerifyFileSignature verifies the digital signature of a file using Sigstore/Cosign.
+// VerifySignature verifies the digital signature of a file using Sigstore/Cosign.
 func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, useTlog bool, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	operation := func() error {
 		v := &verify.VerifyCommand{
 			KeyRef:     keyPath,
 			IgnoreTlog: true, // Ignore transparency log by default.
+		}
+
+		// if the user wants to use the transparency log, set the flag to false
+		if useTlog {
+			v.IgnoreTlog = false
+		}
+
+		err := log.CaptureOutput(l, true, func() error {
+			return v.Exec(ctx, []string{ref})
+		})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return RetryOperation(ctx, rso, ro, operation)
+}
+
+// VerifyKeylessSignature verifies the digital signature of a file using Sigstore/Cosign.
+func VerifyKeylessSignature(ctx context.Context, s *store.Layout, identity string, identityRegexp string, oidcIssuer string, oidcIssuerRegexp string, ghWorkflowRepository string, useTlog bool, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+	operation := func() error {
+
+		certVerifyOptions := options.CertVerifyOptions{
+			CertOidcIssuer:               oidcIssuer,
+			CertOidcIssuerRegexp:         oidcIssuer,
+			CertIdentity:                 identity,
+			CertIdentityRegexp:           identityRegexp,
+			CertGithubWorkflowRepository: ghWorkflowRepository,
+		}
+
+		v := &verify.VerifyCommand{
+			CertVerifyOptions:            certVerifyOptions,
+			IgnoreTlog:                   false, // Ignore transparency log is set to false by default for keyless signature verification
+			CertGithubWorkflowRepository: ghWorkflowRepository,
 		}
 
 		// if the user wants to use the transparency log, set the flag to false
