@@ -57,6 +57,8 @@ const (
 	ImageAnnotationCertOidcIssuerRegexp         = "hauler.dev/certificate-oidc-issuer-regexp"
 	ImageAnnotationCertGithubWorkflowRepository = "hauler.dev/certificate-github-workflow-repository"
 
+	ChartAnnotationOverrideNamespace = "hauler.dev/override-namespace"
+
 	// content kinds
 	ImagesContentKind    = "Images"
 	ChartsContentKind    = "Charts"
