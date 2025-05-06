@@ -170,6 +170,6 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 		return err
 	}
 
-	l.Infof("successfully added chart [%s]", cfg.Name)
+	l.Infof("successfully added chart [%s]", name)
 	return nil
 }
