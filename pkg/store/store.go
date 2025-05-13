@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -35,6 +36,17 @@ func WithCache(c layer.Cache) Options {
 	}
 }
 
+func namespaceRefByKind(kind, ref string) string {
+	switch kind {
+	case "Charts":
+		return fmt.Sprintf("charts/%s", ref)
+	case "Images":
+		return fmt.Sprintf("images/%s", ref)
+	default:
+		return ref // fallback or error out
+	}
+}
+
 func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 	ociStore, err := content.NewOCI(rootdir)
 	if err != nil {
@@ -63,7 +75,8 @@ func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 //	saved, the entirety of the layout is copied to the store (which is just a registry).  This allows us to not only use
 //	strict types to define generic content, but provides a processing pipeline suitable for extensibility.  In the
 //	future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
-func (l *Layout) AddOCI(ctx context.Context, oci artifacts.OCI, ref string) (ocispec.Descriptor, error) {
+func (l *Layout) AddOCI(ctx context.Context, kind string, oci artifacts.OCI, ref string) (ocispec.Descriptor, error) {
+	ref = namespaceRefByKind(kind, ref)
 	if l.cache != nil {
 		cached := layer.OCICache(oci, l.cache)
 		oci = cached
@@ -129,7 +142,7 @@ func (l *Layout) AddOCI(ctx context.Context, oci artifacts.OCI, ref string) (oci
 }
 
 // AddOCICollection .
-func (l *Layout) AddOCICollection(ctx context.Context, collection artifacts.OCICollection) ([]ocispec.Descriptor, error) {
+func (l *Layout) AddOCICollection(ctx context.Context, kind string, collection artifacts.OCICollection) ([]ocispec.Descriptor, error) {
 	cnts, err := collection.Contents()
 	if err != nil {
 		return nil, err
@@ -137,7 +150,7 @@ func (l *Layout) AddOCICollection(ctx context.Context, collection artifacts.OCIC
 
 	var descs []ocispec.Descriptor
 	for ref, oci := range cnts {
-		desc, err := l.AddOCI(ctx, oci, ref)
+		desc, err := l.AddOCI(ctx, kind, oci, ref)
 		if err != nil {
 			return nil, err
 		}

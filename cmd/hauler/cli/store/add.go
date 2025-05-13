@@ -43,7 +43,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 	}
 
 	l.Infof("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
-	_, err = s.AddOCI(ctx, f, ref.Name())
+	_, err = s.AddOCI(ctx, "Files", f, ref.Name())
 	if err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 	if err != nil {
 		return err
 	}
-	_, err = s.AddOCI(ctx, chrt, ref.Name())
+	_, err = s.AddOCI(ctx, "Charts", chrt, ref.Name())
 	if err != nil {
 		return err
 	}

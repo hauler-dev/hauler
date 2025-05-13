@@ -1,6 +1,7 @@
 module hauler.dev/go/hauler
 
-go 1.23.4
+go 1.23.8
+
 toolchain go1.24.2
 
 replace github.com/sigstore/cosign/v2 => github.com/hauler-dev/cosign/v2 v2.4.3-0.20250404165522-3a44ef646a65
