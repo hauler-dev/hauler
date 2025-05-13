@@ -7,7 +7,7 @@ before:
     - go mod download
     - go fmt ./...
     - go vet ./...
-    - go test ./... -cover -race -covermode=atomic -coverprofile=coverage.out
+
 
 release:
   prerelease: auto

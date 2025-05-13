@@ -46,14 +46,14 @@ func TestLayout_AddOCI(t *testing.T) {
 			}
 			moci := genArtifact(t, tt.args.ref)
 
-			got, err := s.AddOCI(ctx, moci, tt.args.ref)
+			got, err := s.AddOCI(ctx, "Images", moci, tt.args.ref)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddOCI() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			_ = got
 
-			_, err = s.AddOCI(ctx, moci, tt.args.ref)
+			_, err = s.AddOCI(ctx, "Images", moci, tt.args.ref)
 			if err != nil {
 				t.Errorf("AddOCI() error = %v, wantErr %v", err, tt.wantErr)
 				return
