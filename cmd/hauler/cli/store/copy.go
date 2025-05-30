@@ -16,6 +16,10 @@ import (
 func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
+	if o.Username != "" || o.Password != "" {
+		return fmt.Errorf("--username/--password have been deprecated, please use 'hauler login'")
+	}
+
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
 	case "dir":
@@ -31,8 +35,6 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 	case "registry":
 		l.Debugf("identified registry target reference of [%s]", components[1])
 		ropts := content.RegistryOptions{
-			Username:  o.Username,
-			Password:  o.Password,
 			Insecure:  o.Insecure,
 			PlainHTTP: o.PlainHTTP,
 		}
