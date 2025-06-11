@@ -39,6 +39,8 @@ func ConvertCharts(in *v1alpha1.Charts, out *v1.Charts) error {
 	out.Spec.Charts = make([]v1.Chart, len(in.Spec.Charts))
 	for i := range in.Spec.Charts {
 		out.Spec.Charts[i].Name = in.Spec.Charts[i].Name
+		out.Spec.Charts[i].OverrideName = in.Spec.Charts[i].OverrideName
+		out.Spec.Charts[i].OverrideNamespace = in.Spec.Charts[i].OverrideNamespace
 		out.Spec.Charts[i].RepoURL = in.Spec.Charts[i].RepoURL
 		out.Spec.Charts[i].Version = in.Spec.Charts[i].Version
 	}
