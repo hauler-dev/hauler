@@ -1,7 +1,8 @@
 module hauler.dev/go/hauler
 
-go 1.23.4
-toolchain go1.24.2
+go 1.23.8
+
+toolchain go1.24.3
 
 replace github.com/sigstore/cosign/v2 => github.com/hauler-dev/cosign/v2 v2.4.3-0.20250404165522-3a44ef646a65
 
@@ -110,7 +111,7 @@ require (
 	github.com/chrismellard/docker-credential-acr-env v0.0.0-20230304212654-82a0ddb27589 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/clbanning/mxj/v2 v2.7.0 // indirect
-	github.com/cloudflare/circl v1.3.7 // indirect
+	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
