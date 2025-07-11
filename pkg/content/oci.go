@@ -229,7 +229,7 @@ func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) err
 		return true
 	})
 	if errst != nil {
-		return fmt.Errorf(strings.Join(errst, "; "))
+		return fmt.Errorf("%s", strings.Join(errst, "; "))
 	}
 	return nil
 }
