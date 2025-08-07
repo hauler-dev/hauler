@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"hauler.dev/go/hauler/pkg/layer"
 )
 
+// Layout is the layout plus helper methods
 type Layout struct {
 	*content.OCI
 	Root  string
@@ -59,10 +61,9 @@ func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 
 // AddOCI adds an artifacts.OCI to the store
 //
-//	The method to achieve this is to save artifact.OCI to a temporary directory in an OCI layout compatible form.  Once
-//	saved, the entirety of the layout is copied to the store (which is just a registry).  This allows us to not only use
-//	strict types to define generic content, but provides a processing pipeline suitable for extensibility.  In the
-//	future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an OCI layout.
+// The method to achieve this is to save artifact.OCI to a temporary directory in an oci layout compatible form and the entirety of the oci layout is copied to the store
+// This allows us to not only use strict types to define generic content, but provides a processing pipeline suitable for extensibility
+// In the future we'll allow users to define their own content that must adhere either by artifact.OCI or simply an oci layout
 func (l *Layout) AddOCI(ctx context.Context, oci artifacts.OCI, ref string) (ocispec.Descriptor, error) {
 	if l.cache != nil {
 		cached := layer.OCICache(oci, l.cache)
@@ -112,7 +113,7 @@ func (l *Layout) AddOCI(ctx context.Context, oci artifacts.OCI, ref string) (oci
 		return ocispec.Descriptor{}, err
 	}
 
-	// Build index
+	// build the index
 	idx := ocispec.Descriptor{
 		MediaType: string(m.MediaType),
 		Digest:    digest.FromBytes(mdata),
@@ -125,7 +126,15 @@ func (l *Layout) AddOCI(ctx context.Context, oci artifacts.OCI, ref string) (oci
 		Platform: nil,
 	}
 
-	return idx, l.OCI.AddIndex(idx)
+	// write into index.json and ensure full oci-layout
+	if err := l.OCI.AddIndex(idx); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if err := EnsureOCILayout(l.Root); err != nil {
+		return ocispec.Descriptor{}, fmt.Errorf("ensuring oci layout: %w", err)
+	}
+
+	return idx, nil
 }
 
 // AddOCICollection .
@@ -170,8 +179,7 @@ func (l *Layout) Flush(ctx context.Context) error {
 }
 
 // Copy will copy a given reference to a given target.Target
-//
-//	This is essentially a wrapper around oras.Copy, but locked to this content store
+// This is essentially a wrapper around oras.Copy, but locked to this content store
 func (l *Layout) Copy(ctx context.Context, ref string, to target.Target, toRef string) (ocispec.Descriptor, error) {
 	return oras.Copy(ctx, l.OCI, ref, to, toRef,
 		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2, consts.DockerManifestListSchema2))

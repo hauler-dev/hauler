@@ -17,7 +17,7 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-// extracts the contents of an archived oci layout to an existing oci layout
+// LoadCmd extracts the contents of an archived oci layout into an existing store
 func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
@@ -46,10 +46,12 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 	return nil
 }
 
-// accepts an archived OCI layout, extracts the contents to an existing OCI layout, and preserves the index
-func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDir string) error {
+// unarchiveLayoutTo accepts an archived oci layout, extracts the contents to an existing oci layout, and preserves the index
+// patches by injecting the cosign metadata, ensuring the oci-layout, and updates everything in the store
+func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) error {
 	l := log.FromContext(ctx)
 
+	// check for remote archive
 	if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 		l.Debugf("detected remote archive... starting download... [%s]", haulPath)
 
@@ -81,20 +83,33 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		}
 	}
 
+	// unpack into tempDir
 	if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
 		return err
 	}
 
+	// inject cosign metadata and write oci-layout
+	l.Debugf("patching metadata in the oci layout in [%s]", tempDir)
+	if err := store.EnsureOCILayout(tempDir); err != nil {
+		return err
+	}
+
+	// load the temp layout
 	s, err := store.NewLayout(tempDir)
 	if err != nil {
 		return err
 	}
 
+	// update store layout with tempDir layout
 	ts, err := content.NewOCI(dest)
 	if err != nil {
 		return err
 	}
+	if _, err = s.CopyAll(ctx, ts, nil); err != nil {
+		return err
+	}
 
-	_, err = s.CopyAll(ctx, ts, nil)
-	return err
+	// ensure the store has the layout
+	l.Debugf("updating oci layout in store at [%s]", dest)
+	return store.EnsureOCILayout(dest)
 }
