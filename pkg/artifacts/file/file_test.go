@@ -123,7 +123,7 @@ func Test_file_Layers(t *testing.T) {
 
 func setup() func() {
 	tfs = afero.NewMemMapFs()
-	afero.WriteFile(tfs, filename, data, 0644)
+	afero.WriteFile(tfs, filename, data, consts.DefaultFileMode)
 
 	mf := &mockFile{File: getter.NewFile(), fs: tfs}
 

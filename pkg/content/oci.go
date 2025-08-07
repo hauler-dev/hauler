@@ -138,7 +138,7 @@ func (o *OCI) SaveIndex() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(o.path(ocispec.ImageIndexFile), data, 0644)
+	return os.WriteFile(o.path(ocispec.ImageIndexFile), data, consts.DefaultFileMode)
 }
 
 // Resolve attempts to resolve the reference into a name and descriptor.
@@ -255,7 +255,7 @@ func (o *OCI) blobWriterAt(desc ocispec.Descriptor) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return os.OpenFile(blobPath, os.O_WRONLY|os.O_CREATE, 0644)
+	return os.OpenFile(blobPath, os.O_WRONLY|os.O_CREATE, consts.DefaultFileMode)
 }
 
 func (o *OCI) ensureBlob(alg string, hex string) (string, error) {

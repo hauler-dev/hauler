@@ -43,7 +43,7 @@ func EnsureOCILayout(dir string) error {
 	if err != nil {
 		return fmt.Errorf("marshal index.json: %w", err)
 	}
-	if err := os.WriteFile(idxPath, out, 0644); err != nil {
+	if err := os.WriteFile(idxPath, out, consts.DefaultFileMode); err != nil {
 		return fmt.Errorf("write index.json: %w", err)
 	}
 
@@ -52,7 +52,7 @@ func EnsureOCILayout(dir string) error {
 	if err := os.WriteFile(
 		filepath.Join(dir, ocispec.ImageLayoutFile),
 		layout,
-		0644,
+		consts.DefaultFileMode,
 	); err != nil {
 		return fmt.Errorf("write oci-layout: %w", err)
 	}
