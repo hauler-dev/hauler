@@ -126,7 +126,7 @@ func (l *Layout) AddOCI(ctx context.Context, oci artifacts.OCI, ref string) (oci
 		Platform: nil,
 	}
 
-	// write into index.json and ensure full oci-layout
+	// write into index.json and ensure full oci layout
 	if err := l.OCI.AddIndex(idx); err != nil {
 		return ocispec.Descriptor{}, err
 	}
@@ -155,10 +155,10 @@ func (l *Layout) AddOCICollection(ctx context.Context, collection artifacts.OCIC
 	return descs, nil
 }
 
-// Flush is a fancy name for delete-all-the-things, in this case it's as trivial as deleting oci-layout content
+// Flush is a fancy name for delete-all-the-things, in this case it's as trivial as deleting oci layout content
 //
 //	This can be a highly destructive operation if the store's directory happens to be inline with other non-store contents
-//	To reduce the blast radius and likelihood of deleting things we don't own, Flush explicitly deletes oci-layout content only
+//	To reduce the blast radius and likelihood of deleting things we don't own, Flush explicitly deletes oci layout content only
 func (l *Layout) Flush(ctx context.Context) error {
 	blobs := filepath.Join(l.Root, ocispec.ImageBlobsDir)
 	if err := os.RemoveAll(blobs); err != nil {

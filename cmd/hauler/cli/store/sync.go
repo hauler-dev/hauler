@@ -84,7 +84,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		l.Infof("processing completed successfully")
 	}
 
-	// If passed a local manifest, process it
+	// detect if archive is a local or remote
 	for _, fileName := range o.FileName {
 		l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
 

@@ -12,6 +12,7 @@ const (
 	DockerUncompressedLayer   = "application/vnd.docker.image.rootfs.diff.tar"
 	OCILayer                  = "application/vnd.oci.image.layer.v1.tar+gzip"
 	OCIArtifact               = "application/vnd.oci.empty.v1+json"
+	OCIImageRefName           = "org.opencontainers.image.ref.name"
 
 	// helm chart media types
 	ChartConfigMediaType = "application/vnd.cncf.helm.config.v1+json"

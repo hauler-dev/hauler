@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -15,6 +16,11 @@ import (
 	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
+
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
 // LoadCmd extracts the contents of an archived oci layout into an existing store
@@ -47,14 +53,13 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 }
 
 // unarchiveLayoutTo accepts an archived oci layout, extracts the contents to an existing oci layout, and preserves the index
-// patches by injecting the cosign metadata, ensuring the oci-layout, and updates everything in the store
+// patches by injecting the cosign metadata, ensuring the oci layout, and updates everything in the store
 func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) error {
 	l := log.FromContext(ctx)
 
-	// check for remote archive
+	// detect if archive is a remote file
 	if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 		l.Debugf("detected remote archive... starting download... [%s]", haulPath)
-
 		h := getter.NewHttp()
 		parsedURL, err := url.Parse(haulPath)
 		if err != nil {
@@ -70,31 +75,78 @@ func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) erro
 		if fileName == "" {
 			fileName = filepath.Base(parsedURL.Path)
 		}
-		haulPath = filepath.Join(tempDir, fileName)
 
-		out, err := os.Create(haulPath)
+		// create temp directory for remote archive
+		tempTar, err := os.CreateTemp(tempDir, fileName)
 		if err != nil {
 			return err
 		}
-		defer out.Close()
+		defer tempTar.Close()
+		haulPath = tempTar.Name()
 
-		if _, err = io.Copy(out, rc); err != nil {
+		if _, err = io.Copy(tempTar, rc); err != nil {
 			return err
 		}
+		l.Debugf("downloaded remote archive to [%s]", haulPath)
 	}
 
-	// unpack into tempDir
-	if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
-		return err
+	opener := func() (io.ReadCloser, error) {
+		return os.Open(haulPath)
 	}
 
-	// inject cosign metadata and write oci-layout
+	// attempt to load the tarball as a docker-save manifest
+	l.Debugf("attempt to inspect [%s] as a docker archive tarball", haulPath)
+	manifests, err := tarball.LoadManifest(opener)
+	// If LoadManifest fails, it's not a valid docker archive so proccess as an oci layout
+	if err != nil || len(manifests) == 0 {
+		l.Debugf("failed to read as docker-save format (likely an OCI haul), falling back to standard unarchive: %v", err)
+		if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
+			return err
+		}
+	} else {
+		// If LoadManifest succeeds, it's a valid docker archive
+		l.Debugf("detected docker archive formatted tarball in [%s]", haulPath)
+		l.Infof("converting docker archive to oci layout...")
+
+		// fetch the tag to identify the image
+		if len(manifests[0].RepoTags) == 0 {
+			return fmt.Errorf("could not identify the image from the repotags from docker archive tarball")
+		}
+		repoTag := manifests[0].RepoTags[0]
+		tag, err := name.NewTag(repoTag)
+		if err != nil {
+			return fmt.Errorf("could not parse tag from docker archive manifest [%s]: %w", repoTag, err)
+		}
+
+		// load the image from the tarball
+		img, err := tarball.ImageFromPath(haulPath, &tag)
+		if err != nil {
+			return fmt.Errorf("could not load image from docker archive tarball: %w", err)
+		}
+
+		// create an empty oci layout in the tempDir
+		p, err := layout.Write(tempDir, empty.Index)
+		if err != nil {
+			return fmt.Errorf("failed to write empty oci layout: %w", err)
+		}
+
+		// update the oci layout with the image
+		annotations := map[string]string{
+			consts.OCIImageRefName: tag.String(),
+		}
+		if err := p.AppendImage(img, layout.WithAnnotations(annotations)); err != nil {
+			return fmt.Errorf("failed to append image to oci layout: %w", err)
+		}
+		l.Infof("successfully converted docker archive to oci layout [%s]", tag.String())
+	}
+
+	// patch and mutate the index for cosign metadata and write the oci layout
 	l.Debugf("patching metadata in the oci layout in [%s]", tempDir)
 	if err := store.EnsureOCILayout(tempDir); err != nil {
 		return err
 	}
 
-	// load the temp layout
+	// load the temporary layout
 	s, err := store.NewLayout(tempDir)
 	if err != nil {
 		return err

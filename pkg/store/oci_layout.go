@@ -10,7 +10,7 @@ import (
 	"hauler.dev/go/hauler/pkg/consts"
 )
 
-// EnsureOCILayout patches index.json to inject cosign metadata and writes oci-layout to produce a valid layout
+// EnsureOCILayout patches index.json to inject cosign metadata and writes oci layout to produce a valid oci layout
 func EnsureOCILayout(dir string) error {
 	idxPath := filepath.Join(dir, ocispec.ImageIndexFile)
 	raw, err := os.ReadFile(idxPath)
@@ -47,14 +47,14 @@ func EnsureOCILayout(dir string) error {
 		return fmt.Errorf("write index.json: %w", err)
 	}
 
-	// add the oci-layout file
+	// add the oci layout file
 	layout := []byte(`{"imageLayoutVersion":"1.0.0"}`)
 	if err := os.WriteFile(
 		filepath.Join(dir, ocispec.ImageLayoutFile),
 		layout,
 		consts.DefaultFileMode,
 	); err != nil {
-		return fmt.Errorf("write oci-layout: %w", err)
+		return fmt.Errorf("write oci layout: %w", err)
 	}
 
 	return nil
