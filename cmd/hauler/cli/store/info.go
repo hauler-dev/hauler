@@ -229,7 +229,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		ctype = "image"
 	}
 
-	switch desc.Annotations["kind"] {
+	switch desc.Annotations[consts.KindAnnotationName] {
 	case "dev.cosignproject.cosign/sigs":
 		ctype = "sigs"
 	case "dev.cosignproject.cosign/atts":

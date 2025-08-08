@@ -121,8 +121,8 @@ func (o *OCI) SaveIndex() error {
 
 	// sort index to ensure that images come before any signatures and attestations.
 	sort.SliceStable(descs, func(i, j int) bool {
-		kindI := descs[i].Annotations["kind"]
-		kindJ := descs[j].Annotations["kind"]
+		kindI := descs[i].Annotations[consts.KindAnnotationName]
+		kindJ := descs[j].Annotations[consts.KindAnnotationName]
 
 		// Objects with the prefix of "dev.cosignproject.cosign/image" should be at the top.
 		if strings.HasPrefix(kindI, consts.KindAnnotationImage) && !strings.HasPrefix(kindJ, consts.KindAnnotationImage) {

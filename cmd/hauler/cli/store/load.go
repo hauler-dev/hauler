@@ -21,6 +21,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // LoadCmd extracts the contents of an archived oci layout into an existing store
@@ -132,7 +133,7 @@ func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) erro
 
 		// update the oci layout with the image
 		annotations := map[string]string{
-			consts.OCIImageRefName: tag.String(),
+			ocispec.AnnotationRefName: tag.String(),
 		}
 		if err := p.AppendImage(img, layout.WithAnnotations(annotations)); err != nil {
 			return fmt.Errorf("failed to append image to oci layout: %w", err)
