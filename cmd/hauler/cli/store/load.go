@@ -110,10 +110,11 @@ func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) erro
 		l.Infof("converting docker archive to oci layout...")
 
 		// fetch the tag to identify the image
-		if len(manifests[0].RepoTags) == 0 {
+		manifest := manifests[0]
+		if len(manifest.RepoTags) == 0 {
 			return fmt.Errorf("could not identify the image from the repotags from docker archive tarball")
 		}
-		repoTag := manifests[0].RepoTags[0]
+		repoTag := manifest.RepoTags[0]
 		tag, err := name.NewTag(repoTag)
 		if err != nil {
 			return fmt.Errorf("could not parse tag from docker archive manifest [%s]: %w", repoTag, err)
