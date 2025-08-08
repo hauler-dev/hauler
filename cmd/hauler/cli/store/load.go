@@ -76,7 +76,7 @@ func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) erro
 			fileName = filepath.Base(parsedURL.Path)
 		}
 
-		// create temp directory for remote archive
+		// create temp file for remote archive
 		tempTar, err := os.CreateTemp(tempDir, fileName)
 		if err != nil {
 			return err
@@ -94,12 +94,12 @@ func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) erro
 		return os.Open(haulPath)
 	}
 
-	// attempt to load the tarball as a docker-save manifest
-	l.Debugf("attempt to inspect [%s] as a docker archive tarball", haulPath)
+	// attempt to load the tarball as a docker archive manifest
+	l.Debugf("attempting to inspect [%s] as a docker archive tarball", haulPath)
 	manifests, err := tarball.LoadManifest(opener)
 	// If LoadManifest fails, it's not a valid docker archive so proccess as an oci layout
 	if err != nil || len(manifests) == 0 {
-		l.Debugf("failed to read as docker-save format (likely an OCI haul), falling back to standard unarchive: %v", err)
+		l.Debugf("unable to determine docker archive format... processing as oci layout tarball")
 		if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
 			return err
 		}
@@ -157,7 +157,8 @@ func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) erro
 	if err != nil {
 		return err
 	}
-	if _, err = s.CopyAll(ctx, ts, nil); err != nil {
+	_, err = s.CopyAll(ctx, ts, nil)
+	if err != nil {
 		return err
 	}
 
