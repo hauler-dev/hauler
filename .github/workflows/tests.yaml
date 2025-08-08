@@ -117,9 +117,9 @@ jobs:
           hauler login docker.io --username ${{ secrets.DOCKERHUB_USERNAME }} --password ${{ secrets.DOCKERHUB_TOKEN }}
           echo ${{ secrets.GITHUB_TOKEN }} | hauler login ghcr.io -u ${{ github.repository_owner }} --password-stdin
 
-      - name: Remove Hauler Store Credentials
-        run: |
-          rm -rf ~/.docker/config.json
+      # - name: Remove Hauler Store Credentials
+      #   run: |
+      #     rm -rf ~/.docker/config.json
 
       - name: Verify - hauler store
         run: |
