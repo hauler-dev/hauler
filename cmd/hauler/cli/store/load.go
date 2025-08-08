@@ -157,8 +157,7 @@ func unarchiveLayoutTo(ctx context.Context, haulPath, dest, tempDir string) erro
 	if err != nil {
 		return err
 	}
-	_, err = s.CopyAll(ctx, ts, nil)
-	if err != nil {
+	if _, err := s.CopyAll(ctx, ts, nil); err != nil {
 		return err
 	}
 
