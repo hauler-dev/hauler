@@ -63,7 +63,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit-tests]
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -238,6 +237,11 @@ jobs:
           # verify store directory structure
           tree -hC store
 
+      - name: Remove Hauler Store Contents
+        run: |
+          rm -rf store
+          hauler store info
+
       - name: Verify - docker load
         run: |
           docker load --help
@@ -250,12 +254,20 @@ jobs:
           # verify images
           docker images --all
 
+      - name: Verify Hauler Store Contents
+        run: |
+          # verify store
+          hauler store info
+          # verify store directory structure
+          tree -hC store
+
       - name: Remove Hauler Store Contents
         run: |
           rm -rf store haul.tar.zst store.tar.zst store-amd64.tar.zst
           hauler store info
 
       - name: Verify - hauler store sync
+        continue-on-error: true
         run: |
           hauler store sync --help
           # download local helm repository
