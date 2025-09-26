@@ -42,6 +42,7 @@ const (
 	HaulerVendorPrefix = "vnd.hauler"
 
 	// annotation keys
+	ContainerdImageNameKey  = "io.containerd.image.name"
 	KindAnnotationName      = "kind"
 	KindAnnotationImage     = "dev.cosignproject.cosign/image"
 	KindAnnotationIndex     = "dev.cosignproject.cosign/imageIndex"
@@ -49,6 +50,7 @@ const (
 	ImageAnnotationPlatform = "hauler.dev/platform"
 	ImageAnnotationRegistry = "hauler.dev/registry"
 	ImageAnnotationTlog     = "hauler.dev/use-tlog-verify"
+	ImageRefKey             = "org.opencontainers.image.ref.name"
 
 	// cosign keyless validation options
 	ImageAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
