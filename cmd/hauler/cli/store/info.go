@@ -19,7 +19,7 @@ import (
 func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 	var items []item
 	if err := s.Walk(func(ref string, desc ocispec.Descriptor) error {
-		if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
+		if _, ok := desc.Annotations[consts.ImageRefKey]; !ok {
 			return nil
 		}
 		rc, err := s.Fetch(ctx, desc)
@@ -238,9 +238,9 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		ctype = "sbom"
 	}
 
-	refName := desc.Annotations["io.containerd.image.name"]
+	refName := desc.Annotations[consts.ContainerdImageNameKey]
 	if refName == "" {
-		refName = desc.Annotations[ocispec.AnnotationRefName]
+		refName = desc.Annotations[consts.ImageRefKey]
 	}
 	ref, err := reference.Parse(refName)
 	if err != nil {

@@ -100,7 +100,7 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 
 		m := manifests[0]
 		if len(m.RepoTags) == 0 {
-			return fmt.Errorf("docker archive has no RepoTags; cannot determine ref")
+			return fmt.Errorf("docker archive has no repo tags... cannot determine ref...")
 		}
 		repoTag := m.RepoTags[0]
 		tag, err := name.NewTag(repoTag)
@@ -110,23 +110,31 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 
 		img, err := tarball.ImageFromPath(haulPath, &tag)
 		if err != nil {
-			return fmt.Errorf("failed loading image from docker archive: %w", err)
+			return fmt.Errorf("failed loading image(s) from docker archive: %w", err)
 		}
 
 		// create the empty oci layout and append the image with the reference name annotation
 		p, err := layout.Write(tempDir, empty.Index)
 		if err != nil {
-			return fmt.Errorf("failed to create empty OCI layout: %w", err)
-		}
-		if err := p.AppendImage(img, layout.WithAnnotations(map[string]string{
-			ocispec.AnnotationRefName: tag.String(),
-		})); err != nil {
-			return fmt.Errorf("failed appending image to OCI layout: %w", err)
+			return fmt.Errorf("failed to create empty oci layout: %w", err)
 		}
 
-		l.Infof("docker archive to oci layout conversion complete for [%s]", tag.String())
+		// preserve both annotations, the fully qualified ref name and the short ref name
+		full := tag.Name()                                // <registry>/<namespace>/<repo>:<tag>
+		short := tag.RepositoryStr() + ":" + tag.TagStr() // <namespace>/<repo>:<tag>
+
+		anns := map[string]string{
+			consts.ContainerdImageNameKey: full,
+			consts.ImageRefKey:            short,
+		}
+
+		if err := p.AppendImage(img, layout.WithAnnotations(anns)); err != nil {
+			return fmt.Errorf("failed appending image to oci layout: %w", err)
+		}
+
+		l.Infof("oci layout conversion complete for [%s]", tag.Name())
 	} else {
-		// // for oci layout archive... continue to unpack it
+		// for oci layout archive... continue to unpack it
 		if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
 			return err
 		}
@@ -164,7 +172,7 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, "index.json"), out, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "index.json"), out, consts.DefaultFileMode); err != nil {
 		return err
 	}
 

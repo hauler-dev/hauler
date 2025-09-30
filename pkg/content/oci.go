@@ -44,11 +44,11 @@ func NewOCI(root string) (*OCI, error) {
 //
 //	The descriptor must use AnnotationRefName to identify itself
 func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
-	if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
-		return fmt.Errorf("descriptor must contain a reference from the annotation: %s", ocispec.AnnotationRefName)
+	if _, ok := desc.Annotations[consts.ImageRefKey]; !ok {
+		return fmt.Errorf("descriptor must contain a reference from the annotation: %s", consts.ImageRefKey)
 	}
 
-	key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+	key, err := reference.Parse(desc.Annotations[consts.ImageRefKey])
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (o *OCI) LoadIndex() error {
 	}
 
 	for _, desc := range o.index.Manifests {
-		key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+		key, err := reference.Parse(desc.Annotations[consts.ImageRefKey])
 		if err != nil {
 			return err
 		}
@@ -108,13 +108,13 @@ func (o *OCI) LoadIndex() error {
 func (o *OCI) SaveIndex() error {
 	var descs []ocispec.Descriptor
 	o.nameMap.Range(func(name, desc interface{}) bool {
-		n := desc.(ocispec.Descriptor).Annotations[ocispec.AnnotationRefName]
+		n := desc.(ocispec.Descriptor).Annotations[consts.ImageRefKey]
 		d := desc.(ocispec.Descriptor)
 
 		if d.Annotations == nil {
 			d.Annotations = make(map[string]string)
 		}
-		d.Annotations[ocispec.AnnotationRefName] = n
+		d.Annotations[consts.ImageRefKey] = n
 		descs = append(descs, d)
 		return true
 	})

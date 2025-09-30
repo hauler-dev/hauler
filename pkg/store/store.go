@@ -119,7 +119,7 @@ func (l *Layout) AddOCI(ctx context.Context, oci artifacts.OCI, ref string) (oci
 		Size:      int64(len(mdata)),
 		Annotations: map[string]string{
 			consts.KindAnnotationName: consts.KindAnnotationImage,
-			ocispec.AnnotationRefName: ref,
+			consts.ImageRefKey:        ref,
 		},
 		URLs:     nil,
 		Platform: nil,
