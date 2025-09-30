@@ -98,4 +98,5 @@ const (
 	DefaultRetries            = 3
 	RetriesInterval           = 5
 	CustomTimeFormat          = "2006-01-02 15:04:05"
+	DefaultFileMode           = 0644
 )

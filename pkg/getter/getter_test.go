@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/getter"
 )
 
@@ -129,7 +130,7 @@ func setup(t *testing.T) func() {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(fileWithExt, []byte(""), 0644); err != nil {
+	if err := os.WriteFile(fileWithExt, []byte(""), consts.DefaultFileMode); err != nil {
 		t.Fatal(err)
 	}
 

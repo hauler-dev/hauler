@@ -11,6 +11,7 @@ import (
 	"github.com/containerd/containerd/remotes"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
+	"hauler.dev/go/hauler/pkg/consts"
 	"oras.land/oras-go/pkg/content"
 )
 
@@ -69,7 +70,7 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 
 	fullFileName := filepath.Join(s.store.ResolvePath(""), filename)
 	// TODO: Don't rewrite everytime, we can check the digest
-	f, err := os.OpenFile(fullFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(fullFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, consts.DefaultFileMode)
 	if err != nil {
 		return nil, errors.Wrap(err, "pushing file")
 	}

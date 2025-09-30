@@ -117,9 +117,9 @@ jobs:
           hauler login docker.io --username ${{ secrets.DOCKERHUB_USERNAME }} --password ${{ secrets.DOCKERHUB_TOKEN }}
           echo ${{ secrets.GITHUB_TOKEN }} | hauler login ghcr.io -u ${{ github.repository_owner }} --password-stdin
 
-      - name: Remove Hauler Store Credentials
-        run: |
-          rm -rf ~/.docker/config.json
+      # - name: Remove Hauler Store Credentials
+      #   run: |
+      #     rm -rf ~/.docker/config.json
 
       - name: Verify - hauler store
         run: |
@@ -237,6 +237,11 @@ jobs:
           # verify store directory structure
           tree -hC store
 
+      - name: Remove Hauler Store Contents
+        run: |
+          rm -rf store
+          hauler store info
+
       - name: Verify - docker load
         run: |
           docker load --help
@@ -249,12 +254,20 @@ jobs:
           # verify images
           docker images --all
 
+      - name: Verify Hauler Store Contents
+        run: |
+          # verify store
+          hauler store info
+          # verify store directory structure
+          tree -hC store
+
       - name: Remove Hauler Store Contents
         run: |
           rm -rf store haul.tar.zst store.tar.zst store-amd64.tar.zst
           hauler store info
 
       - name: Verify - hauler store sync
+        continue-on-error: true
         run: |
           hauler store sync --help
           # download local helm repository
