@@ -39,14 +39,14 @@ changelog:
   disable: false
   use: git
 
-brews:
+homebrew_casks:
   - name: hauler
     repository:
       owner: hauler-dev
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    description: "Hauler CLI"
+    description: "Hauler: Airgap Swiss Army Knife"
 
 dockers:
   - id: hauler-amd64
