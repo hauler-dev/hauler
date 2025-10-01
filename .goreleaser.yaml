@@ -48,74 +48,45 @@ homebrew_casks:
     directory: Formula
     description: "Hauler: Airgap Swiss Army Knife"
 
-dockers:
-  - id: hauler-amd64
-    goos: linux
-    goarch: amd64
-    use: buildx
+dockers_v2:
+  - id: hauler
     dockerfile: Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
+    flags:
       - "--target=release"
-    image_templates:
-      - "docker.io/hauler/hauler-amd64:{{ .Version }}"
-      - "ghcr.io/hauler-dev/hauler-amd64:{{ .Version }}"
-  - id: hauler-arm64
-    goos: linux
-    goarch: arm64
-    use: buildx
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--target=release"
-    image_templates:
-      - "docker.io/hauler/hauler-arm64:{{ .Version }}"
-      - "ghcr.io/hauler-dev/hauler-arm64:{{ .Version }}"
-  - id: hauler-debug-amd64
-    goos: linux
-    goarch: amd64
-    use: buildx
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--target=debug"
-    image_templates:
-      - "docker.io/hauler/hauler-debug-amd64:{{ .Version }}"
-      - "ghcr.io/hauler-dev/hauler-debug-amd64:{{ .Version }}"
-  - id: hauler-debug-arm64
-    goos: linux
-    goarch: arm64
-    use: buildx
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--target=debug"
-    image_templates:
-      - "docker.io/hauler/hauler-debug-arm64:{{ .Version }}"
-      - "ghcr.io/hauler-dev/hauler-debug-arm64:{{ .Version }}"
+    images:
+      - docker.io/hauler/hauler
+      - ghcr.io/hauler-dev/hauler
+    tags:
+      - "{{ .Version }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      "classification": "UNCLASSIFIED"
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.description": "Hauler: Airgap Swiss Army Knife"
+      "org.opencontainers.image.name": "{{.ProjectName}}-debug"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+      "org.opencontainers.image.version": "{{.Version}}"
 
-docker_manifests:
-  - id: hauler-docker
-    use: docker
-    name_template: "docker.io/hauler/hauler:{{ .Version }}"
-    image_templates:
-      - "docker.io/hauler/hauler-amd64:{{ .Version }}"
-      - "docker.io/hauler/hauler-arm64:{{ .Version }}"
-  - id: hauler-ghcr
-    use: docker
-    name_template: "ghcr.io/hauler-dev/hauler:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/hauler-dev/hauler-amd64:{{ .Version }}"
-      - "ghcr.io/hauler-dev/hauler-arm64:{{ .Version }}"
-  - id: hauler-debug-docker
-    use: docker
-    name_template: "docker.io/hauler/hauler-debug:{{ .Version }}"
-    image_templates:
-      - "docker.io/hauler/hauler-debug-amd64:{{ .Version }}"
-      - "docker.io/hauler/hauler-debug-arm64:{{ .Version }}"
-  - id: hauler-debug-ghcr
-    use: docker
-    name_template: "ghcr.io/hauler-dev/hauler-debug:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/hauler-dev/hauler-debug-amd64:{{ .Version }}"
-      - "ghcr.io/hauler-dev/hauler-debug-arm64:{{ .Version }}"
+  - id: hauler-debug
+    dockerfile: Dockerfile
+    flags:
+      - "--target=debug"
+    images:
+      - docker.io/hauler/hauler-debug
+      - ghcr.io/hauler-dev/hauler-debug
+    tags:
+      - "{{ .Version }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      "classification": "UNCLASSIFIED"
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.description": "Hauler: Airgap Swiss Army Knife"
+      "org.opencontainers.image.name": "{{.ProjectName}}-debug"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+      "org.opencontainers.image.version": "{{.Version}}"
