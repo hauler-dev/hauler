@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/url"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
+
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // extracts the contents of an archived oci layout to an existing oci layout
@@ -82,6 +85,42 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	}
 
 	if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
+		return err
+	}
+
+	// ensure the incoming index.json has the correct annotations.
+	data, err := os.ReadFile(tempDir + "/index.json")
+	if err != nil {
+		return (err)
+	}
+
+	var idx ocispec.Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return (err)
+	}
+
+	for i := range idx.Manifests {
+		if idx.Manifests[i].Annotations == nil {
+			idx.Manifests[i].Annotations = make(map[string]string)
+		}
+		if _, exists := idx.Manifests[i].Annotations[consts.KindAnnotationName]; !exists {
+			idx.Manifests[i].Annotations[consts.KindAnnotationName] = consts.KindAnnotationImage
+		}
+		if ref, ok := idx.Manifests[i].Annotations[consts.ContainerdImageNameKey]; ok {
+			if slash := strings.Index(ref, "/"); slash != -1 {
+				ref = ref[slash+1:]
+			}
+			if idx.Manifests[i].Annotations[consts.ImageRefKey] != ref {
+				idx.Manifests[i].Annotations[consts.ImageRefKey] = ref
+			}
+		}
+	}
+
+	out, err := json.MarshalIndent(idx, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(tempDir+"/index.json", out, 0644); err != nil {
 		return err
 	}
 
