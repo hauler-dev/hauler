@@ -42,15 +42,18 @@ const (
 	HaulerVendorPrefix = "vnd.hauler"
 
 	// annotation keys
-	ContainerdImageNameKey     = "io.containerd.image.name"
-	ImageReferenceKey          = "org.opencontainers.image.ref.name"
-	KindAnnotationName         = "kind"
-	KindAnnotationImage        = "dev.cosignproject.cosign/image"
-	KindAnnotationIndex        = "dev.cosignproject.cosign/imageIndex"
-	ManifestAnnotationKey      = "hauler.dev/key"
-	ManifestAnnotationPlatform = "hauler.dev/platform"
-	ManifestAnnotationRegistry = "hauler.dev/registry"
-	ManifestAnnotationTlog     = "hauler.dev/use-tlog-verify"
+	ContainerdImageNameKey              = "io.containerd.image.name"
+	ImageReferenceKey                   = "org.opencontainers.image.ref.name"
+	KindAnnotationName                  = "kind"
+	KindAnnotationImage                 = "dev.cosignproject.cosign/image"
+	KindAnnotationIndex                 = "dev.cosignproject.cosign/imageIndex"
+	ManifestAnnotationKey               = "hauler.dev/key"
+	ManifestAnnotationPlatform          = "hauler.dev/platform"
+	ManifestAnnotationRegistry          = "hauler.dev/registry"
+	ManifestAnnotationStore             = "hauler.dev/store"
+	ManifestAnnotationTlog              = "hauler.dev/use-tlog-verify"
+	ManifestAnnotationOverrideName      = "hauler.dev/override-name"
+	ManifestAnnotationOverrideNamespace = "hauler.dev/override-namespace"
 
 	// cosign keyless validation options
 	ManifestAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
