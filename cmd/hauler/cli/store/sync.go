@@ -217,11 +217,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				a := v1Cfg.GetAnnotations()
 				for _, i := range v1Cfg.Spec.Images {
 
-					if a[consts.ImageAnnotationRegistry] != "" || o.Registry != "" {
+					if a[consts.ManifestAnnotationRegistry] != "" || o.Registry != "" {
 						newRef, _ := reference.Parse(i.Name)
 						newReg := o.Registry
-						if o.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
-							newReg = a[consts.ImageAnnotationRegistry]
+						if o.Registry == "" && a[consts.ManifestAnnotationRegistry] != "" {
+							newReg = a[consts.ManifestAnnotationRegistry]
 						}
 						if newRef.Context().RegistryStr() == "" {
 							newRef, err = reference.Relocate(i.Name, newReg)
@@ -232,16 +232,16 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						i.Name = newRef.Name()
 					}
 
-					hasAnnotationIdentityOptions := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != ""
+					hasAnnotationIdentityOptions := a[consts.ManifestAnnotationCertIdentityRegexp] != "" || a[consts.ManifestAnnotationCertIdentity] != ""
 					hasCliIdentityOptions := o.CertIdentityRegexp != "" || o.CertIdentity != ""
 					hasImageIdentityOptions := i.CertIdentityRegexp != "" || i.CertIdentity != ""
 
 					needsKeylessVerificaton := hasAnnotationIdentityOptions || hasCliIdentityOptions || hasImageIdentityOptions
-					needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
+					needsPubKeyVerification := a[consts.ManifestAnnotationKey] != "" || o.Key != "" || i.Key != ""
 					if needsPubKeyVerification {
 						key := o.Key
-						if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
-							key, err = homedir.Expand(a[consts.ImageAnnotationKey])
+						if o.Key == "" && a[consts.ManifestAnnotationKey] != "" {
+							key, err = homedir.Expand(a[consts.ManifestAnnotationKey])
 							if err != nil {
 								return err
 							}
@@ -255,7 +255,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("key for image [%s]", key)
 
 						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+						if !o.Tlog && a[consts.ManifestAnnotationTlog] == "true" {
 							tlog = true
 						}
 						if i.Tlog {
@@ -270,8 +270,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Infof("signature verified for image [%s]", i.Name)
 					} else if needsKeylessVerificaton { //Keyless signature verification
 						certIdentityRegexp := o.CertIdentityRegexp
-						if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
-							certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
+						if o.CertIdentityRegexp == "" && a[consts.ManifestAnnotationCertIdentityRegexp] != "" {
+							certIdentityRegexp = a[consts.ManifestAnnotationCertIdentityRegexp]
 						}
 						if i.CertIdentityRegexp != "" {
 							certIdentityRegexp = i.CertIdentityRegexp
@@ -279,8 +279,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certIdentityRegexp for image [%s]", certIdentityRegexp)
 
 						certIdentity := o.CertIdentity
-						if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
-							certIdentity = a[consts.ImageAnnotationCertIdentity]
+						if o.CertIdentity == "" && a[consts.ManifestAnnotationCertIdentity] != "" {
+							certIdentity = a[consts.ManifestAnnotationCertIdentity]
 						}
 						if i.CertIdentity != "" {
 							certIdentity = i.CertIdentity
@@ -288,8 +288,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certIdentity for image [%s]", certIdentity)
 
 						certOidcIssuer := o.CertOidcIssuer
-						if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
-							certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
+						if o.CertOidcIssuer == "" && a[consts.ManifestAnnotationCertOidcIssuer] != "" {
+							certOidcIssuer = a[consts.ManifestAnnotationCertOidcIssuer]
 						}
 						if i.CertOidcIssuer != "" {
 							certOidcIssuer = i.CertOidcIssuer
@@ -297,8 +297,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certOidcIssuer for image [%s]", certOidcIssuer)
 
 						certOidcIssuerRegexp := o.CertOidcIssuerRegexp
-						if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
-							certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
+						if o.CertOidcIssuerRegexp == "" && a[consts.ManifestAnnotationCertOidcIssuerRegexp] != "" {
+							certOidcIssuerRegexp = a[consts.ManifestAnnotationCertOidcIssuerRegexp]
 						}
 						if i.CertOidcIssuerRegexp != "" {
 							certOidcIssuerRegexp = i.CertOidcIssuerRegexp
@@ -306,8 +306,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certOidcIssuerRegexp for image [%s]", certOidcIssuerRegexp)
 
 						certGithubWorkflowRepository := o.CertGithubWorkflowRepository
-						if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
-							certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
+						if o.CertGithubWorkflowRepository == "" && a[consts.ManifestAnnotationCertGithubWorkflowRepository] != "" {
+							certGithubWorkflowRepository = a[consts.ManifestAnnotationCertGithubWorkflowRepository]
 						}
 						if i.CertGithubWorkflowRepository != "" {
 							certGithubWorkflowRepository = i.CertGithubWorkflowRepository
@@ -315,7 +315,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
 
 						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+						if !o.Tlog && a[consts.ManifestAnnotationTlog] == "true" {
 							tlog = true
 						}
 						if i.Tlog {
@@ -331,8 +331,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					}
 
 					platform := o.Platform
-					if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
-						platform = a[consts.ImageAnnotationPlatform]
+					if o.Platform == "" && a[consts.ManifestAnnotationPlatform] != "" {
+						platform = a[consts.ManifestAnnotationPlatform]
 					}
 					if i.Platform != "" {
 						platform = i.Platform
@@ -353,11 +353,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				a := cfg.GetAnnotations()
 				for _, i := range cfg.Spec.Images {
 
-					if a[consts.ImageAnnotationRegistry] != "" || o.Registry != "" {
+					if a[consts.ManifestAnnotationRegistry] != "" || o.Registry != "" {
 						newRef, _ := reference.Parse(i.Name)
 						newReg := o.Registry
-						if o.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
-							newReg = a[consts.ImageAnnotationRegistry]
+						if o.Registry == "" && a[consts.ManifestAnnotationRegistry] != "" {
+							newReg = a[consts.ManifestAnnotationRegistry]
 						}
 						if newRef.Context().RegistryStr() == "" {
 							newRef, err = reference.Relocate(i.Name, newReg)
@@ -368,16 +368,16 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						i.Name = newRef.Name()
 					}
 
-					hasAnnotationIdentityOptions := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != ""
+					hasAnnotationIdentityOptions := a[consts.ManifestAnnotationCertIdentityRegexp] != "" || a[consts.ManifestAnnotationCertIdentity] != ""
 					hasCliIdentityOptions := o.CertIdentityRegexp != "" || o.CertIdentity != ""
 					hasImageIdentityOptions := i.CertIdentityRegexp != "" || i.CertIdentity != ""
 
 					needsKeylessVerificaton := hasAnnotationIdentityOptions || hasCliIdentityOptions || hasImageIdentityOptions
-					needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
+					needsPubKeyVerification := a[consts.ManifestAnnotationKey] != "" || o.Key != "" || i.Key != ""
 					if needsPubKeyVerification {
 						key := o.Key
-						if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
-							key, err = homedir.Expand(a[consts.ImageAnnotationKey])
+						if o.Key == "" && a[consts.ManifestAnnotationKey] != "" {
+							key, err = homedir.Expand(a[consts.ManifestAnnotationKey])
 							if err != nil {
 								return err
 							}
@@ -391,7 +391,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("key for image [%s]", key)
 
 						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+						if !o.Tlog && a[consts.ManifestAnnotationTlog] == "true" {
 							tlog = true
 						}
 						if i.Tlog {
@@ -406,8 +406,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Infof("signature verified for image [%s]", i.Name)
 					} else if needsKeylessVerificaton { //Keyless signature verification
 						certIdentityRegexp := o.CertIdentityRegexp
-						if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
-							certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
+						if o.CertIdentityRegexp == "" && a[consts.ManifestAnnotationCertIdentityRegexp] != "" {
+							certIdentityRegexp = a[consts.ManifestAnnotationCertIdentityRegexp]
 						}
 						if i.CertIdentityRegexp != "" {
 							certIdentityRegexp = i.CertIdentityRegexp
@@ -415,8 +415,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certIdentityRegexp for image [%s]", certIdentityRegexp)
 
 						certIdentity := o.CertIdentity
-						if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
-							certIdentity = a[consts.ImageAnnotationCertIdentity]
+						if o.CertIdentity == "" && a[consts.ManifestAnnotationCertIdentity] != "" {
+							certIdentity = a[consts.ManifestAnnotationCertIdentity]
 						}
 						if i.CertIdentity != "" {
 							certIdentity = i.CertIdentity
@@ -424,8 +424,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certIdentity for image [%s]", certIdentity)
 
 						certOidcIssuer := o.CertOidcIssuer
-						if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
-							certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
+						if o.CertOidcIssuer == "" && a[consts.ManifestAnnotationCertOidcIssuer] != "" {
+							certOidcIssuer = a[consts.ManifestAnnotationCertOidcIssuer]
 						}
 						if i.CertOidcIssuer != "" {
 							certOidcIssuer = i.CertOidcIssuer
@@ -433,8 +433,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certOidcIssuer for image [%s]", certOidcIssuer)
 
 						certOidcIssuerRegexp := o.CertOidcIssuerRegexp
-						if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
-							certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
+						if o.CertOidcIssuerRegexp == "" && a[consts.ManifestAnnotationCertOidcIssuerRegexp] != "" {
+							certOidcIssuerRegexp = a[consts.ManifestAnnotationCertOidcIssuerRegexp]
 						}
 						if i.CertOidcIssuerRegexp != "" {
 							certOidcIssuerRegexp = i.CertOidcIssuerRegexp
@@ -442,8 +442,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certOidcIssuerRegexp for image [%s]", certOidcIssuerRegexp)
 
 						certGithubWorkflowRepository := o.CertGithubWorkflowRepository
-						if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
-							certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
+						if o.CertGithubWorkflowRepository == "" && a[consts.ManifestAnnotationCertGithubWorkflowRepository] != "" {
+							certGithubWorkflowRepository = a[consts.ManifestAnnotationCertGithubWorkflowRepository]
 						}
 						if i.CertGithubWorkflowRepository != "" {
 							certGithubWorkflowRepository = i.CertGithubWorkflowRepository
@@ -451,7 +451,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
 
 						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+						if !o.Tlog && a[consts.ManifestAnnotationTlog] == "true" {
 							tlog = true
 						}
 						if i.Tlog {
@@ -466,8 +466,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						l.Infof("keyless signature verified for image [%s]", i.Name)
 					}
 					platform := o.Platform
-					if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
-						platform = a[consts.ImageAnnotationPlatform]
+					if o.Platform == "" && a[consts.ManifestAnnotationPlatform] != "" {
+						platform = a[consts.ManifestAnnotationPlatform]
 					}
 					if i.Platform != "" {
 						platform = i.Platform

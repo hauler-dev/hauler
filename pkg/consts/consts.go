@@ -42,22 +42,22 @@ const (
 	HaulerVendorPrefix = "vnd.hauler"
 
 	// annotation keys
-	ContainerdImageNameKey  = "io.containerd.image.name"
-	KindAnnotationName      = "kind"
-	KindAnnotationImage     = "dev.cosignproject.cosign/image"
-	KindAnnotationIndex     = "dev.cosignproject.cosign/imageIndex"
-	ImageAnnotationKey      = "hauler.dev/key"
-	ImageAnnotationPlatform = "hauler.dev/platform"
-	ImageAnnotationRegistry = "hauler.dev/registry"
-	ImageAnnotationTlog     = "hauler.dev/use-tlog-verify"
-	ImageRefKey             = "org.opencontainers.image.ref.name"
+	ContainerdImageNameKey     = "io.containerd.image.name"
+	ImageReferenceKey          = "org.opencontainers.image.ref.name"
+	KindAnnotationName         = "kind"
+	KindAnnotationImage        = "dev.cosignproject.cosign/image"
+	KindAnnotationIndex        = "dev.cosignproject.cosign/imageIndex"
+	ManifestAnnotationKey      = "hauler.dev/key"
+	ManifestAnnotationPlatform = "hauler.dev/platform"
+	ManifestAnnotationRegistry = "hauler.dev/registry"
+	ManifestAnnotationTlog     = "hauler.dev/use-tlog-verify"
 
 	// cosign keyless validation options
-	ImageAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
-	ImageAnnotationCertIdentityRegexp           = "hauler.dev/certificate-identity-regexp"
-	ImageAnnotationCertOidcIssuer               = "hauler.dev/certificate-oidc-issuer"
-	ImageAnnotationCertOidcIssuerRegexp         = "hauler.dev/certificate-oidc-issuer-regexp"
-	ImageAnnotationCertGithubWorkflowRepository = "hauler.dev/certificate-github-workflow-repository"
+	ManifestAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
+	ManifestAnnotationCertIdentityRegexp           = "hauler.dev/certificate-identity-regexp"
+	ManifestAnnotationCertOidcIssuer               = "hauler.dev/certificate-oidc-issuer"
+	ManifestAnnotationCertOidcIssuerRegexp         = "hauler.dev/certificate-oidc-issuer-regexp"
+	ManifestAnnotationCertGithubWorkflowRepository = "hauler.dev/certificate-github-workflow-repository"
 
 	// content kinds
 	ImagesContentKind    = "Images"
