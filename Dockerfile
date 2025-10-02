@@ -1,8 +1,9 @@
 # builder stage
-FROM registry.suse.com/bci/bci-base:15.5 AS builder
+FROM registry.suse.com/bci/bci-base:15.7 AS builder
+ARG TARGETPLATFORM
 
-# fetched from goreleaser build proccess
-COPY hauler /hauler
+# fetched from goreleaser build process
+COPY $TARGETPLATFORM/hauler /hauler
 
 RUN echo "hauler:x:1001:1001::/home/hauler:" > /etc/passwd \
 && echo "hauler:x:1001:hauler" > /etc/group \
