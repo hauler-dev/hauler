@@ -45,7 +45,6 @@ homebrew_casks:
       owner: hauler-dev
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
     description: "Hauler: Airgap Swiss Army Knife"
 
 dockers_v2:
