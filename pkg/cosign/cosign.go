@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
 	"hauler.dev/go/hauler/pkg/consts"
