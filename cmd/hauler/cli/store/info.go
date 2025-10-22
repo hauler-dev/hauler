@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/olekukonko/tablewriter"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -66,7 +67,7 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 			}
 			defer rc.Close()
 
-			// Unmarshal the OCI image content
+			// unmarshal the OCI image content
 			var internalManifest ocispec.Image
 			if err := json.NewDecoder(rc).Decode(&internalManifest); err != nil {
 				return err
@@ -118,13 +119,13 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 		msg = buildJson(items...)
 		fmt.Println(msg)
 	default:
-		buildTable(items...)
+		buildTable(o.ShowDigests, items...)
 	}
 	return nil
 }
 
 func buildListRepos(items ...item) {
-	// Create map to track unique repository names
+	// create map to track unique repository names
 	repos := make(map[string]bool)
 
 	for _, i := range items {
@@ -141,37 +142,84 @@ func buildListRepos(items ...item) {
 		repos[repoName] = true
 	}
 
-	// Collect and print unique repository names
+	// collect and print unique repository names
 	for repoName := range repos {
 		fmt.Println(repoName)
 	}
 }
 
-func buildTable(items ...item) {
-	// Create a table for the results
+func buildTable(showDigests bool, items ...item) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Reference", "Type", "Platform", "# Layers", "Size"})
+
+	// Correct header order: Digest goes before # Layers
+	if showDigests {
+		table.SetHeader([]string{"Reference", "Type", "Platform", "Digest", "# Layers", "Size"})
+	} else {
+		table.SetHeader([]string{"Reference", "Type", "Platform", "# Layers", "Size"})
+	}
+
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 	table.SetRowLine(false)
-	table.SetAutoMergeCellsByColumnIndex([]int{0})
+	table.SetAutoMergeCellsByColumnIndex([]int{0}) // keep Hauler’s visual style
 
 	totalSize := int64(0)
+
 	for _, i := range items {
-		if i.Type != "" {
-			row := []string{
-				i.Reference,
+		if i.Type == "" {
+			continue
+		}
+
+		ref := truncateReference(i.Reference)
+		var row []string
+
+		if showDigests {
+			digest := i.Digest
+			if digest == "" {
+				digest = "<none>"
+			}
+			row = []string{
+				ref,        // Reference
+				i.Type,     // Type
+				i.Platform, // Platform
+				digest,     // Digest
+				fmt.Sprintf("%d", i.Layers),
+				byteCountSI(i.Size),
+			}
+		} else {
+			row = []string{
+				ref,
 				i.Type,
 				i.Platform,
 				fmt.Sprintf("%d", i.Layers),
 				byteCountSI(i.Size),
 			}
-			totalSize += i.Size
-			table.Append(row)
 		}
+
+		totalSize += i.Size
+		table.Append(row)
 	}
-	table.SetFooter([]string{"", "", "", "Total", byteCountSI(totalSize)})
+
+	// Footer: align Total column based on digest visibility
+	if showDigests {
+		table.SetFooter([]string{"", "", "", "", "Total", byteCountSI(totalSize)})
+	} else {
+		table.SetFooter([]string{"", "", "", "Total", byteCountSI(totalSize)})
+	}
 
 	table.Render()
+}
+
+// truncateReference shortens the digest of a reference
+func truncateReference(ref string) string {
+	const prefix = "@sha256:"
+	idx := strings.Index(ref, prefix)
+	if idx == -1 {
+		return ref
+	}
+	if len(ref) > idx+len(prefix)+12 {
+		return ref[:idx+len(prefix)+12] + "…"
+	}
+	return ref
 }
 
 func buildJson(item ...item) string {
@@ -186,6 +234,7 @@ type item struct {
 	Reference string
 	Type      string
 	Platform  string
+	Digest    string
 	Layers    int
 	Size      int64
 }
@@ -255,6 +304,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		Reference: ref.Name(),
 		Type:      ctype,
 		Platform:  plat,
+		Digest:    desc.Digest.String(),
 		Layers:    len(m.Layers),
 		Size:      size,
 	}
