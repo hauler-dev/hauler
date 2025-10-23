@@ -497,7 +497,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				for _, ch := range v1Cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}); err != nil {
+					if err := storeChart(ctx, s, ch.Name, &flags.AddChartOpts{
+						ChartOpts: &action.ChartPathOptions{RepoURL: ch.RepoURL, Version: ch.Version},
+					}, rso, ro); err != nil {
 						return err
 					}
 				}
@@ -508,7 +510,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				for _, ch := range cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}); err != nil {
+					if err := storeChart(ctx, s, ch.Name, &flags.AddChartOpts{
+						ChartOpts: &action.ChartPathOptions{RepoURL: ch.RepoURL, Version: ch.Version},
+					}, rso, ro); err != nil {
 						return err
 					}
 				}
