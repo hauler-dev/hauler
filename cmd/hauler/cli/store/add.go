@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -125,10 +127,23 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 	return storeChart(ctx, s, chartName, o, rso, ro)
 }
 
-func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func storeChart(ctx context.Context, s *store.Layout, chartName string,
+	opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+
 	l := log.FromContext(ctx)
 
-	l.Infof("adding chart [%s] to the store", chartName)
+	isSubchart := ctx.Value("isSubchart") == true
+	prefix := ""
+	if isSubchart {
+		prefix = "  ↳ "
+	}
+
+	// normalize chart name for logging
+	displayName := chartName
+	if strings.Contains(chartName, string(os.PathSeparator)) {
+		displayName = filepath.Base(chartName)
+	}
+	l.Infof("%sadding chart [%s] to the store", prefix, displayName)
 
 	chrt, err := chart.NewChart(chartName, opts.ChartOpts)
 	if err != nil {
@@ -144,14 +159,38 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 	if err != nil {
 		return err
 	}
-	_, err = s.AddOCI(ctx, chrt, ref.Name())
-	if err != nil {
+
+	if _, err = s.AddOCI(ctx, chrt, ref.Name()); err != nil {
 		return err
 	}
 
-	l.Infof("successfully added chart [%s]", ref.Name())
+	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)
 
-	// extract images from helm chart template
+	tempBase := rso.TempOverride
+	if tempBase == "" {
+		tempBase = os.Getenv(consts.HaulerTempDir)
+	}
+	tempDir, err := os.MkdirTemp(tempBase, consts.DefaultHaulerTempDirName)
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	chartPath := chrt.Path()
+	if strings.HasSuffix(chartPath, ".tgz") {
+		l.Debugf("%sextracting chart archive [%s]", prefix, filepath.Base(chartPath))
+		if err := chartutil.ExpandFile(tempDir, chartPath); err != nil {
+			return fmt.Errorf("failed to extract chart: %w", err)
+		}
+		entries, _ := os.ReadDir(tempDir)
+		for _, e := range entries {
+			if e.IsDir() {
+				chartPath = filepath.Join(tempDir, e.Name())
+				break
+			}
+		}
+	}
+
 	if opts.AddImages {
 		if opts.HelmValues != "" {
 			values, err := chartutil.ReadValuesFile(opts.HelmValues)
@@ -164,31 +203,31 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		// determine which kube version to use for helm template rendering
 		kubeVersion, err := chartutil.ParseKubeVersion(opts.KubeVersion)
 		if err != nil {
-			l.Warnf("invalid kube-version [%s], falling back to default capabilities", opts.KubeVersion)
+			l.Warnf("%sinvalid kube-version [%s], using default kubernetes version", prefix, opts.KubeVersion)
 			kubeVersion = &chartutil.DefaultCapabilities.KubeVersion
 		}
 
 		caps := chartutil.DefaultCapabilities.Copy()
 		caps.KubeVersion = *kubeVersion
-		l.Debugf("using kubernetes version [%s] for helm template rendering", kubeVersion.Version)
-
 		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {
 			return err
 		}
 
-		template, err := engine.Render(c, values)
+		rendered, err := engine.Render(c, values)
 		if err != nil {
-			return err
+			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
+			return nil
 		}
 
+		// extract images from rendered helm template manifests
 		var images []string
-		for _, manifest := range template {
+		for _, manifest := range rendered {
 			for _, line := range strings.Split(manifest, "\n") {
-				l := strings.ReplaceAll(line, " ", "")
-				l = strings.ReplaceAll(l, "\"", "")
-				if strings.HasPrefix(l, "image:") {
-					images = append(images, l[6:])
+				s := strings.TrimSpace(strings.ReplaceAll(line, "\"", ""))
+				if strings.HasPrefix(s, "image:") {
+					img := strings.TrimSpace(strings.TrimPrefix(s, "image:"))
+					images = append(images, img)
 				}
 			}
 		}
@@ -196,10 +235,41 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		slices.Sort(images)
 		images = slices.Compact(images)
 
-		l.Infof("successfully found images %v", images)
+		l.Debugf("%ssuccessfully found images %v", prefix, images)
 
+		if len(images) > 0 {
+			l.Infof("%sfound %d image(s) in [%s:%s]", prefix, len(images), c.Name(), c.Metadata.Version)
+		}
 		for _, image := range images {
-			storeImage(ctx, s, v1.Image{Name: image, Platform: opts.Platform}, opts.Platform, rso, ro)
+			_ = storeImage(ctx, s, v1.Image{Name: image, Platform: opts.Platform}, opts.Platform, rso, ro)
+		}
+	}
+
+	if opts.AddDependencies && len(c.Metadata.Dependencies) > 0 {
+		for _, dep := range c.Metadata.Dependencies {
+			l.Infof("%sadding dependent chart [%s:%s]", prefix, dep.Name, dep.Version)
+
+			depOpts := *opts
+			depOpts.AddDependencies = false
+			subCtx := context.WithValue(ctx, "isSubchart", true)
+
+			if strings.HasPrefix(dep.Repository, "file://") {
+				depPath := strings.TrimPrefix(dep.Repository, "file://")
+				subchartPath := filepath.Join(chartPath, depPath)
+				depOpts.ChartOpts.RepoURL = ""
+
+				if err := storeChart(subCtx, s, subchartPath, &depOpts, rso, ro); err != nil {
+					l.Warnf("%s  ↳ failed to add local dependent chart [%s]: %v", prefix, dep.Name, err)
+				}
+				continue
+			}
+
+			depOpts.ChartOpts.RepoURL = dep.Repository
+			depOpts.ChartOpts.Version = dep.Version
+
+			if err := storeChart(subCtx, s, dep.Name, &depOpts, rso, ro); err != nil {
+				l.Warnf("%s  ↳ failed to add remote dependent chart [%s]: %v", prefix, dep.Name, err)
+			}
 		}
 	}
 

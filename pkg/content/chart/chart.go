@@ -33,14 +33,13 @@ var (
 	settings               = cli.New()
 )
 
-// Chart implements the  OCI interface for Chart API objects. API spec values are
-// stored into the Repo, Name, and Version fields.
+// chart implements the oci interface for chart api objects... api spec values are stored into the name, repo, and version fields
 type Chart struct {
 	path        string
 	annotations map[string]string
 }
 
-// NewChart is a helper method that returns NewLocalChart or NewRemoteChart depending on chart contents
+// newchart is a helper method that returns newlocalchart or newremotechart depending on chart contents
 func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	chartRef := name
 	actionConfig := new(action.Configuration)
@@ -151,9 +150,8 @@ func (h *Chart) RawChartData() ([]byte, error) {
 	return os.ReadFile(h.path)
 }
 
-// chartData loads the chart contents into memory and returns a NopCloser for the contents
-//
-//	Normally we avoid loading into memory, but charts sizes are strictly capped at ~1MB
+// chartdata loads the chart contents into memory and returns a NopCloser for the contents
+// normally we avoid loading into memory, but charts sizes are strictly capped at ~1MB
 func (h *Chart) chartData() (gv1.Layer, error) {
 	info, err := os.Stat(h.path)
 	if err != nil {
@@ -263,7 +261,7 @@ func newDefaultRegistryClient(plainHTTP bool) (*registry.Client, error) {
 		opts = append(opts, registry.ClientOptPlainHTTP())
 	}
 
-	// Create a new registry client
+	// create a new registry client
 	registryClient, err := registry.NewClient(opts...)
 	if err != nil {
 		return nil, err
@@ -272,7 +270,7 @@ func newDefaultRegistryClient(plainHTTP bool) (*registry.Client, error) {
 }
 
 func newRegistryClientWithTLS(certFile, keyFile, caFile string, insecureSkipTLSverify bool) (*registry.Client, error) {
-	// Create a new registry client
+	// create a new registry client
 	registryClient, err := registry.NewRegistryClientWithTLS(os.Stderr, certFile, keyFile, caFile, insecureSkipTLSverify,
 		settings.RegistryConfig, settings.Debug,
 	)
@@ -280,4 +278,9 @@ func newRegistryClientWithTLS(certFile, keyFile, caFile string, insecureSkipTLSv
 		return nil, err
 	}
 	return registryClient, nil
+}
+
+// path returns the local filesystem path to the chart archive or directory
+func (h *Chart) Path() string {
+	return h.path
 }
