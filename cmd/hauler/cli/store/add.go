@@ -164,17 +164,13 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		// determine which kube version to use for helm template rendering
 		kubeVersion, err := chartutil.ParseKubeVersion(opts.KubeVersion)
 		if err != nil {
-			l.Warnf("invalid kube-version [%s], defaulting to v1.34.1", opts.KubeVersion)
-			kubeVersion = &chartutil.KubeVersion{
-				Version: "v1.34.1",
-				Major:   "1",
-				Minor:   "34",
-			}
+			l.Warnf("invalid kube-version [%s], falling back to default capabilities", opts.KubeVersion)
+			kubeVersion = &chartutil.DefaultCapabilities.KubeVersion
 		}
 
 		caps := chartutil.DefaultCapabilities.Copy()
 		caps.KubeVersion = *kubeVersion
-		l.Debugf("using Kubernetes version [%s] for helm template rendering", kubeVersion.Version)
+		l.Debugf("using kubernetes version [%s] for helm template rendering", kubeVersion.Version)
 
 		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {
