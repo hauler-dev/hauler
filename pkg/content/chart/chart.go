@@ -59,13 +59,31 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	client.SetRegistryClient(registryClient)
 	if registry.IsOCI(opts.RepoURL) {
 		chartRef = opts.RepoURL + "/" + name
-	} else if isUrl(opts.RepoURL) { // OCI Protocol registers as a valid URL
+	} else if isUrl(opts.RepoURL) { // oci protocol registers as a valid url
 		client.ChartPathOptions.RepoURL = opts.RepoURL
-	} else { // Handles cases like grafana/loki
+	} else { // handles cases like grafana/loki
 		chartRef = opts.RepoURL + "/" + name
 	}
 
+	// suppress helm downloader oci logs (stdout/stderr)
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	rOut, wOut, _ := os.Pipe()
+	rErr, wErr, _ := os.Pipe()
+	os.Stdout = wOut
+	os.Stderr = wErr
+
 	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, settings)
+
+	wOut.Close()
+	wErr.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+	_, _ = io.Copy(io.Discard, rOut)
+	_, _ = io.Copy(io.Discard, rErr)
+	rOut.Close()
+	rErr.Close()
+
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +272,7 @@ func newDefaultRegistryClient(plainHTTP bool) (*registry.Client, error) {
 	opts := []registry.ClientOption{
 		registry.ClientOptDebug(settings.Debug),
 		registry.ClientOptEnableCache(true),
-		registry.ClientOptWriter(os.Stderr),
+		registry.ClientOptWriter(io.Discard),
 		registry.ClientOptCredentialsFile(settings.RegistryConfig),
 	}
 	if plainHTTP {
@@ -271,8 +289,12 @@ func newDefaultRegistryClient(plainHTTP bool) (*registry.Client, error) {
 
 func newRegistryClientWithTLS(certFile, keyFile, caFile string, insecureSkipTLSverify bool) (*registry.Client, error) {
 	// create a new registry client
-	registryClient, err := registry.NewRegistryClientWithTLS(os.Stderr, certFile, keyFile, caFile, insecureSkipTLSverify,
-		settings.RegistryConfig, settings.Debug,
+	registryClient, err := registry.NewRegistryClientWithTLS(
+		io.Discard,
+		certFile, keyFile, caFile,
+		insecureSkipTLSverify,
+		settings.RegistryConfig,
+		settings.Debug,
 	)
 	if err != nil {
 		return nil, err

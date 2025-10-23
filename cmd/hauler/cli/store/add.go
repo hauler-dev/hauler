@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -127,18 +128,24 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 	return storeChart(ctx, s, chartName, o, rso, ro)
 }
 
+// unexported type for the context key to avoid collisions.
+type isSubchartKey struct{}
+
+// imageregex finds lines starting with optional space, 'image:', optional space, optional quotes, and captures the image name with non-space/non-quote/non-hash chars
+var imageRegex = regexp.MustCompile(`(?m)^\s*image:\s*['"]?([^\s'"#]+)`)
+
 func storeChart(ctx context.Context, s *store.Layout, chartName string,
 	opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 
 	l := log.FromContext(ctx)
 
-	isSubchart := ctx.Value("isSubchart") == true
+	isSubchart := ctx.Value(isSubchartKey{}) == true
 	prefix := ""
 	if isSubchart {
 		prefix = "  ↳ "
 	}
 
-	// normalize chart name for logging
+	// normalize chart name for logging purposes
 	displayName := chartName
 	if strings.Contains(chartName, string(os.PathSeparator)) {
 		displayName = filepath.Base(chartName)
@@ -182,22 +189,24 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string,
 		if err := chartutil.ExpandFile(tempDir, chartPath); err != nil {
 			return fmt.Errorf("failed to extract chart: %w", err)
 		}
-		entries, _ := os.ReadDir(tempDir)
-		for _, e := range entries {
-			if e.IsDir() {
-				chartPath = filepath.Join(tempDir, e.Name())
-				break
-			}
+
+		// expanded chart should be in a directory matching the charts name
+		expectedChartDir := filepath.Join(tempDir, c.Name())
+		if _, err := os.Stat(expectedChartDir); err != nil {
+			return fmt.Errorf("chart archive did not expand into expected directory '%s': %w", c.Name(), err)
 		}
+		chartPath = expectedChartDir
 	}
 
 	if opts.AddImages {
+		// load user values from file
+		userValues := chartutil.Values{}
 		if opts.HelmValues != "" {
-			values, err := chartutil.ReadValuesFile(opts.HelmValues)
+			var err error
+			userValues, err = chartutil.ReadValuesFile(opts.HelmValues)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read helm values file [%s]: %w", opts.HelmValues, err)
 			}
-			c.Values = values
 		}
 
 		// determine which kube version to use for helm template rendering
@@ -209,13 +218,16 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string,
 
 		caps := chartutil.DefaultCapabilities.Copy()
 		caps.KubeVersion = *kubeVersion
-		values, err := chartutil.ToRenderValues(c, c.Values, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
+
+		// merge the charts defaults (c.Values) with the user values (userValues)
+		values, err := chartutil.ToRenderValues(c, userValues, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {
 			return err
 		}
 
 		rendered, err := engine.Render(c, values)
 		if err != nil {
+			// warning since some charts might fail to render without extensive or non-default values
 			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
 			return nil
 		}
@@ -223,11 +235,10 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string,
 		// extract images from rendered helm template manifests
 		var images []string
 		for _, manifest := range rendered {
-			for _, line := range strings.Split(manifest, "\n") {
-				s := strings.TrimSpace(strings.ReplaceAll(line, "\"", ""))
-				if strings.HasPrefix(s, "image:") {
-					img := strings.TrimSpace(strings.TrimPrefix(s, "image:"))
-					images = append(images, img)
+			matches := imageRegex.FindAllStringSubmatch(manifest, -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					images = append(images, match[1])
 				}
 			}
 		}
@@ -235,13 +246,17 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string,
 		slices.Sort(images)
 		images = slices.Compact(images)
 
-		l.Debugf("%ssuccessfully found images %v", prefix, images)
+		l.Debugf("%ssuccessfully parsed image references %v", prefix, images)
 
 		if len(images) > 0 {
-			l.Infof("%sfound %d image(s) in [%s:%s]", prefix, len(images), c.Name(), c.Metadata.Version)
+			l.Infof("%s  ↳ identified [%d] image(s) in [%s:%s]", prefix, len(images), c.Name(), c.Metadata.Version)
 		}
 		for _, image := range images {
-			_ = storeImage(ctx, s, v1.Image{Name: image, Platform: opts.Platform}, opts.Platform, rso, ro)
+			cfg := v1.Image{Name: image}
+			if err := storeImage(ctx, s, cfg, opts.Platform, rso, ro); err != nil {
+
+				return fmt.Errorf("failed to store image [%s]: %w", image, err)
+			}
 		}
 	}
 
@@ -251,24 +266,29 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string,
 
 			depOpts := *opts
 			depOpts.AddDependencies = false
-			subCtx := context.WithValue(ctx, "isSubchart", true)
+			depOpts.AddImages = false
+			subCtx := context.WithValue(ctx, isSubchartKey{}, true)
 
+			var err error
 			if strings.HasPrefix(dep.Repository, "file://") {
 				depPath := strings.TrimPrefix(dep.Repository, "file://")
 				subchartPath := filepath.Join(chartPath, depPath)
 				depOpts.ChartOpts.RepoURL = ""
-
-				if err := storeChart(subCtx, s, subchartPath, &depOpts, rso, ro); err != nil {
-					l.Warnf("%s  ↳ failed to add local dependent chart [%s]: %v", prefix, dep.Name, err)
-				}
-				continue
+				err = storeChart(subCtx, s, subchartPath, &depOpts, rso, ro)
+			} else {
+				depOpts.ChartOpts.RepoURL = dep.Repository
+				depOpts.ChartOpts.Version = dep.Version
+				err = storeChart(subCtx, s, dep.Name, &depOpts, rso, ro)
 			}
 
-			depOpts.ChartOpts.RepoURL = dep.Repository
-			depOpts.ChartOpts.Version = dep.Version
-
-			if err := storeChart(subCtx, s, dep.Name, &depOpts, rso, ro); err != nil {
-				l.Warnf("%s  ↳ failed to add remote dependent chart [%s]: %v", prefix, dep.Name, err)
+			// handle error consistently
+			if err != nil {
+				if ro.IgnoreErrors {
+					l.Warnf("%s  ↳ failed to add dependent chart [%s]: %v... skipping...", prefix, dep.Name, err)
+				} else {
+					l.Errorf("%s  ↳ failed to add dependent chart [%s]: %v", prefix, dep.Name, err)
+					return err
+				}
 			}
 		}
 	}
