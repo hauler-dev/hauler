@@ -63,7 +63,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certificate verification")
 
 	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in a Helm chart (tech preview)")
-	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify Helm chart values when fetching images (tech preview)")
+	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images (tech preview)")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64 (tech preview)")
 	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(Optional) Override the kubernetes version for helm template rendering (tech preview)")
 }
