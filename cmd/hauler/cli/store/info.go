@@ -48,12 +48,20 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 					return err
 				}
 
-				i := newItem(s, desc, internalManifest, fmt.Sprintf("%s/%s", internalDesc.Platform.OS, internalDesc.Platform.Architecture), o)
+				i := newItemWithDigest(
+					s,
+					internalDesc.Digest.String(),
+					desc,
+					internalManifest,
+					fmt.Sprintf("%s/%s", internalDesc.Platform.OS, internalDesc.Platform.Architecture),
+					o,
+				)
 				var emptyItem item
 				if i != emptyItem {
 					items = append(items, i)
 				}
 			}
+
 			// handle "non" multi-arch images
 		} else if desc.MediaType == consts.DockerManifestSchema2 || desc.MediaType == consts.OCIManifestSchema1 {
 			var m ocispec.Manifest
@@ -67,14 +75,15 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 			}
 			defer rc.Close()
 
-			// unmarshal the OCI image content
+			// unmarshal the oci image content
 			var internalManifest ocispec.Image
 			if err := json.NewDecoder(rc).Decode(&internalManifest); err != nil {
 				return err
 			}
 
 			if internalManifest.Architecture != "" {
-				i := newItem(s, desc, m, fmt.Sprintf("%s/%s", internalManifest.OS, internalManifest.Architecture), o)
+				i := newItem(s, desc, m,
+					fmt.Sprintf("%s/%s", internalManifest.OS, internalManifest.Architecture), o)
 				var emptyItem item
 				if i != emptyItem {
 					items = append(items, i)
@@ -86,7 +95,8 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 					items = append(items, i)
 				}
 			}
-			// handle the rest
+
+			// handle everything else (charts, files, sigs, etc.)
 		} else {
 			var m ocispec.Manifest
 			if err := json.NewDecoder(rc).Decode(&m); err != nil {
@@ -151,7 +161,6 @@ func buildListRepos(items ...item) {
 func buildTable(showDigests bool, items ...item) {
 	table := tablewriter.NewWriter(os.Stdout)
 
-	// Correct header order: Digest goes before # Layers
 	if showDigests {
 		table.SetHeader([]string{"Reference", "Type", "Platform", "Digest", "# Layers", "Size"})
 	} else {
@@ -160,7 +169,7 @@ func buildTable(showDigests bool, items ...item) {
 
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 	table.SetRowLine(false)
-	table.SetAutoMergeCellsByColumnIndex([]int{0}) // keep Hauler’s visual style
+	table.SetAutoMergeCellsByColumnIndex([]int{0})
 
 	totalSize := int64(0)
 
@@ -175,13 +184,13 @@ func buildTable(showDigests bool, items ...item) {
 		if showDigests {
 			digest := i.Digest
 			if digest == "" {
-				digest = "<none>"
+				digest = "-"
 			}
 			row = []string{
-				ref,        // Reference
-				i.Type,     // Type
-				i.Platform, // Platform
-				digest,     // Digest
+				ref,
+				i.Type,
+				i.Platform,
+				digest,
 				fmt.Sprintf("%d", i.Layers),
 				byteCountSI(i.Size),
 			}
@@ -199,7 +208,7 @@ func buildTable(showDigests bool, items ...item) {
 		table.Append(row)
 	}
 
-	// Footer: align Total column based on digest visibility
+	// align total column based on digest visibility
 	if showDigests {
 		table.SetFooter([]string{"", "", "", "", "Total", byteCountSI(totalSize)})
 	} else {
@@ -257,6 +266,13 @@ func (a byReferenceAndArch) Less(i, j int) bool {
 		return a[i].Type < a[j].Type
 	}
 	return a[i].Reference < a[j].Reference
+}
+
+// overrides the digest with a specific per platform digest
+func newItemWithDigest(s *store.Layout, digestStr string, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *flags.InfoOpts) item {
+	item := newItem(s, desc, m, plat, o)
+	item.Digest = digestStr
+	return item
 }
 
 func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *flags.InfoOpts) item {
