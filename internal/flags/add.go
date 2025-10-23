@@ -16,6 +16,9 @@ type AddImageOpts struct {
 	CertGithubWorkflowRepository string
 	Tlog                         bool
 	Platform                     string
+	RewriteName                  string
+	RewriteNamespace             string
+	RewriteTag                   string
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
@@ -28,28 +31,41 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.CertGithubWorkflowRepository, "certificate-github-workflow-repository", "", "(Optional) Cosign certificate-github-workflow-repository option")
 	f.BoolVarP(&o.Tlog, "use-tlog-verify", "v", false, "(Optional) Allow transparency log verification. (defaults to false)")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specifiy the platform of the image... i.e. linux/amd64 (defaults to all)")
+	f.StringVar(&o.RewriteName, "rewrite-name", "", "Rewrite the name of the image when adding it to the content store")
+	f.StringVar(&o.RewriteNamespace, "rewrite-namespace", "", "Rewrite the namespace of the image when adding it to the content store")
+	f.StringVar(&o.RewriteTag, "rewrite-tag", "", "Rewrite the tag of the image when adding it to the content store")
 }
 
 type AddFileOpts struct {
 	*StoreRootOpts
-	Name string
+	Name             string
+	RewriteName      string
+	RewriteNamespace string
+	RewriteTag       string
 }
 
 func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Name, "name", "n", "", "(Optional) Rewrite the name of the file")
+	f.StringVar(&o.RewriteName, "rewrite-name", "", "Rewrite the name of the file when adding it to the content store")
+	f.StringVar(&o.RewriteNamespace, "rewrite-namespace", "", "Rewrite the namespace of the file when adding it to the content store")
+	f.StringVar(&o.RewriteTag, "rewrite-tag", "", "Rewrite the tag of the file when adding it to the content store")
 }
 
 type AddChartOpts struct {
 	*StoreRootOpts
 
-	ChartOpts *action.ChartPathOptions
+	ChartOpts        *action.ChartPathOptions
+	RewriteName      string
+	RewriteNamespace string
+	RewriteTag       string
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVar(&o.ChartOpts.RepoURL, "repo", "", "Location of the chart (https:// | http:// | oci://)")
+	f.StringVar(&o.ChartOpts.RepoURL, "repo-url", "", "Location of the chart (https:// | http:// | oci://)")
 	f.StringVar(&o.ChartOpts.Version, "version", "", "(Optional) Specifiy the version of the chart (v1.0.0 | 2.0.0 | ^2.0.0)")
 	f.BoolVar(&o.ChartOpts.Verify, "verify", false, "(Optional) Verify the chart before fetching it")
 	f.StringVar(&o.ChartOpts.Username, "username", "", "(Optional) Username to use for authentication")
@@ -58,4 +74,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authenication")
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
+	f.StringVar(&o.RewriteName, "rewrite-name", "", "Rewrite the name of the chart when adding it to the content store")
+	f.StringVar(&o.RewriteNamespace, "rewrite-namespace", "", "Rewrite the namespace of the chart when adding it to the content store")
+	f.StringVar(&o.RewriteTag, "rewrite-tag", "", "Rewrite the tag of the chart when adding it to the content store")
 }
