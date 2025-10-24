@@ -254,7 +254,6 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string,
 		for _, image := range images {
 			cfg := v1.Image{Name: image}
 			if err := storeImage(ctx, s, cfg, opts.Platform, rso, ro); err != nil {
-
 				return fmt.Errorf("failed to store image [%s]: %w", image, err)
 			}
 		}
