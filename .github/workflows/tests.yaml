@@ -115,7 +115,7 @@ jobs:
         run: |
           hauler login --help
           hauler login docker.io --username ${{ secrets.DOCKERHUB_USERNAME }} --password ${{ secrets.DOCKERHUB_TOKEN }}
-          echo ${{ secrets.GITHUB_TOKEN }} | hauler login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+          echo ${{ secrets.GITHUB_TOKEN }} | hauler login ghcr.io --username ${{ github.repository_owner }} --password-stdin
 
       - name: Verify - hauler store
         run: |
@@ -162,11 +162,11 @@ jobs:
         run: |
           hauler store add image --help
           # verify via image reference
-          hauler store add image busybox
+          hauler store add image ghcr.io/hauler-dev/busybox
           # verify via image reference with version and platform
-          hauler store add image busybox:stable --platform linux/amd64
+          hauler store add image ghcr.io/hauler-dev/busybox:stable --platform linux/amd64
           # verify via image reference with full reference
-          hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+          hauler store add image gcr.io/hauler-dev/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
           # verify via the hauler store contents
           hauler store info
 
