@@ -1,0 +1,43 @@
+name: Refresh Hauler Testdata
+
+on:
+  workflow_dispatch:
+
+jobs:
+  refresh-testdata:
+    name: Refresh Hauler Testdata
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Fetch Hauler Binary
+        run: curl -sfL https://get.hauler.dev | bash
+
+      - name: Login to GitHub Container Registry and Docker Hub Container Registry
+        run: |
+          hauler login ghcr.io --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }}
+          hauler login docker.io --username ${{ secrets.DOCKERHUB_USERNAME }} --password ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Process Testdata Manifests
+        run: |
+          for manifest in testdata/*.yaml; do
+            echo "Processing $manifest..."
+            name=$(basename "$manifest" .yaml)
+            hauler store sync --filename "$manifest"
+          done
+
+      - name: Push Store Contents to Hauler-Dev GitHub Container Registry
+        run: |
+          hauler store copy registry://ghcr.io/${{ github.repository_owner }}
+
+      - name: Verify Hauler Store Contents
+        run: hauler store info
