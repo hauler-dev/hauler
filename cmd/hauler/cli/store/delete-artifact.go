@@ -14,36 +14,47 @@ import (
 func DeleteArtifactCmd(ctx context.Context, s *store.Layout, ref string) error {
 	l := log.FromContext(ctx)
 
-	// find artifact to delete
-	var foundRef string
-	var foundDesc ocispec.Descriptor
-	found := false
+	// collect matching artifacts
+	type match struct {
+		reference string
+		desc      ocispec.Descriptor
+	}
+	var matches []match
 
 	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
 		if !strings.Contains(reference, ref) {
 			return nil
 		}
 
-		// found match
-		found = true
-		foundRef = reference
-		foundDesc = desc
+		matches = append(matches, match{
+			reference: reference,
+			desc:      desc,
+		})
 
 		return nil // continue walking
 	}); err != nil {
 		return err
 	}
 
-	if !found {
+	if len(matches) == 0 {
 		return fmt.Errorf("reference [%s] not found in store (hint: use `hauler store info` to list store contents)", ref)
 	}
 
-	//delete artifact
-	if err := s.DeleteArtifact(ctx, foundRef, foundDesc); err != nil {
-		return fmt.Errorf("failed to delete artifact: %w", err)
+	if len(matches) >= 1 {
+		l.Infof("found %d matching references:", len(matches))
+		for _, m := range matches {
+			l.Infof(" - %s", m.reference)
+		}
 	}
 
-	l.Infof("deleted [%s] with digest [%s]", foundDesc.MediaType, foundDesc.Digest.String())
+	//delete artifact(s)
+	for _, m := range matches {
+		if err := s.DeleteArtifact(ctx, m.reference, m.desc); err != nil {
+			return fmt.Errorf("failed to delete artifact %s: %w", m.reference, err)
+		}
+
+		l.Infof("deleted [%s] of type %s with digest [%s]", m.reference, m.desc.MediaType, m.desc.Digest.String())
+	}
 
 	return nil
 }
