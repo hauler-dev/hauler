@@ -32,6 +32,7 @@ func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
 		addStoreInfo(rso, ro),
 		addStoreCopy(rso, ro),
 		addStoreAdd(rso, ro),
+		addStoreDeleteArtifact(rso, ro),
 	)
 
 	parent.AddCommand(cmd)
@@ -381,6 +382,28 @@ hauler store add chart rancher --repo https://releases.rancher.com/server-charts
 		},
 	}
 	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreDeleteArtifact(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+
+	cmd := &cobra.Command{
+		Use:     "delete-artifact <artifact-ref>",
+		Short:   "Delete an artifact from the content store",
+		Aliases: []string{"del"},
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := rso.Store(ctx)
+			if err != nil {
+				return err
+			}
+
+			return store.DeleteArtifactCmd(ctx, s, args[0])
+		},
+	}
 
 	return cmd
 }

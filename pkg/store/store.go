@@ -260,3 +260,13 @@ func (l *Layout) writeLayer(layer v1.Layer) error {
 	_, err = io.Copy(w, r)
 	return err
 }
+
+// Delete artifact reference from the store
+func (l *Layout) DeleteArtifact(ctx context.Context, reference string, desc ocispec.Descriptor) error {
+	if err := l.OCI.LoadIndex(); err != nil {
+		return err
+	}
+
+	l.OCI.RemoveFromIndex(reference)
+	return l.OCI.SaveIndex()
+}
