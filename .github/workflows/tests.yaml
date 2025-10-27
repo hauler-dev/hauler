@@ -162,9 +162,9 @@ jobs:
         run: |
           hauler store add image --help
           # verify via image reference
-          hauler store add image ghcr.io/hauler-dev/busybox
+          hauler store add image ghcr.io/hauler-dev/library/busybox
           # verify via image reference with version and platform
-          hauler store add image ghcr.io/hauler-dev/busybox:stable --platform linux/amd64
+          hauler store add image ghcr.io/hauler-dev/library/busybox:stable --platform linux/amd64
           # verify via image reference with full reference
           hauler store add image ghcr.io/hauler-dev/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
           # verify via the hauler store contents
