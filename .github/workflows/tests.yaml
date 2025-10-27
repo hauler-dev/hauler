@@ -253,8 +253,6 @@ jobs:
       - name: Verify - hauler store sync
         run: |
           hauler store sync --help
-          # download local helm repository
-          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.2/rancher-cluster-templates-0.5.2.tgz
           # verify via sync
           hauler store sync --filename testdata/hauler-manifest-pipeline.yaml
           # verify via sync with multiple files
