@@ -83,7 +83,7 @@ spec:
       repoURL: oci://ghcr.io/hauler-dev
       version: 1.0.4
     - name: rancher-cluster-templates-0.5.2.tgz
-      repoURL: .
+      repoURL: testdata
 ---
 apiVersion: content.hauler.cattle.io/v1alpha1
 kind: Files
