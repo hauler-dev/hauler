@@ -404,6 +404,7 @@ func addStoreDeleteArtifact(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 			return store.DeleteArtifactCmd(ctx, o, s, args[0])
 		},
 	}
+	o.AddFlags(cmd)
 
 	return cmd
 }
