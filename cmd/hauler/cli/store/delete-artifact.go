@@ -76,5 +76,14 @@ func DeleteArtifactCmd(ctx context.Context, o *flags.DeleteArtifactOpts, s *stor
 		l.Infof("deleted [%s] of type %s with digest [%s]", m.reference, m.desc.MediaType, m.desc.Digest.String())
 	}
 
+	// clean up unreferenced blobs
+	l.Infof("cleaning up unreferenced blobs...")
+	deletedCount, deletedSize, err := s.CleanUp(ctx)
+	if err != nil {
+		l.Warnf("garbrage collection failed: %v", err)
+	} else if deletedCount > 0 {
+		l.Infof("removed %d unreferenced blobs (freed %d bytes)", deletedCount, deletedSize)
+	}
+
 	return nil
 }

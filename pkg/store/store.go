@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -269,4 +270,92 @@ func (l *Layout) DeleteArtifact(ctx context.Context, reference string, desc ocis
 
 	l.OCI.RemoveFromIndex(reference)
 	return l.OCI.SaveIndex()
+}
+
+func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
+	referencedDigests := make(map[string]bool)
+
+	if err := l.OCI.LoadIndex(); err != nil {
+		return 0, 0, fmt.Errorf("failed to load index: %w", err)
+	}
+
+	// walk through remaining artifacts and collect digests
+	if err := l.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
+		// mark digest as referenced by existing artifact
+		referencedDigests[desc.Digest.Hex()] = true
+
+		// fetch and parse manifests for layer digests
+		rc, err := l.OCI.Fetch(ctx, desc)
+		if err != nil {
+			return nil // skip if can't be read
+		}
+		defer rc.Close()
+
+		var head struct {
+			MediaType string `json:"mediaType"`
+		}
+
+		if err := json.NewDecoder(rc).Decode(&head); err != nil {
+			return nil
+		}
+		if seeker, ok := rc.(io.Seeker); ok {
+			_, _ = seeker.Seek(0, io.SeekStart)
+		}
+
+		switch head.MediaType {
+		case ocispec.MediaTypeImageIndex:
+			var index ocispec.Index
+			if err := json.NewDecoder(rc).Decode(&index); err == nil {
+				for _, m := range index.Manifests {
+					referencedDigests[m.Digest.Hex()] = true
+				}
+			}
+		default:
+			var manifest ocispec.Manifest
+			if err := json.NewDecoder(rc).Decode(&manifest); err == nil {
+				referencedDigests[manifest.Config.Digest.Hex()] = true
+				for _, layer := range manifest.Layers {
+					referencedDigests[layer.Digest.Hex()] = true
+				}
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return 0, 0, fmt.Errorf("failed to walk artifacts: %w", err)
+	}
+
+	// read all entries
+	blobsPath := filepath.Join(l.Root, "blobs", "sha256")
+	entries, err := os.ReadDir(blobsPath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to read blobs directory: %w", err)
+	}
+
+	// track count and size of deletions
+	deletedCount := 0
+	var deletedSize int64
+
+	// scan blobs
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		digest := entry.Name()
+
+		if !referencedDigests[digest] {
+			blobPath := filepath.Join(blobsPath, digest)
+			if info, err := entry.Info(); err == nil {
+				deletedSize += info.Size()
+			}
+
+			if err := os.Remove(blobPath); err != nil {
+				return deletedCount, deletedSize, fmt.Errorf("failed to remove blob %s: %w", digest, err)
+			}
+			deletedCount++
+		}
+	}
+
+	return deletedCount, deletedSize, nil
 }
