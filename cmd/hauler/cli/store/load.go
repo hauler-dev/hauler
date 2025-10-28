@@ -110,8 +110,8 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 			if slash := strings.Index(ref, "/"); slash != -1 {
 				ref = ref[slash+1:]
 			}
-			if idx.Manifests[i].Annotations[consts.ImageRefKey] != ref {
-				idx.Manifests[i].Annotations[consts.ImageRefKey] = ref
+			if idx.Manifests[i].Annotations[consts.ImageReferenceKey] != ref {
+				idx.Manifests[i].Annotations[consts.ImageReferenceKey] = ref
 			}
 		}
 	}
