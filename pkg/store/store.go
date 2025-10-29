@@ -281,6 +281,10 @@ func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
 
 	// walk through remaining artifacts and collect digests
 	if err := l.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
+		if desc.Digest.Validate() != nil {
+			return nil
+		}
+
 		// mark digest as referenced by existing artifact
 		referencedDigests[desc.Digest.Hex()] = true
 
@@ -291,32 +295,37 @@ func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
 		}
 		defer rc.Close()
 
-		var head struct {
-			MediaType string `json:"mediaType"`
+		var manifest struct {
+			Config struct {
+				Digest digest.Digest `json:"digest"`
+			}
+			Layers []struct {
+				digest.Digest `json:"digest"`
+			} `json:"layers"`
+			Manifests []struct {
+				Digest digest.Digest `json:"digest"`
+			} `json:"manifests"`
 		}
 
-		if err := json.NewDecoder(rc).Decode(&head); err != nil {
+		if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
 			return nil
 		}
-		if seeker, ok := rc.(io.Seeker); ok {
-			_, _ = seeker.Seek(0, io.SeekStart)
+
+		// handle image manifest
+		if manifest.Config.Digest.Validate() == nil {
+			referencedDigests[manifest.Config.Digest.Hex()] = true
 		}
 
-		switch head.MediaType {
-		case ocispec.MediaTypeImageIndex:
-			var index ocispec.Index
-			if err := json.NewDecoder(rc).Decode(&index); err == nil {
-				for _, m := range index.Manifests {
-					referencedDigests[m.Digest.Hex()] = true
-				}
+		for _, layer := range manifest.Layers {
+			if layer.Digest.Validate() == nil {
+				referencedDigests[layer.Digest.Hex()] = true
 			}
-		default:
-			var manifest ocispec.Manifest
-			if err := json.NewDecoder(rc).Decode(&manifest); err == nil {
-				referencedDigests[manifest.Config.Digest.Hex()] = true
-				for _, layer := range manifest.Layers {
-					referencedDigests[layer.Digest.Hex()] = true
-				}
+		}
+
+		// handle index list (manifests array)
+		for _, m := range manifest.Manifests {
+			if m.Digest.Validate() == nil {
+				referencedDigests[m.Digest.Hex()] = true
 			}
 		}
 
