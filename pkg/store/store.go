@@ -279,8 +279,8 @@ func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
 		return 0, 0, fmt.Errorf("failed to load index: %w", err)
 	}
 
-	// walk through remaining artifacts and collect digests
-	if err := l.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
+	var processManifest func(desc ocispec.Descriptor) error
+	processManifest = func(desc ocispec.Descriptor) error {
 		if desc.Digest.Validate() != nil {
 			return nil
 		}
@@ -298,12 +298,14 @@ func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
 		var manifest struct {
 			Config struct {
 				Digest digest.Digest `json:"digest"`
-			}
+			} `json:"config"`
 			Layers []struct {
 				digest.Digest `json:"digest"`
 			} `json:"layers"`
 			Manifests []struct {
-				Digest digest.Digest `json:"digest"`
+				Digest    digest.Digest `json:"digest"`
+				MediaType string        `json:"mediaType"`
+				Size      int64         `json:"size"`
 			} `json:"manifests"`
 		}
 
@@ -322,14 +324,27 @@ func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
 			}
 		}
 
-		// handle index list (manifests array)
+		// handle manifest list
 		for _, m := range manifest.Manifests {
 			if m.Digest.Validate() == nil {
+				// mark manifest
 				referencedDigests[m.Digest.Hex()] = true
+				// process manifest for layers
+				manifestDesc := ocispec.Descriptor{
+					MediaType: m.MediaType,
+					Digest:    m.Digest,
+					Size:      m.Size,
+				}
+				processManifest(manifestDesc) // calls helper func on manifests in list
 			}
 		}
 
 		return nil
+	}
+
+	// walk through artifacts
+	if err := l.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
+		return processManifest(desc)
 	}); err != nil {
 		return 0, 0, fmt.Errorf("failed to walk artifacts: %w", err)
 	}
