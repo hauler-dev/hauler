@@ -183,6 +183,39 @@ jobs:
           # view extracted content from store
           cat hauler-manifest-local.yaml
 
+      - name: Verify - hauler store delete-artifact
+        run: |
+          hauler store delete-artifact --help
+          # add test images
+          hauler store add image ghcr.io/hauler-dev/library/busybox:stable
+          hauler store add image ghcr.io/hauler-dev/library/alpine:latest
+          # confirm artifacts
+          hauler store info | grep 'busybox:stable'
+          hauler store info | grep 'alpine:latest'
+          # count blobs before delete
+          BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l)
+          echo "blobs before deletion: $BLOBS_BEFORE"
+          # delete one artifact
+          hauler store delete-artifact busybox:stable --force
+          # verify artifact removed
+          ! hauler store info | grep -q "busybox:stable"
+          # non-deleted artifact exists
+          hauler store info | grep -q "alpine:latest"
+          # count blobs after delete
+          BLOBS_AFTER=$(find store/blobs/sha256 -type f | wc -l)
+          echo "blobs after deletion: $BLOBS_AFTER"
+          # verify only unreferenced blobs removed
+          if [ "$BLOBS_AFTER" -ge "$BLOBS_BEFORE" ]; then
+            echo "ERROR: No blobs were cleaned up"
+            exit 1
+          fi
+          if [ "BLOBS_AFTER" -eq 0 ]; then
+            echo "ERROR: All blobs deleted (shared layers removed)"
+            exit 1
+          fi
+          # verify remaining image not missing layers 
+          hauler store extract alpine:latest
+
       - name: Verify - hauler store info
         run: |
           hauler store info --help
