@@ -183,39 +183,6 @@ jobs:
           # view extracted content from store
           cat hauler-manifest-local.yaml
 
-      - name: Verify - hauler store delete-artifact
-        run: |
-          hauler store delete-artifact --help
-          # add test images
-          hauler store add image docker.io/library/nginx:1.25-alpine
-          hauler store add image docker.io/library/nginx:1.26-alpine
-          # confirm artifacts
-          hauler store info | grep 'nginx:1.25'
-          hauler store info | grep 'nginx:1.26'
-          # count blobs before delete
-          BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs before deletion: $BLOBS_BEFORE"
-          # delete one artifact
-          hauler store delete-artifact nginx:1.25 --force
-          # verify artifact removed
-          ! hauler store info | grep -q "nginx:1.25"
-          # non-deleted artifact exists
-          hauler store info | grep -q "nginx:1.26"
-          # count blobs after delete
-          BLOBS_AFTER=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs after deletion: $BLOBS_AFTER"
-          # verify only unreferenced blobs removed
-          if [ "$BLOBS_AFTER" -ge "$BLOBS_BEFORE" ]; then
-            echo "ERROR: No blobs were cleaned up"
-            exit 1
-          fi
-          if [ "$BLOBS_AFTER" -eq 0 ]; then
-            echo "ERROR: All blobs deleted (shared layers removed)"
-            exit 1
-          fi
-          # verify remaining image not missing layers 
-          hauler store extract docker.io/library/nginx:1.26-alpine
-
       - name: Verify - hauler store info
         run: |
           hauler store info --help
@@ -346,6 +313,39 @@ jobs:
           tree -hC registry
           # verify fileserver directory structure
           tree -hC fileserver
+
+      - name: Verify - hauler store delete-artifact
+        run: |
+          hauler store delete-artifact --help
+          # add test images
+          hauler store add image docker.io/library/nginx:1.25-alpine
+          hauler store add image docker.io/library/nginx:1.26-alpine
+          # confirm artifacts
+          hauler store info | grep 'nginx:1.25'
+          hauler store info | grep 'nginx:1.26'
+          # count blobs before delete
+          BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
+          echo "blobs before deletion: $BLOBS_BEFORE"
+          # delete one artifact
+          hauler store delete-artifact nginx:1.25 --force
+          # verify artifact removed
+          ! hauler store info | grep -q "nginx:1.25"
+          # non-deleted artifact exists
+          hauler store info | grep -q "nginx:1.26"
+          # count blobs after delete
+          BLOBS_AFTER=$(find store/blobs/sha256 -type f | wc -l | xargs)
+          echo "blobs after deletion: $BLOBS_AFTER"
+          # verify only unreferenced blobs removed
+          if [ "$BLOBS_AFTER" -ge "$BLOBS_BEFORE" ]; then
+            echo "ERROR: No blobs were cleaned up"
+            exit 1
+          fi
+          if [ "$BLOBS_AFTER" -eq 0 ]; then
+            echo "ERROR: All blobs deleted (shared layers removed)"
+            exit 1
+          fi
+          # verify remaining image not missing layers 
+          hauler store extract docker.io/library/nginx:1.26-alpine
 
       - name: Create Hauler Report
         run: |
