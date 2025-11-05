@@ -2,11 +2,12 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"helm.sh/helm/v3/pkg/action"
-
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts/file"
@@ -17,6 +18,7 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/reference"
 	"hauler.dev/go/hauler/pkg/store"
+	"helm.sh/helm/v3/pkg/action"
 )
 
 func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
@@ -57,7 +59,8 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	l := log.FromContext(ctx)
 
 	cfg := v1.Image{
-		Name: reference,
+		Name:    reference,
+		Rewrite: o.Rewrite,
 	}
 
 	// Check if the user provided a key.
@@ -78,10 +81,10 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg, o.Platform, rso, ro)
+	return storeImage(ctx, s, cfg, o.Platform, rso, ro, o)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rw flags.RewriteProvider) error {
 	l := log.FromContext(ctx)
 
 	if !ro.IgnoreErrors {
@@ -104,6 +107,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
+	// copy and sig verification
 	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
 	if err != nil {
 		if ro.IgnoreErrors {
@@ -115,8 +119,73 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
+	if rw.RewriteValue() != "" {
+		// rename image name in store
+		newRef, err := name.ParseReference(rw.RewriteValue())
+		if err != nil {
+			l.Errorf("unable to parse rewrite name: %w", err)
+		}
+		fmt.Println("parsed rewrite: ", newRef.Name()) // remove
+		fmt.Println("old reference: ", r.Name())       // remove
+
+		rewriteReference(ctx, s, r, newRef)
+	}
+
 	l.Infof("successfully added image [%s]", r.Name())
 	return nil
+}
+
+func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference) error {
+	l := log.FromContext(ctx)
+
+	l.Infof("rewriting [%s] to [%s]", oldRef.Name(), newRef.Name())
+
+	s.OCI.LoadIndex()
+
+	//TODO: improve string manipulation
+	oldRefContext := oldRef.Context()
+	newRefContext := newRef.Context()
+
+	oldRepo := oldRefContext.RepositoryStr()
+	newRepo := newRefContext.RepositoryStr()
+	oldTag := oldRef.(name.Tag).TagStr()
+	newTag := newRef.(name.Tag).TagStr()
+	oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
+	newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
+
+	oldTotal := oldRepo + ":" + oldTag
+	newTotal := newRepo + ":" + newTag
+	oldTotalReg := oldRegistry + "/" + oldTotal
+	newTotalReg := newRegistry + "/" + newTotal
+
+	//for debug purposes
+	fmt.Println("old repo: ", oldTotal)
+	fmt.Println("new repo: ", newTotal)
+
+	fmt.Println("oldRef.Name: ", oldRef.Name())
+	fmt.Println("newRef.Name: ", newRef.Name())
+	fmt.Println("old registry: ", oldTotalReg)
+	fmt.Println("new registry: ", newTotalReg)
+
+	//find and update reference
+	found := false
+	if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
+		if d.Annotations[ocispec.AnnotationRefName] == oldTotal && d.Annotations[consts.ContainerdImageNameKey] == oldTotalReg {
+			d.Annotations[ocispec.AnnotationRefName] = newTotal
+			d.Annotations[consts.ContainerdImageNameKey] = newTotalReg
+			found = true
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if !found {
+		return fmt.Errorf("could not find image [%s] in store", oldRef.Name())
+	}
+
+	return s.OCI.SaveIndex()
+
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string) error {

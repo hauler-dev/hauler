@@ -63,7 +63,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		img := v1.Image{
 			Name: manifestLoc,
 		}
-		err := storeImage(ctx, s, img, o.Platform, rso, ro)
+		err := storeImage(ctx, s, img, o.Platform, rso, ro, o)
 		if err != nil {
 			return err
 		}
@@ -338,7 +338,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						platform = i.Platform
 					}
 
-					if err := storeImage(ctx, s, i, platform, rso, ro); err != nil {
+					if err := storeImage(ctx, s, i, platform, rso, ro, o); err != nil {
 						return err
 					}
 				}
@@ -473,7 +473,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						platform = i.Platform
 					}
 
-					if err := storeImage(ctx, s, i, platform, rso, ro); err != nil {
+					if err := storeImage(ctx, s, i, platform, rso, ro, o); err != nil {
 						return err
 					}
 				}
