@@ -506,8 +506,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := convert.ConvertCharts(&alphaCfg, &v1Cfg); err != nil {
 					return err
 				}
-				for _, ch := range v1Cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}); err != nil {
+				for i, ch := range v1Cfg.Spec.Charts {
+					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}, v1Cfg.Spec.Charts[i].Rewrite); err != nil { //fix rewrite input
 						return err
 					}
 				}
@@ -517,8 +517,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
-				for _, ch := range cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}); err != nil {
+				for i, ch := range cfg.Spec.Charts {
+					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}, cfg.Spec.Charts[i].Rewrite); err != nil {
 						return err
 					}
 				}

@@ -84,7 +84,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	return storeImage(ctx, s, cfg, o.Platform, rso, ro, o.Rewrite)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rw string) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
 	if !ro.IgnoreErrors {
@@ -119,9 +119,9 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
-	if rw != "" {
+	if rewrite != "" {
 		// rename image name in store
-		newRef, err := name.ParseReference(rw)
+		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
 			l.Errorf("unable to parse rewrite name: %w", err)
 		}
@@ -195,10 +195,14 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 		Version: o.ChartOpts.Version,
 	}
 
-	return storeChart(ctx, s, cfg, o.ChartOpts)
+	rewrite := ""
+	if o.Rewrite != "" {
+		rewrite = o.Rewrite
+	}
+	return storeChart(ctx, s, cfg, o.ChartOpts, rewrite)
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action.ChartPathOptions) error {
+func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action.ChartPathOptions, rewrite string) error {
 	l := log.FromContext(ctx)
 
 	l.Infof("adding chart [%s] to the store", cfg.Name)
@@ -221,11 +225,67 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 	if err != nil {
 		return err
 	}
+
 	_, err = s.AddOCI(ctx, chrt, ref.Name())
 	if err != nil {
 		return err
+	} else {
+		s.OCI.SaveIndex()
 	}
 
+	if rewrite != "" {
+		newRef, err := name.ParseReference(rewrite)
+		if err != nil {
+			l.Errorf("unable to parse rewrite name: %w", err)
+		}
+
+		s.OCI.LoadIndex()
+
+		//TODO: improve string manipulation
+		oldRefContext := ref.Context()
+		newRefContext := newRef.Context()
+
+		oldRepo := oldRefContext.RepositoryStr()
+		newRepo := newRefContext.RepositoryStr()
+		oldTag := ref.(name.Tag).TagStr()
+		newTag := newRef.(name.Tag).TagStr()
+		oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
+		newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
+
+		oldTotal := oldRepo + ":" + oldTag
+		newTotal := newRepo + ":" + newTag
+		oldTotalReg := oldRegistry + "/" + oldTotal
+		newTotalReg := newRegistry + "/" + newTotal
+
+		//for debug purposes
+		fmt.Println("old repo: ", oldTotal)
+		fmt.Println("new repo: ", newTotal)
+
+		fmt.Println("oldRef.Name: ", ref.Name())
+		fmt.Println("newRef.Name: ", newRef.Name())
+		fmt.Println("old registry: ", oldTotalReg)
+		fmt.Println("new registry: ", newTotalReg)
+
+		found := false
+		if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
+			if d.Annotations[ocispec.AnnotationRefName] == oldTotal {
+				d.Annotations[ocispec.AnnotationRefName] = newTotal
+				found = true
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		if !found {
+			return fmt.Errorf("could not find chart [%s] in store", ref.Name())
+		}
+
+		cfg.Name = newRef.Name()
+		fmt.Println("chart name (new): ", cfg.Name)
+
+		s.OCI.SaveIndex()
+	}
 	l.Infof("successfully added chart [%s]", ref.Name())
 	return nil
 }
