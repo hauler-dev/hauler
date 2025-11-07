@@ -32,7 +32,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified sting")
 }
 
-func (o *AddImageOpts) RewriteValue() string { return o.Rewrite }
+//func (o *AddImageOpts) RewriteValue() string { return o.Rewrite }
 
 type AddFileOpts struct {
 	*StoreRootOpts

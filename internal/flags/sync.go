@@ -42,4 +42,4 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified sting")
 }
 
-func (o *SyncOpts) RewriteValue() string { return o.Rewrite }
+//func (o *SyncOpts) RewriteValue() string { return o.Rewrite }

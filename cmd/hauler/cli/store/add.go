@@ -81,10 +81,10 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg, o.Platform, rso, ro, o)
+	return storeImage(ctx, s, cfg, o.Platform, rso, ro, o.Rewrite)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rw flags.RewriteProvider) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rw string) error {
 	l := log.FromContext(ctx)
 
 	if !ro.IgnoreErrors {
@@ -119,9 +119,9 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
-	if rw.RewriteValue() != "" {
+	if rw != "" {
 		// rename image name in store
-		newRef, err := name.ParseReference(rw.RewriteValue())
+		newRef, err := name.ParseReference(rw)
 		if err != nil {
 			l.Errorf("unable to parse rewrite name: %w", err)
 		}
