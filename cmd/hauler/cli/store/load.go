@@ -24,7 +24,7 @@ import (
 func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	tempOverride := o.TempOverride
+	tempOverride := rso.TempOverride
 
 	if tempOverride == "" {
 		tempOverride = os.Getenv(consts.HaulerTempDir)

@@ -377,7 +377,7 @@ hauler store add chart rancher --repo https://releases.rancher.com/server-charts
 				return err
 			}
 
-			return store.AddChartCmd(ctx, o, s, args[0])
+			return store.AddChartCmd(ctx, o, s, args[0], rso, ro)
 		},
 	}
 	o.AddFlags(cmd)

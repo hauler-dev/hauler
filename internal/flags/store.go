@@ -13,14 +13,16 @@ import (
 )
 
 type StoreRootOpts struct {
-	StoreDir string
-	Retries  int
+	StoreDir     string
+	Retries      int
+	TempOverride string
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
+	pf.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
 }
 
 func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
