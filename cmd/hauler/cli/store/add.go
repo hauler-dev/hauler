@@ -120,6 +120,10 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	}
 
 	if rewrite != "" {
+		rewrite = strings.TrimPrefix(rewrite, "/")
+		if !strings.Contains(rewrite, ":") {
+			rewrite = strings.Join([]string{rewrite, r.(name.Tag).TagStr()}, ":")
+		}
 		// rename image name in store
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
@@ -234,6 +238,8 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 	}
 
 	if rewrite != "" {
+		rewrite = strings.TrimPrefix(rewrite, "/")
+		fmt.Println("trimmed string: ", rewrite) // remove
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
 			l.Errorf("unable to parse rewrite name: %w", err)
@@ -248,7 +254,13 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 		oldRepo := oldRefContext.RepositoryStr()
 		newRepo := newRefContext.RepositoryStr()
 		oldTag := ref.(name.Tag).TagStr()
-		newTag := newRef.(name.Tag).TagStr()
+		// newTag := newRef.(name.Tag).TagStr()
+		var newTag string
+		if strings.Contains(rewrite, ":") {
+			newTag = newRef.(name.Tag).TagStr()
+		} else {
+			newTag = oldTag
+		}
 		oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
 		newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
 
