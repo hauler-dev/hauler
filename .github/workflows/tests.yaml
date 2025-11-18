@@ -146,6 +146,23 @@ jobs:
           # verify via the hauler store contents
           hauler store info
 
+      - name: Verify - hauler store add chart --rewrite
+        run: |
+          # add chart with rewrite flag
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4 --rewrite custom-path/rancher:2.8.4
+          # verify new ref in store
+          hauler store info | grep 'custom-path/rancher:2.8.4'
+          rm -rf store
+          # confrim leading slash trimmed from rewrite
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4 --rewrite /custom-path/rancher:2.8.4
+          # verify no leading slash
+          ! hauler store info | grep '/custom-path/rancher:2.8.4'
+          rm -rf store
+          # confirm old tag used if not specified
+          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4 --rewrite /custom-path/rancher
+          # confirm tag 
+          hauler store info | grep '2.8.4'
+
       - name: Verify - hauler store add file
         run: |
           hauler store add file --help
@@ -169,6 +186,23 @@ jobs:
           hauler store add image ghcr.io/hauler-dev/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
           # verify via the hauler store contents
           hauler store info
+
+      - name: Verify - hauler store add image --rewrite
+        run: |
+          # add image with rewrite flag
+          hauler store add image ghcr.io/hauler-dev/library/busybox --rewrite custom-registry.io/custom-path/busybox:latest
+          # verify new ref in store
+          hauler store info | grep 'custom-registry.io/custom-path/busybox:latest'
+          rm -rf store
+          # confrim leading slash trimmed from rewrite
+          hauler store add image ghcr.io/hauler-dev/library/busybox --rewrite /custom-path/busybox:latest
+          # verify no leading slash
+          ! hauler store info | grep '/custom-path/busybox:latest'
+          rm -rf store
+          # confirm old tag used if not specified
+          hauler store add image ghcr.io/hauler-dev/library/busybox:stable --rewrite /custom-path/busybox
+          # confirm tag 
+          hauler store info | grep ':stable'
 
       - name: Verify - hauler store copy
         run: |
