@@ -254,8 +254,9 @@ jobs:
           hauler store load
           # verify via load with multiple files
           hauler store load --filename haul.tar.zst --filename store.tar.zst
+          # confirm store contents
+          tar -x0f store.tar.zst store/index.json
           # verify via load with filename and temp directory
-          mkdir /opt
           hauler store load --filename store.tar.zst --tempdir /opt
           # verify via load with filename and platform (amd64)
           hauler store load --filename store-amd64.tar.zst
