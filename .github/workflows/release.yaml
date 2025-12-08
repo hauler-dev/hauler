@@ -11,7 +11,11 @@ jobs:
     name: GoReleaser Job
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
+      - name: Clean Up Actions Tools Cache
+        run: rm -rf /opt/hostedtoolcache
+
       - name: Checkout
         uses: actions/checkout@v6.0.1
         with:
