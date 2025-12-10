@@ -507,7 +507,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				for i, ch := range v1Cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}, v1Cfg.Spec.Charts[i].Rewrite); err != nil { //fix rewrite input
+					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}, v1Cfg.Spec.Charts[i].Rewrite); err != nil {
 						return err
 					}
 				}
