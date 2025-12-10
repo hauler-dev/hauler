@@ -129,9 +129,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err != nil {
 			l.Errorf("unable to parse rewrite name: %w", err)
 		}
-		fmt.Println("parsed rewrite: ", newRef.Name()) // remove
-		fmt.Println("old reference: ", r.Name())       // remove
-
 		rewriteReference(ctx, s, r, newRef)
 	}
 
@@ -161,15 +158,6 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	newTotal := newRepo + ":" + newTag
 	oldTotalReg := oldRegistry + "/" + oldTotal
 	newTotalReg := newRegistry + "/" + newTotal
-
-	//for debug purposes
-	fmt.Println("old repo: ", oldTotal)
-	fmt.Println("new repo: ", newTotal)
-
-	fmt.Println("oldRef.Name: ", oldRef.Name())
-	fmt.Println("newRef.Name: ", newRef.Name())
-	fmt.Println("old registry: ", oldTotalReg)
-	fmt.Println("new registry: ", newTotalReg)
 
 	//find and update reference
 	found := false
@@ -239,7 +227,6 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 
 	if rewrite != "" {
 		rewrite = strings.TrimPrefix(rewrite, "/")
-		fmt.Println("trimmed string: ", rewrite) // remove
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
 			l.Errorf("unable to parse rewrite name: %w", err)
@@ -247,36 +234,22 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 
 		s.OCI.LoadIndex()
 
-		//TODO: improve string manipulation
 		oldRefContext := ref.Context()
 		newRefContext := newRef.Context()
 
 		oldRepo := oldRefContext.RepositoryStr()
 		newRepo := newRefContext.RepositoryStr()
 		oldTag := ref.(name.Tag).TagStr()
-		// newTag := newRef.(name.Tag).TagStr()
+
 		var newTag string
 		if strings.Contains(rewrite, ":") {
 			newTag = newRef.(name.Tag).TagStr()
 		} else {
 			newTag = oldTag
 		}
-		oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
-		newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
 
 		oldTotal := oldRepo + ":" + oldTag
 		newTotal := newRepo + ":" + newTag
-		oldTotalReg := oldRegistry + "/" + oldTotal
-		newTotalReg := newRegistry + "/" + newTotal
-
-		//for debug purposes
-		fmt.Println("old repo: ", oldTotal)
-		fmt.Println("new repo: ", newTotal)
-
-		fmt.Println("oldRef.Name: ", ref.Name())
-		fmt.Println("newRef.Name: ", newRef.Name())
-		fmt.Println("old registry: ", oldTotalReg)
-		fmt.Println("new registry: ", newTotalReg)
 
 		found := false
 		if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
