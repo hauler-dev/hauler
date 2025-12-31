@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -23,8 +23,9 @@ func VerifySignature(ctx context.Context, s *store.Layout, keyPath string, useTl
 	l := log.FromContext(ctx)
 	operation := func() error {
 		v := &verify.VerifyCommand{
-			KeyRef:     keyPath,
-			IgnoreTlog: true, // Ignore transparency log by default.
+			KeyRef:          keyPath,
+			IgnoreTlog:      true, // Ignore transparency log by default.
+			NewBundleFormat: true,
 		}
 
 		// if the user wants to use the transparency log, set the flag to false
@@ -52,7 +53,7 @@ func VerifyKeylessSignature(ctx context.Context, s *store.Layout, identity strin
 
 		certVerifyOptions := options.CertVerifyOptions{
 			CertOidcIssuer:               oidcIssuer,
-			CertOidcIssuerRegexp:         oidcIssuer,
+			CertOidcIssuerRegexp:         oidcIssuerRegexp,
 			CertIdentity:                 identity,
 			CertIdentityRegexp:           identityRegexp,
 			CertGithubWorkflowRepository: ghWorkflowRepository,
@@ -62,6 +63,7 @@ func VerifyKeylessSignature(ctx context.Context, s *store.Layout, identity strin
 			CertVerifyOptions:            certVerifyOptions,
 			IgnoreTlog:                   false, // Ignore transparency log is set to false by default for keyless signature verification
 			CertGithubWorkflowRepository: ghWorkflowRepository,
+			NewBundleFormat:              true,
 		}
 
 		// if the user wants to use the transparency log, set the flag to false
