@@ -29,10 +29,8 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.CertGithubWorkflowRepository, "certificate-github-workflow-repository", "", "(Optional) Cosign certificate-github-workflow-repository option")
 	f.BoolVarP(&o.Tlog, "use-tlog-verify", "v", false, "(Optional) Allow transparency log verification. (defaults to false)")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specifiy the platform of the image... i.e. linux/amd64 (defaults to all)")
-	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
+	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string (experimental)")
 }
-
-//func (o *AddImageOpts) RewriteValue() string { return o.Rewrite }
 
 type AddFileOpts struct {
 	*StoreRootOpts
@@ -63,5 +61,5 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authenication")
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
-	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
+	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string (experimental)")
 }
