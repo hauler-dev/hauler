@@ -312,3 +312,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 	w := content.NewIoContentWriter(f, content.WithInputHash(d.Digest), content.WithOutputHash(d.Digest))
 	return w, nil
 }
+
+func (o *OCI) RemoveFromIndex(ref string) {
+	o.nameMap.Delete(ref)
+}
