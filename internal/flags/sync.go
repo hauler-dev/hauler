@@ -20,6 +20,7 @@ type SyncOpts struct {
 	ProductRegistry              string
 	TempOverride                 string
 	Tlog                         bool
+	Rewrite                      string
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -38,4 +39,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specify the product registry. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us)")
 	f.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directiory determined by the OS")
 	f.BoolVarP(&o.Tlog, "use-tlog-verify", "v", false, "(Optional) Allow transparency log verification. (defaults to false)")
+	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 }
+
+//func (o *SyncOpts) RewriteValue() string { return o.Rewrite }
