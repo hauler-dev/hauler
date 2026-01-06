@@ -44,7 +44,6 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 		if err != nil {
 			return err
 		}
-		clearDir(tempDir)
 	}
 
 	return nil
@@ -137,20 +136,4 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 
 	_, err = s.CopyAll(ctx, ts, nil)
 	return err
-}
-
-func clearDir(path string) error {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		err = os.RemoveAll(filepath.Join(path, entry.Name()))
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

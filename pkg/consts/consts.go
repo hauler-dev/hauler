@@ -50,7 +50,6 @@ const (
 	ImageAnnotationPlatform = "hauler.dev/platform"
 	ImageAnnotationRegistry = "hauler.dev/registry"
 	ImageAnnotationTlog     = "hauler.dev/use-tlog-verify"
-	ImageAnnotationRewrite  = "hauler.dev/rewrite"
 	ImageRefKey             = "org.opencontainers.image.ref.name"
 
 	// cosign keyless validation options

@@ -19,7 +19,6 @@ type Chart struct {
 	Name    string `json:"name,omitempty"`
 	RepoURL string `json:"repoURL,omitempty"`
 	Version string `json:"version,omitempty"`
-	Rewrite string `json:"rewrite,omitempty"`
 }
 
 type ThickCharts struct {

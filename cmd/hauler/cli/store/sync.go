@@ -63,7 +63,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		img := v1.Image{
 			Name: manifestLoc,
 		}
-		err := storeImage(ctx, s, img, o.Platform, rso, ro, "")
+		err := storeImage(ctx, s, img, o.Platform, rso, ro)
 		if err != nil {
 			return err
 		}
@@ -338,12 +338,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						platform = i.Platform
 					}
 
-					rewrite := ""
-					if i.Rewrite != "" {
-						rewrite = i.Rewrite
-					}
-
-					if err := storeImage(ctx, s, i, platform, rso, ro, rewrite); err != nil {
+					if err := storeImage(ctx, s, i, platform, rso, ro); err != nil {
 						return err
 					}
 				}
@@ -478,12 +473,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						platform = i.Platform
 					}
 
-					rewrite := ""
-					if i.Rewrite != "" {
-						rewrite = i.Rewrite
-					}
-
-					if err := storeImage(ctx, s, i, platform, rso, ro, rewrite); err != nil {
+					if err := storeImage(ctx, s, i, platform, rso, ro); err != nil {
 						return err
 					}
 				}
@@ -506,14 +496,10 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := convert.ConvertCharts(&alphaCfg, &v1Cfg); err != nil {
 					return err
 				}
-				for i, ch := range v1Cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch,
-						&action.ChartPathOptions{
-							RepoURL:  ch.RepoURL,
-							Version:  ch.Version,
-						},
-						v1Cfg.Spec.Charts[i].Rewrite,
-					); err != nil {
+				for _, ch := range v1Cfg.Spec.Charts {
+					if err := storeChart(ctx, s, ch.Name, &flags.AddChartOpts{
+						ChartOpts: &action.ChartPathOptions{RepoURL: ch.RepoURL, Version: ch.Version},
+					}, rso, ro); err != nil {
 						return err
 					}
 				}
@@ -523,14 +509,10 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
-				for i, ch := range cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch,
-						&action.ChartPathOptions{
-							RepoURL:  ch.RepoURL,
-							Version:  ch.Version,
-						},
-						cfg.Spec.Charts[i].Rewrite,
-					); err != nil {
+				for _, ch := range cfg.Spec.Charts {
+					if err := storeChart(ctx, s, ch.Name, &flags.AddChartOpts{
+						ChartOpts: &action.ChartPathOptions{RepoURL: ch.RepoURL, Version: ch.Version},
+					}, rso, ro); err != nil {
 						return err
 					}
 				}

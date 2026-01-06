@@ -154,21 +154,6 @@ jobs:
           # verify via the hauler store contents
           hauler store info
 
-      - name: Verify - hauler store add chart --rewrite
-        run: |
-          # add chart with rewrite flag
-          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4 --rewrite custom-path/rancher:2.8.4
-          # verify new ref in store
-          hauler store info | grep 'custom-path/rancher:2.8.4'
-          # confrim leading slash trimmed from rewrite
-          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4 --rewrite /custom-path/rancher:2.8.4
-          # verify no leading slash
-          ! hauler store info | grep '/custom-path/rancher:2.8.4'
-          # confirm old tag used if not specified
-          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4 --rewrite /custom-path/rancher
-          # confirm tag 
-          hauler store info | grep '2.8.4'
-
       - name: Verify - hauler store add file
         run: |
           hauler store add file --help
@@ -192,21 +177,6 @@ jobs:
           hauler store add image ghcr.io/hauler-dev/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
           # verify via the hauler store contents
           hauler store info
-
-      - name: Verify - hauler store add image --rewrite
-        run: |
-          # add image with rewrite flag
-          hauler store add image ghcr.io/hauler-dev/library/busybox --rewrite custom-registry.io/custom-path/busybox:latest
-          # verify new ref in store
-          hauler store info | grep 'custom-registry.io/custom-path/busybox:latest'
-          # confrim leading slash trimmed from rewrite
-          hauler store add image ghcr.io/hauler-dev/library/busybox --rewrite /custom-path/busybox:latest
-          # verify no leading slash
-          ! hauler store info | grep '/custom-path/busybox:latest'
-          # confirm old tag used if not specified
-          hauler store add image ghcr.io/hauler-dev/library/busybox:stable --rewrite /custom-path/busybox
-          # confirm tag 
-          hauler store info | grep ':stable'
 
       - name: Verify - hauler store copy
         run: |
@@ -259,8 +229,6 @@ jobs:
           hauler store load
           # verify via load with multiple files
           hauler store load --filename haul.tar.zst --filename store.tar.zst
-          # confirm store contents
-          tar -xOf store.tar.zst index.json
           # verify via load with filename and temp directory
           hauler store load --filename store.tar.zst --tempdir /opt
           # verify via load with filename and platform (amd64)
@@ -353,105 +321,6 @@ jobs:
           tree -hC registry
           # verify fileserver directory structure
           tree -hC fileserver
-
-      - name: Verify - hauler store delete-artifact (image)
-        run: |
-          hauler store delete-artifact --help
-          # add test images
-          hauler store add image docker.io/library/nginx:1.25-alpine
-          hauler store add image docker.io/library/nginx:1.26-alpine
-          # confirm artifacts
-          hauler store info | grep 'nginx:1.25'
-          hauler store info | grep 'nginx:1.26'
-          # count blobs before delete
-          BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs before deletion: $BLOBS_BEFORE"
-          # delete one artifact
-          hauler store delete-artifact nginx:1.25 --force
-          # verify artifact removed
-          ! hauler store info | grep -q "nginx:1.25"
-          # non-deleted artifact exists
-          hauler store info | grep -q "nginx:1.26"
-          # count blobs after delete
-          BLOBS_AFTER=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs after deletion: $BLOBS_AFTER"
-          # verify only unreferenced blobs removed
-          if [ "$BLOBS_AFTER" -ge "$BLOBS_BEFORE" ]; then
-            echo "ERROR: No blobs were cleaned up"
-            exit 1
-          fi
-          if [ "$BLOBS_AFTER" -eq 0 ]; then
-            echo "ERROR: All blobs deleted (shared layers removed)"
-            exit 1
-          fi
-          # verify remaining image not missing layers 
-          hauler store extract docker.io/library/nginx:1.26-alpine
-
-      - name: Verify - hauler store delete-artifact (chart)
-        run: |
-          hauler store delete-artifact --help
-          # add test images
-          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4
-          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.5
-          # confirm artifacts
-          hauler store info | grep '2.8.4'
-          hauler store info | grep '2.8.5'
-          # count blobs before delete
-          BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs before deletion: $BLOBS_BEFORE"
-          # delete one artifact
-          hauler store delete-artifact 2.8.4 --force
-          # verify artifact removed
-          ! hauler store info | grep -q "2.8.4"
-          # non-deleted artifact exists
-          hauler store info | grep -q "2.8.5"
-          # count blobs after delete
-          BLOBS_AFTER=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs after deletion: $BLOBS_AFTER"
-          # verify only unreferenced blobs removed
-          if [ "$BLOBS_AFTER" -ge "$BLOBS_BEFORE" ]; then
-            echo "ERROR: No blobs were cleaned up"
-            exit 1
-          fi
-          if [ "$BLOBS_AFTER" -eq 0 ]; then
-            echo "ERROR: All blobs deleted (shared layers removed)"
-            exit 1
-          fi
-          # verify remaining image not missing layers 
-          hauler store extract hauler/rancher:2.8.5
-
-      - name: Verify - hauler store delete-artifact (file)
-        run: |
-          hauler store delete-artifact --help
-          # add test images
-          hauler store add file https://get.hauler.dev
-          hauler store add file https://get.rke2.io/install.sh
-          # confirm artifacts
-          hauler store info | grep 'get.hauler.dev'
-          hauler store info | grep 'install.sh'
-          # count blobs before delete
-          BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs before deletion: $BLOBS_BEFORE"
-          # delete one artifact
-          hauler store delete-artifact get.hauler.dev --force
-          # verify artifact removed
-          ! hauler store info | grep -q "get.hauler.dev"
-          # non-deleted artifact exists
-          hauler store info | grep -q "install.sh"
-          # count blobs after delete
-          BLOBS_AFTER=$(find store/blobs/sha256 -type f | wc -l | xargs)
-          echo "blobs after deletion: $BLOBS_AFTER"
-          # verify only unreferenced blobs removed
-          if [ "$BLOBS_AFTER" -ge "$BLOBS_BEFORE" ]; then
-            echo "ERROR: No blobs were cleaned up"
-            exit 1
-          fi
-          if [ "$BLOBS_AFTER" -eq 0 ]; then
-            echo "ERROR: All blobs deleted (shared layers removed)"
-            exit 1
-          fi
-          # verify remaining image not missing layers 
-          hauler store extract hauler/install.sh:latest
 
       - name: Create Hauler Report
         run: |

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/engine"
 
@@ -24,7 +23,6 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/reference"
 	"hauler.dev/go/hauler/pkg/store"
-	"helm.sh/helm/v3/pkg/action"
 )
 
 func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
@@ -65,8 +63,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	l := log.FromContext(ctx)
 
 	cfg := v1.Image{
-		Name:    reference,
-		Rewrite: o.Rewrite,
+		Name: reference,
 	}
 
 	// Check if the user provided a key.
@@ -88,10 +85,10 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg, o.Platform, rso, ro, o.Rewrite)
+	return storeImage(ctx, s, cfg, o.Platform, rso, ro)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	if !ro.IgnoreErrors {
@@ -113,7 +110,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		return err
 	}
 
-	// copy and sig verification
 	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
 	if err != nil {
 		if ro.IgnoreErrors {
@@ -122,25 +118,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 		l.Errorf("unable to add image [%s] to store: %v", r.Name(), err)
 		return err
-	}
-
-	if rewrite != "" {
-		rewrite = strings.TrimPrefix(rewrite, "/")
-		if !strings.Contains(rewrite, ":") {
-			rewrite = strings.Join([]string{rewrite, r.(name.Tag).TagStr()}, ":")
-		}
-		// rename image name in store
-		newRef, err := name.ParseReference(rewrite)
-		if err != nil {
-			l.Errorf("unable to parse rewrite name: %w", err)
-		}
-    if err := rewriteReference(ctx, s, r, newRef); err != nil {
-      if ro.IgnoreErrors {
-        l.Warnf("unable to rewrite reference for image [%s]: %v... skipping...", r.Name(), err)
-        return nil
-      }
-      return err
-    }
 	}
 
 	l.Infof("successfully added image [%s]", r.Name())
@@ -154,58 +131,12 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 // unexported type for the context key to avoid collisions.
 type isSubchartKey struct{}
 
-// imageregex finds lines starting with optional space, 'image:', optional space, optional quotes,
-// and captures the image name with non-space/non-quote/non-hash chars
+// imageregex finds lines starting with optional space, 'image:', optional space, optional quotes, and captures the image name with non-space/non-quote/non-hash chars
 var imageRegex = regexp.MustCompile(`(?m)^\s*image:\s*['"]?([^\s'"#]+)`)
 
-func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference) error {
-	l := log.FromContext(ctx)
+func storeChart(ctx context.Context, s *store.Layout, chartName string,
+	opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 
-	l.Infof("rewriting [%s] to [%s]", oldRef.Name(), newRef.Name())
-
-	s.OCI.LoadIndex()
-
-	// TODO: improve string manipulation
-	oldRefContext := oldRef.Context()
-	newRefContext := newRef.Context()
-
-	oldRepo := oldRefContext.RepositoryStr()
-	newRepo := newRefContext.RepositoryStr()
-	oldTag := oldRef.(name.Tag).TagStr()
-	newTag := newRef.(name.Tag).TagStr()
-	oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
-	newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
-
-	oldTotal := oldRepo + ":" + oldTag
-	newTotal := newRepo + ":" + newTag
-	oldTotalReg := oldRegistry + "/" + oldTotal
-	newTotalReg := newRegistry + "/" + newTotal
-
-	// find and update reference
-	found := false
-	if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
-		if d.Annotations[ocispec.AnnotationRefName] == oldTotal && d.Annotations[consts.ContainerdImageNameKey] == oldTotalReg {
-			d.Annotations[ocispec.AnnotationRefName] = newTotal
-			d.Annotations[consts.ContainerdImageNameKey] = newTotalReg
-			found = true
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	if !found {
-		return fmt.Errorf("could not find image [%s] in store", oldRef.Name())
-	}
-
-	return s.OCI.SaveIndex()
-}
-
-func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
-	return storeChart(ctx, s, chartName, o, rso, ro)
-}
-
-func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	isSubchart := ctx.Value(isSubchartKey{}) == true
@@ -236,61 +167,12 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		return err
 	}
 
-	if _, err := s.AddOCI(ctx, chrt, ref.Name()); err != nil {
+	if _, err = s.AddOCI(ctx, chrt, ref.Name()); err != nil {
 		return err
-	}
-	s.OCI.SaveIndex()
-
-	// --- chart rewrite (keep main behavior) ---
-	if opts.Rewrite != "" {
-		rewrite := strings.TrimPrefix(opts.Rewrite, "/")
-		newRef, err := name.ParseReference(rewrite)
-		if err != nil {
-			return fmt.Errorf("unable to parse rewrite name: %w", err)
-		}
-
-		s.OCI.LoadIndex()
-
-		oldRefContext := ref.Context()
-		newRefContext := newRef.Context()
-
-		oldRepo := oldRefContext.RepositoryStr()
-		newRepo := newRefContext.RepositoryStr()
-		oldTag := ref.(name.Tag).TagStr()
-
-		var newTag string
-		if strings.Contains(rewrite, ":") {
-			newTag = newRef.(name.Tag).TagStr()
-		} else {
-			newTag = oldTag
-		}
-
-		oldTotal := oldRepo + ":" + oldTag
-		newTotal := newRepo + ":" + newTag
-
-		found := false
-		if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
-			if d.Annotations[ocispec.AnnotationRefName] == oldTotal {
-				d.Annotations[ocispec.AnnotationRefName] = newTotal
-				found = true
-			}
-			return nil
-		}); err != nil {
-			return err
-		}
-
-		if !found {
-			return fmt.Errorf("could not find chart [%s] in store", ref.Name())
-		}
-
-		if err := s.OCI.SaveIndex(); err != nil {
-			return err
-		}
 	}
 
 	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)
 
-	// --- your feature: extract chart images + recurse deps ---
 	tempBase := rso.TempOverride
 	if tempBase == "" {
 		tempBase = os.Getenv(consts.HaulerTempDir)
@@ -308,7 +190,7 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 			return fmt.Errorf("failed to extract chart: %w", err)
 		}
 
-		// expanded chart should be in a directory matching the chart’s name
+		// expanded chart should be in a directory matching the charts name
 		expectedChartDir := filepath.Join(tempDir, c.Name())
 		if _, err := os.Stat(expectedChartDir); err != nil {
 			return fmt.Errorf("chart archive did not expand into expected directory '%s': %w", c.Name(), err)
@@ -320,6 +202,7 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		// load user values from file
 		userValues := chartutil.Values{}
 		if opts.HelmValues != "" {
+			var err error
 			userValues, err = chartutil.ReadValuesFile(opts.HelmValues)
 			if err != nil {
 				return fmt.Errorf("failed to read helm values file [%s]: %w", opts.HelmValues, err)
@@ -336,7 +219,7 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		caps := chartutil.DefaultCapabilities.Copy()
 		caps.KubeVersion = *kubeVersion
 
-		// merge defaults with user values
+		// merge the charts defaults (c.Values) with the user values (userValues)
 		values, err := chartutil.ToRenderValues(c, userValues, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {
 			return err
@@ -349,7 +232,7 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 			return nil
 		}
 
-		// extract images from rendered manifests
+		// extract images from rendered helm template manifests
 		var images []string
 		for _, manifest := range rendered {
 			matches := imageRegex.FindAllStringSubmatch(manifest, -1)
@@ -368,11 +251,9 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 		if len(images) > 0 {
 			l.Infof("%s  ↳ identified [%d] image(s) in [%s:%s]", prefix, len(images), c.Name(), c.Metadata.Version)
 		}
-
 		for _, image := range images {
-			imgCfg := v1.Image{Name: image}
-			// IMPORTANT: storeImage signature includes rewrite string
-			if err := storeImage(ctx, s, imgCfg, opts.Platform, rso, ro, ""); err != nil {
+			cfg := v1.Image{Name: image}
+			if err := storeImage(ctx, s, cfg, opts.Platform, rso, ro); err != nil {
 				return fmt.Errorf("failed to store image [%s]: %w", image, err)
 			}
 		}
@@ -399,6 +280,7 @@ func storeChart(ctx context.Context, s *store.Layout, chartName string, opts *fl
 				err = storeChart(subCtx, s, dep.Name, &depOpts, rso, ro)
 			}
 
+			// handle error consistently
 			if err != nil {
 				if ro.IgnoreErrors {
 					l.Warnf("%s  ↳ failed to add dependent chart [%s]: %v... skipping...", prefix, dep.Name, err)
