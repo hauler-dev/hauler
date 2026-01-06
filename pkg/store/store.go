@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -259,4 +260,126 @@ func (l *Layout) writeLayer(layer v1.Layer) error {
 
 	_, err = io.Copy(w, r)
 	return err
+}
+
+// Delete artifact reference from the store
+func (l *Layout) DeleteArtifact(ctx context.Context, reference string, desc ocispec.Descriptor) error {
+	if err := l.OCI.LoadIndex(); err != nil {
+		return err
+	}
+
+	l.OCI.RemoveFromIndex(reference)
+	return l.OCI.SaveIndex()
+}
+
+func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
+	referencedDigests := make(map[string]bool)
+
+	if err := l.OCI.LoadIndex(); err != nil {
+		return 0, 0, fmt.Errorf("failed to load index: %w", err)
+	}
+
+	var processManifest func(desc ocispec.Descriptor) error
+	processManifest = func(desc ocispec.Descriptor) error {
+		if desc.Digest.Validate() != nil {
+			return nil
+		}
+
+		// mark digest as referenced by existing artifact
+		referencedDigests[desc.Digest.Hex()] = true
+
+		// fetch and parse manifests for layer digests
+		rc, err := l.OCI.Fetch(ctx, desc)
+		if err != nil {
+			return nil // skip if can't be read
+		}
+		defer rc.Close()
+
+		var manifest struct {
+			Config struct {
+				Digest digest.Digest `json:"digest"`
+			} `json:"config"`
+			Layers []struct {
+				digest.Digest `json:"digest"`
+			} `json:"layers"`
+			Manifests []struct {
+				Digest    digest.Digest `json:"digest"`
+				MediaType string        `json:"mediaType"`
+				Size      int64         `json:"size"`
+			} `json:"manifests"`
+		}
+
+		if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
+			return nil
+		}
+
+		// handle image manifest
+		if manifest.Config.Digest.Validate() == nil {
+			referencedDigests[manifest.Config.Digest.Hex()] = true
+		}
+
+		for _, layer := range manifest.Layers {
+			if layer.Digest.Validate() == nil {
+				referencedDigests[layer.Digest.Hex()] = true
+			}
+		}
+
+		// handle manifest list
+		for _, m := range manifest.Manifests {
+			if m.Digest.Validate() == nil {
+				// mark manifest
+				referencedDigests[m.Digest.Hex()] = true
+				// process manifest for layers
+				manifestDesc := ocispec.Descriptor{
+					MediaType: m.MediaType,
+					Digest:    m.Digest,
+					Size:      m.Size,
+				}
+				processManifest(manifestDesc) // calls helper func on manifests in list
+			}
+		}
+
+		return nil
+	}
+
+	// walk through artifacts
+	if err := l.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
+		return processManifest(desc)
+	}); err != nil {
+		return 0, 0, fmt.Errorf("failed to walk artifacts: %w", err)
+	}
+
+	// read all entries
+	blobsPath := filepath.Join(l.Root, "blobs", "sha256")
+	entries, err := os.ReadDir(blobsPath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to read blobs directory: %w", err)
+	}
+
+	// track count and size of deletions
+	deletedCount := 0
+	var deletedSize int64
+
+	// scan blobs
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		digest := entry.Name()
+
+		if !referencedDigests[digest] {
+			blobPath := filepath.Join(blobsPath, digest)
+			if info, err := entry.Info(); err == nil {
+				deletedSize += info.Size()
+			}
+
+			if err := os.Remove(blobPath); err != nil {
+				return deletedCount, deletedSize, fmt.Errorf("failed to remove blob %s: %w", digest, err)
+			}
+			deletedCount++
+		}
+	}
+
+	return deletedCount, deletedSize, nil
 }
