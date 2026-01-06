@@ -10,8 +10,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Clean Up Actions Tools Cache
+        run: rm -rf /opt/hostedtoolcache
+
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.1
 
       - name: Fetch Hauler Binary
         run: curl -sfL https://get.hauler.dev | bash
