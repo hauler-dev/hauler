@@ -262,8 +262,8 @@ func (l *Layout) writeLayer(layer v1.Layer) error {
 	return err
 }
 
-// Delete artifact reference from the store
-func (l *Layout) DeleteArtifact(ctx context.Context, reference string, desc ocispec.Descriptor) error {
+// Remove artifact reference from the store
+func (l *Layout) RemoveArtifact(ctx context.Context, reference string, desc ocispec.Descriptor) error {
 	if err := l.OCI.LoadIndex(); err != nil {
 		return err
 	}
