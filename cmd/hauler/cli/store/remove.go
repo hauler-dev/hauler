@@ -12,7 +12,7 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-func DeleteArtifactCmd(ctx context.Context, o *flags.DeleteArtifactOpts, s *store.Layout, ref string) error {
+func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string) error {
 	l := log.FromContext(ctx)
 
 	// collect matching artifacts
@@ -67,13 +67,13 @@ func DeleteArtifactCmd(ctx context.Context, o *flags.DeleteArtifactOpts, s *stor
 		}
 	}
 
-	//delete artifact(s)
+	//remove artifact(s)
 	for _, m := range matches {
-		if err := s.DeleteArtifact(ctx, m.reference, m.desc); err != nil {
-			return fmt.Errorf("failed to delete artifact %s: %w", m.reference, err)
+		if err := s.RemoveArtifact(ctx, m.reference, m.desc); err != nil {
+			return fmt.Errorf("failed to remove artifact %s: %w", m.reference, err)
 		}
 
-		l.Infof("deleted [%s] of type %s with digest [%s]", m.reference, m.desc.MediaType, m.desc.Digest.String())
+		l.Infof("removed [%s] of type %s with digest [%s]", m.reference, m.desc.MediaType, m.desc.Digest.String())
 	}
 
 	// clean up unreferenced blobs

@@ -169,7 +169,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.FilesContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
 
 				var alphaCfg v1alpha1.Files
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
@@ -203,7 +203,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ImagesContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
 
 				var alphaCfg v1alpha1.Images
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
@@ -496,7 +496,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ChartsContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
 
 				var alphaCfg v1alpha1.Charts
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
@@ -530,7 +530,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ChartsCollectionKind:
 			switch gvk.Version {
 			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
 
 				var alphaCfg v1alpha1.ThickCharts
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
@@ -578,7 +578,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		case consts.ImageTxtsContentKind:
 			switch gvk.Version {
 			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release !!! DEPRECATION WARNING !!!", gvk.Version)
+				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
 
 				var alphaCfg v1alpha1.ImageTxts
 				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
