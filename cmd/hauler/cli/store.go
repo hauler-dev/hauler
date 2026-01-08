@@ -390,7 +390,7 @@ func addStoreDeleteArtifact(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 	o := &flags.DeleteArtifactOpts{}
 	cmd := &cobra.Command{
 		Use:     "delete-artifact <artifact-ref>",
-		Short:   "Delete an artifact from the content store",
+		Short:   "Delete an artifact from the content store (experimental)",
 		Aliases: []string{"del"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
