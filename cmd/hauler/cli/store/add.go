@@ -4,10 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v3/pkg/engine"
+
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts/file"
@@ -18,7 +24,6 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/reference"
 	"hauler.dev/go/hauler/pkg/store"
-	"helm.sh/helm/v3/pkg/action"
 )
 
 func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
@@ -72,7 +77,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		}
 		l.Infof("signature verified for image [%s]", cfg.Name)
 	} else if o.CertIdentityRegexp != "" || o.CertIdentity != "" {
-		// verify signature using the provided keyless details
+		// verify signature using keyless details
 		l.Infof("verifying keyless signature for [%s]", cfg.Name)
 		err := cosign.VerifyKeylessSignature(ctx, s, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, o.Tlog, cfg.Name, rso, ro)
 		if err != nil {
@@ -180,7 +185,7 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 
 }
 
-func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string) error {
+func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	cfg := v1.Chart{
 		Name:    chartName,
 		RepoURL: o.ChartOpts.RepoURL,
@@ -191,19 +196,36 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 	if o.Rewrite != "" {
 		rewrite = o.Rewrite
 	}
-	return storeChart(ctx, s, cfg, o.ChartOpts, rewrite)
+	return storeChart(ctx, s, cfg, o, rso, ro, rewrite)
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action.ChartPathOptions, rewrite string) error {
+// unexported type for the context key to avoid collisions
+type isSubchartKey struct{}
+
+// imageregex finds lines starting with optional space, 'image:', optional space, optional quotes, and captures the image name
+var imageRegex = regexp.MustCompile(`(?m)^\s*image:\s*['"]?([^\s'"#]+)`)
+
+func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
-	l.Infof("adding chart [%s] to the store", cfg.Name)
+	// subchart logging prefix
+	isSubchart := ctx.Value(isSubchartKey{}) == true
+	prefix := ""
+	if isSubchart {
+		prefix = "  ↳ "
+	}
 
-	// TODO: This shouldn't be necessary
-	opts.RepoURL = cfg.RepoURL
-	opts.Version = cfg.Version
+	// normalize chart name for logging
+	displayName := cfg.Name
+	if strings.Contains(cfg.Name, string(os.PathSeparator)) {
+		displayName = filepath.Base(cfg.Name)
+	}
+	l.Infof("%sadding chart [%s] to the store", prefix, displayName)
 
-	chrt, err := chart.NewChart(cfg.Name, opts)
+	opts.ChartOpts.RepoURL = cfg.RepoURL
+	opts.ChartOpts.Version = cfg.Version
+
+	chrt, err := chart.NewChart(cfg.Name, opts.ChartOpts)
 	if err != nil {
 		return err
 	}
@@ -218,20 +240,162 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 		return err
 	}
 
-	_, err = s.AddOCI(ctx, chrt, ref.Name())
-	if err != nil {
+	if _, err := s.AddOCI(ctx, chrt, ref.Name()); err != nil {
 		return err
-	} else {
-		s.OCI.SaveIndex()
+	}
+	if err := s.OCI.SaveIndex(); err != nil {
+		return err
 	}
 
+	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)
+
+	tempOverride := rso.TempOverride
+	if tempOverride == "" {
+		tempOverride = os.Getenv(consts.HaulerTempDir)
+	}
+	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	chartPath := chrt.Path()
+	if strings.HasSuffix(chartPath, ".tgz") {
+		l.Debugf("%sextracting chart archive [%s]", prefix, filepath.Base(chartPath))
+		if err := chartutil.ExpandFile(tempDir, chartPath); err != nil {
+			return fmt.Errorf("failed to extract chart: %w", err)
+		}
+
+		// expanded chart should be in a directory matching the chart name
+		expectedChartDir := filepath.Join(tempDir, c.Name())
+		if _, err := os.Stat(expectedChartDir); err != nil {
+			return fmt.Errorf("chart archive did not expand into expected directory '%s': %w", c.Name(), err)
+		}
+		chartPath = expectedChartDir
+	}
+
+	// add-images (helm template render and scrape images)
+	if opts.AddImages {
+		userValues := chartutil.Values{}
+		if opts.HelmValues != "" {
+			userValues, err = chartutil.ReadValuesFile(opts.HelmValues)
+			if err != nil {
+				return fmt.Errorf("failed to read helm values file [%s]: %w", opts.HelmValues, err)
+			}
+		}
+
+		kubeVersion, err := chartutil.ParseKubeVersion(opts.KubeVersion)
+		if err != nil {
+			l.Warnf("%sinvalid kube-version [%s], using default kubernetes version", prefix, opts.KubeVersion)
+			kubeVersion = &chartutil.DefaultCapabilities.KubeVersion
+		}
+
+		caps := chartutil.DefaultCapabilities.Copy()
+		caps.KubeVersion = *kubeVersion
+
+		values, err := chartutil.ToRenderValues(c, userValues, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
+		if err != nil {
+			return err
+		}
+
+		rendered, err := engine.Render(c, values)
+		if err != nil {
+			// warning... some charts might fail to render without extensive or non default values
+			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
+			return nil
+		}
+
+		var images []string
+		for _, manifest := range rendered {
+			matches := imageRegex.FindAllStringSubmatch(manifest, -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					images = append(images, match[1])
+				}
+			}
+		}
+
+		slices.Sort(images)
+		images = slices.Compact(images)
+
+		l.Debugf("%ssuccessfully parsed image references %v", prefix, images)
+
+		if len(images) > 0 {
+			l.Infof("%s  ↳ identified [%d] image(s) in [%s:%s]", prefix, len(images), c.Name(), c.Metadata.Version)
+		}
+
+		for _, image := range images {
+			imgCfg := v1.Image{Name: image}
+			if err := storeImage(ctx, s, imgCfg, opts.Platform, rso, ro, ""); err != nil {
+				if ro.IgnoreErrors {
+					l.Warnf("%s  ↳ failed to store image [%s]: %v... skipping...", prefix, image, err)
+					continue
+				}
+				return fmt.Errorf("failed to store image [%s]: %w", image, err)
+			}
+		}
+	}
+
+	// add-dependencies
+	if opts.AddDependencies && len(c.Metadata.Dependencies) > 0 {
+		for _, dep := range c.Metadata.Dependencies {
+			l.Infof("%sadding dependent chart [%s:%s]", prefix, dep.Name, dep.Version)
+
+			depOpts := *opts
+			depOpts.AddDependencies = false
+			depOpts.AddImages = false
+			subCtx := context.WithValue(ctx, isSubchartKey{}, true)
+
+			var depCfg v1.Chart
+			var err error
+
+			if strings.HasPrefix(dep.Repository, "file://") {
+				depPath := strings.TrimPrefix(dep.Repository, "file://")
+				subchartPath := filepath.Join(chartPath, depPath)
+
+				depCfg = v1.Chart{Name: subchartPath, RepoURL: "", Version: ""}
+				depOpts.ChartOpts.RepoURL = ""
+				depOpts.ChartOpts.Version = ""
+
+				err = storeChart(subCtx, s, depCfg, &depOpts, rso, ro, "")
+			} else {
+				depCfg = v1.Chart{Name: dep.Name, RepoURL: dep.Repository, Version: dep.Version}
+				depOpts.ChartOpts.RepoURL = dep.Repository
+				depOpts.ChartOpts.Version = dep.Version
+
+				err = storeChart(subCtx, s, depCfg, &depOpts, rso, ro, "")
+			}
+
+			if err != nil {
+				if ro.IgnoreErrors {
+					l.Warnf("%s  ↳ failed to add dependent chart [%s]: %v... skipping...", prefix, dep.Name, err)
+				} else {
+					l.Errorf("%s  ↳ failed to add dependent chart [%s]: %v", prefix, dep.Name, err)
+					return err
+				}
+			}
+		}
+	}
+
+	// chart rewrite functionality
 	if rewrite != "" {
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
-			l.Errorf("unable to parse rewrite name: %w", err)
+			// error... don't continue with a bad reference
+			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
 
+		// if rewrite omits a tag... keep the existing tag
+		oldTag := ref.(name.Tag).TagStr()
+		if !strings.Contains(rewrite, ":") {
+			rewrite = strings.Join([]string{rewrite, oldTag}, ":")
+			newRef, err = name.ParseReference(rewrite)
+			if err != nil {
+				return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
+			}
+		}
+		// rename chart name in store
 		s.OCI.LoadIndex()
 
 		oldRefContext := ref.Context()
@@ -239,14 +403,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 
 		oldRepo := oldRefContext.RepositoryStr()
 		newRepo := newRefContext.RepositoryStr()
-		oldTag := ref.(name.Tag).TagStr()
-
-		var newTag string
-		if strings.Contains(rewrite, ":") {
-			newTag = newRef.(name.Tag).TagStr()
-		} else {
-			newTag = oldTag
-		}
+		newTag := newRef.(name.Tag).TagStr()
 
 		oldTotal := oldRepo + ":" + oldTag
 		newTotal := newRepo + ":" + newTag
@@ -266,11 +423,10 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *action
 			return fmt.Errorf("could not find chart [%s] in store", ref.Name())
 		}
 
-		cfg.Name = newRef.Name()
-		fmt.Println("chart name (new): ", cfg.Name)
-
-		s.OCI.SaveIndex()
+		if err := s.OCI.SaveIndex(); err != nil {
+			return err
+		}
 	}
-	l.Infof("successfully added chart [%s]", ref.Name())
+
 	return nil
 }

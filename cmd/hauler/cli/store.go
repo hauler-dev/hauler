@@ -378,7 +378,7 @@ hauler store add chart rancher --repo https://releases.rancher.com/server-charts
 				return err
 			}
 
-			return store.AddChartCmd(ctx, o, s, args[0])
+			return store.AddChartCmd(ctx, o, s, args[0], rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -390,7 +390,7 @@ func addStoreDeleteArtifact(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 	o := &flags.DeleteArtifactOpts{}
 	cmd := &cobra.Command{
 		Use:     "delete-artifact <artifact-ref>",
-		Short:   "Delete an artifact from the content store",
+		Short:   "Delete an artifact from the content store (EXPERIMENTAL)",
 		Aliases: []string{"del"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
