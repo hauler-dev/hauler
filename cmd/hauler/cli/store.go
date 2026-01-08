@@ -336,7 +336,10 @@ hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef9
 
 # fetch image with full image reference, specific platform, and signature verification
 curl -sfOL https://raw.githubusercontent.com/rancherfederal/carbide-releases/main/carbide-key.pub
-hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub`,
+hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub
+
+# fetch image and rewrite path
+hauler store add image busybox --rewrite custom-path/busybox:latest`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -376,7 +379,10 @@ hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.2
 hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
 
 # fetch remote helm chart with specific version
-hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1`,
+hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1
+
+# fetch remote helm chart and rewrite path
+hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite custom-path/hauler-chart:latest`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
