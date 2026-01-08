@@ -166,7 +166,7 @@ jobs:
           ! hauler store info | grep '/custom-path/rancher:2.8.4'
           # confirm old tag used if not specified
           hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4 --rewrite /custom-path/rancher
-          # confirm tag 
+          # confirm tag
           hauler store info | grep '2.8.4'
 
       - name: Verify - hauler store add file
@@ -205,7 +205,7 @@ jobs:
           ! hauler store info | grep '/custom-path/busybox:latest'
           # confirm old tag used if not specified
           hauler store add image ghcr.io/hauler-dev/library/busybox:stable --rewrite /custom-path/busybox
-          # confirm tag 
+          # confirm tag
           hauler store info | grep ':stable'
 
       - name: Verify - hauler store copy
@@ -354,12 +354,12 @@ jobs:
           # verify fileserver directory structure
           tree -hC fileserver
 
-      - name: Verify - hauler store delete-artifact (image)
+      - name: Verify - hauler store remove (image)
         run: |
-          hauler store delete-artifact --help
+          hauler store remove --help
           # add test images
-          hauler store add image docker.io/library/nginx:1.25-alpine
-          hauler store add image docker.io/library/nginx:1.26-alpine
+          hauler store add image ghcr.io/hauler-dev/library/nginx:1.25-alpine
+          hauler store add image ghcr.io/hauler-dev/library/nginx:1.26-alpine
           # confirm artifacts
           hauler store info | grep 'nginx:1.25'
           hauler store info | grep 'nginx:1.26'
@@ -367,7 +367,7 @@ jobs:
           BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
           echo "blobs before deletion: $BLOBS_BEFORE"
           # delete one artifact
-          hauler store delete-artifact nginx:1.25 --force
+          hauler store remove nginx:1.25 --force
           # verify artifact removed
           ! hauler store info | grep -q "nginx:1.25"
           # non-deleted artifact exists
@@ -384,12 +384,12 @@ jobs:
             echo "ERROR: All blobs deleted (shared layers removed)"
             exit 1
           fi
-          # verify remaining image not missing layers 
-          hauler store extract docker.io/library/nginx:1.26-alpine
+          # verify remaining image not missing layers
+          hauler store extract ghcr.io/hauler-dev/library/nginx:1.26-alpine
 
-      - name: Verify - hauler store delete-artifact (chart)
+      - name: Verify - hauler store remove (chart)
         run: |
-          hauler store delete-artifact --help
+          hauler store remove --help
           # add test images
           hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4
           hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.5
@@ -400,7 +400,7 @@ jobs:
           BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
           echo "blobs before deletion: $BLOBS_BEFORE"
           # delete one artifact
-          hauler store delete-artifact 2.8.4 --force
+          hauler store remove 2.8.4 --force
           # verify artifact removed
           ! hauler store info | grep -q "2.8.4"
           # non-deleted artifact exists
@@ -417,12 +417,12 @@ jobs:
             echo "ERROR: All blobs deleted (shared layers removed)"
             exit 1
           fi
-          # verify remaining image not missing layers 
+          # verify remaining image not missing layers
           hauler store extract hauler/rancher:2.8.5
 
-      - name: Verify - hauler store delete-artifact (file)
+      - name: Verify - hauler store remove (file)
         run: |
-          hauler store delete-artifact --help
+          hauler store remove --help
           # add test images
           hauler store add file https://get.hauler.dev
           hauler store add file https://get.rke2.io/install.sh
@@ -433,7 +433,7 @@ jobs:
           BLOBS_BEFORE=$(find store/blobs/sha256 -type f | wc -l | xargs)
           echo "blobs before deletion: $BLOBS_BEFORE"
           # delete one artifact
-          hauler store delete-artifact get.hauler.dev --force
+          hauler store remove get.hauler.dev --force
           # verify artifact removed
           ! hauler store info | grep -q "get.hauler.dev"
           # non-deleted artifact exists
@@ -450,7 +450,7 @@ jobs:
             echo "ERROR: All blobs deleted (shared layers removed)"
             exit 1
           fi
-          # verify remaining image not missing layers 
+          # verify remaining image not missing layers
           hauler store extract hauler/install.sh:latest
 
       - name: Create Hauler Report

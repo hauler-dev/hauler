@@ -8,6 +8,7 @@ import (
 
 	"hauler.dev/go/hauler/cmd/hauler/cli/store"
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/log"
 )
 
 func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
@@ -32,7 +33,7 @@ func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
 		addStoreInfo(rso, ro),
 		addStoreCopy(rso, ro),
 		addStoreAdd(rso, ro),
-		addStoreDeleteArtifact(rso, ro),
+		addStoreRemove(rso, ro),
 	)
 
 	parent.AddCommand(cmd)
@@ -70,9 +71,16 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Short: "Sync content to the content store",
 		Args:  cobra.ExactArgs(0),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			// Check if the products flag was passed
+			// warn if products or product-registry flag is used by the user
+			if cmd.Flags().Changed("products") {
+				log.FromContext(cmd.Context()).Warnf("!!! WARNING !!! [--products] will be updating its default registry in a future release.")
+			}
+			if cmd.Flags().Changed("product-registry") {
+				log.FromContext(cmd.Context()).Warnf("!!! WARNING !!! [--product-registry] will be updating its default registry in a future release.")
+			}
+			// check if the products flag was passed
 			if len(o.Products) > 0 {
-				// Only clear the default if the user did NOT explicitly set --filename
+				// only clear the default if the user did not explicitly set it
 				if !cmd.Flags().Changed("filename") {
 					o.FileName = []string{}
 				}
@@ -328,7 +336,10 @@ hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef9
 
 # fetch image with full image reference, specific platform, and signature verification
 curl -sfOL https://raw.githubusercontent.com/rancherfederal/carbide-releases/main/carbide-key.pub
-hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub`,
+hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub
+
+# fetch image and rewrite path
+hauler store add image busybox --rewrite custom-path/busybox:latest`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -368,7 +379,10 @@ hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.2
 hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
 
 # fetch remote helm chart with specific version
-hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1`,
+hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1
+
+# fetch remote helm chart and rewrite path
+hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite custom-path/hauler-chart:latest`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -386,13 +400,32 @@ hauler store add chart rancher --repo https://releases.rancher.com/server-charts
 	return cmd
 }
 
-func addStoreDeleteArtifact(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
-	o := &flags.DeleteArtifactOpts{}
+func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.RemoveOpts{}
 	cmd := &cobra.Command{
-		Use:     "delete-artifact <artifact-ref>",
-		Short:   "Delete an artifact from the content store (EXPERIMENTAL)",
-		Aliases: []string{"del"},
-		Args:    cobra.ExactArgs(1),
+		Use:   "remove <artifact-ref>",
+		Short: "Remove an artifact from the content store (EXPERIMENTAL)",
+		Example: `# remove an image using full store reference
+hauler store info
+hauler store remove index.docker.io/library/busybox:stable
+
+# remove a chart using full store reference
+hauler store info
+hauler store remove hauler/rancher:2.8.4
+
+# remove a file using full store reference
+hauler store info
+hauler store remove hauler/rke2-install.sh
+
+# remove any artifact with the latest tag
+hauler store remove :latest
+
+# remove any artifact with 'busybox' in the reference
+hauler store remove busybox
+
+# force remove without verification
+hauler store remove busybox:latest --force`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -401,7 +434,7 @@ func addStoreDeleteArtifact(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 				return err
 			}
 
-			return store.DeleteArtifactCmd(ctx, o, s, args[0])
+			return store.RemoveCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddFlags(cmd)

@@ -68,6 +68,9 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string (EXPERIMENTAL)")
 
+  cmd.MarkFlagsRequiredTogether("username", "password")
+	cmd.MarkFlagsRequiredTogether("cert-file", "key-file", "ca-file")
+  
 	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(Optional) Fetch dependent helm charts (EXPERIMENTAL)")
 	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in helm charts (EXPERIMENTAL)")
 	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images (EXPERIMENTAL)")

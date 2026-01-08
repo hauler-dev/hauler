@@ -24,13 +24,14 @@ jobs:
           hauler login ghcr.io --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }}
           hauler login docker.io --username ${{ secrets.DOCKERHUB_USERNAME }} --password ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Process Testdata Manifests
+      - name: Process Images for Tests
         run: |
-          for manifest in testdata/*.yaml; do
-            echo "Processing $manifest..."
-            name=$(basename "$manifest" .yaml)
-            hauler store sync --filename "$manifest"
-          done
+          hauler store add image nginx:1.25-alpine
+          hauler store add image nginx:1.26-alpine
+          hauler store add image busybox
+          hauler store add image busybox:stable
+          hauler store add image gcr.io/distroless/base
+          hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
 
       - name: Push Store Contents to Hauler-Dev GitHub Container Registry
         run: |
