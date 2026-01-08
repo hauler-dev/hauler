@@ -358,8 +358,8 @@ jobs:
         run: |
           hauler store remove --help
           # add test images
-          hauler store add image docker.io/library/nginx:1.25-alpine
-          hauler store add image docker.io/library/nginx:1.26-alpine
+          hauler store add image ghcr.io/hauler-dev/library/nginx:1.25-alpine
+          hauler store add image ghcr.io/hauler-dev/library/nginx:1.26-alpine
           # confirm artifacts
           hauler store info | grep 'nginx:1.25'
           hauler store info | grep 'nginx:1.26'
@@ -385,7 +385,7 @@ jobs:
             exit 1
           fi
           # verify remaining image not missing layers
-          hauler store extract docker.io/library/nginx:1.26-alpine
+          hauler store extract ghcr.io/hauler-dev/library/nginx:1.26-alpine
 
       - name: Verify - hauler store remove (chart)
         run: |
