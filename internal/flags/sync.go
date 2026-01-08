@@ -39,5 +39,3 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string (EXPERIMENTAL)")
 }
-
-//func (o *SyncOpts) RewriteValue() string { return o.Rewrite }
