@@ -506,7 +506,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := convert.ConvertCharts(&alphaCfg, &v1Cfg); err != nil {
 					return err
 				}
-				for i, ch := range v1Cfg.Spec.Charts {
+				for _, ch := range v1Cfg.Spec.Charts {
 					if err := storeChart(ctx, s, ch,
 						&flags.AddChartOpts{
 							ChartOpts: &action.ChartPathOptions{
@@ -515,7 +515,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							},
 						},
 						rso, ro,
-						v1Cfg.Spec.Charts[i].Rewrite,
+						"",
 					); err != nil {
 						return err
 					}
@@ -533,6 +533,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 								RepoURL: ch.RepoURL,
 								Version: ch.Version,
 							},
+							AddImages:       ch.AddImages,
+							AddDependencies: ch.AddDependencies,
 						},
 						rso, ro,
 						cfg.Spec.Charts[i].Rewrite,
