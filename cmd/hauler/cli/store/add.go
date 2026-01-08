@@ -337,6 +337,10 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 				}
 				return fmt.Errorf("failed to store image [%s]: %w", image, err)
 			}
+			s.OCI.LoadIndex()
+			if err := s.OCI.SaveIndex(); err != nil {
+				return err
+			}
 		}
 	}
 
