@@ -284,14 +284,18 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 		}
 
-		kubeVersion, err := chartutil.ParseKubeVersion(opts.KubeVersion)
-		if err != nil {
-			l.Warnf("%sinvalid kube-version [%s], using default kubernetes version", prefix, opts.KubeVersion)
-			kubeVersion = &chartutil.DefaultCapabilities.KubeVersion
-		}
-
+		// set helm default capabilities
 		caps := chartutil.DefaultCapabilities.Copy()
-		caps.KubeVersion = *kubeVersion
+
+		// only parse and override if provided kube version
+		if opts.KubeVersion != "" {
+			kubeVersion, err := chartutil.ParseKubeVersion(opts.KubeVersion)
+			if err != nil {
+				l.Warnf("%sinvalid kube-version [%s], using default kubernetes version", prefix, opts.KubeVersion)
+			} else {
+				caps.KubeVersion = *kubeVersion
+			}
+		}
 
 		values, err := chartutil.ToRenderValues(c, userValues, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {

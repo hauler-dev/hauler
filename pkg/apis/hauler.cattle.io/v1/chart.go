@@ -21,8 +21,8 @@ type Chart struct {
 	Version string `json:"version,omitempty"`
 	Rewrite string `json:"rewrite,omitempty"`
 
-	AddImages       bool `json:"addImages,omitempty"`
-	AddDependencies bool `json:"addDependencies,omitempty"`
+	AddImages       bool `json:"add-images,omitempty"`
+	AddDependencies bool `json:"add-dependencies,omitempty"`
 }
 
 type ThickCharts struct {
