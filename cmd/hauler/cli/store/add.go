@@ -204,15 +204,16 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 // unexported type for the context key to avoid collisions
 type isSubchartKey struct{}
 
-// imageregex finds lines starting with optional space, 'image:', optional space, optional quotes, and captures the image name
+// imageregex parses image references starting with "image:" and with optional spaces or optional quotes
 var imageRegex = regexp.MustCompile(`(?m)^\s*image:\s*['"]?([^\s'"#]+)`)
 
-// helmAnnotatedImage and imagesFromChartAnnotations parse images from Helm chart annotations
+// helmAnnotatedImage parses images references from helm chart annotations
 type helmAnnotatedImage struct {
 	Image string `yaml:"image"`
 	Name  string `yaml:"name,omitempty"`
 }
 
+// imagesFromChartAnnotations parses image references from helm chart annotations
 func imagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
 	if c == nil || c.Metadata == nil || c.Metadata.Annotations == nil {
 		return nil, nil
@@ -233,7 +234,7 @@ func imagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
 
 		var items []helmAnnotatedImage
 		if err := yaml.Unmarshal([]byte(raw), &items); err != nil {
-			return nil, fmt.Errorf("parse helm chart annotation %q: %w", k, err)
+			return nil, fmt.Errorf("failed to parse helm chart annotation %q: %w", k, err)
 		}
 
 		for _, it := range items {
@@ -249,6 +250,42 @@ func imagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
 	slices.Sort(out)
 	out = slices.Compact(out)
 
+	return out, nil
+}
+
+// imagesFromImagesLock parses image references from images lock files in the chart directory
+func imagesFromImagesLock(chartDir string) ([]string, error) {
+	var out []string
+
+	for _, name := range []string{
+		"images.lock",
+		"images-lock.yaml",
+		"images.lock.yaml",
+		".images.lock.yaml",
+	} {
+		p := filepath.Join(chartDir, name)
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+
+		matches := imageRegex.FindAllSubmatch(b, -1)
+		for _, m := range matches {
+			if len(m) > 1 {
+				out = append(out, string(m[1]))
+			}
+		}
+	}
+
+	if len(out) == 0 {
+		return nil, nil
+	}
+
+	for i := range out {
+		out[i] = strings.TrimPrefix(out[i], "/")
+	}
+	slices.Sort(out)
+	out = slices.Compact(out)
 	return out, nil
 }
 
@@ -344,7 +381,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		chartPath = expectedChartDir
 	}
 
-	// add-images (helm template render and scrape images)
+	// add-images
 	if opts.AddImages {
 		userValues := chartutil.Values{}
 		if opts.HelmValues != "" {
@@ -372,12 +409,29 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			return err
 		}
 
-		var images []string
+		// helper for normalization and deduping slices
+		normalizeUniq := func(in []string) []string {
+			if len(in) == 0 {
+				return nil
+			}
+			for i := range in {
+				in[i] = strings.TrimPrefix(in[i], "/")
+			}
+			slices.Sort(in)
+			return slices.Compact(in)
+		}
 
-		// prase helm chart templates and values for images
+		// Collect images by method so we can debug counts
+		var (
+			templateImages   []string
+			annotationImages []string
+			lockImages       []string
+		)
+
+		// parse helm chart templates and values for images
 		rendered, err := engine.Render(c, values)
 		if err != nil {
-			// charts may fail due to values so still try helm chart annotations
+			// charts may fail due to values so still try helm chart annotations and lock
 			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
 			rendered = map[string]string{}
 		}
@@ -386,25 +440,40 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			matches := imageRegex.FindAllStringSubmatch(manifest, -1)
 			for _, match := range matches {
 				if len(match) > 1 {
-					images = append(images, match[1])
+					templateImages = append(templateImages, match[1])
 				}
 			}
 		}
 
 		// parse helm chart annotations for images
-		annotationImages, err := imagesFromChartAnnotations(c)
+		annotationImages, err = imagesFromChartAnnotations(c)
 		if err != nil {
 			l.Warnf("%sfailed to parse helm chart annotation for [%s:%s]: %v", prefix, c.Name(), c.Metadata.Version, err)
-		} else if len(annotationImages) > 0 {
-			images = append(images, annotationImages...)
+			annotationImages = nil
 		}
 
-		// normalize and dedupe image list
-		for i := range images {
-			images[i] = strings.TrimPrefix(images[i], "/")
+		// parse images lock files for images
+		lockImages, err = imagesFromImagesLock(chartPath)
+		if err != nil {
+			l.Warnf("%sfailed to parse images lock: %v", prefix, err)
+			lockImages = nil
 		}
-		slices.Sort(images)
-		images = slices.Compact(images)
+
+		// normalization and deduping the slices
+		templateImages = normalizeUniq(templateImages)
+		annotationImages = normalizeUniq(annotationImages)
+		lockImages = normalizeUniq(lockImages)
+
+		// merge all sources then final dedupe
+		images := append(append(templateImages, annotationImages...), lockImages...)
+		images = normalizeUniq(images)
+
+		l.Debugf("%simage references identified for helm template: [%d] image(s)", prefix, len(templateImages))
+
+		l.Debugf("%simage references identified for helm chart annotations: [%d] image(s)", prefix, len(annotationImages))
+
+		l.Debugf("%simage references identified for helm image lock file: [%d] image(s)", prefix, len(lockImages))
+		l.Debugf("%ssuccessfully parsed and deduped image references: [%d] image(s)", prefix, len(images))
 
 		l.Debugf("%ssuccessfully parsed image references %v", prefix, images)
 
@@ -496,6 +565,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 				return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 			}
 		}
+
 		// rename chart name in store
 		s.OCI.LoadIndex()
 
