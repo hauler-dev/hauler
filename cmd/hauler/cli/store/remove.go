@@ -12,6 +12,29 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
+func formatReference(ref string) string {
+	tagIdx := strings.LastIndex(ref, ":")
+	if tagIdx == -1 {
+		return ref
+	}
+
+	dashIdx := strings.Index(ref[tagIdx+1:], "-")
+	if dashIdx == -1 {
+		return ref
+	}
+
+	dashIdx = tagIdx + 1 + dashIdx
+
+	base := ref[:dashIdx]
+	suffix := ref[dashIdx+1:]
+
+	if base == "" || suffix == "" {
+		return ref
+	}
+
+	return fmt.Sprintf("%s [%s]", base, suffix)
+}
+
 func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string) error {
 	l := log.FromContext(ctx)
 
@@ -38,18 +61,18 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	}
 
 	if len(matches) == 0 {
-		return fmt.Errorf("reference [%s] not found in store (hint: use `hauler store info` to list store contents)", ref)
+		return fmt.Errorf("reference [%s] not found in store (use `hauler store info` to list store contents)", ref)
 	}
 
 	if len(matches) >= 1 {
 		l.Infof("found %d matching references:", len(matches))
 		for _, m := range matches {
-			l.Infof(" - %s", m.reference)
+			l.Infof(" - %s", formatReference(m.reference))
 		}
 	}
 
 	if !o.Force {
-		fmt.Printf("are you sure you want to delete %d artifact(s) from the store? (yes/no) ", len(matches))
+		fmt.Printf("are you sure you want to remove [%d] artifact(s) from the store? (yes/no) ", len(matches))
 
 		var response string
 		_, err := fmt.Scanln(&response)
@@ -58,31 +81,31 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 		}
 		switch response {
 		case "yes", "y":
-			l.Infof("deleting artifacts from store...")
+			l.Infof("starting to remove artifacts from store...")
 		case "no", "n":
-			l.Infof("deletion cancelled")
+			l.Infof("successfully cancelled removal of artifacts from store")
 			return nil
 		default:
 			return fmt.Errorf("invalid response '%s' - please answer 'yes' or 'no'", response)
 		}
 	}
 
-	//remove artifact(s)
+	// remove artifact(s)
 	for _, m := range matches {
 		if err := s.RemoveArtifact(ctx, m.reference, m.desc); err != nil {
-			return fmt.Errorf("failed to remove artifact %s: %w", m.reference, err)
+			return fmt.Errorf("failed to remove artifact %s: %w", formatReference(m.reference), err)
 		}
 
-		l.Infof("removed [%s] of type %s with digest [%s]", m.reference, m.desc.MediaType, m.desc.Digest.String())
+		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference), m.desc.MediaType, m.desc.Digest.String())
 	}
 
 	// clean up unreferenced blobs
 	l.Infof("cleaning up unreferenced blobs...")
-	deletedCount, deletedSize, err := s.CleanUp(ctx)
+	removedCount, removedSize, err := s.CleanUp(ctx)
 	if err != nil {
-		l.Warnf("garbrage collection failed: %v", err)
-	} else if deletedCount > 0 {
-		l.Infof("removed %d unreferenced blobs (freed %d bytes)", deletedCount, deletedSize)
+		l.Warnf("garbage collection failed: %v", err)
+	} else if removedCount > 0 {
+		l.Infof("successfully removed [%d] unreferenced blobs [freed %d bytes]", removedCount, removedSize)
 	}
 
 	return nil
