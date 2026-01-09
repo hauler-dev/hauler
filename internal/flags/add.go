@@ -46,12 +46,13 @@ type AddChartOpts struct {
 	*StoreRootOpts
 
 	ChartOpts       *action.ChartPathOptions
+	Rewrite         string
 	AddDependencies bool
 	AddImages       bool
 	HelmValues      string
 	Platform        string
+	Registry        string
 	KubeVersion     string
-	Rewrite         string
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -68,12 +69,13 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string (EXPERIMENTAL)")
 
-  cmd.MarkFlagsRequiredTogether("username", "password")
+	cmd.MarkFlagsRequiredTogether("username", "password")
 	cmd.MarkFlagsRequiredTogether("cert-file", "key-file", "ca-file")
-  
+
 	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(Optional) Fetch dependent helm charts (EXPERIMENTAL)")
 	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in helm charts (EXPERIMENTAL)")
 	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images (EXPERIMENTAL)")
-	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64 (EXPERIMENTAL)")
+	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64")
+	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
 	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(Optional) Override the kubernetes version for helm template rendering (EXPERIMENTAL)")
 }

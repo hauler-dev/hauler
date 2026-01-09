@@ -11,8 +11,10 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	helmchart "helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/engine"
+	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
@@ -205,6 +207,74 @@ type isSubchartKey struct{}
 // imageregex finds lines starting with optional space, 'image:', optional space, optional quotes, and captures the image name
 var imageRegex = regexp.MustCompile(`(?m)^\s*image:\s*['"]?([^\s'"#]+)`)
 
+// helmAnnotatedImage and imagesFromChartAnnotations parse images from Helm chart annotations
+type helmAnnotatedImage struct {
+	Image string `yaml:"image"`
+	Name  string `yaml:"name,omitempty"`
+}
+
+func imagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
+	if c == nil || c.Metadata == nil || c.Metadata.Annotations == nil {
+		return nil, nil
+	}
+
+	// support multiple annotations
+	keys := []string{
+		"helm.sh/images",
+		"images",
+	}
+
+	var out []string
+	for _, k := range keys {
+		raw, ok := c.Metadata.Annotations[k]
+		if !ok || strings.TrimSpace(raw) == "" {
+			continue
+		}
+
+		var items []helmAnnotatedImage
+		if err := yaml.Unmarshal([]byte(raw), &items); err != nil {
+			return nil, fmt.Errorf("parse helm chart annotation %q: %w", k, err)
+		}
+
+		for _, it := range items {
+			img := strings.TrimSpace(it.Image)
+			if img == "" {
+				continue
+			}
+			img = strings.TrimPrefix(img, "/")
+			out = append(out, img)
+		}
+	}
+
+	slices.Sort(out)
+	out = slices.Compact(out)
+
+	return out, nil
+}
+
+func applyDefaultRegistry(img string, defaultRegistry string) (string, error) {
+	img = strings.TrimSpace(strings.TrimPrefix(img, "/"))
+	if img == "" || defaultRegistry == "" {
+		return img, nil
+	}
+
+	ref, err := reference.Parse(img)
+	if err != nil {
+		return "", err
+	}
+
+	if ref.Context().RegistryStr() != "" {
+		return img, nil
+	}
+
+	newRef, err := reference.Relocate(img, defaultRegistry)
+	if err != nil {
+		return "", err
+	}
+
+	return newRef.Name(), nil
+}
+
 func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
@@ -302,14 +372,16 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			return err
 		}
 
+		var images []string
+
+		// prase helm chart templates and values for images
 		rendered, err := engine.Render(c, values)
 		if err != nil {
-			// warning... some charts might fail to render without extensive or non default values
+			// charts may fail due to values so still try helm chart annotations
 			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
-			return nil
+			rendered = map[string]string{}
 		}
 
-		var images []string
 		for _, manifest := range rendered {
 			matches := imageRegex.FindAllStringSubmatch(manifest, -1)
 			for _, match := range matches {
@@ -319,6 +391,18 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 		}
 
+		// parse helm chart annotations for images
+		annotationImages, err := imagesFromChartAnnotations(c)
+		if err != nil {
+			l.Warnf("%sfailed to parse helm chart annotation for [%s:%s]: %v", prefix, c.Name(), c.Metadata.Version, err)
+		} else if len(annotationImages) > 0 {
+			images = append(images, annotationImages...)
+		}
+
+		// normalize and dedupe image list
+		for i := range images {
+			images[i] = strings.TrimPrefix(images[i], "/")
+		}
 		slices.Sort(images)
 		images = slices.Compact(images)
 
@@ -329,6 +413,15 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		for _, image := range images {
+			image, err := applyDefaultRegistry(image, opts.Registry)
+			if err != nil {
+				if ro.IgnoreErrors {
+					l.Warnf("%s  ↳ unable to apply registry to image [%s]: %v... skipping...", prefix, image, err)
+					continue
+				}
+				return fmt.Errorf("unable to apply registry to image [%s]: %w", image, err)
+			}
+
 			imgCfg := v1.Image{Name: image}
 			if err := storeImage(ctx, s, imgCfg, opts.Platform, rso, ro, ""); err != nil {
 				if ro.IgnoreErrors {

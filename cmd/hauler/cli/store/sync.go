@@ -526,6 +526,14 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
+				registry := o.Registry
+				if registry == "" {
+					annotation := cfg.GetAnnotations()
+					if annotation != nil {
+						registry = annotation[consts.ImageAnnotationRegistry]
+					}
+				}
+
 				for i, ch := range cfg.Spec.Charts {
 					if err := storeChart(ctx, s, ch,
 						&flags.AddChartOpts{
@@ -535,6 +543,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							},
 							AddImages:       ch.AddImages,
 							AddDependencies: ch.AddDependencies,
+							Registry:        registry,
+							Platform:        o.Platform,
 						},
 						rso, ro,
 						cfg.Spec.Charts[i].Rewrite,
