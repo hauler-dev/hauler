@@ -20,6 +20,9 @@ type Chart struct {
 	RepoURL string `json:"repoURL,omitempty"`
 	Version string `json:"version,omitempty"`
 	Rewrite string `json:"rewrite,omitempty"`
+
+	AddImages       bool `json:"add-images,omitempty"`
+	AddDependencies bool `json:"add-dependencies,omitempty"`
 }
 
 type ThickCharts struct {

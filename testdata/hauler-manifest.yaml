@@ -5,8 +5,8 @@ metadata:
   name: hauler-content-images-example
 spec:
   images:
-    - name: busybox
-    - name: busybox:stable
+    - name: ghcr.io/hauler-dev/library/busybox
+    - name: ghcr.io/hauler-dev/library/busybox:stable
       platform: linux/amd64
     - name: gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
 ---
@@ -39,8 +39,8 @@ metadata:
   name: hauler-content-images-example
 spec:
   images:
-    - name: busybox
-    - name: busybox:stable
+    - name: ghcr.io/hauler-dev/library/busybox
+    - name: ghcr.io/hauler-dev/library/busybox:stable
       platform: linux/amd64
     - name: gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
 ---

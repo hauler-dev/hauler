@@ -32,7 +32,7 @@ import (
 func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	tempOverride := o.TempOverride
+	tempOverride := rso.TempOverride
 
 	if tempOverride == "" {
 		tempOverride = os.Getenv(consts.HaulerTempDir)
@@ -506,8 +506,17 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := convert.ConvertCharts(&alphaCfg, &v1Cfg); err != nil {
 					return err
 				}
-				for i, ch := range v1Cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}, v1Cfg.Spec.Charts[i].Rewrite); err != nil {
+				for _, ch := range v1Cfg.Spec.Charts {
+					if err := storeChart(ctx, s, ch,
+						&flags.AddChartOpts{
+							ChartOpts: &action.ChartPathOptions{
+								RepoURL: ch.RepoURL,
+								Version: ch.Version,
+							},
+						},
+						rso, ro,
+						"",
+					); err != nil {
 						return err
 					}
 				}
@@ -517,8 +526,29 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
+				registry := o.Registry
+				if registry == "" {
+					annotation := cfg.GetAnnotations()
+					if annotation != nil {
+						registry = annotation[consts.ImageAnnotationRegistry]
+					}
+				}
+
 				for i, ch := range cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch, &action.ChartPathOptions{}, cfg.Spec.Charts[i].Rewrite); err != nil {
+					if err := storeChart(ctx, s, ch,
+						&flags.AddChartOpts{
+							ChartOpts: &action.ChartPathOptions{
+								RepoURL: ch.RepoURL,
+								Version: ch.Version,
+							},
+							AddImages:       ch.AddImages,
+							AddDependencies: ch.AddDependencies,
+							Registry:        registry,
+							Platform:        o.Platform,
+						},
+						rso, ro,
+						cfg.Spec.Charts[i].Rewrite,
+					); err != nil {
 						return err
 					}
 				}

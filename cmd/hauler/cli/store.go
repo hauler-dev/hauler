@@ -392,7 +392,7 @@ hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite cus
 				return err
 			}
 
-			return store.AddChartCmd(ctx, o, s, args[0])
+			return store.AddChartCmd(ctx, o, s, args[0], rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -404,7 +404,7 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 	o := &flags.RemoveOpts{}
 	cmd := &cobra.Command{
 		Use:   "remove <artifact-ref>",
-		Short: "Remove an artifact from the content store (experimental)",
+		Short: "(EXPERIMENTAL) Remove an artifact from the content store",
 		Example: `# remove an image using full store reference
 hauler store info
 hauler store remove index.docker.io/library/busybox:stable
