@@ -29,7 +29,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.CertGithubWorkflowRepository, "certificate-github-workflow-repository", "", "(Optional) Cosign certificate-github-workflow-repository option")
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image... i.e. linux/amd64 (defaults to all)")
-	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string (EXPERIMENTAL)")
+	f.StringVar(&o.Rewrite, "rewrite", "", "(EXPERIMENTAL & Optional) Rewrite artifact path to specified string")
 }
 
 type AddFileOpts struct {
@@ -67,15 +67,15 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authentication")
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
-	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string (EXPERIMENTAL)")
+	f.StringVar(&o.Rewrite, "rewrite", "", "(EXPERIMENTAL & Optional) Rewrite artifact path to specified string")
 
 	cmd.MarkFlagsRequiredTogether("username", "password")
 	cmd.MarkFlagsRequiredTogether("cert-file", "key-file", "ca-file")
 
-	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(Optional) Fetch dependent helm charts (EXPERIMENTAL)")
-	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in helm charts (EXPERIMENTAL)")
-	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images (EXPERIMENTAL)")
+	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(EXPERIMENTAL & Optional) Fetch dependent helm charts")
+	f.BoolVar(&o.AddImages, "add-images", false, "(EXPERIMENTAL & Optional) Fetch images referenced in helm charts")
+	f.StringVar(&o.HelmValues, "values", "", "(EXPERIMENTAL & Optional) Specify helm chart values when fetching images")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64")
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
-	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(Optional) Override the kubernetes version for helm template rendering (EXPERIMENTAL)")
+	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(EXPERIMENTAL & Optional) Override the kubernetes version for helm template rendering")
 }

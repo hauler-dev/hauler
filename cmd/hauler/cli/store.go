@@ -404,7 +404,7 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 	o := &flags.RemoveOpts{}
 	cmd := &cobra.Command{
 		Use:   "remove <artifact-ref>",
-		Short: "Remove an artifact from the content store (EXPERIMENTAL)",
+		Short: "(EXPERIMENTAL) Remove an artifact from the content store",
 		Example: `# remove an image using full store reference
 hauler store info
 hauler store remove index.docker.io/library/busybox:stable
