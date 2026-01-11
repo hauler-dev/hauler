@@ -67,12 +67,12 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	if len(matches) >= 1 {
 		l.Infof("found %d matching references:", len(matches))
 		for _, m := range matches {
-			l.Infof(" - %s", formatReference(m.reference))
+			l.Infof("  - %s", formatReference(m.reference))
 		}
 	}
 
 	if !o.Force {
-		fmt.Printf("are you sure you want to remove [%d] artifact(s) from the store? (yes/no) ", len(matches))
+		fmt.Printf("  ↳ are you sure you want to remove [%d] artifact(s) from the store? (yes/no) ", len(matches))
 
 		var response string
 		_, err := fmt.Scanln(&response)
@@ -86,14 +86,14 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 			l.Infof("successfully cancelled removal of artifacts from store")
 			return nil
 		default:
-			return fmt.Errorf("invalid response '%s' - please answer 'yes' or 'no'", response)
+			return fmt.Errorf("invalid response [%s]... please answer 'yes' or 'no'", response)
 		}
 	}
 
 	// remove artifact(s)
 	for _, m := range matches {
 		if err := s.RemoveArtifact(ctx, m.reference, m.desc); err != nil {
-			return fmt.Errorf("failed to remove artifact %s: %w", formatReference(m.reference), err)
+			return fmt.Errorf("failed to remove artifact [%s]: %w", formatReference(m.reference), err)
 		}
 
 		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference), m.desc.MediaType, m.desc.Digest.String())
