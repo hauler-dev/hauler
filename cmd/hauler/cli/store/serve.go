@@ -2,9 +2,12 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/distribution/distribution/v3/configuration"
@@ -20,6 +23,37 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
 )
+
+func validateStoreExists(s *store.Layout) error {
+	indexPath := filepath.Join(s.Root, "index.json")
+
+	_, err := os.Stat(indexPath)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf(
+			"no store found at [%s]\n  ↳ does the hauler store exist? (verify with `hauler store info`)",
+			s.Root,
+		)
+	}
+
+	return fmt.Errorf(
+		"unable to access store at [%s]: %w",
+		s.Root,
+		err,
+	)
+}
+
+func loadConfig(filename string) (*configuration.Configuration, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return configuration.Parse(f)
+}
 
 func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *configuration.Configuration {
 	cfg := &configuration.Configuration{
@@ -52,6 +86,10 @@ func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts,
 func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
+
+	if err := validateStoreExists(s); err != nil {
+		return err
+	}
 
 	tr := server.NewTempRegistry(ctx, o.RootDir)
 	if err := tr.Start(); err != nil {
@@ -101,6 +139,10 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	l := log.FromContext(ctx)
 	ctx = dcontext.WithVersion(ctx, version.Version)
 
+	if err := validateStoreExists(s); err != nil {
+		return err
+	}
+
 	opts := &flags.CopyOpts{}
 	if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir, ro); err != nil {
 		return err
@@ -124,13 +166,4 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	}
 
 	return nil
-}
-
-func loadConfig(filename string) (*configuration.Configuration, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	return configuration.Parse(f)
 }
