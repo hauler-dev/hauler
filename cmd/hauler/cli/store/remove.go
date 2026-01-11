@@ -1,8 +1,12 @@
 package store
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -67,24 +71,30 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	if len(matches) >= 1 {
 		l.Infof("found %d matching references:", len(matches))
 		for _, m := range matches {
-			l.Infof("  - %s", formatReference(m.reference))
+			l.Infof("  - [%s]", formatReference(m.reference))
 		}
 	}
 
 	if !o.Force {
 		fmt.Printf("  ↳ are you sure you want to remove [%d] artifact(s) from the store? (yes/no) ", len(matches))
 
-		var response string
-		_, err := fmt.Scanln(&response)
-		if err != nil {
-			return fmt.Errorf("failed to read response: %w", err)
+		reader := bufio.NewReader(os.Stdin)
+
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("failed to read response: [%w]... please answer 'yes' or 'no'", err)
 		}
+
+		response := strings.ToLower(strings.TrimSpace(line))
+
 		switch response {
 		case "yes", "y":
 			l.Infof("starting to remove artifacts from store...")
 		case "no", "n":
 			l.Infof("successfully cancelled removal of artifacts from store")
 			return nil
+		case "":
+			return fmt.Errorf("failed to read response... please answer 'yes' or 'no'")
 		default:
 			return fmt.Errorf("invalid response [%s]... please answer 'yes' or 'no'", response)
 		}
@@ -100,10 +110,10 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	}
 
 	// clean up unreferenced blobs
-	l.Infof("cleaning up unreferenced blobs...")
+	l.Infof("cleaning up all unreferenced blobs...")
 	removedCount, removedSize, err := s.CleanUp(ctx)
 	if err != nil {
-		l.Warnf("garbage collection failed: %v", err)
+		l.Warnf("garbage collection failed: [%v]", err)
 	} else if removedCount > 0 {
 		l.Infof("successfully removed [%d] unreferenced blobs [freed %d bytes]", removedCount, removedSize)
 	}
