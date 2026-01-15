@@ -56,12 +56,14 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 
 	// strip out the oci-layout file from the haul
 	// required for containerd to be able to interpret the haul correctly for all mediatypes and artifactypes
-	if err := os.Remove(filepath.Join(".", ocispec.ImageLayoutFile)); err != nil {
-		if !os.IsNotExist(err) {
-			return err
+	if o.ContainerdCompatibility {
+		if err := os.Remove(filepath.Join(".", ocispec.ImageLayoutFile)); err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+		} else {
+			l.Warnf("compatibility warning... containerd... removing 'oci-layout' file to support containerd importing of images")
 		}
-
-		l.Debugf("compatibility warning... containerd... removing 'oci-layout' file to support containerd importing of images")
 	}
 
 	// create the archive
@@ -130,7 +132,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 						// when no platform is inputted... warn the user of potential mismatch on import for docker
 						// required for docker to be able to interpret and load the image correctly
 						if platform.String() == "" {
-							l.Warnf("compatibility warning... docker... please specify platform to prevent potential mismatch on import of index [%s]", refName)
+							l.Warnf("compatibility warning... docker... specify platform to prevent potential mismatch on import of index [%s]", refName)
 						}
 
 						iix, err := idx.ImageIndex(desc.Digest)
