@@ -15,7 +15,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	imagev1 "github.com/opencontainers/image-spec/specs-go/v1"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/archives"
@@ -31,8 +31,7 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 	compressionMap := archives.CompressionMap
 	archivalMap := archives.ArchivalMap
 
-	// TODO: Support more formats?
-	// Select the correct compression and archival type based on user input
+	// select the compression and archival type based parsed filename extension
 	compression := compressionMap["zst"]
 	archival := archivalMap["tar"]
 
@@ -53,6 +52,16 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 	// create the manifest.json file
 	if err := writeExportsManifest(ctx, ".", o.Platform); err != nil {
 		return err
+	}
+
+	// strip out the oci-layout file from the haul
+	// required for containerd to be able to interpret the haul correctly for all mediatypes and artifactypes
+	if err := os.Remove(filepath.Join(".", ocispec.ImageLayoutFile)); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+
+		l.Debugf("compatibility warning... containerd... removing 'oci-layout' file to support containerd importing of images")
 	}
 
 	// create the archive
@@ -118,9 +127,10 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 					case consts.KindAnnotationIndex:
 						l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
-						// when no platform is provided, warn the user of potential mismatch on import
+						// when no platform is inputted... warn the user of potential mismatch on import for docker
+						// required for docker to be able to interpret and load the image correctly
 						if platform.String() == "" {
-							l.Warnf("specify an export platform to prevent potential platform mismatch on import of index [%s]", refName)
+							l.Warnf("compatibility warning... docker... please specify platform to prevent potential mismatch on import of index [%s]", refName)
 						}
 
 						iix, err := idx.ImageIndex(desc.Digest)
@@ -133,7 +143,6 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 						}
 						for _, ixd := range ixm.Manifests {
 							if ixd.MediaType.IsImage() {
-								// check if platform is provided, if so, skip anything that doesn't match
 								if platform.String() != "" {
 									if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
 										l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: does not match the supplied platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
@@ -141,7 +150,8 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 									}
 								}
 
-								// skip 'unknown' platforms... docker hates
+								// skip any platforms of 'unknown/unknown'... docker hates
+								// required for docker to be able to interpret and load the image correctly
 								if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
 									l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: matches unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
 									continue
@@ -197,7 +207,7 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 		// record one export record per digest
 		x.digests = append(x.digests, digest)
 		xd = tarball.Descriptor{
-			Config:   path.Join(imagev1.ImageBlobsDir, config.Algorithm, config.Hex),
+			Config:   path.Join(ocispec.ImageBlobsDir, config.Algorithm, config.Hex),
 			RepoTags: []string{},
 			Layers:   []string{},
 		}
@@ -211,7 +221,7 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 			if err != nil {
 				return err
 			}
-			xd.Layers = append(xd.Layers[:], path.Join(imagev1.ImageBlobsDir, xl.Algorithm, xl.Hex))
+			xd.Layers = append(xd.Layers[:], path.Join(ocispec.ImageBlobsDir, xl.Algorithm, xl.Hex))
 		}
 	}
 
