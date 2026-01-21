@@ -205,7 +205,7 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 type isSubchartKey struct{}
 
 // imageregex parses image references starting with "image:" and with optional spaces or optional quotes
-var imageRegex = regexp.MustCompile(`(?m)^\s*image:\s*['"]?([^\s'"#]+)`)
+var imageRegex = regexp.MustCompile(`(?m)^[ \t]*image:[ \t]*['"]?([^\s'"#]+)`)
 
 // helmAnnotatedImage parses images references from helm chart annotations
 type helmAnnotatedImage struct {
@@ -512,8 +512,8 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			l.Infof("%sadding dependent chart [%s:%s]", prefix, dep.Name, dep.Version)
 
 			depOpts := *opts
-			depOpts.AddDependencies = false
-			depOpts.AddImages = false
+			depOpts.AddDependencies = true
+			depOpts.AddImages = true
 			subCtx := context.WithValue(ctx, isSubchartKey{}, true)
 
 			var depCfg v1.Chart
