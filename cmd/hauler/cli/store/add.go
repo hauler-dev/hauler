@@ -153,13 +153,17 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()
 	newRefContext := newRef.Context()
-
 	oldRepo := oldRefContext.RepositoryStr()
 	newRepo := newRefContext.RepositoryStr()
 	oldTag := oldRef.(name.Tag).TagStr()
 	newTag := newRef.(name.Tag).TagStr()
 	oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
 	newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
+	//if new registry not set in rewrite, keep old registry instead of defaulting to docker.io
+	if newRegistry == "docker.io" && oldRegistry != "docker.io" {
+		newRegistryTrim := strings.TrimPrefix(newRegistry, "docker.io")
+		newRegistry = oldRegistry + newRegistryTrim
+	}
 
 	oldTotal := oldRepo + ":" + oldTag
 	newTotal := newRepo + ":" + newTag
