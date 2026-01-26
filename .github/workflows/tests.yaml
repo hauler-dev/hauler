@@ -207,6 +207,10 @@ jobs:
           hauler store add image ghcr.io/hauler-dev/library/busybox:stable --rewrite /custom-path/busybox
           # confirm tag
           hauler store info | grep ':stable'
+          # confirm old registry used if not specified
+          hauler store add image ghcr.io/hauler-dev/library/nginx:1.25-alpine --rewrite custom-path/nginx
+          # verify existing registry in store
+          hauler store info | grep 'ghcr.io'
 
       - name: Verify - hauler store copy
         run: |
