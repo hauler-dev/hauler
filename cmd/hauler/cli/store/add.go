@@ -146,25 +146,27 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference) error {
 	l := log.FromContext(ctx)
 
-	l.Infof("rewriting [%s] to [%s]", oldRef.Name(), newRef.Name())
-
 	s.OCI.LoadIndex()
 
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()
 	newRefContext := newRef.Context()
-
 	oldRepo := oldRefContext.RepositoryStr()
 	newRepo := newRefContext.RepositoryStr()
 	oldTag := oldRef.(name.Tag).TagStr()
 	newTag := newRef.(name.Tag).TagStr()
 	oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
 	newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
-
+	//if new registry not set in rewrite, keep old registry instead of defaulting to docker.io
+	if newRegistry == "docker.io" && oldRegistry != "docker.io" {
+		newRegistry = oldRegistry
+	}
 	oldTotal := oldRepo + ":" + oldTag
 	newTotal := newRepo + ":" + newTag
 	oldTotalReg := oldRegistry + "/" + oldTotal
 	newTotalReg := newRegistry + "/" + newTotal
+
+	l.Infof("rewriting [%s] to [%s]", oldTotalReg, newTotalReg)
 
 	//find and update reference
 	found := false
