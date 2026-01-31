@@ -315,6 +315,9 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	if o.TypeFilter != "all" && ctype != o.TypeFilter {
 		return item{}
 	}
+	if (ctype == "sigs" || ctype == "atts" || ctype == "sbom") && len(m.Layers) == 0 {
+		return item{}
+	}
 
 	return item{
 		Reference: ref.Name(),

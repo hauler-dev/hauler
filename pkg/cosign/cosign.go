@@ -7,9 +7,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	v1layout "github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/v3/pkg/oci"
+	ocilayout "github.com/sigstore/cosign/v3/pkg/oci/layout"
+	ociremote "github.com/sigstore/cosign/v3/pkg/oci/remote"
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -118,11 +127,95 @@ func SaveImage(ctx context.Context, s *store.Layout, ref string, platform string
 			return err
 		}
 
+		if platform != "" && isMultiArch {
+			if err := saveIndexAttachments(ctx, s.Root, ref); err != nil {
+				return err
+			}
+		}
+
 		return nil
 
 	}
 
 	return RetryOperation(ctx, rso, ro, operation)
+}
+
+func saveIndexAttachments(ctx context.Context, dir string, ref string) error {
+	parsedRef, err := name.ParseReference(ref)
+	if err != nil {
+		return err
+	}
+
+	remoteOpts := []remote.Option{
+		remote.WithContext(ctx),
+		remote.WithUserAgent(options.UserAgent()),
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+	}
+	se, err := ociremote.SignedEntity(parsedRef, ociremote.WithRemoteOptions(remoteOpts...))
+	if err != nil {
+		return err
+	}
+
+	sii, ok := se.(oci.SignedImageIndex)
+	if !ok {
+		return nil
+	}
+
+	lp, err := v1layout.FromPath(dir)
+	if os.IsNotExist(err) {
+		lp, err = v1layout.Write(dir, empty.Index)
+	}
+	if err != nil {
+		return err
+	}
+
+	imageRef := strings.TrimPrefix(parsedRef.Name(), parsedRef.Context().RegistryStr()+"/")
+	containerdName := strings.Replace(parsedRef.Name(), "index.docker.io/", "docker.io/", 1)
+
+	sigs, err := sii.Signatures()
+	if err != nil {
+		return err
+	}
+	if sigs != nil {
+		if err := lp.AppendImage(sigs, v1layout.WithAnnotations(map[string]string{
+			ocilayout.KindAnnotation:           ocilayout.SigsAnnotation,
+			ocilayout.ImageRefAnnotation:       imageRef,
+			ocilayout.ContainerdNameAnnotation: containerdName,
+		})); err != nil {
+			return err
+		}
+	}
+
+	atts, err := sii.Attestations()
+	if err != nil {
+		return err
+	}
+	if atts != nil {
+		if err := lp.AppendImage(atts, v1layout.WithAnnotations(map[string]string{
+			ocilayout.KindAnnotation:           ocilayout.AttsAnnotation,
+			ocilayout.ImageRefAnnotation:       imageRef,
+			ocilayout.ContainerdNameAnnotation: containerdName,
+		})); err != nil {
+			return err
+		}
+	}
+
+	sbom, err := sii.Attachment("sbom")
+	if err == nil && sbom != nil {
+		sbomImg, ok := sbom.(v1.Image)
+		if !ok {
+			return fmt.Errorf("sbom attachment does not implement v1.Image")
+		}
+		if err := lp.AppendImage(sbomImg, v1layout.WithAnnotations(map[string]string{
+			ocilayout.KindAnnotation:           ocilayout.SbomsAnnotation,
+			ocilayout.ImageRefAnnotation:       imageRef,
+			ocilayout.ContainerdNameAnnotation: containerdName,
+		})); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // LoadImage loads store to a remote registry.
