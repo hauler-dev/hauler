@@ -8,11 +8,13 @@ services:
     ports:
       - "8080:8080"
       - "5000:5000"
+      - "8081:8081"
     volumes:
       - ./data/store:/data/store
       - ./data/manifests:/data/manifests
       - ./data/hauls:/data/hauls
       - ./data/config:/data/config
+      - ./data/extracted:/data/extracted
     restart: unless-stopped
     environment:
       - HAULER_STORE=/data/store

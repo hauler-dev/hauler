@@ -125,46 +125,49 @@
                 <p class="text-xs text-gray-400">Enhanced Edition</p>
             </div>
             <nav class="p-4">
-                <button onclick="showTab('dashboard')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700 bg-gray-700">
+                <button onclick="showTab('dashboard', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700 bg-gray-700">
                     <i class="fas fa-dashboard mr-2"></i> Dashboard
                 </button>
-                <button onclick="showTab('repositories')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('repositories', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-book mr-2"></i> Repositories
                 </button>
-                <button onclick="showTab('chart-browser')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('chart-browser', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-chart-bar mr-2"></i> Add Charts
                 </button>
-                <button onclick="showTab('image-browser')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('image-browser', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-images mr-2"></i> Add Images
                 </button>
-                <button onclick="showTab('store')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('manifest-builder', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-puzzle-piece mr-2"></i> Manifest Builder
+                </button>
+                <button onclick="showTab('store', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-database mr-2"></i> Store
                 </button>
-                <button onclick="showTab('manifests')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('manifests', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-file-code mr-2"></i> Manifests
                 </button>
-                <button onclick="showTab('hauls')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('hauls', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-box mr-2"></i> Hauls
                 </button>
-                <button onclick="showTab('serve')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('serve', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-server mr-2"></i> Serve
                 </button>
-                <button onclick="showTab('push')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('push', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-upload mr-2"></i> Push to Registry
                 </button>
-                <button onclick="showTab('files')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('files', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-file mr-2"></i> Files
                 </button>
-                <button onclick="showTab('artifacts')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('artifacts', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-cubes mr-2"></i> Artifacts
                 </button>
-                <button onclick="showTab('auth')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('auth', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-key mr-2"></i> Registry Auth
                 </button>
-                <button onclick="showTab('settings')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('settings', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-cog mr-2"></i> Settings
                 </button>
-                <button onclick="showTab('logs')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                <button onclick="showTab('logs', event)" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
                     <i class="fas fa-terminal mr-2"></i> Logs
                 </button>
             </nav>
@@ -307,6 +310,27 @@
                 </div>
             </div>
 
+            <div id="manifest-builder" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Manifest Builder</h2>
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4">Manifest Items</h3>
+                        <div id="manifestItems" class="space-y-2 mb-4"></div>
+                        <div class="flex gap-2">
+                            <button onclick="clearManifest()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                                <i class="fas fa-trash mr-2"></i>Clear
+                            </button>
+                            <button onclick="saveManifestFile()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                                <i class="fas fa-save mr-2"></i>Save Manifest
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4">YAML Preview</h3>
+                        <pre id="manifestPreview" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96"># No content selected</pre>
+                    </div>
+                </div>
+            </div>
 
             <div id="store" class="tab-content hidden p-8">
                 <h2 class="text-3xl font-bold mb-6">Store Management</h2>

@@ -225,6 +225,7 @@ func repoListHandler(w http.ResponseWriter, r *http.Request) {
 		repoList = append(repoList, repo)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"repositories": repoList})
 }
 
@@ -261,6 +262,7 @@ func repoChartsHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(repo.URL, "oci://") {
 		// OCI registries don't have browsable indexes
 		// Return empty response with helpful message
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"charts":  map[string][]string{},
 			"details": map[string]ChartInfo{},
@@ -310,6 +312,7 @@ func repoChartsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"charts":  charts,
 		"details": chartDetails,
@@ -345,6 +348,7 @@ func chartSearchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"charts": charts})
 }
 
@@ -371,6 +375,7 @@ func imageSearchHandler(w http.ResponseWriter, r *http.Request) {
 		{Name: query, Tags: []string{"latest", "stable"}},
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"images": images})
 }
 
@@ -421,7 +426,11 @@ func addContentHandler(w http.ResponseWriter, r *http.Request) {
 			args = append(args, "--verify")
 		}
 		if req.Values != "" {
-			valuesPath := filepath.Join("/data/config/values", req.Values)
+			valuesPath, err := safePath("/data/config/values", req.Values)
+			if err != nil {
+				respondError(w, "Invalid values filename", http.StatusBadRequest)
+				return
+			}
 			args = append(args, "--values", valuesPath)
 		}
 	} else if req.Type == "image" {
@@ -430,7 +439,11 @@ func addContentHandler(w http.ResponseWriter, r *http.Request) {
 			args = append(args, "--platform", req.Platform)
 		}
 		if req.Key != "" {
-			keyPath := filepath.Join("/data/config/keys", req.Key)
+			keyPath, err := safePath("/data/config/keys", req.Key)
+			if err != nil {
+				respondError(w, "Invalid key filename", http.StatusBadRequest)
+				return
+			}
 			args = append(args, "--key", keyPath)
 		}
 		if req.Rewrite != "" {
@@ -454,6 +467,9 @@ func addContentHandler(w http.ResponseWriter, r *http.Request) {
 		if req.UseTlogVerify {
 			args = append(args, "--use-tlog-verify")
 		}
+	} else {
+		respondError(w, fmt.Sprintf("Unsupported content type: %s", req.Type), http.StatusBadRequest)
+		return
 	}
 
 	output, err := executeHauler(args[0], args[1:]...)
@@ -461,6 +477,7 @@ func addContentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"healthy": true})
 }
 
@@ -489,11 +506,19 @@ func storeSyncHandler(w http.ResponseWriter, r *http.Request) {
 		CertGithubWorkflow      string `json:"certGithubWorkflow"`
 		UseTlogVerify           bool   `json:"useTlogVerify"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	args := []string{"store", "sync"}
 	if req.Filename != "" {
-		args = append(args, "--filename", filepath.Join("/data/manifests", req.Filename))
+		manifestPath, err := safePath("/data/manifests", req.Filename)
+		if err != nil {
+			respondError(w, "Invalid manifest filename", http.StatusBadRequest)
+			return
+		}
+		args = append(args, "--filename", manifestPath)
 	}
 	if req.Products != "" {
 		args = append(args, "--products", req.Products)
@@ -505,7 +530,11 @@ func storeSyncHandler(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--platform", req.Platform)
 	}
 	if req.Key != "" {
-		keyPath := filepath.Join("/data/config/keys", req.Key)
+		keyPath, err := safePath("/data/config/keys", req.Key)
+		if err != nil {
+			respondError(w, "Invalid key filename", http.StatusBadRequest)
+			return
+		}
 		args = append(args, "--key", keyPath)
 	}
 	if req.Registry != "" {
@@ -543,14 +572,22 @@ func storeSaveHandler(w http.ResponseWriter, r *http.Request) {
 		Platform    string `json:"platform"`
 		Containerd  bool   `json:"containerd"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	filename := "haul.tar.zst"
 	if req.Filename != "" {
 		filename = req.Filename
 	}
 
-	args := []string{"store", "save", "--filename", filepath.Join("/data/hauls", filename)}
+	savePath, err := safePath("/data/hauls", filename)
+	if err != nil {
+		respondError(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
+	args := []string{"store", "save", "--filename", savePath}
 	if req.Platform != "" && req.Platform != "all" {
 		args = append(args, "--platform", req.Platform)
 	}
@@ -566,11 +603,19 @@ func storeLoadHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Filename string `json:"filename"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	args := []string{"store", "load"}
 	if req.Filename != "" {
-		args = append(args, "--filename", filepath.Join("/data/hauls", req.Filename))
+		loadPath, err := safePath("/data/hauls", req.Filename)
+		if err != nil {
+			respondError(w, "Invalid filename", http.StatusBadRequest)
+			return
+		}
+		args = append(args, "--filename", loadPath)
 	}
 
 	output, err := executeHauler(args[0], args[1:]...)
@@ -605,7 +650,10 @@ func fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	io.Copy(dst, file)
+	if _, err := io.Copy(dst, file); err != nil {
+		respondError(w, "Failed to write file", http.StatusInternalServerError)
+		return
+	}
 	respondJSON(w, Response{Success: true, Output: "File uploaded successfully"})
 }
 
@@ -627,6 +675,7 @@ func fileListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"files": files})
 }
 
@@ -785,6 +834,7 @@ func registryListHandler(w http.ResponseWriter, r *http.Request) {
 		regList = append(regList, safeCopy)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"registries": regList})
 }
 
@@ -808,7 +858,10 @@ func registryTestHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	registriesMux.RLock()
 	reg, exists := registries[req.Name]
@@ -923,7 +976,11 @@ func storeAddFileHandler(w http.ResponseWriter, r *http.Request) {
 		respondError(w, "Failed to save file", http.StatusInternalServerError)
 		return
 	}
-	io.Copy(dst, file)
+	if _, err = io.Copy(dst, file); err != nil {
+		dst.Close()
+		respondError(w, "Failed to write file", http.StatusInternalServerError)
+		return
+	}
 	dst.Close()
 
 	args := []string{"store", "add", "file", tempPath}
@@ -941,11 +998,19 @@ func storeExtractHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		OutputDir string `json:"outputDir"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	outputDir := "/data/extracted"
 	if req.OutputDir != "" {
-		outputDir = filepath.Join("/data", req.OutputDir)
+		var err error
+		outputDir, err = safePath("/data", req.OutputDir)
+		if err != nil {
+			respondError(w, "Invalid output directory", http.StatusBadRequest)
+			return
+		}
 	}
 	os.MkdirAll(outputDir, 0755)
 
@@ -961,6 +1026,7 @@ func storeArtifactsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	artifacts := parseArtifacts(output)
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"artifacts": artifacts,
 		"count":     len(artifacts),
@@ -1009,7 +1075,10 @@ func registryLoginHandler(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	cmd := exec.Command("hauler", "login", req.Registry, "-u", req.Username, "-p", req.Password)
 	env := append(os.Environ(), "HAULER_STORE=/data/store")
@@ -1027,7 +1096,10 @@ func registryLogoutHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Registry string `json:"registry"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	output, err := executeHauler("logout", req.Registry)
 	respondJSON(w, Response{Success: err == nil, Output: output, Error: errString(err)})
@@ -1055,7 +1127,10 @@ func keyUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	io.Copy(dst, file)
+	if _, err := io.Copy(dst, file); err != nil {
+		respondError(w, "Failed to write key file", http.StatusInternalServerError)
+		return
+	}
 	respondJSON(w, Response{Success: true, Output: "Key uploaded: " + filepath.Base(handler.Filename)})
 }
 
@@ -1069,6 +1144,7 @@ func keyListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"keys": keys})
 }
 
@@ -1094,7 +1170,10 @@ func tlsCertUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	io.Copy(dst, file)
+	if _, err := io.Copy(dst, file); err != nil {
+		respondError(w, "Failed to write cert file", http.StatusInternalServerError)
+		return
+	}
 	respondJSON(w, Response{Success: true, Output: "TLS cert uploaded: " + filepath.Base(handler.Filename)})
 }
 
@@ -1108,6 +1187,7 @@ func tlsCertListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"certs": certs})
 }
 
@@ -1133,7 +1213,10 @@ func valuesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	io.Copy(dst, file)
+	if _, err := io.Copy(dst, file); err != nil {
+		respondError(w, "Failed to write values file", http.StatusInternalServerError)
+		return
+	}
 	respondJSON(w, Response{Success: true, Output: "Values file uploaded: " + filepath.Base(handler.Filename)})
 }
 
@@ -1147,6 +1230,7 @@ func valuesListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"values": values})
 }
 
@@ -1214,7 +1298,10 @@ func serveStartHandler(w http.ResponseWriter, r *http.Request) {
 		Timeout    int    `json:"timeout"`
 		Config     string `json:"config"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	if req.Port == "" {
 		if req.Mode == "fileserver" {
@@ -1236,17 +1323,29 @@ func serveStartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	if req.TLSCert != "" && req.TLSKey != "" {
-		certPath := filepath.Join("/data/config/certs", req.TLSCert)
-		keyPath := filepath.Join("/data/config/certs", req.TLSKey)
+		certPath, err := safePath("/data/config/certs", req.TLSCert)
+		if err != nil {
+			respondError(w, "Invalid TLS cert filename", http.StatusBadRequest)
+			return
+		}
+		keyPath, err := safePath("/data/config/certs", req.TLSKey)
+		if err != nil {
+			respondError(w, "Invalid TLS key filename", http.StatusBadRequest)
+			return
+		}
 		args = append(args, "--tls-cert", certPath, "--tls-key", keyPath)
 	}
-	
+
 	if mode == "fileserver" && req.Timeout > 0 {
 		args = append(args, "--timeout", fmt.Sprintf("%d", req.Timeout))
 	}
-	
+
 	if req.Config != "" {
-		configPath := filepath.Join("/data/config", req.Config)
+		configPath, err := safePath("/data/config", req.Config)
+		if err != nil {
+			respondError(w, "Invalid config filename", http.StatusBadRequest)
+			return
+		}
 		args = append(args, "--config", configPath)
 	}
 
@@ -1255,6 +1354,9 @@ func serveStartHandler(w http.ResponseWriter, r *http.Request) {
 	
 	go func() {
 		serveCmd.Run()
+		serveMux.Lock()
+		serveCmd = nil
+		serveMux.Unlock()
 	}()
 
 	time.Sleep(500 * time.Millisecond)
@@ -1279,6 +1381,7 @@ func serveStatusHandler(w http.ResponseWriter, r *http.Request) {
 	defer serveMux.Unlock()
 
 	running := serveCmd != nil && serveCmd.Process != nil
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"running": running})
 }
 
@@ -1297,7 +1400,10 @@ func logsHandler(w http.ResponseWriter, r *http.Request) {
 		logMux.Lock()
 		if len(logLines) > lastSent {
 			for i := lastSent; i < len(logLines); i++ {
-				conn.WriteMessage(websocket.TextMessage, []byte(logLines[i]))
+				if err := conn.WriteMessage(websocket.TextMessage, []byte(logLines[i])); err != nil {
+					logMux.Unlock()
+					return
+				}
 			}
 			lastSent = len(logLines)
 		}

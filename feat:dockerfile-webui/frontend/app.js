@@ -6,11 +6,16 @@ function escapeHTML(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function showTab(tabName) {
+function escapeAttr(str) {
+    if (typeof str !== 'string') return str;
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/&/g, '&amp;').replace(/`/g, '\\`');
+}
+
+function showTab(tabName, evt) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
     document.getElementById(tabName).classList.remove('hidden');
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('bg-gray-700'));
-    event.target.classList.add('bg-gray-700');
+    if (evt && evt.target) evt.target.classList.add('bg-gray-700');
     
     if (tabName === 'manifests') loadFileList('manifest');
     if (tabName === 'hauls') loadFileList('haul');
@@ -20,10 +25,14 @@ function showTab(tabName) {
 }
 
 async function apiCall(endpoint, method = 'GET', body = null) {
-    const options = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) options.body = JSON.stringify(body);
-    const res = await fetch(`/api/${endpoint}`, options);
-    return res.json();
+    try {
+        const options = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) options.body = JSON.stringify(body);
+        const res = await fetch(`/api/${endpoint}`, options);
+        return res.json();
+    } catch (err) {
+        return { success: false, error: err.message || 'Network error' };
+    }
 }
 
 let selectedCharts = {};
@@ -55,13 +64,13 @@ async function browseRepoCharts(repoName) {
         return `
             <div class="bg-gray-900 p-4 rounded border border-gray-700">
                 <div class="flex items-start gap-3">
-                    <input type="checkbox" id="chart_${chartName}" onchange="toggleChart('${chartName}')" 
+                    <input type="checkbox" id="chart_${escapeAttr(chartName)}" onchange="toggleChart('${escapeAttr(chartName)}')"
                            class="mt-1 w-4 h-4">
                     <div class="flex-1">
-                        <label for="chart_${escapeHTML(chartName)}" class="font-bold cursor-pointer">${escapeHTML(chartName)}</label>
+                        <label for="chart_${escapeAttr(chartName)}" class="font-bold cursor-pointer">${escapeHTML(chartName)}</label>
                         <p class="text-gray-400 text-sm">${escapeHTML(details.description || 'No description')}</p>
-                        <select id="version_${chartName}" class="mt-2 bg-gray-800 border border-gray-600 rounded p-1 text-sm"
-                                onchange="updateChartVersion('${chartName}')" disabled>
+                        <select id="version_${escapeAttr(chartName)}" class="mt-2 bg-gray-800 border border-gray-600 rounded p-1 text-sm"
+                                onchange="updateChartVersion('${escapeAttr(chartName)}')" disabled>
                             ${versions.map(v => `<option value="${v}">${v}</option>`).join('')}
                         </select>
                     </div>
@@ -256,11 +265,11 @@ async function loadRepositories() {
                 <span class="text-gray-400 text-sm ml-2">${escapeHTML(repo.url)}</span>
             </div>
             <div class="flex gap-2">
-                <button onclick="browseRepoCharts('${repo.name.replace(/'/g, "\\'")}')"
+                <button onclick="browseRepoCharts('${escapeAttr(repo.name)}')"
                         class="text-blue-400 hover:text-blue-300">
                     <i class="fas fa-list"></i> Browse
                 </button>
-                <button onclick="removeRepository('${repo.name.replace(/'/g, "\\'")}')"
+                <button onclick="removeRepository('${escapeAttr(repo.name)}')"
                         class="text-red-400 hover:text-red-300">
                     <i class="fas fa-trash"></i>
                 </button>
@@ -305,34 +314,38 @@ function updateManifestPreview() {
 }
 
 function generateYAML() {
-    let yaml = 'apiVersion: v1\n';
-    
+    let yaml = '';
+    const parts = [];
+
     const images = manifestContent.filter(i => i.type === 'image');
     if (images.length > 0) {
-        yaml += 'kind: Images\n';
-        yaml += 'spec:\n';
-        yaml += '  images:\n';
+        let part = 'apiVersion: v1\n';
+        part += 'kind: Images\n';
+        part += 'spec:\n';
+        part += '  images:\n';
         images.forEach(img => {
-            yaml += `    - name: ${img.name}\n`;
+            part += `    - name: ${img.name}\n`;
         });
-        yaml += '---\n';
+        parts.push(part);
     }
-    
+
     const charts = manifestContent.filter(i => i.type === 'chart');
     if (charts.length > 0) {
-        yaml += 'apiVersion: v1\n';
-        yaml += 'kind: Charts\n';
-        yaml += 'spec:\n';
-        yaml += '  charts:\n';
+        let part = 'apiVersion: v1\n';
+        part += 'kind: Charts\n';
+        part += 'spec:\n';
+        part += '  charts:\n';
         charts.forEach(chart => {
-            yaml += `    - name: ${chart.name}\n`;
-            if (chart.repository) yaml += `      repoURL: ${chart.repository}\n`;
-            if (chart.version) yaml += `      version: ${chart.version}\n`;
-            if (chart.addImages) yaml += `      addImages: true\n`;
-            if (chart.addDependencies) yaml += `      addDependencies: true\n`;
+            part += `    - name: ${chart.name}\n`;
+            if (chart.repository) part += `      repoURL: ${chart.repository}\n`;
+            if (chart.version) part += `      version: ${chart.version}\n`;
+            if (chart.addImages) part += `      addImages: true\n`;
+            if (chart.addDependencies) part += `      addDependencies: true\n`;
         });
+        parts.push(part);
     }
-    
+
+    yaml = parts.join('---\n');
     return yaml;
 }
 
@@ -444,18 +457,18 @@ async function loadFileList(type) {
         <div class="flex justify-between items-center bg-gray-900 p-3 rounded">
             <span>${escapeHTML(f)}</span>
             <div class="flex gap-2">
-                <a href="/api/files/download/${f}?type=${type}" class="text-blue-400 hover:text-blue-300">
+                <a href="/api/files/download/${encodeURIComponent(f)}?type=${type}" class="text-blue-400 hover:text-blue-300">
                     <i class="fas fa-download"></i>
                 </a>
-                <button onclick="deleteFile('${f}', '${type}')" class="text-red-400 hover:text-red-300">
+                <button onclick="deleteFile('${escapeAttr(f)}', '${type}')" class="text-red-400 hover:text-red-300">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
         </div>
     `).join('');
-    
-    selectEl.innerHTML = '<option value="">Select...</option>' + 
-        data.files.map(f => `<option value="${f}">${f}</option>`).join('');
+
+    selectEl.innerHTML = '<option value="">Select...</option>' +
+        data.files.map(f => `<option value="${escapeAttr(f)}">${escapeHTML(f)}</option>`).join('');
 }
 
 async function deleteFile(filename, type) {
@@ -545,10 +558,10 @@ async function loadRegistries() {
                 <span class="text-gray-400 text-sm ml-2">${escapeHTML(reg.url)}</span>
             </div>
             <div class="flex gap-2">
-                <button onclick="testRegistry('${reg.name}')" class="text-blue-400 hover:text-blue-300">
+                <button onclick="testRegistry('${escapeAttr(reg.name)}')" class="text-blue-400 hover:text-blue-300">
                     <i class="fas fa-plug"></i> Test
                 </button>
-                <button onclick="removeRegistry('${reg.name}')" class="text-red-400 hover:text-red-300">
+                <button onclick="removeRegistry('${escapeAttr(reg.name)}')" class="text-red-400 hover:text-red-300">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
@@ -596,32 +609,33 @@ async function pushToRegistry() {
 async function addFileToStore() {
     const mode = document.querySelector('input[name="fileMode"]:checked').value;
     const outputEl = document.getElementById('fileOutput');
-    
+    let data;
+
     if (mode === 'url') {
         const url = document.getElementById('fileURL').value;
         const name = document.getElementById('fileName').value;
-        
+
         if (!url) return alert('URL required');
-        
+
         outputEl.textContent = 'Adding file from URL...';
-        const data = await apiCall('store/add-file', 'POST', {url, name});
+        data = await apiCall('store/add-file', 'POST', {url, name});
         outputEl.textContent = data.output || data.error;
     } else {
         const file = document.getElementById('fileToAdd').files[0];
         const name = document.getElementById('fileNameUpload').value;
-        
+
         if (!file) return alert('Select a file');
-        
+
         const formData = new FormData();
         formData.append('file', file);
         if (name) formData.append('name', name);
-        
+
         outputEl.textContent = 'Uploading file...';
         const res = await fetch('/api/store/add-file', {method: 'POST', body: formData});
-        const data = await res.json();
+        data = await res.json();
         outputEl.textContent = data.output || data.error;
     }
-    
+
     if (data.success) setTimeout(refreshStoreInfo, 1000);
 }
 
@@ -649,7 +663,7 @@ async function listArtifacts() {
     listEl.innerHTML = data.artifacts.map(artifact => `
         <div class="flex justify-between items-center bg-gray-900 p-3 rounded mb-2">
             <span class="font-mono text-sm">${escapeHTML(artifact)}</span>
-            <button onclick="removeArtifact('${artifact.replace(/'/g, "\\'")}')"
+            <button onclick="removeArtifact('${escapeAttr(artifact)}')"
                     class="text-red-400 hover:text-red-300">
                 <i class="fas fa-trash"></i> Remove
             </button>
@@ -808,7 +822,7 @@ async function updateServerStatus() {
 
 function connectWebSocket() {
     if (ws) return;
-    ws = new WebSocket(`ws://${location.host}/api/logs`);
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/logs`);
     ws.onmessage = (e) => {
         document.getElementById('logOutput').textContent += e.data + '\n';
     };
