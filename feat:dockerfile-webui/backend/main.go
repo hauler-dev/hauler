@@ -1187,7 +1187,8 @@ func certUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exec.Command("update-ca-certificates").Run()
+	// CA cert is picked up at runtime via SSL_CERT_FILE env var set in executeHauler();
+	// no need for update-ca-certificates (unavailable in hardened runtime image).
 
 	respondJSON(w, Response{Success: true, Output: "Certificate uploaded and installed"})
 }

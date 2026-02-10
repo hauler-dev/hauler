@@ -1,19 +1,21 @@
-FROM golang:1.21-alpine AS builder
+# Build stage: Compile Go application
+FROM dhi.io/golang:1-alpine3.21-dev AS builder
 
 WORKDIR /build
 COPY backend/go.mod backend/go.sum* ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 go build -o hauler-ui main.go
+RUN CGO_ENABLED=0 go build -a -ldflags="-s -w" -o hauler-ui main.go
 
-FROM node:18-alpine AS obfuscator
+# Obfuscator stage: Obfuscate JavaScript
+FROM dhi.io/node:23-alpine3.21-dev AS obfuscator
 
 RUN npm install -g javascript-obfuscator
 
 WORKDIR /app
 COPY frontend/ ./
 
-RUN javascript-obfuscator app.js \
+RUN npx javascript-obfuscator app.js \
   --output app.obfuscated.js \
   --compact true \
   --control-flow-flattening true \
@@ -26,17 +28,23 @@ RUN javascript-obfuscator app.js \
   --unicode-escape-sequence false && \
   mv app.obfuscated.js app.js
 
-FROM alpine:latest
+# Hauler installer stage: Download hauler binary (requires curl + bash + openssl)
+# Uses plain alpine for compatibility — this is a throwaway builder stage only.
+FROM alpine:3.21 AS hauler-installer
 
-RUN apk add --no-cache ca-certificates curl bash openssl
+RUN apk add --no-cache bash curl openssl && \
+    curl -sfL https://get.hauler.dev | bash
 
-RUN curl -sfL https://get.hauler.dev | bash
-
-WORKDIR /app
-COPY --from=builder /build/hauler-ui /app/
-COPY --from=obfuscator /app/ /app/frontend/
-
+# Pre-create data directories for the shell-less runtime stage
 RUN mkdir -p /data/store /data/manifests /data/hauls /data/config
+
+# Runtime stage: Minimal hardened image (no shell, no package manager)
+FROM dhi.io/golang:1-alpine3.21
+
+COPY --from=builder /build/hauler-ui /app/hauler-ui
+COPY --from=obfuscator /app/ /app/frontend/
+COPY --from=hauler-installer /usr/local/bin/hauler /usr/local/bin/hauler
+COPY --from=hauler-installer /data/ /data/
 
 ENV HAULER_STORE=/data/store
 
