@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  hauler-ui:
+    build: .
+    image: hauler-ui:v3.3.5
+    container_name: hauler-ui
+    ports:
+      - "8080:8080"
+      - "5000:5000"
+    volumes:
+      - ./data/store:/data/store
+      - ./data/manifests:/data/manifests
+      - ./data/hauls:/data/hauls
+      - ./data/config:/data/config
+    restart: unless-stopped
+    environment:
+      - HAULER_STORE=/data/store

@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hauler UI - Enhanced</title>
+    <script src="tailwind.min.js"></script>
+    <link rel="stylesheet" href="fontawesome.min.css">
+    <style>
+        /* Fallback styles if CDN fails */
+        body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #111827; color: #f3f4f6; }
+        .flex { display: flex; }
+        .hidden { display: none !important; }
+        .h-screen { height: 100vh; }
+        .overflow-auto { overflow: auto; }
+        .p-4 { padding: 1rem; }
+        .p-6 { padding: 1.5rem; }
+        .p-8 { padding: 2rem; }
+        .pb-32 { padding-bottom: 8rem; }
+        .pb-64 { padding-bottom: 16rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .mb-6 { margin-bottom: 1.5rem; }
+        .w-64 { width: 16rem; }
+        .w-full { width: 100%; }
+        .flex-1 { flex: 1; }
+        .bg-gray-800 { background-color: #1f2937; }
+        .bg-gray-900 { background-color: #111827; }
+        .border { border-width: 1px; }
+        .border-gray-700 { border-color: #374151; }
+        .rounded { border-radius: 0.25rem; }
+        .rounded-lg { border-radius: 0.5rem; }
+        button, .nav-btn { cursor: pointer; padding: 0.75rem 1rem; border: none; background: #374151; color: #f3f4f6; border-radius: 0.25rem; }
+        button:hover, .nav-btn:hover { background: #4b5563; }
+        input, select, textarea { padding: 0.5rem; background: #111827; border: 1px solid #374151; color: #f3f4f6; border-radius: 0.25rem; }
+        pre { background: #111827; padding: 1rem; border-radius: 0.25rem; overflow: auto; }
+        .text-3xl { font-size: 1.875rem; font-weight: bold; }
+        .text-xl { font-size: 1.25rem; font-weight: bold; }
+        .text-sm { font-size: 0.875rem; }
+        .text-gray-400 { color: #9ca3af; }
+        .text-green-400 { color: #4ade80; }
+        .text-blue-400 { color: #60a5fa; }
+        .text-red-400 { color: #f87171; }
+        .bg-green-600 { background-color: #16a34a; }
+        .bg-blue-600 { background-color: #2563eb; }
+        .bg-red-600 { background-color: #dc2626; }
+        .bg-gray-700 { background-color: #374151; }
+        .grid { display: grid; }
+        .gap-4 { gap: 1rem; }
+        .gap-6 { gap: 1.5rem; }
+        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .space-y-2 > * + * { margin-top: 0.5rem; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    <div class="flex h-screen">
+        <!-- Chart Browser Modal -->
+        <div id="chartBrowserModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+            <div class="bg-gray-800 rounded-lg w-4/5 h-4/5 flex flex-col">
+                <div class="p-6 border-b border-gray-700 flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Browse Repository Charts</h2>
+                    <button onclick="closeChartBrowser()" class="text-gray-400 hover:text-white text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-auto p-6">
+                    <div id="chartBrowserList" class="grid grid-cols-2 gap-4"></div>
+                </div>
+                <div class="p-6 border-t border-gray-700">
+                    <div class="mb-4">
+                        <label class="block text-sm font-bold mb-2">Rewrite Path (Optional)</label>
+                        <input type="text" id="batchChartRewrite" placeholder="e.g. harbor.company.com/charts" 
+                               class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                        <label class="flex items-center text-sm">
+                            <input type="checkbox" id="batchChartRewriteExact" class="mr-2">
+                            <span class="text-gray-400">Use exact path (don't auto-append chart name/version)</span>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="font-bold mb-2">Preview</h3>
+                            <div id="chartPreview" class="bg-gray-900 p-4 rounded min-h-32"></div>
+                        </div>
+                        <div>
+                            <h3 class="font-bold mb-2">Output</h3>
+                            <pre id="chartBatchOutput" class="bg-gray-900 p-4 rounded text-sm max-h-32 overflow-auto">Ready to add charts...</pre>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex gap-4">
+                        <button onclick="showImageSelectionModal()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded">
+                            <i class="fas fa-plus mr-2"></i>Add Selected Charts to Store
+                        </button>
+                        <button onclick="closeChartBrowser()" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Selection Modal -->
+        <div id="imageSelectionModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+            <div class="bg-gray-800 rounded-lg w-1/3 p-6">
+                <h3 class="text-xl font-bold mb-4">Add Chart Images?</h3>
+                <p class="text-gray-400 mb-6">Would you like to extract and add container images from the selected charts?</p>
+                <div class="flex gap-3">
+                    <button onclick="processCharts(false)" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded">
+                        <i class="fas fa-chart-bar mr-2"></i>Charts Only
+                    </button>
+                    <button onclick="processCharts(true)" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded">
+                        <i class="fas fa-images mr-2"></i>Charts + Images
+                    </button>
+                    <button onclick="closeImageSelectionModal()" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <aside class="w-64 bg-gray-800 border-r border-gray-700 overflow-y-auto">
+            <div class="p-4 border-b border-gray-700">
+                <h1 class="text-2xl font-bold text-green-400">Hauler UI</h1>
+                <p class="text-xs text-gray-400">Enhanced Edition</p>
+            </div>
+            <nav class="p-4">
+                <button onclick="showTab('dashboard')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700 bg-gray-700">
+                    <i class="fas fa-dashboard mr-2"></i> Dashboard
+                </button>
+                <button onclick="showTab('repositories')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-book mr-2"></i> Repositories
+                </button>
+                <button onclick="showTab('chart-browser')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-chart-bar mr-2"></i> Add Charts
+                </button>
+                <button onclick="showTab('image-browser')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-images mr-2"></i> Add Images
+                </button>
+                <button onclick="showTab('store')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-database mr-2"></i> Store
+                </button>
+                <button onclick="showTab('manifests')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-file-code mr-2"></i> Manifests
+                </button>
+                <button onclick="showTab('hauls')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-box mr-2"></i> Hauls
+                </button>
+                <button onclick="showTab('serve')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-server mr-2"></i> Serve
+                </button>
+                <button onclick="showTab('push')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-upload mr-2"></i> Push to Registry
+                </button>
+                <button onclick="showTab('files')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-file mr-2"></i> Files
+                </button>
+                <button onclick="showTab('artifacts')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-cubes mr-2"></i> Artifacts
+                </button>
+                <button onclick="showTab('auth')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-key mr-2"></i> Registry Auth
+                </button>
+                <button onclick="showTab('settings')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-cog mr-2"></i> Settings
+                </button>
+                <button onclick="showTab('logs')" class="nav-btn w-full text-left p-3 rounded mb-2 hover:bg-gray-700">
+                    <i class="fas fa-terminal mr-2"></i> Logs
+                </button>
+            </nav>
+        </aside>
+
+        <main class="flex-1 overflow-auto">
+            <div id="dashboard" class="tab-content p-8">
+                <h2 class="text-3xl font-bold mb-6">Dashboard</h2>
+                <div class="grid grid-cols-3 gap-6 mb-8">
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-400 text-sm">Store Status</p>
+                                <p class="text-2xl font-bold text-green-400" id="storeStatus">Ready</p>
+                            </div>
+                            <i class="fas fa-database text-4xl text-green-400"></i>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-400 text-sm">Server Status</p>
+                                <p class="text-2xl font-bold" id="serverStatus">Stopped</p>
+                            </div>
+                            <i class="fas fa-server text-4xl text-gray-600"></i>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-400 text-sm">Repositories</p>
+                                <p class="text-2xl font-bold text-blue-400" id="repoCount">0</p>
+                            </div>
+                            <i class="fas fa-book text-4xl text-blue-400"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Store Information</h3>
+                    <pre id="storeInfo" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96">Loading...</pre>
+                </div>
+            </div>
+
+            <div id="repositories" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Helm Repositories</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Add Repository</h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <input type="text" id="repoName" placeholder="Repository Name" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="text" id="repoURL" placeholder="Repository URL" class="bg-gray-900 border border-gray-700 rounded p-2">
+                    </div>
+                    <button onclick="addRepository()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-plus mr-2"></i>Add Repository
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Configured Repositories</h3>
+                    <div id="repoList" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <div id="chart-browser" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Add Helm Charts</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Add Chart Directly</h3>
+                    <p class="text-gray-400 text-sm mb-4">Specify chart name, repository, and version to add to store</p>
+                    <div class="grid grid-cols-4 gap-4 mb-4">
+                        <input type="text" id="chartName" placeholder="Chart name (e.g. gocd)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="text" id="chartRepo" placeholder="Repository URL" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="text" id="chartVersion" placeholder="Version (optional)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <select id="chartPlatform" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <option value="all">All Platforms</option>
+                            <option value="linux/amd64">linux/amd64</option>
+                            <option value="linux/arm64">linux/arm64</option>
+                            <option value="linux/arm/v7">linux/arm/v7</option>
+                        </select>
+                    </div>
+                    <details class="mb-4">
+                        <summary class="cursor-pointer text-blue-400 mb-2">Advanced Options</summary>
+                        <div class="grid grid-cols-2 gap-4 mt-2">
+                            <input type="text" id="chartRewrite" placeholder="e.g. harbor.company.com/charts" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="text" id="chartUsername" placeholder="Username (optional)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="password" id="chartPassword" placeholder="Password (optional)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="text" id="chartKubeVersion" placeholder="Kubernetes version (optional)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <select id="chartValues" class="bg-gray-900 border border-gray-700 rounded p-2">
+                                <option value="">No values file</option>
+                            </select>
+                            <div class="flex items-center gap-4 col-span-2">
+                                <label class="flex items-center"><input type="checkbox" id="chartInsecureSkipTLS" class="mr-2">Skip TLS Verify</label>
+                                <label class="flex items-center"><input type="checkbox" id="chartVerify" class="mr-2">Verify Signature</label>
+                            </div>
+                        </div>
+                    </details>
+                    <button onclick="addChartDirectFromForm()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-plus mr-2"></i>Add Chart to Store
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Output</h3>
+                    <pre id="chartOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96">Ready to add charts...</pre>
+                </div>
+            </div>
+
+            <div id="image-browser" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Add Docker Images</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Add Image Directly</h3>
+                    <p class="text-gray-400 text-sm mb-4">Specify full image name with tag (e.g. nginx:latest)</p>
+                    <div class="grid grid-cols-4 gap-4 mb-4">
+                        <input type="text" id="imageName" placeholder="Image name (e.g. nginx:latest)" class="col-span-2 bg-gray-900 border border-gray-700 rounded p-2">
+                        <select id="imagePlatform" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <option value="all">All Platforms</option>
+                            <option value="linux/amd64">linux/amd64</option>
+                            <option value="linux/arm64">linux/arm64</option>
+                            <option value="linux/arm/v7">linux/arm/v7</option>
+                        </select>
+                        <select id="imageKey" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <option value="">No Signature Verification</option>
+                        </select>
+                    </div>
+                    <details class="mb-4">
+                        <summary class="cursor-pointer text-blue-400 mb-2">Cosign Verification (Advanced)</summary>
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <input type="text" id="imageRewrite" placeholder="Rewrite path (optional)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="text" id="imageCertIdentity" placeholder="Certificate Identity" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="text" id="imageCertIdentityRegexp" placeholder="Cert Identity Regexp" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="text" id="imageCertOIDCIssuer" placeholder="OIDC Issuer" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="text" id="imageCertOIDCIssuerRegexp" placeholder="OIDC Issuer Regexp" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <input type="text" id="imageCertGithubWorkflow" placeholder="GitHub Workflow Repo" class="bg-gray-900 border border-gray-700 rounded p-2">
+                            <label class="flex items-center col-span-2"><input type="checkbox" id="imageUseTlogVerify" class="mr-2">Use Transparency Log Verification</label>
+                        </div>
+                    </details>
+                    <button onclick="addImageDirectFromForm()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-plus mr-2"></i>Add Image to Store
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Output</h3>
+                    <pre id="imageOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96">Ready to add images...</pre>
+                </div>
+            </div>
+
+
+            <div id="store" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Store Management</h2>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold"><i class="fas fa-eye mr-2"></i>Store Preview</h3>
+                        <button onclick="refreshStoreInfo()" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                            <i class="fas fa-sync mr-2"></i>Refresh
+                        </button>
+                    </div>
+                    <pre id="storePreview" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-64">Loading...</pre>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4"><i class="fas fa-sync mr-2"></i>Sync Store</h3>
+                        <select id="syncManifest" class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                            <option value="">Select manifest...</option>
+                        </select>
+                        <input type="text" id="syncProducts" placeholder="Products (e.g. rancher=v2.10.1,rke2=v1.31.5+rke2r1)" 
+                               class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                        <input type="text" id="syncProductRegistry" placeholder="Product Registry (default: rgcrprod.azurecr.us)" 
+                               class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                        <select id="syncPlatform" class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                            <option value="all">All Platforms</option>
+                            <option value="linux/amd64">linux/amd64</option>
+                            <option value="linux/arm64">linux/arm64</option>
+                            <option value="linux/arm/v7">linux/arm/v7</option>
+                        </select>
+                        <select id="syncKey" class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                            <option value="">No Signature Verification</option>
+                        </select>
+                        <details class="mb-4">
+                            <summary class="cursor-pointer text-blue-400 mb-2">Advanced Options</summary>
+                            <div class="space-y-2 mt-2">
+                                <input type="text" id="syncRegistry" placeholder="Default Registry" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <input type="text" id="syncRewrite" placeholder="Rewrite Path" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <input type="text" id="syncCertIdentity" placeholder="Cert Identity" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <input type="text" id="syncCertIdentityRegexp" placeholder="Cert Identity Regexp" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <input type="text" id="syncCertOIDCIssuer" placeholder="OIDC Issuer" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <input type="text" id="syncCertOIDCIssuerRegexp" placeholder="OIDC Issuer Regexp" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <input type="text" id="syncCertGithubWorkflow" placeholder="GitHub Workflow Repo" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <label class="flex items-center"><input type="checkbox" id="syncUseTlogVerify" class="mr-2">Use Transparency Log</label>
+                            </div>
+                        </details>
+                        <button onclick="syncStore()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                            Sync from Manifest
+                        </button>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4"><i class="fas fa-save mr-2"></i>Save Store</h3>
+                        <input type="text" id="saveFilename" placeholder="haul.tar.zst" class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                        <select id="savePlatform" class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                            <option value="all">All Platforms</option>
+                            <option value="linux/amd64">linux/amd64</option>
+                            <option value="linux/arm64">linux/arm64</option>
+                            <option value="linux/arm/v7">linux/arm/v7</option>
+                        </select>
+                        <label class="flex items-center mb-4">
+                            <input type="checkbox" id="saveContainerd" class="mr-2">
+                            <span>Containerd Compatibility</span>
+                        </label>
+                        <button onclick="saveStore()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                            Save to Haul
+                        </button>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4"><i class="fas fa-upload mr-2"></i>Load Store</h3>
+                        <select id="loadHaul" class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-4">
+                            <option value="">Select haul...</option>
+                        </select>
+                        <button onclick="loadStore()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+                            Load from Haul
+                        </button>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4"><i class="fas fa-info-circle mr-2"></i>Store Info</h3>
+                        <button onclick="refreshStoreInfo()" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded mb-2">
+                            Refresh Store Info
+                        </button>
+                        <button onclick="clearStore()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                            <i class="fas fa-trash mr-2"></i>Clear Store
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-6 bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Output</h3>
+                    <pre id="storeOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96"></pre>
+                </div>
+            </div>
+
+            <div id="manifests" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Manifest Management</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Upload Manifest</h3>
+                    <input type="file" id="manifestFile" accept=".yaml,.yml" class="mb-4">
+                    <button onclick="uploadFile('manifest')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-upload mr-2"></i>Upload
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Available Manifests</h3>
+                    <div id="manifestList" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <div id="hauls" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Haul Management</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Upload Haul</h3>
+                    <input type="file" id="haulFile" accept=".tar.zst,.tar.gz,.tar" class="mb-4">
+                    <button onclick="uploadFile('haul')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-upload mr-2"></i>Upload
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Available Hauls</h3>
+                    <div id="haulList" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <div id="serve" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Serve Registry & FileServer</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-bold mb-2">Mode</label>
+                            <select id="serveMode" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <option value="registry">Registry (OCI)</option>
+                                <option value="fileserver">Fileserver (HTTP)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-2">Port</label>
+                            <input type="text" id="servePort" value="5000" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-bold mb-2">TLS Certificate</label>
+                            <select id="serveTLSCert" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <option value="">No TLS</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-2">TLS Key</label>
+                            <select id="serveTLSKey" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                                <option value="">No TLS</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-2">Timeout (Fileserver, sec)</label>
+                            <input type="number" id="serveTimeout" placeholder="60" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-2">Config File</label>
+                            <input type="text" id="serveConfig" placeholder="Optional" class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="serveReadonly" checked class="mr-2">
+                            <span>Readonly Mode (Registry only)</span>
+                        </label>
+                    </div>
+                    <div class="flex gap-4">
+                        <button onclick="startServe()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded">
+                            <i class="fas fa-play mr-2"></i>Start Server
+                        </button>
+                        <button onclick="stopServe()" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded">
+                            <i class="fas fa-stop mr-2"></i>Stop Server
+                        </button>
+                    </div>
+                    <div class="mt-6">
+                        <h3 class="text-xl font-bold mb-4">Server Status</h3>
+                        <pre id="serveOutput" class="bg-gray-900 p-4 rounded text-sm"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div id="settings" class="tab-content hidden p-8 pb-64">
+                <h2 class="text-3xl font-bold mb-6">Settings</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Helm Values Files</h3>
+                    <p class="text-gray-400 mb-4">Upload Helm values files for chart customization</p>
+                    <input type="file" id="valuesFile" accept=".yaml,.yml" class="mb-4">
+                    <button onclick="uploadValues()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-upload mr-2"></i>Upload Values File
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Signature Verification Keys</h3>
+                    <p class="text-gray-400 mb-4">Upload public keys for image signature verification (Cosign, GPG, etc.)</p>
+                    <input type="file" id="keyFile" accept=".pub,.pem,.key" class="mb-4">
+                    <button onclick="uploadKey()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-key mr-2"></i>Upload Key
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">TLS Certificates for Serve</h3>
+                    <p class="text-gray-400 mb-4">Upload TLS certificate and key files for secure registry/fileserver</p>
+                    <input type="file" id="tlsCertFile" accept=".crt,.pem,.cert,.key" class="mb-4">
+                    <button onclick="uploadTLSCert()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-upload mr-2"></i>Upload TLS Cert/Key
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">CA Certificate</h3>
+                    <p class="text-gray-400 mb-4">Upload a custom CA certificate for registry authentication</p>
+                    <input type="file" id="certFile" accept=".crt,.pem" class="mb-4">
+                    <button onclick="uploadCert()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-certificate mr-2"></i>Upload Certificate
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4 text-red-400">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>Danger Zone
+                    </h3>
+                    <p class="text-gray-400 mb-4">Reset the Hauler system to clean state. This clears the store but preserves uploaded files.</p>
+                    <button onclick="resetSystem()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-redo mr-2"></i>Reset Hauler System
+                    </button>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">System Output</h3>
+                    <pre id="settingsOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-64"></pre>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">About</h3>
+                    <p class="text-gray-400">Hauler UI Enhanced - Web interface for Rancher Government Hauler</p>
+                    <p class="text-gray-400 mt-2">With Interactive Content Selection</p>
+                </div>
+            </div>
+
+            <div id="logs" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Live Logs</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold">Command Output</h3>
+                        <button onclick="clearLogs()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm">
+                            <i class="fas fa-trash mr-2"></i>Clear
+                        </button>
+                    </div>
+                    <pre id="logOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto h-96 font-mono"></pre>
+                </div>
+            </div>
+
+            <div id="push" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Push to Private Registry</h2>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Configure Registry</h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <input type="text" id="registryName" placeholder="Registry Name (e.g. harbor-prod)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="text" id="registryURL" placeholder="Registry URL (e.g. harbor.company.com)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="text" id="registryUsername" placeholder="Username" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="password" id="registryPassword" placeholder="Password" class="bg-gray-900 border border-gray-700 rounded p-2">
+                    </div>
+                    <div class="mb-4">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="registryInsecure" class="mr-2">
+                            <span class="text-gray-400">Allow insecure connection (skip TLS verification)</span>
+                        </label>
+                    </div>
+                    <button onclick="configureRegistry()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-plus mr-2"></i>Add Registry
+                    </button>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Configured Registries</h3>
+                    <div id="registryList" class="space-y-2"></div>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Push Content</h3>
+                    <select id="pushRegistry" class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                        <option value="">Select registry...</option>
+                    </select>
+                    <input type="text" id="pushOnly" placeholder="Only copy specific items (optional)" 
+                           class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                    <label class="flex items-center mb-4">
+                        <input type="checkbox" id="pushPlainHTTP" class="mr-2">
+                        <span>Allow Plain HTTP</span>
+                    </label>
+                    <button onclick="pushToRegistry()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded">
+                        <i class="fas fa-upload mr-2"></i>Push All Content to Registry
+                    </button>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Output</h3>
+                    <pre id="pushOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96">Ready to push content...</pre>
+                </div>
+            </div>
+
+            <div id="files" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">File Management</h2>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Add File to Store</h3>
+                    <p class="text-gray-400 text-sm mb-4">Upload a local file or add from remote URL</p>
+                    
+                    <div class="mb-4">
+                        <label class="inline-flex items-center mr-6">
+                            <input type="radio" name="fileMode" value="upload" checked onchange="document.getElementById('uploadSection').classList.remove('hidden'); document.getElementById('urlSection').classList.add('hidden');">
+                            <span class="ml-2">Upload File</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="fileMode" value="url" onchange="document.getElementById('uploadSection').classList.add('hidden'); document.getElementById('urlSection').classList.remove('hidden');">
+                            <span class="ml-2">Remote URL</span>
+                        </label>
+                    </div>
+                    
+                    <div id="uploadSection" class="mb-4">
+                        <input type="file" id="fileToAdd" class="mb-2">
+                        <input type="text" id="fileNameUpload" placeholder="Custom name (optional)" 
+                               class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                    </div>
+                    
+                    <div id="urlSection" class="hidden mb-4">
+                        <input type="text" id="fileURL" placeholder="https://get.rke2.io/install.sh" 
+                               class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-2">
+                        <input type="text" id="fileName" placeholder="Custom name (optional)" 
+                               class="w-full bg-gray-900 border border-gray-700 rounded p-2">
+                    </div>
+                    
+                    <button onclick="addFileToStore()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-plus mr-2"></i>Add File
+                    </button>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Extract Store Contents</h3>
+                    <p class="text-gray-400 text-sm mb-4">Extract all store contents to disk</p>
+                    <input type="text" id="extractDir" placeholder="Output directory (default: extracted)" 
+                           class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-4">
+                    <button onclick="extractStore()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-download mr-2"></i>Extract Store
+                    </button>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">File Output</h3>
+                    <pre id="fileOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-64"></pre>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Extract Output</h3>
+                    <pre id="extractOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-64"></pre>
+                </div>
+            </div>
+
+            <div id="artifacts" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Artifact Management</h2>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold">Store Artifacts</h3>
+                        <button onclick="listArtifacts()" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                            <i class="fas fa-sync mr-2"></i>Refresh
+                        </button>
+                    </div>
+                    <p class="text-gray-400 text-sm mb-4">View and remove individual artifacts from the store</p>
+                    <div id="artifactList"></div>
+                </div>
+            </div>
+
+            <div id="auth" class="tab-content hidden p-8">
+                <h2 class="text-3xl font-bold mb-6">Registry Authentication</h2>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Login to Registry</h3>
+                    <p class="text-gray-400 text-sm mb-4">Authenticate to pull from private registries</p>
+                    <div class="grid grid-cols-3 gap-4 mb-4">
+                        <input type="text" id="loginRegistry" placeholder="Registry (e.g. docker.io)" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="text" id="loginUsername" placeholder="Username" class="bg-gray-900 border border-gray-700 rounded p-2">
+                        <input type="password" id="loginPassword" placeholder="Password" class="bg-gray-900 border border-gray-700 rounded p-2">
+                    </div>
+                    <button onclick="registryLogin()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Login
+                    </button>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6">
+                    <h3 class="text-xl font-bold mb-4">Logout from Registry</h3>
+                    <input type="text" id="logoutRegistry" placeholder="Registry (e.g. docker.io)" 
+                           class="w-full bg-gray-900 border border-gray-700 rounded p-2 mb-4">
+                    <button onclick="registryLogout()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h3 class="text-xl font-bold mb-4">Output</h3>
+                    <pre id="authOutput" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96"></pre>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
