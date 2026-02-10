@@ -18,3 +18,5 @@ services:
     restart: unless-stopped
     environment:
       - HAULER_STORE=/data/store
+      # Set to enable API key authentication (recommended for non-localhost deployments)
+      # - HAULER_UI_API_KEY=your-secret-key-here

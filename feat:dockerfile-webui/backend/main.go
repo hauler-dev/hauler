@@ -21,13 +21,24 @@ import (
 )
 
 var (
-	upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
+			host := r.Host
+			// Allow if origin matches the Host header
+			return strings.Contains(origin, host)
+		},
+	}
 	logMux   sync.Mutex
 	logLines []string
 	repos    = make(map[string]Repository)
 	reposMux sync.RWMutex
 	registries    = make(map[string]RegistryConfig)
 	registriesMux sync.RWMutex
+	apiKey string
 )
 
 type Repository struct {
@@ -113,10 +124,49 @@ func safePath(baseDir, fileName string) (string, error) {
 	return filepath.Join(baseDir, clean), nil
 }
 
+// authMiddleware checks for a valid API key when HAULER_UI_API_KEY is set.
+// When the env var is empty, authentication is disabled (open access).
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if apiKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Allow health check without auth
+		if r.URL.Path == "/api/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Only protect /api/ routes
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		auth := r.Header.Get("Authorization")
+		if auth == "Bearer "+apiKey {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Also check query parameter for WebSocket connections
+		if r.URL.Query().Get("api_key") == apiKey {
+			next.ServeHTTP(w, r)
+			return
+		}
+		respondError(w, "Unauthorized", http.StatusUnauthorized)
+	})
+}
+
 func main() {
+	apiKey = os.Getenv("HAULER_UI_API_KEY")
+	if apiKey != "" {
+		log.Println("API key authentication enabled")
+	} else {
+		log.Println("WARNING: No HAULER_UI_API_KEY set, API endpoints are unauthenticated")
+	}
+
 	loadRepositories()
 	loadRegistries()
-	
+
 	r := mux.NewRouter()
 
 	// Existing endpoints
@@ -175,7 +225,7 @@ func main() {
 	}))
 
 	log.Println("Starting Hauler UI on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Fatal(http.ListenAndServe(":8080", authMiddleware(r)))
 }
 
 func loadRepositories() {
@@ -1411,27 +1461,40 @@ func logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// redactArgs returns a copy of args with sensitive flag values replaced with "***".
+func redactArgs(args []string) []string {
+	redacted := make([]string, len(args))
+	copy(redacted, args)
+	for i := 0; i < len(redacted); i++ {
+		if (redacted[i] == "--password" || redacted[i] == "-p") && i+1 < len(redacted) {
+			redacted[i+1] = "***"
+		}
+	}
+	return redacted
+}
+
 func executeHauler(command string, args ...string) (string, error) {
 	fullArgs := append([]string{command}, args...)
 	cmd := exec.Command("hauler", fullArgs...)
 	env := append(os.Environ(), "HAULER_STORE=/data/store")
-	
+
 	// Add CA certificate if it exists
 	if _, err := os.Stat("/data/config/ca-cert.crt"); err == nil {
 		env = append(env, "SSL_CERT_FILE=/data/config/ca-cert.crt")
 	}
 	cmd.Env = env
-	
+
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
-	
+
+	safeArgs := redactArgs(fullArgs)
 	logMux.Lock()
-	logLines = append(logLines, fmt.Sprintf("[%s] hauler %s: %s", time.Now().Format("15:04:05"), strings.Join(fullArgs, " "), outputStr))
+	logLines = append(logLines, fmt.Sprintf("[%s] hauler %s: %s", time.Now().Format("15:04:05"), strings.Join(safeArgs, " "), outputStr))
 	if len(logLines) > 1000 {
 		logLines = logLines[len(logLines)-1000:]
 	}
 	logMux.Unlock()
-	
+
 	return outputStr, err
 }
 

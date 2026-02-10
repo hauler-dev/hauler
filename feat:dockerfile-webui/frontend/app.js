@@ -1,5 +1,6 @@
 let ws;
 let manifestContent = [];
+let apiKeyToken = sessionStorage.getItem('hauler_api_key') || '';
 
 function escapeHTML(str) {
     if (typeof str !== 'string') return str;
@@ -24,14 +25,41 @@ function showTab(tabName, evt) {
     if (tabName === 'manifest-builder') updateManifestPreview();
 }
 
+function getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKeyToken) headers['Authorization'] = 'Bearer ' + apiKeyToken;
+    return headers;
+}
+
+function authFetch(url, options = {}) {
+    if (apiKeyToken) {
+        options.headers = options.headers || {};
+        options.headers['Authorization'] = 'Bearer ' + apiKeyToken;
+    }
+    return fetch(url, options);
+}
+
 async function apiCall(endpoint, method = 'GET', body = null) {
     try {
-        const options = { method, headers: { 'Content-Type': 'application/json' } };
+        const options = { method, headers: getAuthHeaders() };
         if (body) options.body = JSON.stringify(body);
         const res = await fetch(`/api/${endpoint}`, options);
+        if (res.status === 401) {
+            promptForApiKey();
+            return { success: false, error: 'Authentication required' };
+        }
         return res.json();
     } catch (err) {
         return { success: false, error: err.message || 'Network error' };
+    }
+}
+
+function promptForApiKey() {
+    const key = prompt('API Key Required.\n\nEnter the HAULER_UI_API_KEY to access this instance:');
+    if (key) {
+        apiKeyToken = key;
+        sessionStorage.setItem('hauler_api_key', key);
+        location.reload();
     }
 }
 
@@ -280,7 +308,7 @@ async function loadRepositories() {
 
 async function removeRepository(name) {
     if (!confirm(`Remove repository ${name}?`)) return;
-    await fetch(`/api/repos/remove/${name}`, { method: 'DELETE' });
+    await authFetch(`/api/repos/remove/${name}`, { method: 'DELETE' });
     loadRepositories();
 }
 
@@ -372,7 +400,7 @@ async function saveManifestFile() {
     formData.append('file', blob, filename);
     formData.append('type', 'manifest');
     
-    const res = await fetch('/api/files/upload', { method: 'POST', body: formData });
+    const res = await authFetch('/api/files/upload', { method: 'POST', body: formData });
     const data = await res.json();
     alert(data.output || data.error);
 }
@@ -442,7 +470,7 @@ async function uploadFile(type) {
     formData.append('file', file);
     formData.append('type', type);
     
-    const res = await fetch('/api/files/upload', { method: 'POST', body: formData });
+    const res = await authFetch('/api/files/upload', { method: 'POST', body: formData });
     const data = await res.json();
     alert(data.output || data.error);
     loadFileList(type);
@@ -474,7 +502,7 @@ async function loadFileList(type) {
 async function deleteFile(filename, type) {
     if (!confirm(`⚠️ WARNING: Delete ${filename}?\n\nThis action cannot be undone.`)) return;
     
-    const res = await fetch(`/api/files/delete/${encodeURIComponent(filename)}?type=${type}`, { method: 'DELETE' });
+    const res = await authFetch(`/api/files/delete/${encodeURIComponent(filename)}?type=${type}`, { method: 'DELETE' });
     const data = await res.json();
     
     if (data.success) {
@@ -576,7 +604,7 @@ async function loadRegistries() {
 
 async function removeRegistry(name) {
     if (!confirm(`Remove registry ${name}?`)) return;
-    await fetch(`/api/registry/remove/${name}`, { method: 'DELETE' });
+    await authFetch(`/api/registry/remove/${name}`, { method: 'DELETE' });
     loadRegistries();
 }
 
@@ -631,7 +659,7 @@ async function addFileToStore() {
         if (name) formData.append('name', name);
 
         outputEl.textContent = 'Uploading file...';
-        const res = await fetch('/api/store/add-file', {method: 'POST', body: formData});
+        const res = await authFetch('/api/store/add-file', {method: 'POST', body: formData});
         data = await res.json();
         outputEl.textContent = data.output || data.error;
     }
@@ -674,7 +702,7 @@ async function listArtifacts() {
 async function removeArtifact(artifact) {
     if (!confirm(`⚠️ Remove ${artifact}?\n\nThis cannot be undone.`)) return;
     
-    const res = await fetch(`/api/store/remove/${encodeURIComponent(artifact)}?force=true`, {method: 'DELETE'});
+    const res = await authFetch(`/api/store/remove/${encodeURIComponent(artifact)}?force=true`, {method: 'DELETE'});
     const data = await res.json();
     
     alert(data.success ? '✅ Removed' : `❌ ${data.error}`);
@@ -714,7 +742,7 @@ async function uploadKey() {
     const formData = new FormData();
     formData.append('key', file);
     
-    const res = await fetch('/api/key/upload', {method: 'POST', body: formData});
+    const res = await authFetch('/api/key/upload', {method: 'POST', body: formData});
     const data = await res.json();
     alert(data.output || data.error);
     loadKeys();
@@ -740,7 +768,7 @@ async function uploadTLSCert() {
     const formData = new FormData();
     formData.append('cert', file);
     
-    const res = await fetch('/api/tlscert/upload', {method: 'POST', body: formData});
+    const res = await authFetch('/api/tlscert/upload', {method: 'POST', body: formData});
     const data = await res.json();
     alert(data.output || data.error);
     loadTLSCerts();
@@ -766,7 +794,7 @@ async function uploadValues() {
     const formData = new FormData();
     formData.append('values', file);
     
-    const res = await fetch('/api/values/upload', {method: 'POST', body: formData});
+    const res = await authFetch('/api/values/upload', {method: 'POST', body: formData});
     const data = await res.json();
     alert(data.output || data.error);
     loadValues();
@@ -788,7 +816,7 @@ async function uploadCert() {
     const formData = new FormData();
     formData.append('cert', file);
     
-    const res = await fetch('/api/cert/upload', { method: 'POST', body: formData });
+    const res = await authFetch('/api/cert/upload', { method: 'POST', body: formData });
     const data = await res.json();
     alert(data.output || data.error);
 }
@@ -822,7 +850,11 @@ async function updateServerStatus() {
 
 function connectWebSocket() {
     if (ws) return;
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/logs`);
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = apiKeyToken
+        ? `${wsProto}//${location.host}/api/logs?api_key=${encodeURIComponent(apiKeyToken)}`
+        : `${wsProto}//${location.host}/api/logs`;
+    ws = new WebSocket(wsUrl);
     ws.onmessage = (e) => {
         document.getElementById('logOutput').textContent += e.data + '\n';
     };
