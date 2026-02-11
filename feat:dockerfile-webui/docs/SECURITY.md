@@ -12,15 +12,20 @@
 - No direct shell execution
 - Hauler CLI called via exec.Command (safe)
 - Arguments properly escaped
+- `redactArgs()` masks `--password`/`-p` values before writing to log buffer
+- Registry list masks stored passwords as `***`
 - Environment variables controlled
 
 ### 3. API Security
-- CORS configured for same-origin
-- Content-Type validation
-- Request size limits
+- Optional API key authentication via `HAULER_UI_API_KEY` env var
+- Bearer token validation on all `/api/*` routes (except `/api/health`)
+- Query param fallback (`?api_key=`) for WebSocket connections
+- Content-Type `application/json` set on all JSON responses
 - Error messages don't leak sensitive info
 
 ### 4. File System Security
+- `safePath()` calls `filepath.Base()` on all user-supplied filenames before `filepath.Join`
+- Rejects `..`, `.`, and empty filenames
 - Restricted write paths (/data only)
 - Proper file permissions (0755 dirs, 0644 files)
 - No symbolic link following
@@ -34,12 +39,11 @@
 ## Security Best Practices
 
 ### Container Security
-```dockerfile
-# Run as non-root (enhancement)
-RUN adduser -D -u 1000 hauler
-USER hauler
+```
+Docker Hardened Images (DHI) — non-root runtime, no shell in production image.
+Init container (init-permissions) fixes bind-mount permissions before main container starts.
 
-# Read-only root filesystem (enhancement)
+# Read-only root filesystem (optional enhancement)
 docker run --read-only \
   --tmpfs /tmp \
   -v ./data:/data \
@@ -89,15 +93,20 @@ go list -u -m all
 ## Security Checklist
 
 - [x] No hardcoded credentials
-- [x] Input validation on all endpoints
-- [x] Safe command execution
-- [x] Path traversal prevention
+- [x] Input validation on all endpoints (json.Decode error checks)
+- [x] Safe command execution (exec.Command, no shell)
+- [x] Path traversal prevention (safePath with filepath.Base)
+- [x] XSS prevention (escapeHTML + escapeAttr in frontend)
 - [x] File upload limits
-- [x] Proper error handling
+- [x] Proper error handling (io.Copy checks)
 - [x] Secure file permissions
-- [x] CORS configuration
+- [x] Content-Type headers on all JSON responses
+- [x] API key authentication (HAULER_UI_API_KEY)
+- [x] Credential redaction in logs (redactArgs)
+- [x] WebSocket origin validation (CheckOrigin)
+- [x] Docker Hardened Images (non-root, no shell)
+- [x] Certificate validation (PEM + x509 parsing)
 - [ ] Rate limiting (enhancement)
-- [ ] Authentication (enhancement)
 - [ ] Audit logging (enhancement)
 - [ ] TLS/HTTPS (enhancement)
 
@@ -111,12 +120,10 @@ go list -u -m all
 5. **CSRF**: Same-origin policy
 
 ### Potential Enhancements
-1. **Authentication**: Add user login
-2. **Authorization**: Role-based access control
-3. **Rate Limiting**: Prevent abuse
-4. **Audit Logging**: Track all operations
-5. **TLS**: Encrypt traffic
-6. **API Keys**: Secure API access
+1. **Authorization**: Role-based access control
+2. **Rate Limiting**: Prevent abuse
+3. **Audit Logging**: Track all operations
+4. **TLS**: Encrypt traffic
 
 ## Incident Response
 
@@ -180,9 +187,9 @@ go mod tidy
 
 ### Update Base Image
 ```dockerfile
-# Use specific versions
-FROM golang:1.21.5-alpine AS builder
-FROM alpine:3.19
+# Uses Docker Hardened Images (DHI)
+FROM dhi.io/golang:1-alpine3.21-dev AS builder
+FROM dhi.io/golang:1-alpine3.21
 ```
 
 ## Reporting Security Issues

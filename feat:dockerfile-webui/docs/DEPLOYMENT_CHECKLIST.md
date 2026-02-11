@@ -5,7 +5,7 @@
 ### System Requirements
 - [ ] Docker installed (20.10+)
 - [ ] Docker Compose installed (2.0+)
-- [ ] Ports 8080 and 5000 available
+- [ ] Ports 8080, 5000, and 8081 available
 - [ ] Minimum 2GB RAM
 - [ ] Minimum 10GB disk space
 
@@ -13,7 +13,7 @@
 ```bash
 docker --version
 docker-compose --version
-netstat -tuln | grep -E '8080|5000'
+netstat -tuln | grep -E '8080|5000|8081'
 df -h
 ```
 
@@ -32,9 +32,11 @@ make build
 ```bash
 make run
 ```
-- [ ] Container starts successfully
+- [ ] `init-permissions` container runs and exits successfully
+- [ ] `hauler-ui` container starts after init completes
 - [ ] No error messages in logs
 - [ ] Health check passes
+- [ ] Data directories are writable inside the container
 
 ### Step 3: Verify
 ```bash
@@ -121,6 +123,10 @@ rm test.yaml
 - [ ] CORS configured correctly
 - [ ] No sensitive data in errors
 - [ ] File paths validated
+- [ ] API key authentication works when `HAULER_UI_API_KEY` is set
+- [ ] Unauthenticated requests to `/api/*` return 401
+- [ ] `/api/health` remains open without auth
+- [ ] Credentials are redacted in log output
 
 ## Performance Testing
 
@@ -182,8 +188,9 @@ curl http://localhost:5000/v2/_catalog
 
 ### Configuration
 - [ ] Review docker-compose.yml
-- [ ] Set appropriate ports
+- [ ] Set appropriate ports (8080, 5000, 8081)
 - [ ] Configure volumes
+- [ ] Set `HAULER_UI_API_KEY` for non-localhost deployments
 - [ ] Set environment variables
 - [ ] Review resource limits
 

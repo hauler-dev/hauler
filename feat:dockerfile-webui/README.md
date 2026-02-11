@@ -4,7 +4,8 @@
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 ![Go](https://img.shields.io/badge/go-1.21-00ADD8)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED)
-![Security](https://img.shields.io/badge/security-hardening%20in%20progress-yellow)
+![Security](https://img.shields.io/badge/security-hardened-brightgreen)
+![Docker Hardened Images](https://img.shields.io/badge/Docker-Hardened%20Images-blue?logo=docker&logoColor=white)
 
 **A modern, feature-complete web interface for [Rancher Government Hauler](https://hauler.dev) with 100% CLI flag coverage.**
 
@@ -37,7 +38,7 @@ Hauler UI provides a comprehensive web-based interface for Hauler, the airgap Sw
 - 🔒 **Airgap Ready** - All assets bundled, no external dependencies
 - 🐳 **Docker Native** - Single container deployment
 - 📦 **Interactive Content Selection** - Browse and select charts/images visually
-- 🔐 **Security Focused** - Obfuscated JavaScript, security hardening in progress
+- 🔐 **Security Hardened** - API key auth, path traversal protection, XSS prevention, credential redaction, WebSocket origin validation
 
 ---
 
@@ -103,15 +104,33 @@ Hauler UI provides a comprehensive web-based interface for Hauler, the airgap Sw
 ### Installation
 
 ```bash
-# Clone repository
-git clone https://gitlab.com/your-org/hauler-ui.git
-cd hauler-ui
+# Clone repository and enter the web UI directory
+git clone https://github.com/hauler-dev/hauler.git
+cd hauler/feat:dockerfile-webui
 
-# Start the application
-docker compose up -d
+# Build and start (pre-creates data dirs + init container fixes permissions)
+make build
+make run
 
 # Access the UI
 open http://localhost:8080
+```
+
+### Ports
+
+| Port | Service |
+|------|---------|
+| 8080 | Web UI |
+| 5000 | OCI Registry (when serving) |
+| 8081 | File Server (when serving) |
+
+### API Authentication (optional)
+
+Set `HAULER_UI_API_KEY` in `docker-compose.yml` to require a Bearer token on all API calls:
+
+```yaml
+environment:
+  - HAULER_UI_API_KEY=your-secret-key-here
 ```
 
 ### First Steps
@@ -140,41 +159,56 @@ open http://localhost:8080
 
 ### System Architecture
 
+```mermaid
+graph TB
+    subgraph Compose["Docker Compose"]
+        INIT["init-permissions<br/>alpine:3.21<br/>fixes volume permissions"] -->|runs first| UI
+        subgraph UI["hauler-ui Container — non-root, DHI"]
+            subgraph App["/app"]
+                BE["Go Backend<br/>gorilla/mux, 37 endpoints"]
+                FE["/app/frontend<br/>HTML, JS, Tailwind, FontAwesome"]
+            end
+            BE -->|serves| FE
+            BE -->|exec.Command| HAULER["/usr/local/bin/hauler"]
+        end
+    end
+
+    Browser["Browser :8080"] -->|HTTP/WS| BE
+    HAULER -->|Read/Write| V1["/data/store"]
+    HAULER -->|Serve :5000| REG["OCI Registry"]
+    HAULER -->|Serve :8081| FS["File Server"]
+
+    subgraph Volumes["Bind-Mounted Volumes"]
+        V1["/data/store"]
+        V2["/data/manifests"]
+        V3["/data/hauls"]
+        V4["/data/config"]
+        V5["/data/extracted"]
+    end
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Browser (Client)                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │   HTML/CSS   │  │  JavaScript  │  │  WebSocket   │  │
-│  │  (Tailwind)  │  │ (Obfuscated) │  │  (Live Logs) │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                            ↓ HTTP/WS
-┌─────────────────────────────────────────────────────────┐
-│              Go Backend (Gorilla Mux)                    │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  37 API Endpoints                                │   │
-│  │  - Store Management    - Registry Operations    │   │
-│  │  - Repository Mgmt     - File Operations        │   │
-│  │  - Authentication      - Serve Control          │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                            ↓ exec
-┌─────────────────────────────────────────────────────────┐
-│                   Hauler CLI Binary                      │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  - store add/sync/save/load                      │   │
-│  │  - store copy/serve/extract                      │   │
-│  │  - login/logout                                  │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────┐
-│                  Persistent Storage                      │
-│  /data/store      - OCI artifact store                  │
-│  /data/manifests  - Hauler manifests                    │
-│  /data/hauls      - Compressed hauls                    │
-│  /data/config     - Keys, certs, values                 │
-└─────────────────────────────────────────────────────────┘
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant A as authMiddleware
+    participant H as Handler
+    participant S as safePath
+    participant E as executeHauler
+    participant C as hauler CLI
+
+    B->>A: fetch /api/... + Bearer token
+    A->>A: Validate API key
+    A->>H: Route to handler
+    H->>H: json.Decode — reject malformed
+    H->>S: safePath — strip path traversal
+    H->>E: executeHauler
+    E->>E: redactArgs — mask passwords
+    E->>C: exec.Command hauler args
+    C-->>E: stdout + stderr
+    E-->>H: output, error
+    H-->>B: JSON response
 ```
 
 ### Technology Stack
@@ -186,14 +220,14 @@ open http://localhost:8080
 - Hauler CLI integration
 
 **Frontend:**
-- Vanilla JavaScript (obfuscated)
+- Vanilla JavaScript (obfuscated in build)
 - Tailwind CSS 3.x
 - Font Awesome 6.x
 - WebSocket client
 
 **Infrastructure:**
-- Docker multi-stage builds
-- Alpine Linux base
+- Docker Hardened Images (DHI) — multi-stage build, non-root runtime
+- Init container for bind-mount permissions
 - Persistent volumes
 - Health checks
 
@@ -203,48 +237,25 @@ open http://localhost:8080
 
 ### Current Status
 
-**Version:** v3.3.5  
-**Security Level:** 🟡 Hardening in Progress
+**Version:** v3.3.5
+**Security Level:** 🟢 Hardened
 
-### Implemented Security Features
+### Security Features
 
-✅ **JavaScript Obfuscation**
-- Control flow flattening
-- Dead code injection
-- String array encoding (base64)
-- Compact output
+| Feature | Implementation |
+|---------|---------------|
+| **API Authentication** | Optional API key via `HAULER_UI_API_KEY` env var. Bearer token on all `/api/*` routes. |
+| **Path Traversal Protection** | `safePath()` calls `filepath.Base()` on every user-supplied filename. Rejects `..`, `.`, empty. |
+| **XSS Prevention** | `escapeHTML()` for innerHTML, `escapeAttr()` for onclick/attribute contexts. |
+| **Credential Redaction** | `redactArgs()` masks `--password`/`-p` values in logs. Registry list masks passwords as `***`. |
+| **WebSocket Origin Validation** | `CheckOrigin` validates Origin header matches the request Host. |
+| **Input Validation** | All `json.Decode` calls check errors (400). All `io.Copy` calls check errors (500). |
+| **Content-Type Headers** | `application/json` set on every JSON response. |
+| **Certificate Validation** | CA cert uploads validated as proper PEM with x509 parsing. |
+| **JS Obfuscation** | Control flow flattening, dead code injection, string array encoding (base64). |
+| **Container Hardening** | Docker Hardened Images, non-root runtime, no shell in production image. |
 
-✅ **Secure Defaults**
-- Read-only registry mode by default
-- File permissions (0600 for sensitive files)
-- No external CDN dependencies
-
-✅ **Container Security**
-- Non-root user (planned)
-- Minimal Alpine base
-- No unnecessary packages
-
-### Known Security Findings
-
-See [docs/agents/32_SECURITY_SCAN_V3.3.5.md](docs/agents/32_SECURITY_SCAN_V3.3.5.md) for complete security assessment.
-
-**HIGH Priority (In Remediation):**
-- H-1: Command injection protection needed
-- H-2: Credential encryption required
-
-**MEDIUM Priority (Planned):**
-- M-1: Authentication system
-- M-2: Path traversal protection
-- M-3: Input validation
-- M-4: API rate limiting
-
-### Security Roadmap
-
-**Sprint 1 (Week 1):** Critical fixes (H-1, H-2)  
-**Sprint 2 (Week 2):** Medium priority fixes (M-1 through M-4)  
-**Sprint 3 (Week 3):** Verification and hardening  
-
-**Target:** v3.4.0 (Security Hardened Release)
+See [docs/SECURITY.md](docs/SECURITY.md) for full details.
 
 ---
 
@@ -278,9 +289,10 @@ hauler-ui/
 │   ├── cleanup.sh        # Development cleanup
 │   ├── obfuscate.sh      # Manual JS obfuscation
 │   └── qa-dependencies.sh  # Dependency validation
-├── Dockerfile            # Multi-stage build with obfuscation
+├── Dockerfile            # Multi-stage build with DHI + obfuscation
 ├── Dockerfile.security   # Security scanning container
-├── docker-compose.yml
+├── docker-compose.yml    # Includes init-permissions service
+├── Makefile              # build, run, stop, clean, logs, restart, shell
 └── README.md
 ```
 
@@ -484,12 +496,14 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## 🗺️ Roadmap
 
-### v3.4.0 (Security Hardened) - Q1 2026
-- ✅ Input sanitization
-- ✅ Credential encryption
-- ✅ Authentication system
-- ✅ Path validation
-- ✅ Security scan passing
+### v3.3.5 (Security Hardened) - Current
+- ✅ Input sanitization and XSS prevention
+- ✅ Credential redaction in logs
+- ✅ API key authentication
+- ✅ Path traversal protection
+- ✅ WebSocket origin validation
+- ✅ Docker Hardened Images
+- ✅ Bind-mount permission handling
 
 ### v3.5.0 (Enhanced Features) - Q2 2026
 - 🔄 RBAC (Role-Based Access Control)
