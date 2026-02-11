@@ -4,6 +4,7 @@ build:
 	docker-compose build
 
 run:
+	@mkdir -p data/store data/manifests data/hauls data/config data/extracted
 	docker-compose up -d
 
 stop:
