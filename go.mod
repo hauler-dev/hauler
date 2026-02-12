@@ -2,7 +2,7 @@ module hauler.dev/go/hauler
 
 go 1.25.5
 
-replace github.com/sigstore/cosign/v3 => github.com/hauler-dev/cosign/v3 v3.0.5-0.20260212184020-343fe76f71c3
+replace github.com/sigstore/cosign/v3 => github.com/hauler-dev/cosign/v3 v3.0.5-0.20260212234448-00b85d677dfc
 
 replace github.com/distribution/distribution/v3 => github.com/distribution/distribution/v3 v3.0.0-20221208165359-362910506bc2
 
