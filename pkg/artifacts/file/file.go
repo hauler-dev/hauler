@@ -6,6 +6,7 @@ import (
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/pkg/artifacts"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -89,6 +90,13 @@ func (f *File) compute() error {
 	if err != nil {
 		return err
 	}
+
+	// Manually preserve the Title annotation from the layer
+	// The layer was created with this annotation in getter.LayerFrom
+	if layer.Annotations == nil {
+		layer.Annotations = make(map[string]string)
+	}
+	layer.Annotations[ocispec.AnnotationTitle] = f.client.Name(f.Path)
 
 	cfg := f.client.Config(f.Path)
 	if cfg == nil {

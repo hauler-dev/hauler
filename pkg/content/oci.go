@@ -17,14 +17,12 @@ import (
 	"github.com/containerd/containerd/remotes"
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/target"
 
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/reference"
 )
 
-var _ target.Target = (*OCI)(nil)
+var _ Target = (*OCI)(nil)
 
 type OCI struct {
 	root    string
@@ -91,12 +89,18 @@ func (o *OCI) LoadIndex() error {
 			return err
 		}
 
+		// Set default kind if missing
+		kind := desc.Annotations[consts.KindAnnotationName]
+		if kind == "" {
+			kind = consts.KindAnnotationImage
+		}
+
 		if strings.TrimSpace(key.String()) != "--" {
 			switch key.(type) {
 			case name.Digest:
-				o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), desc.Annotations[consts.KindAnnotationName]), desc)
+				o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), kind), desc)
 			case name.Tag:
-				o.nameMap.Store(fmt.Sprintf("%s-%s", key.String(), desc.Annotations[consts.KindAnnotationName]), desc)
+				o.nameMap.Store(fmt.Sprintf("%s-%s", key.String(), kind), desc)
 			}
 		}
 	}
@@ -152,16 +156,16 @@ func (o *OCI) SaveIndex() error {
 // While the name may differ from ref, it should itself be a valid ref.
 //
 // If the resolution fails, an error will be returned.
-func (o *OCI) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
+func (o *OCI) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error) {
 	if err := o.LoadIndex(); err != nil {
-		return "", ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, err
 	}
 	d, ok := o.nameMap.Load(ref)
 	if !ok {
-		return "", ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("reference %s not found", ref)
 	}
-	desc = d.(ocispec.Descriptor)
-	return ref, desc, nil
+	desc := d.(ocispec.Descriptor)
+	return desc, nil
 }
 
 // Fetcher returns a new fetcher for the provided reference.
@@ -287,7 +291,13 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 			if err := p.oci.LoadIndex(); err != nil {
 				return nil, err
 			}
-			p.oci.nameMap.Store(p.ref, d)
+			// Use compound key format: "reference-kind"
+			kind := d.Annotations[consts.KindAnnotationName]
+			if kind == "" {
+				kind = consts.KindAnnotationImage
+			}
+			key := fmt.Sprintf("%s-%s", p.ref, kind)
+			p.oci.nameMap.Store(key, d)
 			if err := p.oci.SaveIndex(); err != nil {
 				return nil, err
 			}
@@ -301,7 +311,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 
 	if _, err := os.Stat(blobPath); err == nil {
 		// file already exists, discard (but validate digest)
-		return content.NewIoContentWriter(io.Discard, content.WithOutputHash(d.Digest)), nil
+		return NewIoContentWriter(nopCloser{io.Discard}, WithOutputHash(d.Digest.String())), nil
 	}
 
 	f, err := os.Create(blobPath)
@@ -309,10 +319,25 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 		return nil, err
 	}
 
-	w := content.NewIoContentWriter(f, content.WithInputHash(d.Digest), content.WithOutputHash(d.Digest))
+	w := NewIoContentWriter(f, WithInputHash(d.Digest.String()), WithOutputHash(d.Digest.String()))
 	return w, nil
 }
 
 func (o *OCI) RemoveFromIndex(ref string) {
 	o.nameMap.Delete(ref)
 }
+
+// ResolvePath returns the absolute path for a given relative path within the OCI root
+func (o *OCI) ResolvePath(elem string) string {
+	if elem == "" {
+		return o.root
+	}
+	return filepath.Join(o.root, elem)
+}
+
+// nopCloser wraps an io.Writer to implement io.WriteCloser
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error { return nil }

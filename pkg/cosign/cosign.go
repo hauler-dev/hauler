@@ -13,9 +13,9 @@ import (
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/artifacts/image"
 	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
-	"oras.land/oras-go/pkg/content"
 )
 
 // VerifySignature verifies the digital signature of a file using Sigstore/Cosign.

@@ -8,13 +8,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/containerd/containerd/remotes"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/errgroup"
-	"oras.land/oras-go/pkg/oras"
-	"oras.land/oras-go/pkg/target"
 
 	"hauler.dev/go/hauler/pkg/artifacts"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -172,14 +171,100 @@ func (l *Layout) Flush(ctx context.Context) error {
 
 // Copy will copy a given reference to a given target.Target
 //
-//	This is essentially a wrapper around oras.Copy, but locked to this content store
-func (l *Layout) Copy(ctx context.Context, ref string, to target.Target, toRef string) (ocispec.Descriptor, error) {
-	return oras.Copy(ctx, l.OCI, ref, to, toRef,
-		oras.WithAdditionalCachedMediaTypes(consts.DockerManifestSchema2, consts.DockerManifestListSchema2))
+//	This is essentially a replacement for oras.Copy, custom implementation for content stores
+func (l *Layout) Copy(ctx context.Context, ref string, to content.Target, toRef string) (ocispec.Descriptor, error) {
+	// Resolve the source descriptor
+	desc, err := l.OCI.Resolve(ctx, ref)
+	if err != nil {
+		return ocispec.Descriptor{}, fmt.Errorf("failed to resolve reference: %w", err)
+	}
+
+	// Get fetcher and pusher
+	fetcher, err := l.OCI.Fetcher(ctx, ref)
+	if err != nil {
+		return ocispec.Descriptor{}, fmt.Errorf("failed to get fetcher: %w", err)
+	}
+
+	pusher, err := to.Pusher(ctx, toRef)
+	if err != nil {
+		return ocispec.Descriptor{}, fmt.Errorf("failed to get pusher: %w", err)
+	}
+
+	// Fetch the manifest
+	rc, err := fetcher.Fetch(ctx, desc)
+	if err != nil {
+		return ocispec.Descriptor{}, fmt.Errorf("failed to fetch manifest: %w", err)
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return ocispec.Descriptor{}, fmt.Errorf("failed to read manifest: %w", err)
+	}
+
+	// Handle different media types
+	switch desc.MediaType {
+	case ocispec.MediaTypeImageManifest, consts.DockerManifestSchema2:
+		var manifest ocispec.Manifest
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
+		}
+
+		// Copy config
+		if err := l.copyDescriptor(ctx, manifest.Config, fetcher, pusher); err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("failed to copy config: %w", err)
+		}
+
+		// Copy layers
+		for _, layer := range manifest.Layers {
+			if err := l.copyDescriptor(ctx, layer, fetcher, pusher); err != nil {
+				return ocispec.Descriptor{}, fmt.Errorf("failed to copy layer: %w", err)
+			}
+		}
+
+	case ocispec.MediaTypeImageIndex, consts.DockerManifestListSchema2:
+		var index ocispec.Index
+		if err := json.Unmarshal(data, &index); err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("failed to unmarshal index: %w", err)
+		}
+
+		// Copy each manifest in the index
+		for _, manifest := range index.Manifests {
+			if err := l.copyDescriptor(ctx, manifest, fetcher, pusher); err != nil {
+				return ocispec.Descriptor{}, fmt.Errorf("failed to copy manifest: %w", err)
+			}
+		}
+	}
+
+	return desc, nil
 }
 
-// CopyAll performs bulk copy operations on the stores oci layout to a provided target.Target
-func (l *Layout) CopyAll(ctx context.Context, to target.Target, toMapper func(string) (string, error)) ([]ocispec.Descriptor, error) {
+// copyDescriptor copies a single descriptor from source to target
+func (l *Layout) copyDescriptor(ctx context.Context, desc ocispec.Descriptor, fetcher remotes.Fetcher, pusher remotes.Pusher) error {
+	// Fetch the content
+	rc, err := fetcher.Fetch(ctx, desc)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	// Get a writer from the pusher
+	writer, err := pusher.Push(ctx, desc)
+	if err != nil {
+		return err
+	}
+	defer writer.Close()
+
+	// Copy the content
+	if _, err := io.Copy(writer, rc); err != nil {
+		return err
+	}
+
+	return writer.Close()
+}
+
+// CopyAll performs bulk copy operations on the stores oci layout to a provided target
+func (l *Layout) CopyAll(ctx context.Context, to content.Target, toMapper func(string) (string, error)) ([]ocispec.Descriptor, error) {
 	var descs []ocispec.Descriptor
 	err := l.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
 		toRef := ""
