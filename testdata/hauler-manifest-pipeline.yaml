@@ -34,6 +34,9 @@ spec:
       version: 1.0.4
     - name: rancher-cluster-templates-0.5.2.tgz
       repoURL: testdata
+    - name: chart-with-file-dependency-chart-1.0.0.tgz
+      repoURL: testdata
+      add-dependencies: true
 ---
 apiVersion: content.hauler.cattle.io/v1
 kind: Files

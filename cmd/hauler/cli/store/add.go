@@ -520,8 +520,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			var err error
 
 			if strings.HasPrefix(dep.Repository, "file://") {
-				depPath := strings.TrimPrefix(dep.Repository, "file://")
-				subchartPath := filepath.Join(chartPath, depPath)
+				subchartPath := filepath.Join(chartPath, "charts", dep.Name)
 
 				depCfg = v1.Chart{Name: subchartPath, RepoURL: "", Version: ""}
 				depOpts.ChartOpts.RepoURL = ""
