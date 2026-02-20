@@ -25,6 +25,7 @@ import (
 	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/reference"
+	"hauler.dev/go/hauler/pkg/retry"
 	"hauler.dev/go/hauler/pkg/store"
 )
 
@@ -52,7 +53,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 	}
 
 	l.Infof("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
-	_, err = s.AddOCI(ctx, f, ref.Name())
+	_, err = s.AddArtifact(ctx, f, ref.Name())
 	if err != nil {
 		return err
 	}
@@ -73,7 +74,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	// Check if the user provided a key.
 	if o.Key != "" {
 		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, s, o.Key, o.Tlog, cfg.Name, rso, ro)
+		err := cosign.VerifySignature(ctx, o.Key, o.Tlog, cfg.Name, rso, ro)
 		if err != nil {
 			return err
 		}
@@ -81,7 +82,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	} else if o.CertIdentityRegexp != "" || o.CertIdentity != "" {
 		// verify signature using keyless details
 		l.Infof("verifying keyless signature for [%s]", cfg.Name)
-		err := cosign.VerifyKeylessSignature(ctx, s, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, o.Tlog, cfg.Name, rso, ro)
+		err := cosign.VerifyKeylessSignature(ctx, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, o.Tlog, cfg.Name, rso, ro)
 		if err != nil {
 			return err
 		}
@@ -114,8 +115,10 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
-	// copy and sig verification
-	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
+	// fetch image along with any associated signatures and attestations
+	err = retry.Operation(ctx, rso, ro, func() error {
+		return s.AddImage(ctx, r.Name(), platform)
+	})
 	if err != nil {
 		if ro.IgnoreErrors {
 			l.Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
@@ -349,7 +352,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		return err
 	}
 
-	if _, err := s.AddOCI(ctx, chrt, ref.Name()); err != nil {
+	if _, err := s.AddArtifact(ctx, chrt, ref.Name()); err != nil {
 		return err
 	}
 	if err := s.OCI.SaveIndex(); err != nil {

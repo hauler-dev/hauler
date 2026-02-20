@@ -15,7 +15,7 @@ type Fn func(desc ocispec.Descriptor) (string, error)
 func FromManifest(manifest ocispec.Manifest, root string) (content.Target, error) {
 	// First, switch on config mediatype to identify known types
 	switch manifest.Config.MediaType {
-	case consts.DockerConfigJSON, consts.OCIManifestSchema1:
+	case consts.DockerConfigJSON, ocispec.MediaTypeImageConfig:
 		return NewMapperFileStore(root, Images())
 
 	case consts.ChartLayerMediaType, consts.ChartConfigMediaType:

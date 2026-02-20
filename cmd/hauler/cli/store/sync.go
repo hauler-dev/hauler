@@ -263,7 +263,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("transparency log for verification [%b]", tlog)
 
-						if err := cosign.VerifySignature(ctx, s, key, tlog, i.Name, rso, ro); err != nil {
+						if err := cosign.VerifySignature(ctx, key, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
 							continue
 						}
@@ -323,7 +323,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("transparency log for verification [%b]", tlog)
 
-						if err := cosign.VerifyKeylessSignature(ctx, s, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
+						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
 							continue
 						}
@@ -404,7 +404,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("transparency log for verification [%b]", tlog)
 
-						if err := cosign.VerifySignature(ctx, s, key, tlog, i.Name, rso, ro); err != nil {
+						if err := cosign.VerifySignature(ctx, key, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
 							continue
 						}
@@ -464,7 +464,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("transparency log for verification [%b]", tlog)
 
-						if err := cosign.VerifyKeylessSignature(ctx, s, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
+						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
 							continue
 						}
@@ -578,7 +578,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					if err != nil {
 						return err
 					}
-					if _, err := s.AddOCICollection(ctx, tc); err != nil {
+					if _, err := s.AddArtifactCollection(ctx, tc); err != nil {
 						return err
 					}
 				}
@@ -596,7 +596,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					if err != nil {
 						return err
 					}
-					if _, err := s.AddOCICollection(ctx, tc); err != nil {
+					if _, err := s.AddArtifactCollection(ctx, tc); err != nil {
 						return err
 					}
 				}
@@ -626,7 +626,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					if err != nil {
 						return fmt.Errorf("convert ImageTxt %s: %v", v1Cfg.Name, err)
 					}
-					if _, err := s.AddOCICollection(ctx, it); err != nil {
+					if _, err := s.AddArtifactCollection(ctx, it); err != nil {
 						return fmt.Errorf("add ImageTxt %s to store: %v", v1Cfg.Name, err)
 					}
 				}
@@ -644,7 +644,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					if err != nil {
 						return fmt.Errorf("convert ImageTxt %s: %v", cfg.Name, err)
 					}
-					if _, err := s.AddOCICollection(ctx, it); err != nil {
+					if _, err := s.AddArtifactCollection(ctx, it); err != nil {
 						return fmt.Errorf("add ImageTxt %s to store: %v", cfg.Name, err)
 					}
 				}

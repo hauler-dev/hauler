@@ -275,6 +275,12 @@ func (o *OCI) path(elem ...string) string {
 	return filepath.Join(append(complete, elem...)...)
 }
 
+// IndexExists reports whether the store's OCI layout index.json exists on disk.
+func (o *OCI) IndexExists() bool {
+	_, err := os.Stat(o.path(ocispec.ImageIndexFile))
+	return err == nil
+}
+
 type ociPusher struct {
 	oci    *OCI
 	ref    string
