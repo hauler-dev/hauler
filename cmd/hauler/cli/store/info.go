@@ -300,13 +300,15 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		ctype = "image"
 	}
 
-	switch desc.Annotations["kind"] {
-	case "dev.cosignproject.cosign/sigs":
+	switch {
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSigs:
 		ctype = "sigs"
-	case "dev.cosignproject.cosign/atts":
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationAtts:
 		ctype = "atts"
-	case "dev.cosignproject.cosign/sboms":
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSboms:
 		ctype = "sbom"
+	case strings.HasPrefix(desc.Annotations[consts.KindAnnotationName], consts.KindAnnotationReferrers):
+		ctype = "referrer"
 	}
 
 	refName := desc.Annotations["io.containerd.image.name"]

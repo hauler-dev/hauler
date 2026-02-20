@@ -80,9 +80,12 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		}
 		l.Infof("signature verified for image [%s]", cfg.Name)
 	} else if o.CertIdentityRegexp != "" || o.CertIdentity != "" {
-		// verify signature using keyless details
+		// verify signature using keyless details.
+		// Keyless (Fulcio) certificates expire after ~10 minutes, so the transparency
+		// log is always required to prove the cert was valid at signing time — ignore
+		// --use-tlog-verify for this path and always check tlog.
 		l.Infof("verifying keyless signature for [%s]", cfg.Name)
-		err := cosign.VerifyKeylessSignature(ctx, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, o.Tlog, cfg.Name, rso, ro)
+		err := cosign.VerifyKeylessSignature(ctx, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, cfg.Name, rso, ro)
 		if err != nil {
 			return err
 		}

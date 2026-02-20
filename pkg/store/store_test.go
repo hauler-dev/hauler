@@ -5,12 +5,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	ccontent "github.com/containerd/containerd/content"
+	gname "github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -377,4 +386,113 @@ func TestCopy_MultiPlatform(t *testing.T) {
 	// This test would require creating a multi-platform image
 	// which is more complex - marking as future enhancement
 	t.Skip("Multi-platform image test requires additional setup")
+}
+
+// TestAddImage_OCI11Referrers verifies that AddImage captures OCI 1.1 referrers
+// (cosign v3 new-bundle-format) stored via the subject field rather than the legacy
+// sha256-<hex>.sig/.att/.sbom tag convention.
+//
+// The test:
+//  1. Starts an in-process OCI 1.1–capable registry (go-containerregistry/pkg/registry)
+//  2. Pushes a random base image to it
+//  3. Builds a synthetic cosign v3-style Sigstore bundle referrer manifest (with a
+//     "subject" field pointing at the base image) and pushes it so the registry
+//     registers it in the referrers index automatically
+//  4. Calls store.AddImage and then walks the OCI layout to confirm that a
+//     KindAnnotationReferrers-prefixed entry was saved
+func TestAddImage_OCI11Referrers(t *testing.T) {
+	// 1. Start an in-process OCI 1.1 registry.
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+
+	remoteOpts := []remote.Option{
+		remote.WithTransport(srv.Client().Transport),
+	}
+
+	// 2. Push a random base image.
+	baseTag, err := gname.NewTag(host+"/test/image:v1", gname.Insecure)
+	if err != nil {
+		t.Fatalf("new tag: %v", err)
+	}
+	baseImg, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("random image: %v", err)
+	}
+	if err := remote.Write(baseTag, baseImg, remoteOpts...); err != nil {
+		t.Fatalf("push base image: %v", err)
+	}
+
+	// Build the v1.Descriptor for the base image so we can set it as the referrer subject.
+	baseHash, err := baseImg.Digest()
+	if err != nil {
+		t.Fatalf("base image digest: %v", err)
+	}
+	baseRawManifest, err := baseImg.RawManifest()
+	if err != nil {
+		t.Fatalf("base image raw manifest: %v", err)
+	}
+	baseMT, err := baseImg.MediaType()
+	if err != nil {
+		t.Fatalf("base image media type: %v", err)
+	}
+	baseDesc := v1.Descriptor{
+		MediaType: baseMT,
+		Digest:    baseHash,
+		Size:      int64(len(baseRawManifest)),
+	}
+
+	// 3. Build a synthetic cosign v3 Sigstore bundle referrer.
+	//
+	// Real cosign new-bundle-format: artifactType=application/vnd.dev.sigstore.bundle.v0.3+json,
+	// config.mediaType=application/vnd.oci.empty.v1+json, single layer containing the bundle JSON,
+	// and a "subject" field pointing at the base image digest.
+	bundleJSON := []byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json",` +
+		`"verificationMaterial":{},"messageSignature":{"messageDigest":` +
+		`{"algorithm":"SHA2_256","digest":"AAAA"},"signature":"AAAA"}}`)
+	bundleLayer := static.NewLayer(bundleJSON, types.MediaType(consts.SigstoreBundleMediaType))
+
+	referrerImg, err := mutate.AppendLayers(empty.Image, bundleLayer)
+	if err != nil {
+		t.Fatalf("append bundle layer: %v", err)
+	}
+	referrerImg = mutate.MediaType(referrerImg, types.OCIManifestSchema1)
+	referrerImg = mutate.ConfigMediaType(referrerImg, types.MediaType(consts.OCIEmptyConfigMediaType))
+	referrerImg = mutate.Subject(referrerImg, baseDesc).(v1.Image)
+
+	// Push the referrer under an arbitrary tag; the in-process registry auto-wires the
+	// subject field and makes the manifest discoverable via GET /v2/.../referrers/<digest>.
+	referrerTag, err := gname.NewTag(host+"/test/image:bundle-referrer", gname.Insecure)
+	if err != nil {
+		t.Fatalf("referrer tag: %v", err)
+	}
+	if err := remote.Write(referrerTag, referrerImg, remoteOpts...); err != nil {
+		t.Fatalf("push referrer: %v", err)
+	}
+
+	// 4. Let hauler add the base image (which should also fetch its OCI referrers).
+	storeRoot := t.TempDir()
+	s, err := store.NewLayout(storeRoot)
+	if err != nil {
+		t.Fatalf("new layout: %v", err)
+	}
+	if err := s.AddImage(context.Background(), baseTag.Name(), "", remoteOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	// 5. Walk the store and verify that at least one referrer entry was captured.
+	var referrerCount int
+	if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.HasPrefix(desc.Annotations[consts.KindAnnotationName], consts.KindAnnotationReferrers) {
+			referrerCount++
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+
+	if referrerCount == 0 {
+		t.Fatal("expected at least one OCI referrer entry in the store, got none")
+	}
+	t.Logf("captured %d OCI referrer(s) for %s", referrerCount, baseTag.Name())
 }

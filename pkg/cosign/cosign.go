@@ -32,7 +32,7 @@ func VerifySignature(ctx context.Context, keyPath string, useTlog bool, ref stri
 }
 
 // VerifyKeylessSignature verifies an image signature using keyless/OIDC identity.
-func VerifyKeylessSignature(ctx context.Context, identity string, identityRegexp string, oidcIssuer string, oidcIssuerRegexp string, ghWorkflowRepository string, useTlog bool, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func VerifyKeylessSignature(ctx context.Context, identity string, identityRegexp string, oidcIssuer string, oidcIssuerRegexp string, ghWorkflowRepository string, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	operation := func() error {
 		certVerifyOptions := options.CertVerifyOptions{
@@ -48,10 +48,6 @@ func VerifyKeylessSignature(ctx context.Context, identity string, identityRegexp
 			IgnoreTlog:                   false, // Use transparency log by default for keyless verification.
 			CertGithubWorkflowRepository: ghWorkflowRepository,
 			NewBundleFormat:              true,
-		}
-
-		if !useTlog {
-			v.IgnoreTlog = true
 		}
 
 		return log.CaptureOutput(l, true, func() error {

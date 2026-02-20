@@ -207,7 +207,10 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, opts
 		}
 	}
 
-	return l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...)
+	if err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...); err != nil {
+		return err
+	}
+	return l.saveReferrers(ctx, parsedRef, imageDigest, allOpts...)
 }
 
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's
@@ -355,6 +358,57 @@ func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, ki
 		},
 	}
 	return l.OCI.AddIndex(desc)
+}
+
+// saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/hash.
+// This captures cosign v3 new-bundle-format signatures/attestations stored as OCI referrers
+// (via the subject field) rather than the legacy sha256-<hex>.sig/.att/.sbom tag convention.
+// go-containerregistry handles both the native referrers API and the tag-based fallback.
+// Missing referrers and fetch errors are logged at debug level and silently skipped.
+func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1.Hash, opts ...remote.Option) error {
+	log := zerolog.Ctx(ctx)
+
+	imageDigestRef, err := gname.NewDigest(ref.Context().String() + "@" + hash.String())
+	if err != nil {
+		log.Debug().Err(err).Msgf("saveReferrers: could not construct digest ref for %s", ref.Name())
+		return nil
+	}
+
+	idx, err := remote.Referrers(imageDigestRef, opts...)
+	if err != nil {
+		// Most registries that don't support the referrers API return 404; not an error.
+		log.Debug().Err(err).Msgf("no OCI referrers found for %s@%s", ref.Name(), hash)
+		return nil
+	}
+
+	idxManifest, err := idx.IndexManifest()
+	if err != nil {
+		log.Debug().Err(err).Msgf("saveReferrers: could not read referrers index for %s", ref.Name())
+		return nil
+	}
+
+	for _, referrerDesc := range idxManifest.Manifests {
+		digestRef, err := gname.NewDigest(ref.Context().String() + "@" + referrerDesc.Digest.String())
+		if err != nil {
+			log.Debug().Err(err).Msgf("saveReferrers: could not construct digest ref for referrer %s", referrerDesc.Digest)
+			continue
+		}
+
+		img, err := remote.Image(digestRef, opts...)
+		if err != nil {
+			log.Debug().Err(err).Msgf("saveReferrers: could not fetch referrer manifest %s", referrerDesc.Digest)
+			continue
+		}
+
+		// Embed the referrer manifest digest in the kind annotation so that multiple
+		// referrers for the same base image each get a unique entry in the OCI index.
+		kind := consts.KindAnnotationReferrers + "/" + referrerDesc.Digest.Hex
+		if err := l.writeImage(ref, img, kind, ""); err != nil {
+			return fmt.Errorf("saving OCI referrer %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
+		}
+		log.Debug().Msgf("saved OCI referrer %s (%s) for %s", referrerDesc.Digest, string(referrerDesc.ArtifactType), ref.Name())
+	}
+	return nil
 }
 
 // saveRelatedArtifacts discovers and saves cosign-compatible signature, attestation, and SBOM

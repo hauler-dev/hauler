@@ -52,6 +52,10 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				l.Debugf("skipping cosign artifact [%s] for directory target", reference)
 				return nil
 			}
+			if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
+				l.Debugf("skipping OCI referrer [%s] for directory target", reference)
+				return nil
+			}
 
 			// Handle different media types
 			switch desc.MediaType {
@@ -223,6 +227,16 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 					}
 					destRef = repo + ":" + digestTag + ext
 				}
+			} else if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
+				// OCI 1.1 referrer (cosign v3 new-bundle-format): push by manifest digest so
+				// the target registry wires it up via the OCI Referrers API (subject field).
+				// For registries that don't support the Referrers API natively, the manifest
+				// is still pushed intact; the subject linkage depends on registry support.
+				repo := baseRef
+				if colon := strings.LastIndex(baseRef, ":"); colon != -1 {
+					repo = baseRef[:colon]
+				}
+				destRef = repo + "@" + desc.Digest.String()
 			}
 
 			toRef, err := content.RewriteRefToRegistry(destRef, components[1])

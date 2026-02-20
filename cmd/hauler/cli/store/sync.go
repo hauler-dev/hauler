@@ -314,18 +314,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
 
-						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
-							tlog = true
-						}
-						if i.Tlog {
-							tlog = i.Tlog
-						}
-						l.Debugf("transparency log for verification [%b]", tlog)
-
-						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
-							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
-							continue
+						// Keyless (Fulcio) certs expire after ~10 min; tlog is always
+						// required to prove the cert was valid at signing time.
+						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, i.Name, rso, ro); err != nil {
 						}
 						l.Infof("keyless signature verified for image [%s]", i.Name)
 					}
@@ -455,18 +446,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						}
 						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
 
-						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
-							tlog = true
-						}
-						if i.Tlog {
-							tlog = i.Tlog
-						}
-						l.Debugf("transparency log for verification [%b]", tlog)
-
-						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
-							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
-							continue
+						// Keyless (Fulcio) certs expire after ~10 min; tlog is always
+						// required to prove the cert was valid at signing time.
+						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, i.Name, rso, ro); err != nil {
 						}
 						l.Infof("keyless signature verified for image [%s]", i.Name)
 					}
