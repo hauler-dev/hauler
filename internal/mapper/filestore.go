@@ -82,7 +82,7 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 		return nil, errors.Wrap(err, fmt.Sprintf("creating file %s", fullFileName))
 	}
 
-	w := content.NewIoContentWriter(f, content.WithInputHash(desc.Digest.String()), content.WithOutputHash(desc.Digest.String()))
+	w := content.NewIoContentWriter(f, content.WithOutputHash(desc.Digest.String()))
 	return w, nil
 }
 

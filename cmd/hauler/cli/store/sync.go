@@ -317,6 +317,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						// Keyless (Fulcio) certs expire after ~10 min; tlog is always
 						// required to prove the cert was valid at signing time.
 						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, i.Name, rso, ro); err != nil {
+							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
+							continue
 						}
 						l.Infof("keyless signature verified for image [%s]", i.Name)
 					}
@@ -449,6 +451,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						// Keyless (Fulcio) certs expire after ~10 min; tlog is always
 						// required to prove the cert was valid at signing time.
 						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, i.Name, rso, ro); err != nil {
+							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
+							continue
 						}
 						l.Infof("keyless signature verified for image [%s]", i.Name)
 					}

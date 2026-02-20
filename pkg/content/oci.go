@@ -325,7 +325,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 		return nil, err
 	}
 
-	w := NewIoContentWriter(f, WithInputHash(d.Digest.String()), WithOutputHash(d.Digest.String()))
+	w := NewIoContentWriter(f, WithOutputHash(d.Digest.String()))
 	return w, nil
 }
 

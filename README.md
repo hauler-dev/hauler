@@ -64,6 +64,6 @@ brew install hauler
 ## Acknowledgements
 
 `Hauler` wouldn't be possible without the open-source community, but there are a few projects that stand out:
-- [containerd](github.com/containerd/containerd)
+- [containerd](https://github.com/containerd/containerd)
 - [go-containerregistry](https://github.com/google/go-containerregistry)
 - [cosign](https://github.com/sigstore/cosign)

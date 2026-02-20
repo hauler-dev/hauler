@@ -3,10 +3,12 @@ package store_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -211,19 +213,308 @@ func (m *mockWriter) Truncate(size int64) error {
 	return fmt.Errorf("truncate not supported")
 }
 
-// TestCopyDescriptor tests basic blob copying
+// blobPath returns the expected filesystem path for a blob in an OCI layout store.
+func blobPath(root string, d digest.Digest) string {
+	return filepath.Join(root, "blobs", d.Algorithm().String(), d.Encoded())
+}
+
+// findRefKey walks the store's index and returns the nameMap key for the first
+// descriptor whose AnnotationRefName matches ref.
+func findRefKey(t *testing.T, s *store.Layout, ref string) string {
+	t.Helper()
+	var key string
+	_ = s.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
+		if desc.Annotations[ocispec.AnnotationRefName] == ref && key == "" {
+			key = reference
+		}
+		return nil
+	})
+	if key == "" {
+		t.Fatalf("reference %q not found in store", ref)
+	}
+	return key
+}
+
+// findRefKeyByKind walks the store's index and returns the nameMap key for the
+// descriptor whose AnnotationRefName matches ref and whose kind annotation matches kind.
+func findRefKeyByKind(t *testing.T, s *store.Layout, ref, kind string) string {
+	t.Helper()
+	var key string
+	_ = s.OCI.Walk(func(reference string, desc ocispec.Descriptor) error {
+		if desc.Annotations[ocispec.AnnotationRefName] == ref &&
+			desc.Annotations[consts.KindAnnotationName] == kind {
+			key = reference
+		}
+		return nil
+	})
+	if key == "" {
+		t.Fatalf("reference %q with kind %q not found in store", ref, kind)
+	}
+	return key
+}
+
+// readManifestBlob reads and parses an OCI manifest from the store's blob directory.
+func readManifestBlob(t *testing.T, root string, d digest.Digest) ocispec.Manifest {
+	t.Helper()
+	data, err := os.ReadFile(blobPath(root, d))
+	if err != nil {
+		t.Fatalf("read manifest blob %s: %v", d, err)
+	}
+	var m ocispec.Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	return m
+}
+
+// TestCopyDescriptor verifies that copyDescriptor (exercised via Copy) transfers
+// each individual blob — config and every layer — into the destination store's blob
+// directory, and that a second Copy of the same content succeeds gracefully when
+// blobs are already present (AlreadyExists path).
 func TestCopyDescriptor(t *testing.T) {
-	t.Skip("copyDescriptor is private - tested via Copy integration tests")
+	teardown := setup(t)
+	defer teardown()
+
+	srcRoot := t.TempDir()
+	src, err := store.NewLayout(srcRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ref := "test/blob:v1"
+	// genArtifact creates random.Image(1024, 3): 1 config blob + 3 layer blobs.
+	manifestDesc, err := src.AddArtifact(ctx, genArtifact(t, ref), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := src.OCI.SaveIndex(); err != nil {
+		t.Fatal(err)
+	}
+
+	refKey := findRefKey(t, src, ref)
+	manifest := readManifestBlob(t, srcRoot, manifestDesc.Digest)
+
+	dstRoot := t.TempDir()
+	dst, err := store.NewLayout(dstRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First copy: should transfer all individual blobs via copyDescriptor.
+	gotDesc, err := src.Copy(ctx, refKey, dst.OCI, "test/blob:dst")
+	if err != nil {
+		t.Fatalf("Copy failed: %v", err)
+	}
+	if gotDesc.Digest != manifestDesc.Digest {
+		t.Errorf("returned descriptor digest mismatch: got %s, want %s", gotDesc.Digest, manifestDesc.Digest)
+	}
+
+	// Verify the config blob is present in the destination.
+	if _, err := os.Stat(blobPath(dstRoot, manifest.Config.Digest)); err != nil {
+		t.Errorf("config blob missing in dest: %v", err)
+	}
+
+	// Verify every layer blob is present in the destination.
+	for i, layer := range manifest.Layers {
+		if _, err := os.Stat(blobPath(dstRoot, layer.Digest)); err != nil {
+			t.Errorf("layer[%d] blob missing in dest: %v", i, err)
+		}
+	}
+
+	// Verify the manifest blob itself was pushed.
+	if _, err := os.Stat(blobPath(dstRoot, manifestDesc.Digest)); err != nil {
+		t.Errorf("manifest blob missing in dest: %v", err)
+	}
+
+	// Second copy: blobs already exist — AlreadyExists must be handled without error.
+	gotDesc2, err := src.Copy(ctx, refKey, dst.OCI, "test/blob:dst2")
+	if err != nil {
+		t.Fatalf("second Copy failed (AlreadyExists should be a no-op): %v", err)
+	}
+	if gotDesc2.Digest != manifestDesc.Digest {
+		t.Errorf("second Copy digest mismatch: got %s, want %s", gotDesc2.Digest, manifestDesc.Digest)
+	}
 }
 
-// TestCopyDescriptorGraph_Manifest tests copying a manifest with config and layers
+// TestCopyDescriptorGraph_Manifest verifies that copyDescriptorGraph reconstructs a
+// complete manifest in the destination (config digest and each layer digest match the
+// source), and returns an error when a required blob is absent from the source.
 func TestCopyDescriptorGraph_Manifest(t *testing.T) {
-	t.Skip("copyDescriptorGraph is private - tested via Copy integration tests")
+	teardown := setup(t)
+	defer teardown()
+
+	srcRoot := t.TempDir()
+	src, err := store.NewLayout(srcRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ref := "test/manifest:v1"
+	manifestDesc, err := src.AddArtifact(ctx, genArtifact(t, ref), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := src.OCI.SaveIndex(); err != nil {
+		t.Fatal(err)
+	}
+
+	refKey := findRefKey(t, src, ref)
+	srcManifest := readManifestBlob(t, srcRoot, manifestDesc.Digest)
+
+	// --- Happy path: all blobs present, manifest structure preserved ---
+	dstRoot := t.TempDir()
+	dst, err := store.NewLayout(dstRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotDesc, err := src.Copy(ctx, refKey, dst.OCI, "test/manifest:dst")
+	if err != nil {
+		t.Fatalf("Copy failed: %v", err)
+	}
+
+	// Parse the manifest from the destination and compare structure with source.
+	dstManifest := readManifestBlob(t, dstRoot, gotDesc.Digest)
+	if dstManifest.Config.Digest != srcManifest.Config.Digest {
+		t.Errorf("config digest mismatch: got %s, want %s",
+			dstManifest.Config.Digest, srcManifest.Config.Digest)
+	}
+	if len(dstManifest.Layers) != len(srcManifest.Layers) {
+		t.Fatalf("layer count mismatch: dst=%d src=%d",
+			len(dstManifest.Layers), len(srcManifest.Layers))
+	}
+	for i, l := range srcManifest.Layers {
+		if dstManifest.Layers[i].Digest != l.Digest {
+			t.Errorf("layer[%d] digest mismatch: got %s, want %s",
+				i, dstManifest.Layers[i].Digest, l.Digest)
+		}
+	}
+
+	// --- Error path: delete a layer blob from source, expect Copy to fail ---
+	if len(srcManifest.Layers) == 0 {
+		t.Skip("artifact has no layers; skipping missing-blob error path")
+	}
+	if err := os.Remove(blobPath(srcRoot, srcManifest.Layers[0].Digest)); err != nil {
+		t.Fatalf("could not remove layer blob to simulate corruption: %v", err)
+	}
+
+	dst2Root := t.TempDir()
+	dst2, err := store.NewLayout(dst2Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = src.Copy(ctx, refKey, dst2.OCI, "test/manifest:missing-blob")
+	if err == nil {
+		t.Error("expected Copy to fail when a source layer blob is missing, but it succeeded")
+	}
 }
 
-// TestCopyDescriptorGraph_Index tests copying an index with multiple manifests
+// TestCopyDescriptorGraph_Index verifies that copyDescriptorGraph handles an OCI
+// image index (multi-platform) by recursively copying all child manifests and their
+// blobs into the destination store, and that the index blob itself is present.
 func TestCopyDescriptorGraph_Index(t *testing.T) {
-	t.Skip("copyDescriptorGraph is private - tested via Copy integration tests")
+	teardown := setup(t)
+	defer teardown()
+
+	// Start an in-process OCI registry.
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	remoteOpts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+	// Build a 2-platform image index.
+	img1, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("random image (amd64): %v", err)
+	}
+	img2, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("random image (arm64): %v", err)
+	}
+	idx := mutate.AppendManifests(
+		empty.Index,
+		mutate.IndexAddendum{
+			Add: img1,
+			Descriptor: v1.Descriptor{
+				MediaType: types.OCIManifestSchema1,
+				Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+			},
+		},
+		mutate.IndexAddendum{
+			Add: img2,
+			Descriptor: v1.Descriptor{
+				MediaType: types.OCIManifestSchema1,
+				Platform:  &v1.Platform{OS: "linux", Architecture: "arm64"},
+			},
+		},
+	)
+
+	idxTag, err := gname.NewTag(host+"/test/multiarch:v1", gname.Insecure)
+	if err != nil {
+		t.Fatalf("new tag: %v", err)
+	}
+	if err := remote.WriteIndex(idxTag, idx, remoteOpts...); err != nil {
+		t.Fatalf("push index: %v", err)
+	}
+
+	// Pull the index into a hauler store via AddImage.
+	srcRoot := t.TempDir()
+	src, err := store.NewLayout(srcRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := src.AddImage(ctx, idxTag.Name(), "", remoteOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+	if err := src.OCI.SaveIndex(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Locate the index descriptor (kind=imageIndex) in the source store.
+	refKey := findRefKeyByKind(t, src, "test/multiarch:v1", consts.KindAnnotationIndex)
+
+	// Copy the entire index graph to a fresh destination store.
+	dstRoot := t.TempDir()
+	dst, err := store.NewLayout(dstRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotDesc, err := src.Copy(ctx, refKey, dst.OCI, "test/multiarch:copied")
+	if err != nil {
+		t.Fatalf("Copy of image index failed: %v", err)
+	}
+
+	// The index blob itself must be present in the destination.
+	if _, err := os.Stat(blobPath(dstRoot, gotDesc.Digest)); err != nil {
+		t.Errorf("index manifest blob missing in dest: %v", err)
+	}
+
+	// Parse the index from the source and verify every child manifest blob landed
+	// in the destination (exercising recursive copyDescriptorGraph for each child).
+	var ociIdx ocispec.Index
+	if err := json.Unmarshal(mustReadFile(t, blobPath(srcRoot, gotDesc.Digest)), &ociIdx); err != nil {
+		t.Fatalf("unmarshal index: %v", err)
+	}
+	if len(ociIdx.Manifests) < 2 {
+		t.Fatalf("expected ≥2 child manifests in index, got %d", len(ociIdx.Manifests))
+	}
+	for i, child := range ociIdx.Manifests {
+		if _, err := os.Stat(blobPath(dstRoot, child.Digest)); err != nil {
+			t.Errorf("child manifest[%d] (platform=%v) blob missing in dest: %v",
+				i, child.Platform, err)
+		}
+	}
+}
+
+// mustReadFile reads a file and fails the test on error.
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return data
 }
 
 // TestCopy_Integration tests the full Copy workflow including copyDescriptorGraph

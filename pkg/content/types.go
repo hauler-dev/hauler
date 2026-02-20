@@ -82,13 +82,6 @@ func (w *IoContentWriter) Truncate(size int64) error {
 
 type writerOption func(*IoContentWriter)
 
-// WithInputHash configures expected input hash for verification
-func WithInputHash(hash string) writerOption {
-	return func(w *IoContentWriter) {
-		// Input hash verification happens during write
-	}
-}
-
 // WithOutputHash configures expected output hash for verification
 func WithOutputHash(hash string) writerOption {
 	return func(w *IoContentWriter) {
