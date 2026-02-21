@@ -96,8 +96,6 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
-	static.NewLayer(cdata, "")
-
 	if err := l.writeBlobData(cdata); err != nil {
 		return ocispec.Descriptor{}, err
 	}
@@ -612,7 +610,7 @@ func (l *Layout) copyDescriptor(ctx context.Context, desc ocispec.Descriptor, fe
 	writer, err := pusher.Push(ctx, desc)
 	if err != nil {
 		if errdefs.IsAlreadyExists(err) {
-			zerolog.Ctx(ctx).Info().Msgf("existing blob: %s", desc.Digest)
+			zerolog.Ctx(ctx).Debug().Msgf("existing blob: %s", desc.Digest)
 			return nil // content already present on remote
 		}
 		return err
@@ -633,7 +631,7 @@ func (l *Layout) copyDescriptor(ctx context.Context, desc ocispec.Descriptor, fe
 	if err := writer.Commit(ctx, n, desc.Digest); err != nil {
 		return err
 	}
-	zerolog.Ctx(ctx).Info().Msgf("pushed blob: %s", desc.Digest)
+	zerolog.Ctx(ctx).Debug().Msgf("pushed blob: %s", desc.Digest)
 	return nil
 }
 
