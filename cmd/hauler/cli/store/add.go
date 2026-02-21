@@ -135,12 +135,16 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	if rewrite != "" {
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
-			rewrite = strings.Join([]string{rewrite, r.(name.Tag).TagStr()}, ":")
+			if tag, ok := r.(name.Tag); ok {
+				rewrite = rewrite + ":" + tag.TagStr()
+			} else {
+				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
+			}
 		}
 		// rename image name in store
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
-			l.Errorf("unable to parse rewrite name: %w", err)
+			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
 		rewriteReference(ctx, s, r, newRef)
 	}
@@ -159,8 +163,16 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	newRefContext := newRef.Context()
 	oldRepo := oldRefContext.RepositoryStr()
 	newRepo := newRefContext.RepositoryStr()
-	oldTag := oldRef.(name.Tag).TagStr()
-	newTag := newRef.(name.Tag).TagStr()
+
+	oldTag := oldRef.Identifier()
+	if tag, ok := oldRef.(name.Tag); ok {
+		oldTag = tag.TagStr()
+	}
+	newTag := newRef.Identifier()
+	if tag, ok := newRef.(name.Tag); ok {
+		newTag = tag.TagStr()
+	}
+
 	oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
 	newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
 	// If new registry not set in rewrite, keep old registry instead of defaulting to docker.io
@@ -564,7 +576,10 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		// if rewrite omits a tag... keep the existing tag
-		oldTag := ref.(name.Tag).TagStr()
+		oldTag := ref.Identifier()
+		if tag, ok := ref.(name.Tag); ok {
+			oldTag = tag.TagStr()
+		}
 		if !strings.Contains(rewrite, ":") {
 			rewrite = strings.Join([]string{rewrite, oldTag}, ":")
 			newRef, err = name.ParseReference(rewrite)
@@ -581,7 +596,10 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 		oldRepo := oldRefContext.RepositoryStr()
 		newRepo := newRefContext.RepositoryStr()
-		newTag := newRef.(name.Tag).TagStr()
+		newTag := newRef.Identifier()
+		if tag, ok := newRef.(name.Tag); ok {
+			newTag = tag.TagStr()
+		}
 
 		oldTotal := oldRepo + ":" + oldTag
 		newTotal := newRepo + ":" + newTag
