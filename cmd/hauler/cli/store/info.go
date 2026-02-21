@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/internal/flags"
@@ -129,7 +130,9 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 		msg = buildJson(items...)
 		fmt.Println(msg)
 	default:
-		buildTable(o.ShowDigests, items...)
+		if err := buildTable(o.ShowDigests, items...); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -158,18 +161,19 @@ func buildListRepos(items ...item) {
 	}
 }
 
-func buildTable(showDigests bool, items ...item) {
-	table := tablewriter.NewWriter(os.Stdout)
+func buildTable(showDigests bool, items ...item) error {
+	table := tablewriter.NewTable(os.Stdout)
+	table.Configure(func(cfg *tablewriter.Config) {
+		cfg.Header.Alignment.Global = tw.AlignLeft
+		cfg.Row.Merging.Mode = tw.MergeVertical
+		cfg.Row.Merging.ByColumnIndex = tw.NewBoolMapper(0)
+	})
 
 	if showDigests {
-		table.SetHeader([]string{"Reference", "Type", "Platform", "Digest", "# Layers", "Size"})
+		table.Header("Reference", "Type", "Platform", "Digest", "# Layers", "Size")
 	} else {
-		table.SetHeader([]string{"Reference", "Type", "Platform", "# Layers", "Size"})
+		table.Header("Reference", "Type", "Platform", "# Layers", "Size")
 	}
-
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetRowLine(false)
-	table.SetAutoMergeCellsByColumnIndex([]int{0})
 
 	totalSize := int64(0)
 
@@ -205,17 +209,19 @@ func buildTable(showDigests bool, items ...item) {
 		}
 
 		totalSize += i.Size
-		table.Append(row)
+		if err := table.Append(row); err != nil {
+			return err
+		}
 	}
 
 	// align total column based on digest visibility
 	if showDigests {
-		table.SetFooter([]string{"", "", "", "", "Total", byteCountSI(totalSize)})
+		table.Footer("", "", "", "", "Total", byteCountSI(totalSize))
 	} else {
-		table.SetFooter([]string{"", "", "", "Total", byteCountSI(totalSize)})
+		table.Footer("", "", "", "Total", byteCountSI(totalSize))
 	}
 
-	table.Render()
+	return table.Render()
 }
 
 // truncateReference shortens the digest of a reference
