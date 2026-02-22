@@ -851,7 +851,7 @@ func (l *Layout) CleanUp(ctx context.Context) (int, int64, error) {
 	}
 
 	// read all entries
-	blobsPath := filepath.Join(l.Root, "blobs", "sha256")
+	blobsPath := filepath.Join(l.Root, ocispec.ImageBlobsDir, digest.Canonical.String())
 	entries, err := os.ReadDir(blobsPath)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read blobs directory: %w", err)

@@ -86,7 +86,8 @@ func (o *OCI) LoadIndex() error {
 	for _, desc := range o.index.Manifests {
 		key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
 		if err != nil {
-			return err
+			// skip malformed entries rather than making the entire store unreadable
+			continue
 		}
 
 		// Set default kind if missing

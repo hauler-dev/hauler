@@ -146,7 +146,9 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		rewriteReference(ctx, s, r, newRef)
+		if err := rewriteReference(ctx, s, r, newRef); err != nil {
+			return err
+		}
 	}
 
 	l.Infof("successfully added image [%s]", r.Name())
@@ -156,7 +158,11 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference) error {
 	l := log.FromContext(ctx)
 
-	s.OCI.LoadIndex()
+	l.Infof("rewriting [%s] to [%s]", oldRef.Name(), newRef.Name())
+
+	if err := s.OCI.LoadIndex(); err != nil {
+		return fmt.Errorf("failed to load index: %w", err)
+	}
 
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()

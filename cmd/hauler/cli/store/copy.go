@@ -184,7 +184,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 		// descriptors (which store the base image ref, not the cosign tag) can be routed
 		// to the correct destination tag using the cosign tag convention.
 		refDigest := make(map[string]string)
-		_ = s.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
 			kind := desc.Annotations[consts.KindAnnotationName]
 			if kind == consts.KindAnnotationImage || kind == consts.KindAnnotationIndex {
 				if baseRef := desc.Annotations[ocispec.AnnotationRefName]; baseRef != "" {
@@ -192,7 +192,9 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				}
 			}
 			return nil
-		})
+		}); err != nil {
+			return err
+		}
 
 		sigExts := map[string]string{
 			consts.KindAnnotationSigs:  ".sig",
