@@ -66,10 +66,11 @@ func (l *cachedLayer) create(h v1.Hash) (io.WriteCloser, error) {
 func (l *cachedLayer) Compressed() (io.ReadCloser, error) {
 	f, err := l.create(l.digest)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	rc, err := l.Layer.Compressed()
 	if err != nil {
+		f.Close()
 		return nil, err
 	}
 	return &readcloser{
@@ -85,6 +86,7 @@ func (l *cachedLayer) Uncompressed() (io.ReadCloser, error) {
 	}
 	rc, err := l.Layer.Uncompressed()
 	if err != nil {
+		f.Close()
 		return nil, err
 	}
 	return &readcloser{

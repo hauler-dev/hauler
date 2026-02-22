@@ -51,6 +51,7 @@ func loadConfig(filename string) (*configuration.Configuration, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
 	return configuration.Parse(f)
 }

@@ -77,6 +77,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
+		defer fi.Close()
 		err = processContent(ctx, fi, o, s, rso, ro)
 		if err != nil {
 			return err

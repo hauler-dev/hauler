@@ -525,7 +525,9 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 				}
 				return fmt.Errorf("failed to store image [%s]: %w", image, err)
 			}
-			s.OCI.LoadIndex()
+			if err := s.OCI.LoadIndex(); err != nil {
+				return err
+			}
 			if err := s.OCI.SaveIndex(); err != nil {
 				return err
 			}
@@ -595,7 +597,9 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		// rename chart name in store
-		s.OCI.LoadIndex()
+		if err := s.OCI.LoadIndex(); err != nil {
+			return err
+		}
 
 		oldRefContext := ref.Context()
 		newRefContext := newRef.Context()
