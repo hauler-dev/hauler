@@ -158,8 +158,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference) error {
 	l := log.FromContext(ctx)
 
-	l.Infof("rewriting [%s] to [%s]", oldRef.Name(), newRef.Name())
-
 	if err := s.OCI.LoadIndex(); err != nil {
 		return fmt.Errorf("failed to load index: %w", err)
 	}
@@ -179,10 +177,14 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 		newTag = tag.TagStr()
 	}
 
-	oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
-	newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
-	// If new registry not set in rewrite, keep old registry instead of defaulting to docker.io
-	if newRegistry == "docker.io" && oldRegistry != "docker.io" {
+	// ContainerdImageNameKey stores annotationRef.Name() verbatim, which includes the
+	// "index.docker.io" prefix for docker.io images. Do not strip "index." here or the
+	// comparison will never match images stored by writeImage/writeIndex.
+	oldRegistry := oldRefContext.RegistryStr()
+	newRegistry := newRefContext.RegistryStr()
+	// If user omitted a registry in the rewrite string, go-containerregistry defaults to
+	// index.docker.io. Preserve the original registry when the source is non-docker.
+	if newRegistry == "index.docker.io" && oldRegistry != "index.docker.io" {
 		newRegistry = oldRegistry
 	}
 	oldTotal := oldRepo + ":" + oldTag
