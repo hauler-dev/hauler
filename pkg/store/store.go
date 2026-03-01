@@ -205,10 +205,11 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, opts
 		}
 	}
 
-	if err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...); err != nil {
+	savedDigests, err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...)
+	if err != nil {
 		return err
 	}
-	return l.saveReferrers(ctx, parsedRef, imageDigest, allOpts...)
+	return l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
 }
 
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's
@@ -363,7 +364,7 @@ func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, ki
 // (via the subject field) rather than the legacy sha256-<hex>.sig/.att/.sbom tag convention.
 // go-containerregistry handles both the native referrers API and the tag-based fallback.
 // Missing referrers and fetch errors are logged at debug level and silently skipped.
-func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1.Hash, opts ...remote.Option) error {
+func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
 	log := zerolog.Ctx(ctx)
 
 	imageDigestRef, err := gname.NewDigest(ref.Context().String() + "@" + hash.String())
@@ -398,6 +399,14 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 			continue
 		}
 
+		// Skip referrers already saved via the cosign tag convention to avoid duplicates.
+		// Registries like Harbor expose the same manifest via both the .sig/.att/.sbom tags
+		// and the OCI Referrers API when the manifest carries a subject field.
+		if alreadySaved[referrerDesc.Digest.String()] {
+			log.Debug().Msgf("saveReferrers: skipping referrer %s (already saved via tag convention)", referrerDesc.Digest)
+			continue
+		}
+
 		// Embed the referrer manifest digest in the kind annotation so that multiple
 		// referrers for the same base image each get a unique entry in the OCI index.
 		kind := consts.KindAnnotationReferrers + "/" + referrerDesc.Digest.Hex
@@ -411,7 +420,11 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 
 // saveRelatedArtifacts discovers and saves cosign-compatible signature, attestation, and SBOM
 // artifacts for the image identified by ref/hash. Missing artifacts are silently skipped.
-func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, hash v1.Hash, opts ...remote.Option) error {
+// Returns the set of manifest digest strings (e.g. "sha256:abc...") that were saved, so that
+// saveReferrers can skip duplicates when a registry exposes the same manifest via both paths.
+func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, hash v1.Hash, opts ...remote.Option) (map[string]bool, error) {
+	saved := make(map[string]bool)
+
 	// Cosign tag convention: "sha256:hexvalue" → "sha256-hexvalue.sig" / ".att" / ".sbom"
 	tagPrefix := strings.ReplaceAll(hash.String(), ":", "-")
 
@@ -435,10 +448,13 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, 
 			continue
 		}
 		if err := l.writeImage(ref, img, r.kind, ""); err != nil {
-			return fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
+			return saved, fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
+		}
+		if d, err := img.Digest(); err == nil {
+			saved[d.String()] = true
 		}
 	}
-	return nil
+	return saved, nil
 }
 
 // parsePlatform parses a platform string in "os/arch[/variant]" format into a v1.Platform.
@@ -733,11 +749,6 @@ func (l *Layout) writeLayer(layer v1.Layer) error {
 		return err
 	}
 
-	r, err := layer.Compressed()
-	if err != nil {
-		return err
-	}
-
 	dir := filepath.Join(l.Root, ocispec.ImageBlobsDir, d.Algorithm)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
 		return err
@@ -749,14 +760,29 @@ func (l *Layout) writeLayer(layer v1.Layer) error {
 		return nil
 	}
 
+	r, err := layer.Compressed()
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
 	w, err := os.Create(blobPath)
 	if err != nil {
 		return err
 	}
-	defer w.Close()
 
-	_, err = io.Copy(w, r)
-	return err
+	_, copyErr := io.Copy(w, r)
+	if closeErr := w.Close(); closeErr != nil && copyErr == nil {
+		copyErr = closeErr
+	}
+
+	// Remove a partially-written or corrupt blob on any failure so retries
+	// can attempt a fresh download rather than skipping the file.
+	if copyErr != nil {
+		os.Remove(blobPath)
+	}
+
+	return copyErr
 }
 
 // Remove artifact reference from the store
