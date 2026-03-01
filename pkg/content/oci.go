@@ -74,6 +74,7 @@ func (o *OCI) LoadIndex() error {
 			Versioned: specs.Versioned{
 				SchemaVersion: 2,
 			},
+			MediaType: ocispec.MediaTypeImageIndex,
 		}
 		return nil
 	}
