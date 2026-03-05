@@ -1,6 +1,8 @@
 # Development Guide
 
-This document covers how to build Hauler locally and how the project's branching strategy works. It's intended for contributors making code changes or maintainers managing releases.
+This document covers how to build `hauler` locally and how the project's branching strategy works.
+
+It's intended for contributors making code changes or maintainers managing releases.
 
 ---
 
@@ -8,10 +10,10 @@ This document covers how to build Hauler locally and how the project's branching
 
 ### Prerequisites
 
+- **Git** - version control of the repository
 - **Go** — check `go.mod` for the minimum required version
-- **Make**
-- **Docker** (optional, for container image builds)
-- **Git**
+- **Make** - optional... for common commands used for builds
+- **Docker** - optional... for container image builds
 
 ### Clone the Repository
 
@@ -22,31 +24,40 @@ cd hauler
 
 ### Build the Binary
 
-Using Make:
+Using `make`...
 
 ```bash
+# run this command from the project root
 make build
+
+# the compiled binary will be output to a directory structure and you can run it directly...
+./dist/hauler_linux_amd64_v1/hauler
+./dist/hauler_linux_arm64_v8.0/hauler
+./dist/hauler_darwin_amd64_v1/hauler
+./dist/hauler_darwin_arm64_v8.0/hauler
+./dist/hauler_windows_amd64_v1/hauler.exe
+./dist/hauler_windows_arm64_v8.0/hauler.exe
 ```
 
-Or directly with Go:
+Using `go`...
 
 ```bash
+# run this command from the project root
 go build -o hauler ./cmd/hauler
-```
 
-The compiled binary will be output to the project root. You can run it directly:
-
-```bash
+# the compiled binary will be output to the project root and you can run it directly...
 ./hauler version
 ```
 
 ### Run Tests
 
+Using `make`...
+
 ```bash
 make test
 ```
 
-Or with Go:
+Using `go`...
 
 ```bash
 go test ./...
@@ -61,24 +72,24 @@ go test ./...
 
 ## Branching Strategy
 
-Hauler uses a **main-first, release branch** model. All development flows through `main`, and release branches are maintained for each minor version to support patching older release lines in parallel.
+Hauler uses a **main-first, release branch** model. All development flows through `main` and `release/x.x` branches are maintained for each minor version to support patching older release lines in parallel.
 
 ### Branch Structure
 
 ```
-main              ← source of truth, all development targets here
-release/1.3       ← 1.3.x patch line
-release/1.4       ← 1.4.x patch line
+main          ← source of truth, all development targets here
+release/1.3   ← 1.3.x patch line
+release/1.4   ← 1.4.x patch line
 ```
 
 Release tags (`v1.4.1`, `v1.3.2`, etc.) are always cut from the corresponding `release/X.Y` branch, never directly from `main`.
 
 ### Where to Target Your Changes
 
-All pull requests should target `main` by default. Maintainers are responsible for cherry-picking fixes onto release branches as part of the patch release process.
+All pull requests should target `main` by default and maintainers are responsible for cherry picking fixes onto release branches as part of the patch release process.
 
-| Change type | Target branch |
-|---|---|
+| Change Type | Target branch |
+| :---------: | :-----------: |
 | New features | `main` |
 | Bug fixes | `main` |
 | Security patches | `main` (expedited backport to affected branches) |
