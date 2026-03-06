@@ -15,7 +15,6 @@ release:
 
 env:
   - vpkg=hauler.dev/go/hauler/internal/version
-  - cosign_version=v2.2.3+carbide.3
 
 builds:
   - dir: ./cmd/hauler/.
