@@ -6,6 +6,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mholt/archives"
@@ -155,4 +158,78 @@ func Unarchive(ctx context.Context, tarball, dst string) error {
 
 	l.Infof("unarchiving completed successfully")
 	return nil
+}
+
+var chunkSuffixRe = regexp.MustCompile(`^(.+)_(\d+)$`)
+
+// chunkInfo checks whether archivePath matches the chunk naming pattern (<base>_N<ext>).
+// Returns the base path (without index), compound extension, numeric index, and whether it matched.
+func chunkInfo(archivePath string) (base, ext string, index int, ok bool) {
+	dir := filepath.Dir(archivePath)
+	name := filepath.Base(archivePath)
+
+	// strip compound extension (e.g. .tar.zst)
+	nameBase := name
+	nameExt := ""
+	for filepath.Ext(nameBase) != "" {
+		nameExt = filepath.Ext(nameBase) + nameExt
+		nameBase = strings.TrimSuffix(nameBase, filepath.Ext(nameBase))
+	}
+
+	m := chunkSuffixRe.FindStringSubmatch(nameBase)
+	if m == nil {
+		return "", "", 0, false
+	}
+
+	idx, _ := strconv.Atoi(m[2])
+	return filepath.Join(dir, m[1]), nameExt, idx, true
+}
+
+// JoinChunks detects whether archivePath is a chunk file and, if so, finds all
+// sibling chunks, concatenates them in numeric order into a single file in tempDir,
+// and returns the path to the joined file. If archivePath is not a chunk, it is
+// returned unchanged.
+func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error) {
+	l := log.FromContext(ctx)
+
+	base, ext, _, ok := chunkInfo(archivePath)
+	if !ok {
+		return archivePath, nil
+	}
+
+	matches, err := filepath.Glob(base + "_*" + ext)
+	if err != nil || len(matches) == 0 {
+		return archivePath, nil
+	}
+
+	sort.Slice(matches, func(i, j int) bool {
+		_, _, idxI, _ := chunkInfo(matches[i])
+		_, _, idxJ, _ := chunkInfo(matches[j])
+		return idxI < idxJ
+	})
+
+	l.Debugf("joining %d chunk(s) for [%s]", len(matches), base)
+
+	joinedPath := filepath.Join(tempDir, filepath.Base(base)+ext)
+	outf, err := os.Create(joinedPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create joined archive: %w", err)
+	}
+	defer outf.Close()
+
+	for _, chunk := range matches {
+		l.Debugf("joining chunk [%s]", chunk)
+		cf, err := os.Open(chunk)
+		if err != nil {
+			return "", fmt.Errorf("failed to open chunk [%s]: %w", chunk, err)
+		}
+		if _, err := io.Copy(outf, cf); err != nil {
+			cf.Close()
+			return "", fmt.Errorf("failed to copy chunk [%s]: %w", chunk, err)
+		}
+		cf.Close()
+	}
+
+	l.Infof("joined %d chunk(s) into [%s]", len(matches), filepath.Base(joinedPath))
+	return joinedPath, nil
 }
