@@ -9,10 +9,10 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"oras.land/oras-go/pkg/content"
 
 	content2 "hauler.dev/go/hauler/pkg/artifacts"
 	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/layer"
 )
 
