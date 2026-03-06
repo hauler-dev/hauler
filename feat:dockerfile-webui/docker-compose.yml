@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  init-permissions:
+    image: alpine:3.21
+    container_name: hauler-init
+    volumes:
+      - ./data/store:/data/store
+      - ./data/manifests:/data/manifests
+      - ./data/hauls:/data/hauls
+      - ./data/config:/data/config
+      - ./data/extracted:/data/extracted
+    entrypoint: ["sh", "-c", "chmod -R 777 /data"]
+    restart: "no"
+
+  hauler-ui:
+    build: .
+    image: hauler-ui:v3.3.5
+    container_name: hauler-ui
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+      - "5000:5000"
+      - "8081:8081"
+    volumes:
+      - ./data/store:/data/store
+      - ./data/manifests:/data/manifests
+      - ./data/hauls:/data/hauls
+      - ./data/config:/data/config
+      - ./data/extracted:/data/extracted
+    restart: unless-stopped
+    environment:
+      - HAULER_STORE=/data/store
+      # Set to enable API key authentication (recommended for non-localhost deployments)
+      # - HAULER_UI_API_KEY=your-secret-key-here
