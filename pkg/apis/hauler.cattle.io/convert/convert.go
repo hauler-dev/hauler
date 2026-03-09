@@ -45,38 +45,6 @@ func ConvertCharts(in *v1alpha1.Charts, out *v1.Charts) error {
 	return nil
 }
 
-// converts v1alpha1.ThickCharts -> v1.ThickCharts
-func ConvertThickCharts(in *v1alpha1.ThickCharts, out *v1.ThickCharts) error {
-	out.TypeMeta = in.TypeMeta
-	out.ObjectMeta = in.ObjectMeta
-	out.Spec.Charts = make([]v1.ThickChart, len(in.Spec.Charts))
-	for i := range in.Spec.Charts {
-		out.Spec.Charts[i].Chart.Name = in.Spec.Charts[i].Chart.Name
-		out.Spec.Charts[i].Chart.RepoURL = in.Spec.Charts[i].Chart.RepoURL
-		out.Spec.Charts[i].Chart.Version = in.Spec.Charts[i].Chart.Version
-	}
-	return nil
-}
-
-// converts v1alpha1.ImageTxts -> v1.ImageTxts
-func ConvertImageTxts(in *v1alpha1.ImageTxts, out *v1.ImageTxts) error {
-	out.TypeMeta = in.TypeMeta
-	out.ObjectMeta = in.ObjectMeta
-	out.Spec.ImageTxts = make([]v1.ImageTxt, len(in.Spec.ImageTxts))
-	for i := range in.Spec.ImageTxts {
-		out.Spec.ImageTxts[i].Ref = in.Spec.ImageTxts[i].Ref
-		out.Spec.ImageTxts[i].Sources.Include = append(
-			out.Spec.ImageTxts[i].Sources.Include,
-			in.Spec.ImageTxts[i].Sources.Include...,
-		)
-		out.Spec.ImageTxts[i].Sources.Exclude = append(
-			out.Spec.ImageTxts[i].Sources.Exclude,
-			in.Spec.ImageTxts[i].Sources.Exclude...,
-		)
-	}
-	return nil
-}
-
 // convert v1alpha1 object to v1 object
 func ConvertObject(in interface{}) (interface{}, error) {
 	switch src := in.(type) {
@@ -102,19 +70,6 @@ func ConvertObject(in interface{}) (interface{}, error) {
 		}
 		return dst, nil
 
-	case *v1alpha1.ThickCharts:
-		dst := &v1.ThickCharts{}
-		if err := ConvertThickCharts(src, dst); err != nil {
-			return nil, err
-		}
-		return dst, nil
-
-	case *v1alpha1.ImageTxts:
-		dst := &v1.ImageTxts{}
-		if err := ConvertImageTxts(src, dst); err != nil {
-			return nil, err
-		}
-		return dst, nil
 	}
 
 	return nil, fmt.Errorf("unsupported object type [%T]", in)

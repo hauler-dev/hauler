@@ -20,23 +20,3 @@ type Chart struct {
 	RepoURL string `json:"repoURL,omitempty"`
 	Version string `json:"version,omitempty"`
 }
-
-type ThickCharts struct {
-	*metav1.TypeMeta  `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec ThickChartSpec `json:"spec,omitempty"`
-}
-
-type ThickChartSpec struct {
-	Charts []ThickChart `json:"charts,omitempty"`
-}
-
-type ThickChart struct {
-	Chart       `json:",inline,omitempty"`
-	ExtraImages []ChartImage `json:"extraImages,omitempty"`
-}
-
-type ChartImage struct {
-	Reference string `json:"ref"`
-}
