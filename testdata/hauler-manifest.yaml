@@ -10,6 +10,9 @@ spec:
     - name: ghcr.io/hauler-dev/library/busybox:stable
       platform: linux/amd64
     - name: gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+    - name: ghcr.io/kubewarden/audit-scanner:v1.30.0-rc1
+      certificate-identity-regexp: https://github.com/kubewarden/audit-scanner/.github/workflows/release.yml@refs/tags/v1.30.0-rc1
+      certificate-oidc-issuer: https://token.actions.githubusercontent.com  
 ---
 apiVersion: content.hauler.cattle.io/v1
 kind: Charts
