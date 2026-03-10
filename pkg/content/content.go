@@ -27,7 +27,7 @@ func Load(data []byte) (schema.ObjectKind, error) {
 	gv := tm.GroupVersionKind().GroupVersion()
 	// allow v1 content and collections
 	if gv != v1.ContentGroupVersion &&
-    gv != v1.CollectionGroupVersion {
+		gv != v1.CollectionGroupVersion {
 		return nil, fmt.Errorf("unrecognized content or collection [%s] with [kind=%s]", tm.APIVersion, tm.Kind)
 	}
 

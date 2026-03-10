@@ -66,31 +66,6 @@ spec:
 	assertArtifactInStore(t, s, "synced.sh")
 }
 
-func TestProcessContent_Files_v1alpha1(t *testing.T) {
-	ctx := newTestContext(t)
-	s := newTestStore(t)
-
-	fileURL := seedFileInHTTPServer(t, "legacy.sh", "#!/bin/sh\necho legacy")
-
-	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1alpha1
-kind: Files
-metadata:
-  name: test-files-alpha
-spec:
-  files:
-    - path: %s
-`, fileURL)
-
-	fi := writeManifestFile(t, manifest)
-	o := newSyncOpts(s.Root)
-	ro := defaultCliOpts()
-
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
-		t.Fatalf("processContent Files v1alpha1: %v", err)
-	}
-	assertArtifactInStore(t, s, "legacy.sh")
-}
-
 func TestProcessContent_Charts_v1(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
@@ -114,30 +89,6 @@ spec:
 
 	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
 		t.Fatalf("processContent Charts v1: %v", err)
-	}
-	assertArtifactInStore(t, s, "rancher-cluster-templates")
-}
-
-func TestProcessContent_Charts_v1alpha1(t *testing.T) {
-	ctx := newTestContext(t)
-	s := newTestStore(t)
-
-	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1alpha1
-kind: Charts
-metadata:
-  name: test-charts-alpha
-spec:
-  charts:
-    - name: rancher-cluster-templates-0.5.2.tgz
-      repoURL: %s
-`, chartTestdataDir)
-
-	fi := writeManifestFile(t, manifest)
-	o := newSyncOpts(s.Root)
-	ro := defaultCliOpts()
-
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
-		t.Fatalf("processContent Charts v1alpha1: %v", err)
 	}
 	assertArtifactInStore(t, s, "rancher-cluster-templates")
 }
@@ -166,32 +117,6 @@ spec:
 		t.Fatalf("processContent Images v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/myimage")
-}
-
-func TestProcessContent_Images_v1alpha1(t *testing.T) {
-	ctx := newTestContext(t)
-	s := newTestStore(t)
-
-	host, _ := newLocalhostRegistry(t)
-	seedImage(t, host, "myorg/legacyimage", "v1")
-
-	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1alpha1
-kind: Images
-metadata:
-  name: test-images-alpha
-spec:
-  images:
-    - name: %s/myorg/legacyimage:v1
-`, host)
-
-	fi := writeManifestFile(t, manifest)
-	o := newSyncOpts(s.Root)
-	ro := defaultCliOpts()
-
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
-		t.Fatalf("processContent Images v1alpha1: %v", err)
-	}
-	assertArtifactInStore(t, s, "myorg/legacyimage")
 }
 
 func TestProcessContent_UnsupportedKind(t *testing.T) {

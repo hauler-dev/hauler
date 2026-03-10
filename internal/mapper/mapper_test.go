@@ -58,6 +58,37 @@ func TestFromManifest_File(t *testing.T) {
 	}
 }
 
+func TestFromManifest_OciImageConfigWithTitleAnnotation(t *testing.T) {
+	// OCI artifacts distributed as "fake images" (e.g. rke2-binary) use the standard
+	// OCI image config type but set AnnotationTitle on their layers. FromManifest must
+	// dispatch to Files() (not Images()) so the title is used as the output filename.
+	manifest := ocispec.Manifest{
+		Config: ocispec.Descriptor{
+			MediaType: ocispec.MediaTypeImageConfig,
+		},
+		Layers: []ocispec.Descriptor{
+			{
+				MediaType: consts.OCILayer,
+				Annotations: map[string]string{
+					ocispec.AnnotationTitle: "rke2.linux-amd64",
+				},
+			},
+		},
+	}
+
+	target, err := FromManifest(manifest, t.TempDir())
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	s, ok := target.(*store)
+	if !ok {
+		t.Fatal("expected target to be *store")
+	}
+	if _, exists := s.mapper[consts.OCILayer]; !exists {
+		t.Fatal("expected Files() mapper (OCILayer key) for OCI image config with title annotation")
+	}
+}
+
 func TestFromManifest_FileLayerFallback(t *testing.T) {
 	manifest := ocispec.Manifest{
 		Config: ocispec.Descriptor{
@@ -113,6 +144,68 @@ func TestFromManifest_UnknownNoTitle(t *testing.T) {
 	}
 	if target == nil {
 		t.Fatal("expected non-nil Target")
+	}
+
+	// Unknown artifacts must use the Default catch-all mapper so blobs are not silently discarded
+	s, ok := target.(*store)
+	if !ok {
+		t.Fatal("expected target to be *store")
+	}
+	if _, exists := s.mapper[DefaultCatchAll]; !exists {
+		t.Fatal("expected default catch-all mapper for unknown artifact type")
+	}
+}
+
+func TestFiles_CatchAll_WithTitle(t *testing.T) {
+	// OCI artifacts with custom layer media types (e.g. rke2-binary) must be
+	// extracted by the Files() catch-all when they carry AnnotationTitle.
+	mappers := Files()
+
+	fn, ok := mappers[DefaultCatchAll]
+	if !ok {
+		t.Fatal("Files() must contain a DefaultCatchAll entry")
+	}
+
+	d := digest.Digest("sha256:" + strings.Repeat("b", 64))
+	desc := ocispec.Descriptor{
+		MediaType: "application/vnd.rancher.rke2.binary",
+		Digest:    d,
+		Annotations: map[string]string{
+			ocispec.AnnotationTitle: "rke2.linux-amd64",
+		},
+	}
+
+	result, err := fn(desc)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result != "rke2.linux-amd64" {
+		t.Errorf("expected %q, got %q", "rke2.linux-amd64", result)
+	}
+}
+
+func TestFiles_CatchAll_NoTitle(t *testing.T) {
+	// Blobs without AnnotationTitle (e.g. config blobs) must be discarded by the
+	// Files() catch-all (empty filename = discard signal for Push).
+	mappers := Files()
+
+	fn, ok := mappers[DefaultCatchAll]
+	if !ok {
+		t.Fatal("Files() must contain a DefaultCatchAll entry")
+	}
+
+	d := digest.Digest("sha256:" + strings.Repeat("c", 64))
+	desc := ocispec.Descriptor{
+		MediaType: "application/vnd.oci.image.config.v1+json",
+		Digest:    d,
+	}
+
+	result, err := fn(desc)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result != "" {
+		t.Errorf("expected empty string (discard) for config blob, got %q", result)
 	}
 }
 
