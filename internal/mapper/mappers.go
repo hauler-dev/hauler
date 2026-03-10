@@ -13,32 +13,35 @@ type Fn func(desc ocispec.Descriptor) (string, error)
 
 // FromManifest will return the appropriate content store given a reference and source type adequate for storing the results on disk
 func FromManifest(manifest ocispec.Manifest, root string) (content.Target, error) {
-	// First, switch on config mediatype to identify known types
+	// First, switch on config mediatype to identify known types.
 	switch manifest.Config.MediaType {
-	case consts.DockerConfigJSON, ocispec.MediaTypeImageConfig:
-		return NewMapperFileStore(root, Images())
-
 	case consts.ChartLayerMediaType, consts.ChartConfigMediaType:
 		return NewMapperFileStore(root, Chart())
 
 	case consts.FileLocalConfigMediaType, consts.FileDirectoryConfigMediaType, consts.FileHttpConfigMediaType:
 		return NewMapperFileStore(root, Files())
+
+	case consts.DockerConfigJSON, ocispec.MediaTypeImageConfig:
+		// Standard OCI/Docker image config. OCI artifacts that distribute files
+		// (e.g. rke2-binary) reuse this config type but set AnnotationTitle on their
+		// layers. When title annotations are present prefer Files() so the title is
+		// used as the output filename; otherwise treat as a container image.
+		for _, layer := range manifest.Layers {
+			if _, ok := layer.Annotations[ocispec.AnnotationTitle]; ok {
+				return NewMapperFileStore(root, Files())
+			}
+		}
+		return NewMapperFileStore(root, Images())
 	}
 
-	// For unknown config types, check if any layer has a title annotation, which indicates a file artifact
-	hasFileLayer := false
+	// Unknown config type: title annotation indicates a file artifact; otherwise use
+	// a catch-all mapper that writes blobs by digest.
 	for _, layer := range manifest.Layers {
 		if _, ok := layer.Annotations[ocispec.AnnotationTitle]; ok {
-			hasFileLayer = true
-			break
+			return NewMapperFileStore(root, Files())
 		}
 	}
-	if hasFileLayer {
-		return NewMapperFileStore(root, Files())
-	}
-
-	// Default fallback
-	return NewMapperFileStore(root, nil)
+	return NewMapperFileStore(root, Default())
 }
 
 func Images() map[string]Fn {
@@ -91,6 +94,24 @@ func Chart() map[string]Fn {
 	return m
 }
 
+// DefaultCatchAll is the sentinel key used in a mapper map to match any media type
+// not explicitly registered. Push checks for this key as a fallback.
+const DefaultCatchAll = ""
+
+// Default returns a catch-all mapper that extracts any layer blob using its title
+// annotation as the filename, falling back to a digest-based name. Used when the
+// manifest config media type is not a known hauler type.
+func Default() map[string]Fn {
+	m := make(map[string]Fn)
+	m[DefaultCatchAll] = Fn(func(desc ocispec.Descriptor) (string, error) {
+		if title, ok := desc.Annotations[ocispec.AnnotationTitle]; ok {
+			return title, nil
+		}
+		return fmt.Sprintf("%s.bin", desc.Digest.String()), nil
+	})
+	return m
+}
+
 func Files() map[string]Fn {
 	m := make(map[string]Fn)
 
@@ -108,6 +129,16 @@ func Files() map[string]Fn {
 	m[consts.FileLayerMediaType] = fileMapperFn
 	m[consts.OCILayer] = fileMapperFn                          // Also handle standard OCI layers that have title annotation
 	m["application/vnd.oci.image.layer.v1.tar"] = fileMapperFn // And the tar variant
+
+	// Catch-all for OCI artifacts that use custom layer media types (e.g. rke2-binary).
+	// Write the blob if it carries an AnnotationTitle; silently discard everything else
+	// (config blobs, metadata) by returning an empty filename.
+	m[DefaultCatchAll] = Fn(func(desc ocispec.Descriptor) (string, error) {
+		if title, ok := desc.Annotations[ocispec.AnnotationTitle]; ok {
+			return title, nil
+		}
+		return "", nil // No title → discard (config blob or unrecognised metadata)
+	})
 
 	return m
 }

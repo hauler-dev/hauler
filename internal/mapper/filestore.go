@@ -62,19 +62,42 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 	// Check if this descriptor has a mapper for its media type
 	mapperFn, hasMapper := s.mapper[desc.MediaType]
 	if !hasMapper {
+		// Fall back to catch-all sentinel, then discard
+		mapperFn, hasMapper = s.mapper[DefaultCatchAll]
+	}
+	if !hasMapper {
 		// No mapper for this media type, discard it (config blobs, etc.)
 		return content.NewIoContentWriter(&nopCloser{io.Discard}, content.WithOutputHash(desc.Digest.String())), nil
 	}
 
-	// Get the filename from the mapper function
+	// Get the filename from the mapper function.
+	// An empty filename means the mapper explicitly declined this descriptor (e.g. a
+	// config blob that has no title annotation); treat it the same as no mapper.
 	filename, err := mapperFn(desc)
 	if err != nil {
 		return nil, err
 	}
+	if filename == "" {
+		return content.NewIoContentWriter(&nopCloser{io.Discard}, content.WithOutputHash(desc.Digest.String())), nil
+	}
 
-	// Get the destination directory and create the full path
-	destDir := s.store.ResolvePath("")
+	// Get the destination directory and create the full path.
+	// Use absolute paths so the traversal check works even when destDir is relative (e.g. ".").
+	destDir, err := filepath.Abs(s.store.ResolvePath(""))
+	if err != nil {
+		return nil, errors.Wrap(err, "resolving destination dir")
+	}
 	fullFileName := filepath.Join(destDir, filename)
+
+	// Guard against path traversal (e.g. filename containing "../")
+	if !strings.HasPrefix(fullFileName, destDir+string(filepath.Separator)) {
+		return nil, fmt.Errorf("path_traversal_disallowed: %q resolves outside destination dir", filename)
+	}
+
+	// Create parent directories (e.g. when filename is "subdir/file.txt")
+	if err := os.MkdirAll(filepath.Dir(fullFileName), 0755); err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("creating directory for %s", fullFileName))
+	}
 
 	// Create the file
 	f, err := os.OpenFile(fullFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
