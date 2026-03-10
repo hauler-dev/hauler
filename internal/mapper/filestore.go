@@ -62,14 +62,23 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 	// Check if this descriptor has a mapper for its media type
 	mapperFn, hasMapper := s.mapper[desc.MediaType]
 	if !hasMapper {
+		// Fall back to catch-all sentinel, then discard
+		mapperFn, hasMapper = s.mapper[DefaultCatchAll]
+	}
+	if !hasMapper {
 		// No mapper for this media type, discard it (config blobs, etc.)
 		return content.NewIoContentWriter(&nopCloser{io.Discard}, content.WithOutputHash(desc.Digest.String())), nil
 	}
 
-	// Get the filename from the mapper function
+	// Get the filename from the mapper function.
+	// An empty filename means the mapper explicitly declined this descriptor (e.g. a
+	// config blob that has no title annotation); treat it the same as no mapper.
 	filename, err := mapperFn(desc)
 	if err != nil {
 		return nil, err
+	}
+	if filename == "" {
+		return content.NewIoContentWriter(&nopCloser{io.Discard}, content.WithOutputHash(desc.Digest.String())), nil
 	}
 
 	// Get the destination directory and create the full path
