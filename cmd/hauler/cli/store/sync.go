@@ -15,11 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"hauler.dev/go/hauler/internal/flags"
-	convert "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/convert"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
-	v1alpha1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
-	tchart "hauler.dev/go/hauler/pkg/collection/chart"
-	"hauler.dev/go/hauler/pkg/collection/imagetxt"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"
 	"hauler.dev/go/hauler/pkg/cosign"
@@ -169,23 +165,6 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 
 		case consts.FilesContentKind:
 			switch gvk.Version {
-			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
-
-				var alphaCfg v1alpha1.Files
-				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
-					return err
-				}
-				var v1Cfg v1.Files
-				if err := convert.ConvertFiles(&alphaCfg, &v1Cfg); err != nil {
-					return err
-				}
-				for _, f := range v1Cfg.Spec.Files {
-					if err := storeFile(ctx, s, f); err != nil {
-						return err
-					}
-				}
-
 			case "v1":
 				var cfg v1.Files
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
@@ -198,151 +177,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 
 			default:
-				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1 and v1alpha1]", gvk.Version, gvk.Kind)
+				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
 			}
 
 		case consts.ImagesContentKind:
 			switch gvk.Version {
-			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
-
-				var alphaCfg v1alpha1.Images
-				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
-					return err
-				}
-				var v1Cfg v1.Images
-				if err := convert.ConvertImages(&alphaCfg, &v1Cfg); err != nil {
-					return err
-				}
-
-				a := v1Cfg.GetAnnotations()
-				for _, i := range v1Cfg.Spec.Images {
-
-					if a[consts.ImageAnnotationRegistry] != "" || o.Registry != "" {
-						newRef, _ := reference.Parse(i.Name)
-						newReg := o.Registry
-						if o.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
-							newReg = a[consts.ImageAnnotationRegistry]
-						}
-						if newRef.Context().RegistryStr() == "" {
-							newRef, err = reference.Relocate(i.Name, newReg)
-							if err != nil {
-								return err
-							}
-						}
-						i.Name = newRef.Name()
-					}
-
-					hasAnnotationIdentityOptions := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != ""
-					hasCliIdentityOptions := o.CertIdentityRegexp != "" || o.CertIdentity != ""
-					hasImageIdentityOptions := i.CertIdentityRegexp != "" || i.CertIdentity != ""
-
-					needsKeylessVerificaton := hasAnnotationIdentityOptions || hasCliIdentityOptions || hasImageIdentityOptions
-					needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
-					if needsPubKeyVerification {
-						key := o.Key
-						if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
-							key, err = homedir.Expand(a[consts.ImageAnnotationKey])
-							if err != nil {
-								return err
-							}
-						}
-						if i.Key != "" {
-							key, err = homedir.Expand(i.Key)
-							if err != nil {
-								return err
-							}
-						}
-						l.Debugf("key for image [%s]", key)
-
-						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
-							tlog = true
-						}
-						if i.Tlog {
-							tlog = i.Tlog
-						}
-						l.Debugf("transparency log for verification [%b]", tlog)
-
-						if err := cosign.VerifySignature(ctx, key, tlog, i.Name, rso, ro); err != nil {
-							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
-							continue
-						}
-						l.Infof("signature verified for image [%s]", i.Name)
-					} else if needsKeylessVerificaton { //Keyless signature verification
-						certIdentityRegexp := o.CertIdentityRegexp
-						if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
-							certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
-						}
-						if i.CertIdentityRegexp != "" {
-							certIdentityRegexp = i.CertIdentityRegexp
-						}
-						l.Debugf("certIdentityRegexp for image [%s]", certIdentityRegexp)
-
-						certIdentity := o.CertIdentity
-						if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
-							certIdentity = a[consts.ImageAnnotationCertIdentity]
-						}
-						if i.CertIdentity != "" {
-							certIdentity = i.CertIdentity
-						}
-						l.Debugf("certIdentity for image [%s]", certIdentity)
-
-						certOidcIssuer := o.CertOidcIssuer
-						if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
-							certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
-						}
-						if i.CertOidcIssuer != "" {
-							certOidcIssuer = i.CertOidcIssuer
-						}
-						l.Debugf("certOidcIssuer for image [%s]", certOidcIssuer)
-
-						certOidcIssuerRegexp := o.CertOidcIssuerRegexp
-						if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
-							certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
-						}
-						if i.CertOidcIssuerRegexp != "" {
-							certOidcIssuerRegexp = i.CertOidcIssuerRegexp
-						}
-						l.Debugf("certOidcIssuerRegexp for image [%s]", certOidcIssuerRegexp)
-
-						certGithubWorkflowRepository := o.CertGithubWorkflowRepository
-						if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
-							certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
-						}
-						if i.CertGithubWorkflowRepository != "" {
-							certGithubWorkflowRepository = i.CertGithubWorkflowRepository
-						}
-						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
-
-						// Keyless (Fulcio) certs expire after ~10 min; tlog is always
-						// required to prove the cert was valid at signing time.
-						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, i.Name, rso, ro); err != nil {
-							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
-							continue
-						}
-						l.Infof("keyless signature verified for image [%s]", i.Name)
-					}
-
-					platform := o.Platform
-					if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
-						platform = a[consts.ImageAnnotationPlatform]
-					}
-					if i.Platform != "" {
-						platform = i.Platform
-					}
-
-					rewrite := ""
-					if i.Rewrite != "" {
-						rewrite = i.Rewrite
-					}
-
-					if err := storeImage(ctx, s, i, platform, rso, ro, rewrite); err != nil {
-						return err
-					}
-				}
-				s.CopyAll(ctx, s.OCI, nil)
-
 			case "v1":
 				var cfg v1.Images
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
@@ -477,37 +316,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				s.CopyAll(ctx, s.OCI, nil)
 
 			default:
-				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1 and v1alpha1]", gvk.Version, gvk.Kind)
+				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
 			}
 
 		case consts.ChartsContentKind:
 			switch gvk.Version {
-			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
-
-				var alphaCfg v1alpha1.Charts
-				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
-					return err
-				}
-				var v1Cfg v1.Charts
-				if err := convert.ConvertCharts(&alphaCfg, &v1Cfg); err != nil {
-					return err
-				}
-				for _, ch := range v1Cfg.Spec.Charts {
-					if err := storeChart(ctx, s, ch,
-						&flags.AddChartOpts{
-							ChartOpts: &action.ChartPathOptions{
-								RepoURL: ch.RepoURL,
-								Version: ch.Version,
-							},
-						},
-						rso, ro,
-						"",
-					); err != nil {
-						return err
-					}
-				}
-
 			case "v1":
 				var cfg v1.Charts
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
@@ -541,107 +354,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 
 			default:
-				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1 and v1alpha1]", gvk.Version, gvk.Kind)
-			}
-
-		case consts.ChartsCollectionKind:
-			switch gvk.Version {
-			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
-
-				var alphaCfg v1alpha1.ThickCharts
-				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
-					return err
-				}
-				var v1Cfg v1.ThickCharts
-				if err := convert.ConvertThickCharts(&alphaCfg, &v1Cfg); err != nil {
-					return err
-				}
-				for _, chObj := range v1Cfg.Spec.Charts {
-					tc, err := tchart.NewThickChart(chObj, &action.ChartPathOptions{
-						RepoURL: chObj.RepoURL,
-						Version: chObj.Version,
-					})
-					if err != nil {
-						return err
-					}
-					if _, err := s.AddArtifactCollection(ctx, tc); err != nil {
-						return err
-					}
-				}
-
-			case "v1":
-				var cfg v1.ThickCharts
-				if err := yaml.Unmarshal(doc, &cfg); err != nil {
-					return err
-				}
-				for _, chObj := range cfg.Spec.Charts {
-					tc, err := tchart.NewThickChart(chObj, &action.ChartPathOptions{
-						RepoURL: chObj.RepoURL,
-						Version: chObj.Version,
-					})
-					if err != nil {
-						return err
-					}
-					if _, err := s.AddArtifactCollection(ctx, tc); err != nil {
-						return err
-					}
-				}
-
-			default:
-				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1 and v1alpha1]", gvk.Version, gvk.Kind)
-			}
-
-		case consts.ImageTxtsContentKind:
-			switch gvk.Version {
-			case "v1alpha1":
-				l.Warnf("!!! DEPRECATION WARNING !!! apiVersion [%s] will be removed in a future release...", gvk.Version)
-
-				var alphaCfg v1alpha1.ImageTxts
-				if err := yaml.Unmarshal(doc, &alphaCfg); err != nil {
-					return err
-				}
-				var v1Cfg v1.ImageTxts
-				if err := convert.ConvertImageTxts(&alphaCfg, &v1Cfg); err != nil {
-					return err
-				}
-				for _, cfgIt := range v1Cfg.Spec.ImageTxts {
-					it, err := imagetxt.New(cfgIt.Ref,
-						imagetxt.WithIncludeSources(cfgIt.Sources.Include...),
-						imagetxt.WithExcludeSources(cfgIt.Sources.Exclude...),
-					)
-					if err != nil {
-						return fmt.Errorf("convert ImageTxt %s: %v", v1Cfg.Name, err)
-					}
-					if _, err := s.AddArtifactCollection(ctx, it); err != nil {
-						return fmt.Errorf("add ImageTxt %s to store: %v", v1Cfg.Name, err)
-					}
-				}
-
-			case "v1":
-				var cfg v1.ImageTxts
-				if err := yaml.Unmarshal(doc, &cfg); err != nil {
-					return err
-				}
-				for _, cfgIt := range cfg.Spec.ImageTxts {
-					it, err := imagetxt.New(cfgIt.Ref,
-						imagetxt.WithIncludeSources(cfgIt.Sources.Include...),
-						imagetxt.WithExcludeSources(cfgIt.Sources.Exclude...),
-					)
-					if err != nil {
-						return fmt.Errorf("convert ImageTxt %s: %v", cfg.Name, err)
-					}
-					if _, err := s.AddArtifactCollection(ctx, it); err != nil {
-						return fmt.Errorf("add ImageTxt %s to store: %v", cfg.Name, err)
-					}
-				}
-
-			default:
-				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1 and v1alpha1]", gvk.Version, gvk.Kind)
+				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
 			}
 
 		default:
-			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Images, Charts, ThickCharts, ImageTxts]", gvk.Kind)
+			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Images, Charts]", gvk.Kind)
 		}
 	}
 	return nil

@@ -74,12 +74,10 @@ const (
 	ImageAnnotationCertGithubWorkflowRepository = "hauler.dev/certificate-github-workflow-repository"
 
 	// content kinds
-	ImagesContentKind    = "Images"
-	ChartsContentKind    = "Charts"
-	FilesContentKind     = "Files"
-	DriverContentKind    = "Driver"
-	ImageTxtsContentKind = "ImageTxts"
-	ChartsCollectionKind = "ThickCharts"
+	ImagesContentKind = "Images"
+	ChartsContentKind = "Charts"
+	FilesContentKind  = "Files"
+	// DriverContentKind    = "Driver"
 
 	// content groups
 	ContentGroup    = "content.hauler.cattle.io"

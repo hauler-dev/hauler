@@ -71,10 +71,10 @@ func IsMultiArchImage(name string, opts ...remote.Option) (bool, error) {
 
 	_, err = desc.ImageIndex()
 	if err != nil {
-		// If the descriptor could not be converted to an image index, it's not a multi-arch image
+		// if the descriptor could not be converted to an image index... it's not a multi-arch image
 		return false, nil
 	}
 
-	// If the descriptor could be converted to an image index, it's a multi-arch image
+	// if the descriptor could be converted to an image index... it's a multi-arch image
 	return true, nil
 }
