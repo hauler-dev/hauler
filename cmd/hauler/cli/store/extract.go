@@ -16,6 +16,56 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
+// isIndexMediaType returns true for OCI and Docker manifest list media types.
+func isIndexMediaType(mt string) bool {
+	return mt == ocispec.MediaTypeImageIndex || mt == consts.DockerManifestListSchema2
+}
+
+// firstLeafManifest walks a (potentially nested) OCI index and returns the
+// decoded manifest of the first non-index child. It prefers non-index children
+// at each level; if all children are indexes it descends into the first one.
+// Returns an error if any nested index or manifest cannot be decoded.
+func firstLeafManifest(ctx context.Context, s *store.Layout, idx ocispec.Index) (ocispec.Manifest, error) {
+	for {
+		if len(idx.Manifests) == 0 {
+			return ocispec.Manifest{}, fmt.Errorf("image index has no child manifests")
+		}
+
+		// Prefer the first non-index child; fall back to the first child (an index) if all are indexes.
+		desc := idx.Manifests[0]
+		for _, d := range idx.Manifests {
+			if !isIndexMediaType(d.MediaType) {
+				desc = d
+				break
+			}
+		}
+
+		rc, err := s.Fetch(ctx, desc)
+		if err != nil {
+			return ocispec.Manifest{}, err
+		}
+
+		if isIndexMediaType(desc.MediaType) {
+			var nested ocispec.Index
+			err = json.NewDecoder(rc).Decode(&nested)
+			rc.Close()
+			if err != nil {
+				return ocispec.Manifest{}, fmt.Errorf("decoding nested index: %w", err)
+			}
+			idx = nested
+			continue
+		}
+
+		var m ocispec.Manifest
+		err = json.NewDecoder(rc).Decode(&m)
+		rc.Close()
+		if err != nil {
+			return ocispec.Manifest{}, fmt.Errorf("decoding child manifest: %w", err)
+		}
+		return m, nil
+	}
+}
+
 // isContainerImageManifest returns true when the manifest describes a real
 // container image — i.e. an OCI/Docker image config with no AnnotationTitle on
 // any layer. File artifacts distributed as OCI images always carry AnnotationTitle
@@ -67,14 +117,14 @@ func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref 
 			if err := json.NewDecoder(rc).Decode(&idx); err != nil {
 				return err
 			}
-			if len(idx.Manifests) > 0 {
-				childRC, err := s.Fetch(ctx, idx.Manifests[0])
-				if err != nil {
-					return err
-				}
-				defer childRC.Close()
-				// ignore decode error — FromManifest handles an empty manifest gracefully
-				json.NewDecoder(childRC).Decode(&m) //nolint:errcheck
+			if len(idx.Manifests) == 0 {
+				l.Warnf("skipping [%s]: image index has no child manifests", reference)
+				return nil
+			}
+			var err error
+			m, err = firstLeafManifest(ctx, s, idx)
+			if err != nil {
+				return err
 			}
 		} else {
 			if err := json.NewDecoder(rc).Decode(&m); err != nil {

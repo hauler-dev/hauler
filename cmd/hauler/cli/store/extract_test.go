@@ -290,6 +290,116 @@ func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
 	}
 }
 
+func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
+	// Regression test: extracting a nested OCI image index (outer index whose only
+	// children are inner indexes, which in turn contain the platform manifests) must
+	// yield only the named binary files — no sha256:<digest>.bin metadata files.
+	// firstLeafManifest must descend through the outer index into the inner index to
+	// find a leaf manifest so that FromManifest selects the correct Files() mapper.
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	buildPlatformImg := func(content []byte, title string) gcrv1.Image {
+		layer := static.NewLayer(content, gvtypes.OCILayer)
+		img, err := mutate.Append(empty.Image, mutate.Addendum{
+			Layer: layer,
+			Annotations: map[string]string{
+				ocispec.AnnotationTitle: title,
+			},
+		})
+		if err != nil {
+			t.Fatalf("mutate.Append: %v", err)
+		}
+		img = mutate.MediaType(img, gvtypes.OCIManifestSchema1)
+		img = mutate.ConfigMediaType(img, gvtypes.MediaType(ocispec.MediaTypeImageConfig))
+		return img
+	}
+
+	amd64Img := buildPlatformImg([]byte("amd64 binary content"), "mybinary.linux-amd64")
+	arm64Img := buildPlatformImg([]byte("arm64 binary content"), "mybinary.linux-arm64")
+
+	// Inner index contains the leaf platform manifests.
+	innerIdx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{
+			Add: amd64Img,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "amd64"},
+			},
+		},
+		mutate.IndexAddendum{
+			Add: arm64Img,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "arm64"},
+			},
+		},
+	)
+
+	// Outer index contains only the inner index — all children are indexes.
+	outerIdx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{
+			Add: innerIdx,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIImageIndex,
+			},
+		},
+	)
+
+	ref := host + "/binaries/nested:v1"
+	tag, err := name.NewTag(ref, name.Insecure)
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+	if err := remote.WriteIndex(tag, outerIdx, rOpts...); err != nil {
+		t.Fatalf("remote.WriteIndex: %v", err)
+	}
+
+	s := newTestStore(t)
+	if err := s.AddImage(ctx, ref, "", rOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	destDir := t.TempDir()
+	eo := &flags.ExtractOpts{
+		StoreRootOpts:  defaultRootOpts(s.Root),
+		DestinationDir: destDir,
+	}
+	if err := ExtractCmd(ctx, eo, s, "binaries/nested:v1"); err != nil {
+		t.Fatalf("ExtractCmd: %v", err)
+	}
+
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+
+	// No sha256: digest-named files should be extracted.
+	for _, n := range names {
+		if strings.HasPrefix(n, "sha256:") {
+			t.Errorf("unexpected digest-named file %q extracted (all files: %v)", n, names)
+		}
+	}
+
+	// Both platform binaries must be present.
+	for _, want := range []string{"mybinary.linux-amd64", "mybinary.linux-arm64"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected binary %q not found; got: %v", want, names)
+		}
+	}
+}
+
 func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
 	// A real container image (no AnnotationTitle on any layer) should be skipped
 	// without error and without writing any files to the destination directory.
