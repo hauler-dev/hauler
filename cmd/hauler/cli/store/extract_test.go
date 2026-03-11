@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -186,6 +187,226 @@ func TestExtractCmd_OciArtifactKindImage(t *testing.T) {
 	}
 	if string(data) != string(fileContent) {
 		t.Errorf("content mismatch: got %q, want %q", string(data), string(fileContent))
+	}
+}
+
+func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
+	// Regression test: extracting an OCI image index whose platform manifests
+	// carry binary layers with AnnotationTitle must yield only the named binary
+	// files — no sha256:<digest>.bin metadata files.
+	// Before the fix, decoding the index as an ocispec.Manifest produced an
+	// empty Config.MediaType, causing FromManifest to select Default() mapper
+	// which wrote config blobs and child manifests as sha256:<digest>.bin.
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	buildPlatformImg := func(content []byte, title string) gcrv1.Image {
+		layer := static.NewLayer(content, gvtypes.OCILayer)
+		img, err := mutate.Append(empty.Image, mutate.Addendum{
+			Layer: layer,
+			Annotations: map[string]string{
+				ocispec.AnnotationTitle: title,
+			},
+		})
+		if err != nil {
+			t.Fatalf("mutate.Append: %v", err)
+		}
+		img = mutate.MediaType(img, gvtypes.OCIManifestSchema1)
+		img = mutate.ConfigMediaType(img, gvtypes.MediaType(ocispec.MediaTypeImageConfig))
+		return img
+	}
+
+	amd64Img := buildPlatformImg([]byte("amd64 binary content"), "mybinary.linux-amd64")
+	arm64Img := buildPlatformImg([]byte("arm64 binary content"), "mybinary.linux-arm64")
+
+	idx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{
+			Add: amd64Img,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "amd64"},
+			},
+		},
+		mutate.IndexAddendum{
+			Add: arm64Img,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "arm64"},
+			},
+		},
+	)
+
+	ref := host + "/binaries/mybinary:v1"
+	tag, err := name.NewTag(ref, name.Insecure)
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+	if err := remote.WriteIndex(tag, idx, rOpts...); err != nil {
+		t.Fatalf("remote.WriteIndex: %v", err)
+	}
+
+	s := newTestStore(t)
+	if err := s.AddImage(ctx, ref, "", rOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	destDir := t.TempDir()
+	eo := &flags.ExtractOpts{
+		StoreRootOpts:  defaultRootOpts(s.Root),
+		DestinationDir: destDir,
+	}
+	if err := ExtractCmd(ctx, eo, s, "binaries/mybinary:v1"); err != nil {
+		t.Fatalf("ExtractCmd: %v", err)
+	}
+
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+
+	// No sha256: digest-named files should be extracted
+	for _, n := range names {
+		if strings.HasPrefix(n, "sha256:") {
+			t.Errorf("unexpected digest-named file %q extracted (all files: %v)", n, names)
+		}
+	}
+
+	// Both platform binaries must be present
+	for _, want := range []string{"mybinary.linux-amd64", "mybinary.linux-arm64"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected binary %q not found; got: %v", want, names)
+		}
+	}
+}
+
+func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
+	// A real container image (no AnnotationTitle on any layer) should be skipped
+	// without error and without writing any files to the destination directory.
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	layer := static.NewLayer([]byte("layer content"), gvtypes.OCILayer)
+	img, err := mutate.Append(empty.Image, mutate.Addendum{Layer: layer})
+	if err != nil {
+		t.Fatalf("mutate.Append: %v", err)
+	}
+	img = mutate.MediaType(img, gvtypes.OCIManifestSchema1)
+	img = mutate.ConfigMediaType(img, gvtypes.MediaType(ocispec.MediaTypeImageConfig))
+
+	ref := host + "/myapp/myimage:v1"
+	tag, err := name.NewTag(ref, name.Insecure)
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+	if err := remote.Write(tag, img, rOpts...); err != nil {
+		t.Fatalf("remote.Write: %v", err)
+	}
+
+	s := newTestStore(t)
+	if err := s.AddImage(ctx, ref, "", rOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	destDir := t.TempDir()
+	eo := &flags.ExtractOpts{
+		StoreRootOpts:  defaultRootOpts(s.Root),
+		DestinationDir: destDir,
+	}
+	if err := ExtractCmd(ctx, eo, s, "myapp/myimage:v1"); err != nil {
+		t.Fatalf("ExtractCmd: %v", err)
+	}
+
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Errorf("expected no files extracted for container image, got: %v", names)
+	}
+}
+
+func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
+	// A real multi-arch container image index (no AnnotationTitle on any layer)
+	// should be skipped without error and without writing any files.
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	buildPlatformImg := func(content []byte) gcrv1.Image {
+		layer := static.NewLayer(content, gvtypes.OCILayer)
+		img, err := mutate.Append(empty.Image, mutate.Addendum{Layer: layer})
+		if err != nil {
+			t.Fatalf("mutate.Append: %v", err)
+		}
+		img = mutate.MediaType(img, gvtypes.OCIManifestSchema1)
+		img = mutate.ConfigMediaType(img, gvtypes.MediaType(ocispec.MediaTypeImageConfig))
+		return img
+	}
+
+	idx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{
+			Add: buildPlatformImg([]byte("amd64 content")),
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "amd64"},
+			},
+		},
+		mutate.IndexAddendum{
+			Add: buildPlatformImg([]byte("arm64 content")),
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "arm64"},
+			},
+		},
+	)
+
+	ref := host + "/myapp/multiarch:v1"
+	tag, err := name.NewTag(ref, name.Insecure)
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+	if err := remote.WriteIndex(tag, idx, rOpts...); err != nil {
+		t.Fatalf("remote.WriteIndex: %v", err)
+	}
+
+	s := newTestStore(t)
+	if err := s.AddImage(ctx, ref, "", rOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	destDir := t.TempDir()
+	eo := &flags.ExtractOpts{
+		StoreRootOpts:  defaultRootOpts(s.Root),
+		DestinationDir: destDir,
+	}
+	if err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1"); err != nil {
+		t.Fatalf("ExtractCmd: %v", err)
+	}
+
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Errorf("expected no files extracted for container image index, got: %v", names)
 	}
 }
 
