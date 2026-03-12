@@ -1,0 +1,30 @@
+FROM golang:1.23-alpine AS scanner
+
+# Install system dependencies
+RUN apk add --no-cache \
+    bash \
+    curl \
+    wget \
+    git \
+    jq \
+    python3 \
+    py3-pip \
+    docker-cli
+
+# Install Semgrep
+RUN pip3 install --break-system-packages semgrep
+
+# Install govulncheck
+RUN go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Install Trivy
+RUN wget -qO /tmp/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v0.48.0/trivy_0.48.0_Linux-64bit.tar.gz && \
+    tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin && \
+    rm /tmp/trivy.tar.gz
+
+WORKDIR /scan
+
+COPY tests/security_scan_docker.sh /scan/security_scan.sh
+RUN chmod +x /scan/security_scan.sh
+
+CMD ["/scan/security_scan.sh"]
