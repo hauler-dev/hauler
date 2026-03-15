@@ -3,8 +3,10 @@ package archives
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mholt/archives"
 	"hauler.dev/go/hauler/pkg/log"
@@ -101,4 +103,86 @@ func Archive(ctx context.Context, dir, outfile string, compression archives.Comp
 	}
 	l.Debugf("archive created successfully [%s]", outfile)
 	return nil
+}
+
+// SplitArchive splits an existing archive into chunks of at most maxBytes each.
+// Chunks are named <base>_0<ext>, <base>_1<ext>, ... where base is the archive
+// path with all extensions stripped, and ext is the compound extension (e.g. .tar.zst).
+// The original archive is removed after successful splitting.
+func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]string, error) {
+	l := log.FromContext(ctx)
+
+	// derive base path and compound extension by stripping all extensions
+	base := archivePath
+	ext := ""
+	for filepath.Ext(base) != "" {
+		ext = filepath.Ext(base) + ext
+		base = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open archive for splitting: %w", err)
+	}
+
+	var chunks []string
+	buf := make([]byte, 32*1024)
+	chunkIdx := 0
+	var written int64
+	var outf *os.File
+
+	for {
+		if outf == nil {
+			chunkPath := fmt.Sprintf("%s_%d%s", base, chunkIdx, ext)
+			outf, err = os.Create(chunkPath)
+			if err != nil {
+				f.Close()
+				return nil, fmt.Errorf("failed to create chunk %d: %w", chunkIdx, err)
+			}
+			chunks = append(chunks, chunkPath)
+			l.Debugf("creating chunk [%s]", chunkPath)
+			written = 0
+			chunkIdx++
+		}
+
+		remaining := maxBytes - written
+		readSize := int64(len(buf))
+		if readSize > remaining {
+			readSize = remaining
+		}
+
+		n, readErr := f.Read(buf[:readSize])
+		if n > 0 {
+			if _, writeErr := outf.Write(buf[:n]); writeErr != nil {
+				outf.Close()
+				f.Close()
+				return nil, fmt.Errorf("failed to write to chunk: %w", writeErr)
+			}
+			written += int64(n)
+		}
+
+		if readErr == io.EOF {
+			outf.Close()
+			outf = nil
+			break
+		}
+		if readErr != nil {
+			outf.Close()
+			f.Close()
+			return nil, fmt.Errorf("failed to read archive: %w", readErr)
+		}
+
+		if written >= maxBytes {
+			outf.Close()
+			outf = nil
+		}
+	}
+
+	f.Close()
+	if err := os.Remove(archivePath); err != nil {
+		return nil, fmt.Errorf("failed to remove original archive after splitting: %w", err)
+	}
+
+	l.Infof("split archive [%s] into %d chunk(s)", filepath.Base(archivePath), len(chunks))
+	return chunks, nil
 }
