@@ -104,16 +104,30 @@ func parseChunkSize(s string) (int64, error) {
 		"T": 1 << 40, "TB": 1 << 40,
 	}
 	s = strings.ToUpper(strings.TrimSpace(s))
+	var result int64
+	matched := false
 	for suffix, mult := range units {
 		if strings.HasSuffix(s, suffix) {
 			n, err := strconv.ParseInt(strings.TrimSuffix(s, suffix), 10, 64)
 			if err != nil {
 				return 0, fmt.Errorf("invalid chunk size %q", s)
 			}
-			return n * mult, nil
+			result = n * mult
+			matched = true
+			break
 		}
 	}
-	return strconv.ParseInt(s, 10, 64)
+	if !matched {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid chunk size %q: %w", s, err)
+		}
+		result = n
+	}
+	if result <= 0 {
+		return 0, fmt.Errorf("chunk size must be greater than zero, received %q", s)
+	}
+	return result, nil
 }
 
 type exports struct {
