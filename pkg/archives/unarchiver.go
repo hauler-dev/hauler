@@ -197,8 +197,17 @@ func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error
 		return archivePath, nil
 	}
 
-	matches, err := filepath.Glob(base + "_*" + ext)
-	if err != nil || len(matches) == 0 {
+	all, err := filepath.Glob(base + "_*" + ext)
+	if err != nil {
+		return archivePath, nil
+	}
+	var matches []string
+	for _, m := range all {
+		if _, _, _, ok := chunkInfo(m); ok {
+			matches = append(matches, m)
+		}
+	}
+	if len(matches) == 0 {
 		return archivePath, nil
 	}
 
