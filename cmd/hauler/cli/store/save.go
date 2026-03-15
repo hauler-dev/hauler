@@ -170,59 +170,68 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 			l.Debugf("descriptor [%s] <<< SKIPPING ARTIFACT [%q]", desc.Digest.String(), desc.ArtifactType)
 			continue
 		}
-		if desc.Annotations != nil {
-			// we only care about images that cosign has added to the layout index
-			if kind, hasKind := desc.Annotations[consts.KindAnnotationName]; hasKind {
-				if refName, hasRefName := desc.Annotations["io.containerd.image.name"]; hasRefName {
-					// branch on image (aka image manifest) or image index
-					switch kind {
-					case consts.KindAnnotationImage:
-						if err := x.record(ctx, idx, desc, refName); err != nil {
-							return err
-						}
-					case consts.KindAnnotationIndex:
-						l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
+		// The kind annotation is the only reliable way to distinguish container images from
+		// cosign signatures/attestations/SBOMs: those are stored as standard Docker/OCI
+		// manifests (same media type as real images) so media type alone is insufficient.
+		kind := desc.Annotations[consts.KindAnnotationName]
+		if kind != consts.KindAnnotationImage && kind != consts.KindAnnotationIndex {
+			l.Debugf("descriptor [%s] <<< SKIPPING KIND [%q]", desc.Digest.String(), kind)
+			continue
+		}
 
-						// when no platform is inputted... warn the user of potential mismatch on import for docker
-						// required for docker to be able to interpret and load the image correctly
-						if platform.String() == "" {
-							l.Warnf("compatibility warning... docker... specify platform to prevent potential mismatch on import of index [%s]", refName)
-						}
+		refName, hasRefName := desc.Annotations[consts.ContainerdImageNameKey]
+		if !hasRefName {
+			l.Debugf("descriptor [%s] <<< SKIPPING (no containerd image name)", desc.Digest.String())
+			continue
+		}
 
-						iix, err := idx.ImageIndex(desc.Digest)
-						if err != nil {
-							return err
-						}
-						ixm, err := iix.IndexManifest()
-						if err != nil {
-							return err
-						}
-						for _, ixd := range ixm.Manifests {
-							if ixd.MediaType.IsImage() {
-								if platform.String() != "" {
-									if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
-										l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: does not match the supplied platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
-										continue
-									}
-								}
+		// Use the descriptor's actual media type to discriminate single-image manifests
+		// from multi-arch indexes, rather than relying on the kind string for this.
+		switch {
+		case desc.MediaType.IsImage():
+			if err := x.record(ctx, idx, desc, refName); err != nil {
+				return err
+			}
+		case desc.MediaType.IsIndex():
+			l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
-								// skip any platforms of 'unknown/unknown'... docker hates
-								// required for docker to be able to interpret and load the image correctly
-								if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
-									l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: matches unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
-									continue
-								}
+			// when no platform is inputted... warn the user of potential mismatch on import for docker
+			// required for docker to be able to interpret and load the image correctly
+			if platform.String() == "" {
+				l.Warnf("compatibility warning... docker... specify platform to prevent potential mismatch on import of index [%s]", refName)
+			}
 
-								if err := x.record(ctx, iix, ixd, refName); err != nil {
-									return err
-								}
-							}
+			iix, err := idx.ImageIndex(desc.Digest)
+			if err != nil {
+				return err
+			}
+			ixm, err := iix.IndexManifest()
+			if err != nil {
+				return err
+			}
+			for _, ixd := range ixm.Manifests {
+				if ixd.MediaType.IsImage() {
+					if platform.String() != "" {
+						if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
+							l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: does not match the supplied platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+							continue
 						}
-					default:
-						l.Debugf("descriptor [%s] <<< SKIPPING KIND [%q]", desc.Digest.String(), kind)
+					}
+
+					// skip any platforms of 'unknown/unknown'... docker hates
+					// required for docker to be able to interpret and load the image correctly
+					if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
+						l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: matches unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+						continue
+					}
+
+					if err := x.record(ctx, iix, ixd, refName); err != nil {
+						return err
 					}
 				}
 			}
+		default:
+			l.Debugf("descriptor [%s] <<< SKIPPING media type [%q]", desc.Digest.String(), desc.MediaType)
 		}
 	}
 
@@ -251,6 +260,17 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 	image, err := index.Image(desc.Digest)
 	if err != nil {
 		return err
+	}
+
+	// Verify this is a real container image by inspecting its manifest config media type.
+	// Non-image OCI artifacts (Helm charts, files, cosign sigs) use distinct config types.
+	manifest, err := image.Manifest()
+	if err != nil {
+		return err
+	}
+	if manifest.Config.MediaType != types.DockerConfigJSON && manifest.Config.MediaType != types.OCIConfigJSON {
+		l.Debugf("descriptor [%s] <<< SKIPPING NON-IMAGE config media type [%q]", desc.Digest.String(), manifest.Config.MediaType)
+		return nil
 	}
 
 	config, err := image.ConfigName()

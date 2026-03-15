@@ -24,23 +24,3 @@ type Chart struct {
 	AddImages       bool `json:"add-images,omitempty"`
 	AddDependencies bool `json:"add-dependencies,omitempty"`
 }
-
-type ThickCharts struct {
-	*metav1.TypeMeta  `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec ThickChartSpec `json:"spec,omitempty"`
-}
-
-type ThickChartSpec struct {
-	Charts []ThickChart `json:"charts,omitempty"`
-}
-
-type ThickChart struct {
-	Chart       `json:",inline,omitempty"`
-	ExtraImages []ChartImage `json:"extraImages,omitempty"`
-}
-
-type ChartImage struct {
-	Reference string `json:"ref"`
-}

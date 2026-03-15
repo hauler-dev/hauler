@@ -1,4 +1,5 @@
-# v1 manifests
+# hauler manifest
+# api version of v1
 apiVersion: content.hauler.cattle.io/v1
 kind: Images
 metadata:
@@ -9,6 +10,9 @@ spec:
     - name: ghcr.io/hauler-dev/library/busybox:stable
       platform: linux/amd64
     - name: gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+    - name: ghcr.io/kubewarden/audit-scanner:v1.30.0-rc1
+      certificate-identity-regexp: https://github.com/kubewarden/audit-scanner/.github/workflows/release.yml@refs/tags/v1.30.0-rc1
+      certificate-oidc-issuer: https://token.actions.githubusercontent.com  
 ---
 apiVersion: content.hauler.cattle.io/v1
 kind: Charts
@@ -23,40 +27,6 @@ spec:
       repoURL: oci://ghcr.io/hauler-dev
 ---
 apiVersion: content.hauler.cattle.io/v1
-kind: Files
-metadata:
-  name: hauler-content-files-example
-spec:
-  files:
-    - path: https://get.rke2.io
-      name: install.sh
-    - path: testdata/hauler-manifest.yaml
----
-# v1alpha1 manifests
-apiVersion: content.hauler.cattle.io/v1alpha1
-kind: Images
-metadata:
-  name: hauler-content-images-example
-spec:
-  images:
-    - name: ghcr.io/hauler-dev/library/busybox
-    - name: ghcr.io/hauler-dev/library/busybox:stable
-      platform: linux/amd64
-    - name: gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
----
-apiVersion: content.hauler.cattle.io/v1alpha1
-kind: Charts
-metadata:
-  name: hauler-content-charts-example
-spec:
-  charts:
-    - name: rancher
-      repoURL: https://releases.rancher.com/server-charts/stable
-      version: 2.8.5
-    - name: hauler-helm
-      repoURL: oci://ghcr.io/hauler-dev
----
-apiVersion: content.hauler.cattle.io/v1alpha1
 kind: Files
 metadata:
   name: hauler-content-files-example

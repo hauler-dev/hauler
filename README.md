@@ -12,6 +12,11 @@ For more information, please review the **[Hauler Documentation](https://hauler.
 
 ## Recent Changes
 
+### In Hauler v2.0.0...
+
+- Removed support for `apiVersion` of `v1alpha` and removed the automated conversion functionality to `v1`.
+  - Please note that notices have been provided in this `README`, the `docs`, and in `cli` warnings since Hauler `v1.2.x`.
+
 ### In Hauler v1.4.0...
 
 - Added a notice to `hauler store sync --products/--product-registry` to warn users the default registry will be updated in a future release.
@@ -19,23 +24,22 @@ For more information, please review the **[Hauler Documentation](https://hauler.
   - `!!! WARNING !!! [--products] will be updating its default registry in a future release...`
   - `!!! WARNING !!! [--product-registry] will be updating its default registry in a future release...`
 
-### In Hauler v1.2.0...
+### From older releases...
 
-- Upgraded the `apiVersion` to `v1` from `v1alpha1`
-  - Users are able to use `v1` and `v1alpha1`, but `v1alpha1` is now deprecated and will be removed in a future release. We will update the community when we fully deprecate and remove the functionality of `v1alpha1`
-  - Users will see logging notices when using the old `apiVersion` such as...
-  - `!!! DEPRECATION WARNING !!! apiVersion [v1alpha1] will be removed in a future release...`
----
 - Updated the behavior of `hauler store load` to default to loading a `haul` with the name of `haul.tar.zst` and requires the flag of `--filename/-f` to load a `haul` with a different name
 - Users can load multiple `hauls` by specifying multiple flags of `--filename/-f`
   - updated command usage: `hauler store load --filename hauling-hauls.tar.zst`
   - previous command usage (do not use): `hauler store load hauling-hauls.tar.zst`
+
 ---
+
 - Updated the behavior of `hauler store sync` to default to syncing a `manifest` with the name of `hauler-manifest.yaml` and requires the flag of `--filename/-f` to sync a `manifest` with a different name
 - Users can sync multiple `manifests` by specifying multiple flags of `--filename/-f`
   - updated command usage: `hauler store sync --filename hauling-hauls-manifest.yaml`
   - previous command usage (do not use): `hauler store sync --files hauling-hauls-manifest.yaml`
+
 ---
+
 Please review the documentation for any additional [Known Limits, Issues, and Notices](https://docs.hauler.dev/docs/known-limits)!
 
 ## Installation
@@ -64,7 +68,6 @@ brew install hauler
 ## Acknowledgements
 
 `Hauler` wouldn't be possible without the open-source community, but there are a few projects that stand out:
-
-- [oras cli](https://github.com/oras-project/oras)
-- [cosign](https://github.com/sigstore/cosign)
+- [containerd](https://github.com/containerd/containerd)
 - [go-containerregistry](https://github.com/google/go-containerregistry)
+- [cosign](https://github.com/sigstore/cosign)
