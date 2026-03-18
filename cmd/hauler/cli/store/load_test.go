@@ -288,6 +288,99 @@ func TestUnarchiveLayoutTo_AnnotationBackfill(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// TestUnarchiveLayoutTo_LegacyKindMigration
+// --------------------------------------------------------------------------
+
+// TestUnarchiveLayoutTo_LegacyKindMigration crafts a haul archive whose
+// index.json contains old dev.cosignproject.cosign kind values, then verifies
+// that unarchiveLayoutTo translates them to dev.hauler equivalents.
+func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// Step 1: Extract the real test archive to obtain a valid OCI layout on disk.
+	extractDir := t.TempDir()
+	if err := archives.Unarchive(ctx, testHaulArchive, extractDir); err != nil {
+		t.Fatalf("Unarchive: %v", err)
+	}
+
+	// Step 2: Read index.json and inject old dev.cosignproject.cosign kind values.
+	indexPath := filepath.Join(extractDir, "index.json")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read index.json: %v", err)
+	}
+
+	var idx ocispec.Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		t.Fatalf("unmarshal index.json: %v", err)
+	}
+	if len(idx.Manifests) == 0 {
+		t.Skip("testdata/haul.tar.zst has no top-level manifests — cannot test legacy kind migration")
+	}
+
+	// Replace all kind annotations with old-prefix equivalents so we can verify
+	// that unarchiveLayoutTo normalizes them to the new dev.hauler prefix.
+	const legacyPrefix = "dev.cosignproject.cosign"
+	const newPrefix = "dev.hauler"
+	for i := range idx.Manifests {
+		if idx.Manifests[i].Annotations == nil {
+			idx.Manifests[i].Annotations = make(map[string]string)
+		}
+		kind := idx.Manifests[i].Annotations[consts.KindAnnotationName]
+		if kind == "" {
+			kind = consts.KindAnnotationImage
+		}
+		// Rewrite dev.hauler/* → dev.cosignproject.cosign/* to simulate legacy archive.
+		if strings.HasPrefix(kind, newPrefix) {
+			kind = legacyPrefix + kind[len(newPrefix):]
+		}
+		idx.Manifests[i].Annotations[consts.KindAnnotationName] = kind
+	}
+
+	out, err := json.MarshalIndent(idx, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal legacy index.json: %v", err)
+	}
+	if err := os.WriteFile(indexPath, out, 0644); err != nil {
+		t.Fatalf("write legacy index.json: %v", err)
+	}
+
+	// Step 3: Re-archive with files at the archive root (no subdir prefix).
+	legacyArchive := filepath.Join(t.TempDir(), "legacy.tar.zst")
+	if err := createRootLevelArchive(extractDir, legacyArchive); err != nil {
+		t.Fatalf("createRootLevelArchive: %v", err)
+	}
+
+	// Step 4: Load the legacy archive.
+	destDir := t.TempDir()
+	tempDir := t.TempDir()
+	if err := unarchiveLayoutTo(ctx, legacyArchive, destDir, tempDir); err != nil {
+		t.Fatalf("unarchiveLayoutTo legacy: %v", err)
+	}
+
+	// Step 5: Every descriptor in the dest store must now have a dev.hauler kind.
+	s, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(destDir): %v", err)
+	}
+
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		kind := desc.Annotations[consts.KindAnnotationName]
+		if strings.HasPrefix(kind, legacyPrefix) {
+			t.Errorf("descriptor %s still has legacy kind %q; expected dev.hauler prefix",
+				desc.Digest, kind)
+		}
+		if !strings.HasPrefix(kind, newPrefix) {
+			t.Errorf("descriptor %s has unexpected kind %q; expected dev.hauler prefix",
+				desc.Digest, kind)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+}
+
+// --------------------------------------------------------------------------
 // TestClearDir
 // --------------------------------------------------------------------------
 
