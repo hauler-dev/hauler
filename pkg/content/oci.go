@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -91,11 +92,20 @@ func (o *OCI) LoadIndex() error {
 			continue
 		}
 
-		// Set default kind if missing
+		// Set default kind if missing; normalize legacy dev.cosignproject.cosign values.
 		kind := desc.Annotations[consts.KindAnnotationName]
+		kind = consts.NormalizeLegacyKind(kind)
 		if kind == "" {
 			kind = consts.KindAnnotationImage
 		}
+
+		// Write the normalized kind back into a copy of the annotations map so
+		// that Walk() callers receive descriptors with dev.hauler/... values.
+		// We copy the map to avoid mutating the slice element's shared map.
+		normalized := make(map[string]string, len(desc.Annotations)+1)
+		maps.Copy(normalized, desc.Annotations)
+		normalized[consts.KindAnnotationName] = kind
+		desc.Annotations = normalized
 
 		if strings.TrimSpace(key.String()) != "--" {
 			switch key.(type) {
@@ -130,7 +140,7 @@ func (o *OCI) SaveIndex() error {
 		kindI := descs[i].Annotations["kind"]
 		kindJ := descs[j].Annotations["kind"]
 
-		// Objects with the prefix of "dev.cosignproject.cosign/image" should be at the top.
+		// Objects with the prefix of KindAnnotationImage should be at the top.
 		if strings.HasPrefix(kindI, consts.KindAnnotationImage) && !strings.HasPrefix(kindJ, consts.KindAnnotationImage) {
 			return true
 		} else if !strings.HasPrefix(kindI, consts.KindAnnotationImage) && strings.HasPrefix(kindJ, consts.KindAnnotationImage) {
@@ -299,11 +309,18 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 			if err := p.oci.LoadIndex(); err != nil {
 				return nil, err
 			}
-			// Use compound key format: "reference-kind"
+			// Use compound key format: "reference-kind"; normalize legacy values.
 			kind := d.Annotations[consts.KindAnnotationName]
+			kind = consts.NormalizeLegacyKind(kind)
 			if kind == "" {
 				kind = consts.KindAnnotationImage
 			}
+			// Copy annotations map to avoid mutating the caller's descriptor,
+			// then write the normalized kind so Walk() callers see dev.hauler/... values.
+			normalizedAnnotations := make(map[string]string, len(d.Annotations)+1)
+			maps.Copy(normalizedAnnotations, d.Annotations)
+			normalizedAnnotations[consts.KindAnnotationName] = kind
+			d.Annotations = normalizedAnnotations
 			key := fmt.Sprintf("%s-%s", p.ref, kind)
 			p.oci.nameMap.Store(key, d)
 			if err := p.oci.SaveIndex(); err != nil {

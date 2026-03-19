@@ -44,16 +44,16 @@ const (
 	// annotation keys
 	ContainerdImageNameKey = "io.containerd.image.name"
 	KindAnnotationName     = "kind"
-	KindAnnotationImage    = "dev.cosignproject.cosign/image"
-	KindAnnotationIndex    = "dev.cosignproject.cosign/imageIndex"
-	KindAnnotationSigs     = "dev.cosignproject.cosign/sigs"
-	KindAnnotationAtts     = "dev.cosignproject.cosign/atts"
-	KindAnnotationSboms    = "dev.cosignproject.cosign/sboms"
+	KindAnnotationImage    = "dev.hauler/image"
+	KindAnnotationIndex    = "dev.hauler/imageIndex"
+	KindAnnotationSigs     = "dev.hauler/sigs"
+	KindAnnotationAtts     = "dev.hauler/atts"
+	KindAnnotationSboms    = "dev.hauler/sboms"
 	// KindAnnotationReferrers is the kind prefix for OCI 1.1 referrer manifests (cosign v3
 	// new-bundle-format). Each referrer gets a unique kind with the referrer manifest digest
-	// appended (e.g. "dev.cosignproject.cosign/referrers/sha256hex") so multiple referrers
-	// for the same base image coexist in the OCI index.
-	KindAnnotationReferrers = "dev.cosignproject.cosign/referrers"
+	// appended (e.g. "dev.hauler/referrers/sha256hex") so multiple referrers for the same
+	// base image coexist in the OCI index.
+	KindAnnotationReferrers = "dev.hauler/referrers"
 
 	// Sigstore / OCI 1.1 artifact media types used by cosign v3 new-bundle-format.
 	SigstoreBundleMediaType = "application/vnd.dev.sigstore.bundle.v0.3+json"

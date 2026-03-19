@@ -107,6 +107,9 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		if _, exists := idx.Manifests[i].Annotations[consts.KindAnnotationName]; !exists {
 			idx.Manifests[i].Annotations[consts.KindAnnotationName] = consts.KindAnnotationImage
 		}
+		// Translate legacy dev.cosignproject.cosign values to dev.hauler equivalents.
+		kind := idx.Manifests[i].Annotations[consts.KindAnnotationName]
+		idx.Manifests[i].Annotations[consts.KindAnnotationName] = consts.NormalizeLegacyKind(kind)
 		if ref, ok := idx.Manifests[i].Annotations[consts.ContainerdImageNameKey]; ok {
 			if slash := strings.Index(ref, "/"); slash != -1 {
 				ref = ref[slash+1:]
