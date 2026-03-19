@@ -133,6 +133,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	}
 
 	if rewrite != "" {
+		rawRewrite := rewrite
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
 			if tag, ok := r.(name.Tag); ok {
@@ -146,7 +147,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		if err := rewriteReference(ctx, s, r, newRef); err != nil {
+		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
 			return err
 		}
 	}
@@ -155,7 +156,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	return nil
 }
 
-func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference) error {
+func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
 	l := log.FromContext(ctx)
 
 	if err := s.OCI.LoadIndex(); err != nil {
@@ -184,7 +185,7 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	newRegistry := newRefContext.RegistryStr()
 	// If user omitted a registry in the rewrite string, go-containerregistry defaults to
 	// index.docker.io. Preserve the original registry when the source is non-docker.
-	if newRegistry == "index.docker.io" && oldRegistry != "index.docker.io" {
+	if newRegistry == "index.docker.io" && !strings.HasPrefix(rawRewrite, "docker.io") && !strings.HasPrefix(rawRewrite, "index.docker.io") {
 		newRegistry = oldRegistry
 	}
 	oldTotal := oldRepo + ":" + oldTag
