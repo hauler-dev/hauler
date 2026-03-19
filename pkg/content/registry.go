@@ -47,6 +47,10 @@ func NewRegistryTarget(host string, opts RegistryOptions) *RegistryTarget {
 	)
 
 	hosts := func(h string) ([]cdocker.RegistryHost, error) {
+		host, err := cdocker.DefaultHost(h)
+		if err != nil {
+			return nil, err
+		}
 		scheme := "https"
 		if opts.PlainHTTP || opts.Insecure {
 			scheme = "http"
@@ -55,7 +59,7 @@ func NewRegistryTarget(host string, opts RegistryOptions) *RegistryTarget {
 			Client:       http.DefaultClient,
 			Authorizer:   authorizer,
 			Scheme:       scheme,
-			Host:         h,
+			Host:         host,
 			Path:         "/v2",
 			Capabilities: cdocker.HostCapabilityPull | cdocker.HostCapabilityResolve | cdocker.HostCapabilityPush,
 		}}, nil
