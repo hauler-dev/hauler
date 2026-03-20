@@ -187,6 +187,7 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	// index.docker.io. Preserve the original registry when the source is non-docker.
 	if newRegistry == "index.docker.io" && !strings.HasPrefix(rawRewrite, "docker.io") && !strings.HasPrefix(rawRewrite, "index.docker.io") {
 		newRegistry = oldRegistry
+		newRepo = strings.TrimPrefix(newRepo, "library/") //if rewrite has library/ prefix in path it is stripped off unless registry specified in rewrite
 	}
 	oldTotal := oldRepo + ":" + oldTag
 	newTotal := newRepo + ":" + newTag
