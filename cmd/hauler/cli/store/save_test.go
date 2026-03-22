@@ -221,3 +221,99 @@ func TestSaveCmd_EmptyStore(t *testing.T) {
 		t.Fatalf("archive not created for empty store: %v", err)
 	}
 }
+
+// --------------------------------------------------------------------------
+// parseChunkSize unit tests
+// --------------------------------------------------------------------------
+
+func TestParseChunkSize(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    int64
+		wantErr bool
+	}{
+		{name: "kilobytes", input: "1K", want: 1 << 10},
+		{name: "kilobytes long", input: "1KB", want: 1 << 10},
+		{name: "megabytes", input: "500M", want: 500 << 20},
+		{name: "megabytes long", input: "500MB", want: 500 << 20},
+		{name: "gigabytes", input: "2G", want: 2 << 30},
+		{name: "gigabytes long", input: "2GB", want: 2 << 30},
+		{name: "terabytes", input: "1T", want: 1 << 40},
+		{name: "terabytes long", input: "1TB", want: 1 << 40},
+		{name: "plain bytes", input: "1024", want: 1024},
+		{name: "lowercase", input: "1g", want: 1 << 30},
+		{name: "whitespace trimmed", input: " 1G ", want: 1 << 30},
+		{name: "zero is invalid", input: "0", wantErr: true},
+		{name: "zero with suffix", input: "0M", wantErr: true},
+		{name: "negative bytes", input: "-1", wantErr: true},
+		{name: "negative with suffix", input: "-1G", wantErr: true},
+		{name: "empty string", input: "", wantErr: true},
+		{name: "invalid suffix", input: "1X", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseChunkSize(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseChunkSize(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("parseChunkSize(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// SaveCmd chunk-size integration tests
+// Do NOT use t.Parallel() — SaveCmd calls os.Chdir.
+// --------------------------------------------------------------------------
+
+func TestSaveCmd_ChunkSize(t *testing.T) {
+	ctx := newTestContext(t)
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "test/chunksave", "v1")
+
+	s := newTestStore(t)
+	if err := s.AddImage(ctx, host+"/test/chunksave:v1", ""); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	archiveDir := t.TempDir()
+	archivePath := filepath.Join(archiveDir, "haul-chunked.tar.zst")
+	o := newSaveOpts(s.Root, archivePath)
+	o.ChunkSize = "1K"
+
+	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("SaveCmd with chunk-size: %v", err)
+	}
+
+	// original archive must be replaced by chunk files
+	if _, err := os.Stat(archivePath); !os.IsNotExist(err) {
+		t.Error("original archive should be removed after chunking")
+	}
+
+	// at least one chunk must exist
+	matches, err := filepath.Glob(filepath.Join(archiveDir, "haul-chunked_*.tar.zst"))
+	if err != nil {
+		t.Fatalf("glob chunks: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatal("expected at least one chunk file, found none")
+	}
+}
+
+func TestSaveCmd_ChunkSize_Invalid(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	if err := s.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	o := newSaveOpts(s.Root, filepath.Join(t.TempDir(), "haul.tar.zst"))
+	o.ChunkSize = "0"
+
+	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
+		t.Fatal("SaveCmd: expected error for chunk-size=0, got nil")
+	}
+}
