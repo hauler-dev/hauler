@@ -76,6 +76,9 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 	}
 
 	if o.ChunkSize != "" {
+		if o.ContainerdCompatibility == true {
+			l.Warnf("compatibility warning... stores split by chunk size must be imported using `hauler store load` to rejoin before import to containerd")
+		}
 		maxBytes, err := parseChunkSize(o.ChunkSize)
 		if err != nil {
 			return err
