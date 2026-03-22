@@ -248,7 +248,9 @@ func TestRewriteReference(t *testing.T) {
 			t.Fatalf("parse newRef: %v", err)
 		}
 
-		if err := rewriteReference(ctx, s, oldRef, newRef); err != nil {
+		rawRewrite := newRef.String()
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
 			t.Fatalf("rewriteReference: %v", err)
 		}
 
@@ -259,8 +261,9 @@ func TestRewriteReference(t *testing.T) {
 		s := newTestStore(t)
 		oldRef, _ := name.NewTag("docker.io/missing/repo:v1")
 		newRef, _ := name.NewTag("docker.io/new/repo:v2")
+		rawRewrite := newRef.String()
 
-		err := rewriteReference(ctx, s, oldRef, newRef)
+		err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
