@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	helmchart "helm.sh/helm/v3/pkg/chart"
 
 	"hauler.dev/go/hauler/internal/flags"
@@ -270,6 +271,86 @@ func TestRewriteReference(t *testing.T) {
 		if !strings.Contains(err.Error(), "could not find") {
 			t.Errorf("expected 'could not find' in error, got: %v", err)
 		}
+	})
+
+	// Tests for the registry-preservation / library/-stripping logic (lines 188-191).
+	// go-containerregistry normalises bare single-name Docker Hub refs (e.g. "nginx:latest")
+	// to "index.docker.io/library/nginx:latest". When the rewrite string omits a registry,
+	// rewriteReference must (a) preserve the source registry and (b) strip the injected
+	// "library/" prefix so that the stored ref looks like "nginx:v2", not "library/nginx:v2".
+
+	t.Run("path-only rewrite strips library/ prefix from docker hub official image", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:    "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+
+		oldRef, _ := name.NewTag("nginx:latest")   // → index.docker.io/library/nginx:latest
+		newRef, _ := name.NewTag("nginx:v2")        // → index.docker.io/library/nginx:v2
+		rawRewrite := "nginx:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		// library/ must be stripped; registry stays index.docker.io
+		assertAnnotationsInStore(t, s, "nginx:v2", "index.docker.io/nginx:v2")
+	})
+
+	t.Run("explicit docker.io rewrite preserves library/ prefix", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:    "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
+		rawRewrite := "docker.io/nginx:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		// rawRewrite starts with "docker.io" → condition must NOT fire → library/ preserved
+		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
+	})
+
+	t.Run("explicit index.docker.io rewrite preserves library/ prefix", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:    "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("index.docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
+		rawRewrite := "index.docker.io/nginx:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		// rawRewrite starts with "index.docker.io" → condition must NOT fire → library/ preserved
+		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
+	})
+
+	t.Run("non-docker source with path-only rewrite preserves original registry", func(t *testing.T) {
+		host, rOpts := newTestRegistry(t)
+		seedImage(t, host, "src/repo", "v1", rOpts...)
+
+		s := newTestStore(t)
+		if err := s.AddImage(ctx, host+"/src/repo:v1", "", rOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+
+		oldRef, _ := name.NewTag(host+"/src/repo:v1", name.Insecure)
+		newRef, _ := name.NewTag("newrepo/img:v2") // defaults to index.docker.io
+		rawRewrite := "newrepo/img:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		// condition fires → registry reverts to host, no library/ to strip
+		assertAnnotationsInStore(t, s, "newrepo/img:v2", host+"/newrepo/img:v2")
 	})
 }
 
