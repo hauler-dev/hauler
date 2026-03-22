@@ -303,6 +303,17 @@ jobs:
           hauler store sync --filename testdata/hauler-manifest-pipeline.yaml --filename testdata/hauler-manifest.yaml
           # need more tests here
 
+      - name: Verify - hauler store sync (image list)
+        run: |
+          # verify via local image list file
+          hauler store sync --image-txt testdata/images.txt
+          # verify via multiple image list files
+          hauler store sync --image-txt testdata/images.txt --image-txt testdata/images.txt
+          # verify via remote image list file
+          hauler store sync --image-txt https://raw.githubusercontent.com/hauler-dev/hauler/main/testdata/images.txt
+          # confirm images are present in the store
+          hauler store info | grep 'busybox'
+
       - name: Verify - hauler store serve
         run: |
           hauler store serve --help
