@@ -256,6 +256,157 @@ spec:
 	assertArtifactInStore(t, s, "synced-local.sh")
 }
 
+// --------------------------------------------------------------------------
+// processImageTxt tests
+// --------------------------------------------------------------------------
+
+// writeImageTxtFile writes lines to a temp file and returns it seeked to the
+// start, ready for processImageTxt to consume.
+func writeImageTxtFile(t *testing.T, lines string) *os.File {
+	t.Helper()
+	fi, err := os.CreateTemp(t.TempDir(), "images-*.txt")
+	if err != nil {
+		t.Fatalf("writeImageTxtFile CreateTemp: %v", err)
+	}
+	t.Cleanup(func() { fi.Close() })
+	if _, err := fi.WriteString(lines); err != nil {
+		t.Fatalf("writeImageTxtFile WriteString: %v", err)
+	}
+	if _, err := fi.Seek(0, io.SeekStart); err != nil {
+		t.Fatalf("writeImageTxtFile Seek: %v", err)
+	}
+	return fi
+}
+
+func TestProcessImageTxt_SingleImage(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/txtimage", "v1")
+
+	fi := writeImageTxtFile(t, fmt.Sprintf("%s/myorg/txtimage:v1\n", host))
+	o := newSyncOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := processImageTxt(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+		t.Fatalf("processImageTxt single image: %v", err)
+	}
+	assertArtifactInStore(t, s, "myorg/txtimage")
+}
+
+func TestProcessImageTxt_MultipleImages(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/alpha", "v1")
+	seedImage(t, host, "myorg/beta", "v2")
+
+	content := fmt.Sprintf("%s/myorg/alpha:v1\n%s/myorg/beta:v2\n", host, host)
+	fi := writeImageTxtFile(t, content)
+	o := newSyncOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := processImageTxt(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+		t.Fatalf("processImageTxt multiple images: %v", err)
+	}
+	assertArtifactInStore(t, s, "myorg/alpha")
+	assertArtifactInStore(t, s, "myorg/beta")
+}
+
+func TestProcessImageTxt_SkipsBlankLinesAndComments(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/commenttest", "v1")
+
+	content := fmt.Sprintf("# this is a comment\n\n%s/myorg/commenttest:v1\n\n# another comment\n", host)
+	fi := writeImageTxtFile(t, content)
+	o := newSyncOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := processImageTxt(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+		t.Fatalf("processImageTxt skip blanks/comments: %v", err)
+	}
+	assertArtifactInStore(t, s, "myorg/commenttest")
+	if n := countArtifactsInStore(t, s); n != 1 {
+		t.Errorf("expected 1 artifact, got %d", n)
+	}
+}
+
+func TestProcessImageTxt_EmptyFile(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	fi := writeImageTxtFile(t, "")
+	o := newSyncOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := processImageTxt(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+		t.Fatalf("processImageTxt empty file: %v", err)
+	}
+	if n := countArtifactsInStore(t, s); n != 0 {
+		t.Errorf("expected 0 artifacts for empty file, got %d", n)
+	}
+}
+
+// --------------------------------------------------------------------------
+// SyncCmd --image-txt integration tests
+// --------------------------------------------------------------------------
+
+func TestSyncCmd_ImageTxt_LocalFile(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/syncedtxt", "v1")
+
+	txtFile, err := os.CreateTemp(t.TempDir(), "images-*.txt")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	txtPath := txtFile.Name()
+	fmt.Fprintf(txtFile, "%s/myorg/syncedtxt:v1\n", host)
+	txtFile.Close()
+
+	o := newSyncOpts(s.Root)
+	o.ImageTxt = []string{txtPath}
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := SyncCmd(ctx, o, s, rso, ro); err != nil {
+		t.Fatalf("SyncCmd ImageTxt LocalFile: %v", err)
+	}
+	assertArtifactInStore(t, s, "myorg/syncedtxt")
+}
+
+func TestSyncCmd_ImageTxt_RemoteFile(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/remotetxt", "v1")
+
+	imageListContent := fmt.Sprintf("%s/myorg/remotetxt:v1\n", host)
+	imageSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		io.WriteString(w, imageListContent) //nolint:errcheck
+	}))
+	t.Cleanup(imageSrv.Close)
+
+	o := newSyncOpts(s.Root)
+	o.ImageTxt = []string{imageSrv.URL + "/images.txt"}
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := SyncCmd(ctx, o, s, rso, ro); err != nil {
+		t.Fatalf("SyncCmd ImageTxt RemoteFile: %v", err)
+	}
+	assertArtifactInStore(t, s, "myorg/remotetxt")
+}
+
 func TestSyncCmd_RemoteManifest(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
