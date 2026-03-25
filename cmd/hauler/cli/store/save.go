@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 
 	referencev3 "github.com/distribution/distribution/v3/reference"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -72,8 +75,62 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 		return err
 	}
 
-	l.Infof("saving store [%s] to archive [%s]", o.StoreDir, o.FileName)
+	if o.ChunkSize != "" {
+		if o.ContainerdCompatibility == true {
+			l.Warnf("compatibility warning... stores split by chunk size must be imported using `hauler store load` to rejoin before import to containerd")
+		}
+		maxBytes, err := parseChunkSize(o.ChunkSize)
+		if err != nil {
+			return err
+		}
+		chunks, err := archives.SplitArchive(ctx, absOutputfile, maxBytes)
+		if err != nil {
+			return err
+		}
+		for _, c := range chunks {
+			l.Infof("saving store [%s] to chunk [%s]", o.StoreDir, filepath.Base(c))
+		}
+	} else {
+		l.Infof("saving store [%s] to archive [%s]", o.StoreDir, o.FileName)
+	}
+
 	return nil
+}
+
+// parseChunkSize parses a human-readable byte size string (e.g. "1G", "500M", "2GB")
+// into a byte count. Suffixes are treated as binary units (1K = 1024).
+func parseChunkSize(s string) (int64, error) {
+	units := map[string]int64{
+		"K": 1 << 10, "KB": 1 << 10,
+		"M": 1 << 20, "MB": 1 << 20,
+		"G": 1 << 30, "GB": 1 << 30,
+		"T": 1 << 40, "TB": 1 << 40,
+	}
+	s = strings.ToUpper(strings.TrimSpace(s))
+	var result int64
+	matched := false
+	for suffix, mult := range units {
+		if strings.HasSuffix(s, suffix) {
+			n, err := strconv.ParseInt(strings.TrimSuffix(s, suffix), 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid chunk size %q", s)
+			}
+			result = n * mult
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid chunk size %q: %w", s, err)
+		}
+		result = n
+	}
+	if result <= 0 {
+		return 0, fmt.Errorf("chunk size must be greater than zero, received %q", s)
+	}
+	return result, nil
 }
 
 type exports struct {
