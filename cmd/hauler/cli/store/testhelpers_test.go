@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
+	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	"helm.sh/helm/v3/pkg/action"
@@ -279,6 +280,41 @@ func seedOCI11Referrer(t *testing.T, host, repo string, baseImg gcrv1.Image, opt
 	}
 	if err := remote.Write(referrerTag, referrerImg, opts...); err != nil {
 		t.Fatalf("seedOCI11Referrer: Write: %v", err)
+	}
+}
+
+// seedStoreDescriptor injects a descriptor with the given annotations directly
+// into the store index without requiring a real registry or blob. This is used
+// to pre-populate the store for rewriteReference unit tests.
+func seedStoreDescriptor(t *testing.T, s *store.Layout, annotations map[string]string) {
+	t.Helper()
+	desc := ocispec.Descriptor{
+		MediaType:   ocispec.MediaTypeImageManifest,
+		Digest:      digest.Digest("sha256:" + strings.Repeat("a", 64)),
+		Size:        1,
+		Annotations: annotations,
+	}
+	if err := s.OCI.AddIndex(desc); err != nil {
+		t.Fatalf("seedStoreDescriptor: %v", err)
+	}
+}
+
+// assertAnnotationsInStore walks the store and fails if no descriptor has both
+// AnnotationRefName == refName AND ContainerdImageNameKey == containerdName.
+func assertAnnotationsInStore(t *testing.T, s *store.Layout, refName, containerdName string) {
+	t.Helper()
+	found := false
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if desc.Annotations[ocispec.AnnotationRefName] == refName &&
+			desc.Annotations[consts.ContainerdImageNameKey] == containerdName {
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("assertAnnotationsInStore walk: %v", err)
+	}
+	if !found {
+		t.Errorf("no artifact with AnnotationRefName=%q and ContainerdImageNameKey=%q found in store", refName, containerdName)
 	}
 }
 
