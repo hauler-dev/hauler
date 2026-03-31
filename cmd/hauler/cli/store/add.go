@@ -92,10 +92,10 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg, o.Platform, rso, ro, o.Rewrite)
+	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
 	if !ro.IgnoreErrors {
@@ -120,7 +120,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 
 	// fetch image along with any associated signatures and attestations
 	err = retry.Operation(ctx, rso, ro, func() error {
-		return s.AddImage(ctx, r.Name(), platform)
+		return s.AddImage(ctx, r.Name(), platform, excludeExtras)
 	})
 	if err != nil {
 		if ro.IgnoreErrors {
@@ -522,7 +522,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 
 			imgCfg := v1.Image{Name: image}
-			if err := storeImage(ctx, s, imgCfg, opts.Platform, rso, ro, ""); err != nil {
+			if err := storeImage(ctx, s, imgCfg, opts.Platform, false, rso, ro, ""); err != nil {
 				if ro.IgnoreErrors {
 					l.Warnf("%s  ↳ failed to store image [%s]: %v... skipping...", prefix, image, err)
 					continue

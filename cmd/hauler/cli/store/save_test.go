@@ -59,7 +59,7 @@ func TestWriteExportsManifest(t *testing.T) {
 		seedIndex(t, host, "test/multiarch", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/test/multiarch:v1", ""); err != nil {
+		if err := s.AddImage(ctx, host+"/test/multiarch:v1", "", false); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -78,7 +78,7 @@ func TestWriteExportsManifest(t *testing.T) {
 		seedIndex(t, host, "test/multiarch", "v2", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/test/multiarch:v2", ""); err != nil {
+		if err := s.AddImage(ctx, host+"/test/multiarch:v2", "", false); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -143,7 +143,7 @@ func TestSaveCmd(t *testing.T) {
 	seedImage(t, host, "test/save", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/save:v1", ""); err != nil {
+	if err := s.AddImage(ctx, host+"/test/save:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -176,7 +176,7 @@ func TestSaveCmd_ContainerdCompatibility(t *testing.T) {
 	seedImage(t, host, "test/containerd-compat", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/containerd-compat:v1", ""); err != nil {
+	if err := s.AddImage(ctx, host+"/test/containerd-compat:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -275,7 +275,7 @@ func TestSaveCmd_ChunkSize(t *testing.T) {
 	seedImage(t, host, "test/chunksave", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/chunksave:v1", ""); err != nil {
+	if err := s.AddImage(ctx, host+"/test/chunksave:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
