@@ -23,4 +23,5 @@ type Chart struct {
 
 	AddImages       bool `json:"add-images,omitempty"`
 	AddDependencies bool `json:"add-dependencies,omitempty"`
+	ExcludeExtras   bool `json:"exclude-extras,omitempty"`
 }

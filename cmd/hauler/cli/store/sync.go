@@ -389,14 +389,23 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				registry := o.Registry
+				annotation := cfg.GetAnnotations()
 				if registry == "" {
-					annotation := cfg.GetAnnotations()
 					if annotation != nil {
 						registry = annotation[consts.ImageAnnotationRegistry]
 					}
 				}
 
 				for i, ch := range cfg.Spec.Charts {
+					// Resolve excludeExtras: per-chart field > chart manifest annotation > CLI flag.
+					excludeExtras := o.ExcludeExtras
+					if !o.ExcludeExtras && annotation != nil && annotation[consts.ImageAnnotationExcludeExtras] == "true" {
+						excludeExtras = true
+					}
+					if ch.ExcludeExtras {
+						excludeExtras = ch.ExcludeExtras
+					}
+
 					if err := storeChart(ctx, s, ch,
 						&flags.AddChartOpts{
 							ChartOpts: &action.ChartPathOptions{
@@ -405,6 +414,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							},
 							AddImages:       ch.AddImages,
 							AddDependencies: ch.AddDependencies,
+							ExcludeExtras:   excludeExtras,
 							Registry:        registry,
 							Platform:        o.Platform,
 						},

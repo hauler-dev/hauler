@@ -14,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	helmchart "helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chartutil"
 
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
@@ -739,4 +740,118 @@ func TestStoreChart_Rewrite(t *testing.T) {
 		t.Fatalf("AddChartCmd with rewrite: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/custom-chart")
+}
+
+// seedChartWithImages builds a minimal Helm chart whose helm.sh/images
+// annotation lists the given image refs and saves it as a .tgz into dir.
+// Returns the path to the saved .tgz file.
+func seedChartWithImages(t *testing.T, dir string, images []string) string {
+	t.Helper()
+
+	// Build a helm.sh/images YAML list from the image refs.
+	var sb strings.Builder
+	for _, img := range images {
+		sb.WriteString("- image: ")
+		sb.WriteString(img)
+		sb.WriteString("\n")
+	}
+
+	c := &helmchart.Chart{
+		Metadata: &helmchart.Metadata{
+			APIVersion: "v2",
+			Name:       "test-chart",
+			Version:    "0.1.0",
+			Annotations: map[string]string{
+				"helm.sh/images": sb.String(),
+			},
+		},
+	}
+
+	saved, err := chartutil.Save(c, dir)
+	if err != nil {
+		t.Fatalf("seedChartWithImages: chartutil.Save: %v", err)
+	}
+	return saved
+}
+
+func TestStoreChart_AddImages_ExcludeExtras(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	// Seed an image with cosign v2 artifacts (sig + att + sbom).
+	img := seedImage(t, host, "test/chart-image", "v1", rOpts...)
+	seedCosignV2Artifacts(t, host, "test/chart-image", img, rOpts...)
+
+	// Build a minimal chart whose helm.sh/images annotation references the image.
+	chartDir := t.TempDir()
+	imageRef := host + "/test/chart-image:v1"
+	tgzPath := seedChartWithImages(t, chartDir, []string{imageRef})
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	t.Run("excludeExtras=true suppresses sigs/atts/sboms for chart-discovered images", func(t *testing.T) {
+		o := &flags.AddChartOpts{
+			ChartOpts:     newAddChartOpts("", "").ChartOpts,
+			AddImages:     true,
+			ExcludeExtras: true,
+		}
+		if err := storeChart(ctx, s, v1.Chart{Name: tgzPath}, o, rso, ro, ""); err != nil {
+			t.Fatalf("storeChart with ExcludeExtras: %v", err)
+		}
+
+		// The chart itself is stored as an OCI image artifact.
+		assertArtifactInStore(t, s, "test-chart")
+		// The discovered image is stored (bare, no extras).
+		assertArtifactInStore(t, s, "test/chart-image:v1")
+
+		// No sig / att / sbom entries must be present.
+		for _, kind := range []string{consts.KindAnnotationSigs, consts.KindAnnotationAtts, consts.KindAnnotationSboms} {
+			found := false
+			if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+				if desc.Annotations[consts.KindAnnotationName] == kind {
+					found = true
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("walk: %v", err)
+			}
+			if found {
+				t.Errorf("unexpected artifact with kind %q found in store when ExcludeExtras=true", kind)
+			}
+		}
+	})
+}
+
+func TestStoreChart_AddImages_IncludeExtras(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	// Seed an image with cosign v2 artifacts.
+	img := seedImage(t, host, "test/chart-image", "v2", rOpts...)
+	seedCosignV2Artifacts(t, host, "test/chart-image", img, rOpts...)
+
+	chartDir := t.TempDir()
+	imageRef := host + "/test/chart-image:v2"
+	tgzPath := seedChartWithImages(t, chartDir, []string{imageRef})
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	t.Run("excludeExtras=false includes sigs/atts/sboms for chart-discovered images", func(t *testing.T) {
+		o := &flags.AddChartOpts{
+			ChartOpts:     newAddChartOpts("", "").ChartOpts,
+			AddImages:     true,
+			ExcludeExtras: false,
+		}
+		if err := storeChart(ctx, s, v1.Chart{Name: tgzPath}, o, rso, ro, ""); err != nil {
+			t.Fatalf("storeChart without ExcludeExtras: %v", err)
+		}
+
+		assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationSigs)
+		assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationAtts)
+		assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationSboms)
+	})
 }

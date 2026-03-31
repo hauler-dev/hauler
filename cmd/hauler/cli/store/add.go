@@ -522,7 +522,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 
 			imgCfg := v1.Image{Name: image}
-			if err := storeImage(ctx, s, imgCfg, opts.Platform, false, rso, ro, ""); err != nil {
+			if err := storeImage(ctx, s, imgCfg, opts.Platform, opts.ExcludeExtras, rso, ro, ""); err != nil {
 				if ro.IgnoreErrors {
 					l.Warnf("%s  ↳ failed to store image [%s]: %v... skipping...", prefix, image, err)
 					continue
