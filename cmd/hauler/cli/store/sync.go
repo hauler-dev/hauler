@@ -81,54 +81,108 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		l.Infof("processing completed successfully")
 	}
 
-	// If passed a local manifest, process it
-	for _, fileName := range o.FileName {
-		l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
+	// If passed a hauler manifest, process it
+	if len(o.FileName) != 0 {
+		for _, fileName := range o.FileName {
+			l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
 
-		haulPath := fileName
-		if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
-			l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
+			haulPath := fileName
+			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
+				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
 
-			h := getter.NewHttp()
-			parsedURL, err := url.Parse(haulPath)
+				h := getter.NewHttp()
+				parsedURL, err := url.Parse(haulPath)
+				if err != nil {
+					return err
+				}
+				rc, err := h.Open(ctx, parsedURL)
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+
+				fileName := h.Name(parsedURL)
+				if fileName == "" {
+					fileName = filepath.Base(parsedURL.Path)
+				}
+				haulPath = filepath.Join(tempDir, fileName)
+
+				out, err := os.Create(haulPath)
+				if err != nil {
+					return err
+				}
+				defer out.Close()
+
+				if _, err = io.Copy(out, rc); err != nil {
+					return err
+				}
+			}
+
+			fi, err := os.Open(haulPath)
 			if err != nil {
 				return err
 			}
-			rc, err := h.Open(ctx, parsedURL)
+			defer fi.Close()
+
+			err = processContent(ctx, fi, o, s, rso, ro)
 			if err != nil {
 				return err
 			}
-			defer rc.Close()
 
-			fileName := h.Name(parsedURL)
-			if fileName == "" {
-				fileName = filepath.Base(parsedURL.Path)
+			l.Infof("processing completed successfully")
+		}
+	}
+
+	// If passed an image.txt file, process it
+	if len(o.ImageTxt) != 0 {
+		for _, imageTxt := range o.ImageTxt {
+			l.Infof("processing image.txt [%s] to store [%s]", imageTxt, o.StoreDir)
+
+			haulPath := imageTxt
+			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
+				l.Debugf("detected remote image.txt... starting download... [%s]", haulPath)
+
+				h := getter.NewHttp()
+				parsedURL, err := url.Parse(haulPath)
+				if err != nil {
+					return err
+				}
+				rc, err := h.Open(ctx, parsedURL)
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+
+				fileName := h.Name(parsedURL)
+				if fileName == "" {
+					fileName = filepath.Base(parsedURL.Path)
+				}
+				haulPath = filepath.Join(tempDir, fileName)
+
+				out, err := os.Create(haulPath)
+				if err != nil {
+					return err
+				}
+				defer out.Close()
+
+				if _, err = io.Copy(out, rc); err != nil {
+					return err
+				}
 			}
-			haulPath = filepath.Join(tempDir, fileName)
 
-			out, err := os.Create(haulPath)
+			fi, err := os.Open(haulPath)
 			if err != nil {
 				return err
 			}
-			defer out.Close()
+			defer fi.Close()
 
-			if _, err = io.Copy(out, rc); err != nil {
+			err = processImageTxt(ctx, fi, o, s, rso, ro)
+			if err != nil {
 				return err
 			}
-		}
 
-		fi, err := os.Open(haulPath)
-		if err != nil {
-			return err
+			l.Infof("processing completed successfully")
 		}
-		defer fi.Close()
-
-		err = processContent(ctx, fi, o, s, rso, ro)
-		if err != nil {
-			return err
-		}
-
-		l.Infof("processing completed successfully")
 	}
 
 	return nil
@@ -362,4 +416,22 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 	}
 	return nil
+}
+
+func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+	l.Infof("syncing images from [%s] to store", filepath.Base(fi.Name()))
+	scanner := bufio.NewScanner(fi)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		img := v1.Image{Name: line}
+		l.Infof("adding image [%s] to the store [%s]", line, o.StoreDir)
+		if err := storeImage(ctx, s, img, o.Platform, rso, ro, ""); err != nil {
+			return err
+		}
+	}
+	return scanner.Err()
 }
