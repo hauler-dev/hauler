@@ -98,10 +98,8 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 	}
 
 	opts := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
-	for _, prefix := range []string{"registry://", "reg://", "oci://"} {
-			if err := CopyCmd(ctx, opts, s, prefix+tr.Registry(), ro); err != nil {
-					return err
-			}
+	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), ro); err != nil {
+		return err
 	}
 
 	tr.Close()
@@ -147,10 +145,8 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	}
 
 	opts := &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}}
-	for _, prefix := range []string{"directory://", "dir://"} {
-			if err := CopyCmd(ctx, opts, s, prefix+o.RootDir, ro); err != nil {
-					return err
-			}
+	if err := CopyCmd(ctx, opts, s, "directory://"+o.RootDir, ro); err != nil {
+		return err
 	}
 
 	f, err := server.NewFile(ctx, *o)
