@@ -282,12 +282,12 @@ func TestRewriteReference(t *testing.T) {
 	t.Run("path-only rewrite strips library/ prefix from docker hub official image", func(t *testing.T) {
 		s := newTestStore(t)
 		seedStoreDescriptor(t, s, map[string]string{
-			ocispec.AnnotationRefName:    "library/nginx:latest",
+			ocispec.AnnotationRefName:     "library/nginx:latest",
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")   // → index.docker.io/library/nginx:latest
-		newRef, _ := name.NewTag("nginx:v2")        // → index.docker.io/library/nginx:v2
+		oldRef, _ := name.NewTag("nginx:latest") // → index.docker.io/library/nginx:latest
+		newRef, _ := name.NewTag("nginx:v2")     // → index.docker.io/library/nginx:v2
 		rawRewrite := "nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -300,7 +300,7 @@ func TestRewriteReference(t *testing.T) {
 	t.Run("explicit docker.io rewrite preserves library/ prefix", func(t *testing.T) {
 		s := newTestStore(t)
 		seedStoreDescriptor(t, s, map[string]string{
-			ocispec.AnnotationRefName:    "library/nginx:latest",
+			ocispec.AnnotationRefName:     "library/nginx:latest",
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
@@ -318,7 +318,7 @@ func TestRewriteReference(t *testing.T) {
 	t.Run("explicit index.docker.io rewrite preserves library/ prefix", func(t *testing.T) {
 		s := newTestStore(t)
 		seedStoreDescriptor(t, s, map[string]string{
-			ocispec.AnnotationRefName:    "library/nginx:latest",
+			ocispec.AnnotationRefName:     "library/nginx:latest",
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 

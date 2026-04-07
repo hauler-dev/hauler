@@ -145,7 +145,7 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	}
 
 	opts := &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}}
-	if err := CopyCmd(ctx, opts, s, "dir://"+o.RootDir, ro); err != nil {
+	if err := CopyCmd(ctx, opts, s, "directory://"+o.RootDir, ro); err != nil {
 		return err
 	}
 

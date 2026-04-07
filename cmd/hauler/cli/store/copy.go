@@ -34,8 +34,8 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
-	case "dir":
-		l.Debugf("identified directory target reference of [%s]", components[1])
+	case "directory", "dir":
+		l.Debugf("identified [directory] target reference of [%s]", components[1])
 
 		// Create destination directory if it doesn't exist
 		if err := os.MkdirAll(components[1], 0755); err != nil {
@@ -173,8 +173,8 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			return err
 		}
 
-	case "registry":
-		l.Debugf("identified registry target reference of [%s]", components[1])
+	case "registry", "reg", "oci":
+		l.Debugf("identified [registry] target reference of [%s]", components[1])
 		registryOpts := content.RegistryOptions{
 			PlainHTTP: o.PlainHTTP,
 			Insecure:  o.Insecure,
