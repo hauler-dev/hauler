@@ -59,12 +59,13 @@ const (
 	SigstoreBundleMediaType = "application/vnd.dev.sigstore.bundle.v0.3+json"
 	OCIEmptyConfigMediaType = "application/vnd.oci.empty.v1+json"
 
-	ImageAnnotationKey      = "hauler.dev/key"
-	ImageAnnotationPlatform = "hauler.dev/platform"
-	ImageAnnotationRegistry = "hauler.dev/registry"
-	ImageAnnotationTlog     = "hauler.dev/use-tlog-verify"
-	ImageAnnotationRewrite  = "hauler.dev/rewrite"
-	ImageRefKey             = "org.opencontainers.image.ref.name"
+	ImageAnnotationKey           = "hauler.dev/key"
+	ImageAnnotationPlatform      = "hauler.dev/platform"
+	ImageAnnotationRegistry      = "hauler.dev/registry"
+	ImageAnnotationTlog          = "hauler.dev/use-tlog-verify"
+	ImageAnnotationRewrite       = "hauler.dev/rewrite"
+	ImageAnnotationExcludeExtras = "hauler.dev/exclude-extras"
+	ImageRefKey                  = "org.opencontainers.image.ref.name"
 
 	// cosign keyless validation options
 	ImageAnnotationCertIdentity                 = "hauler.dev/certificate-identity"

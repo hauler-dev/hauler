@@ -20,6 +20,7 @@ type SyncOpts struct {
 	ProductRegistry              string
 	Tlog                         bool
 	Rewrite                      string
+	ExcludeExtras                bool
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -39,4 +40,5 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specify the product registry. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us)")
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(EXPERIMENTAL & Optional) Rewrite artifact path to specified string")
+	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images")
 }

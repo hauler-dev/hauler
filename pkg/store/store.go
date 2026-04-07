@@ -155,7 +155,8 @@ func (l *Layout) AddArtifactCollection(ctx context.Context, collection artifacts
 // and saves it to the store along with any associated signatures, attestations, and SBOMs
 // discovered via cosign's tag convention (<digest>.sig, <digest>.att, <digest>.sbom).
 // When platform is non-empty and the ref is a multi-arch index, only that platform is fetched.
-func (l *Layout) AddImage(ctx context.Context, ref string, platform string, opts ...remote.Option) error {
+// When excludeExtras is true, cosign signatures, attestations, SBOMs, and OCI referrers are skipped.
+func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, opts ...remote.Option) error {
 	allOpts := append([]remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		remote.WithContext(ctx),
@@ -205,11 +206,14 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, opts
 		}
 	}
 
-	savedDigests, err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...)
-	if err != nil {
-		return err
+	if !excludeExtras {
+		savedDigests, err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...)
+		if err != nil {
+			return err
+		}
+		return l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
 	}
-	return l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
+	return nil
 }
 
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's

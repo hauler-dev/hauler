@@ -14,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	helmchart "helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chartutil"
 
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
@@ -236,7 +237,7 @@ func TestRewriteReference(t *testing.T) {
 		seedImage(t, host, "src/repo", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/src/repo:v1", "", rOpts...); err != nil {
+		if err := s.AddImage(ctx, host+"/src/repo:v1", "", false, rOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -338,7 +339,7 @@ func TestRewriteReference(t *testing.T) {
 		seedImage(t, host, "src/repo", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/src/repo:v1", "", rOpts...); err != nil {
+		if err := s.AddImage(ctx, host+"/src/repo:v1", "", false, rOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -467,7 +468,7 @@ func TestStoreImage(t *testing.T) {
 			ro := defaultCliOpts()
 			ro.IgnoreErrors = tc.ignoreErrors
 
-			err := storeImage(ctx, s, v1.Image{Name: tc.imageName}, "", rso, ro, "")
+			err := storeImage(ctx, s, v1.Image{Name: tc.imageName}, "", false, rso, ro, "")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -488,7 +489,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", rso, ro, "newrepo/img:v2")
+		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2")
 		if err != nil {
 			t.Fatalf("storeImage with rewrite: %v", err)
 		}
@@ -501,7 +502,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v3"}, "", rso, ro, "newrepo/img")
+		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v3"}, "", false, rso, ro, "newrepo/img")
 		if err != nil {
 			t.Fatalf("storeImage with tagless rewrite: %v", err)
 		}
@@ -521,7 +522,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		ro := defaultCliOpts()
 
 		digestRef := host + "/src/repo@" + h.String()
-		err = storeImage(ctx, s, v1.Image{Name: digestRef}, "", rso, ro, "newrepo/img")
+		err = storeImage(ctx, s, v1.Image{Name: digestRef}, "", false, rso, ro, "newrepo/img")
 		if err == nil {
 			t.Fatal("expected error for digest ref rewrite without explicit tag, got nil")
 		}
@@ -540,7 +541,7 @@ func TestStoreImage_MultiArch(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, ""); err != nil {
 		t.Fatalf("storeImage multi-arch index: %v", err)
 	}
 	// Full index (both platforms) must be stored as an index, not a single image.
@@ -556,7 +557,7 @@ func TestStoreImage_PlatformFilter(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v2"}, "linux/amd64", rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v2"}, "linux/amd64", false, rso, ro, ""); err != nil {
 		t.Fatalf("storeImage with platform filter: %v", err)
 	}
 	// Platform filter resolves a single manifest from the index → stored as a single image.
@@ -574,7 +575,7 @@ func TestStoreImage_CosignV2Artifacts(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", false, rso, ro, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertArtifactKindInStore(t, s, "test/signed:v1", consts.KindAnnotationSigs)
@@ -593,10 +594,107 @@ func TestStoreImage_CosignV3Referrer(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", false, rso, ro, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertReferrerInStore(t, s, "test/image:v1")
+}
+
+func TestStoreImage_ExcludeExtras(t *testing.T) {
+	ctx := newTestContext(t)
+
+	t.Run("cosign v2 artifacts excluded when excludeExtras=true", func(t *testing.T) {
+		host, rOpts := newLocalhostRegistry(t)
+
+		img := seedImage(t, host, "test/signed", "v1", rOpts...)
+		seedCosignV2Artifacts(t, host, "test/signed", img, rOpts...)
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", true, rso, ro, ""); err != nil {
+			t.Fatalf("storeImage with excludeExtras: %v", err)
+		}
+
+		// Only the primary image must be present — no sigs, atts, or sboms.
+		count := countArtifactsInStore(t, s)
+		if count != 1 {
+			t.Errorf("expected 1 artifact in store, got %d", count)
+		}
+		assertArtifactKindInStore(t, s, "test/signed:v1", consts.KindAnnotationImage)
+
+		// Verify no sig/att/sbom kind annotations are present.
+		for _, kind := range []string{consts.KindAnnotationSigs, consts.KindAnnotationAtts, consts.KindAnnotationSboms} {
+			found := false
+			if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+				if desc.Annotations[consts.KindAnnotationName] == kind {
+					found = true
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("walk: %v", err)
+			}
+			if found {
+				t.Errorf("unexpected artifact with kind %q found in store", kind)
+			}
+		}
+	})
+
+	t.Run("OCI 1.1 referrers excluded when excludeExtras=true", func(t *testing.T) {
+		host, rOpts := newLocalhostRegistry(t)
+
+		img := seedImage(t, host, "test/image", "v1", rOpts...)
+		seedOCI11Referrer(t, host, "test/image", img, rOpts...)
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", true, rso, ro, ""); err != nil {
+			t.Fatalf("storeImage with excludeExtras: %v", err)
+		}
+
+		// Only the primary image must be present — no referrers.
+		count := countArtifactsInStore(t, s)
+		if count != 1 {
+			t.Errorf("expected 1 artifact in store, got %d", count)
+		}
+
+		// Verify no referrer kind annotations are present.
+		found := false
+		if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+			if strings.HasPrefix(desc.Annotations[consts.KindAnnotationName], consts.KindAnnotationReferrers) {
+				found = true
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("walk: %v", err)
+		}
+		if found {
+			t.Errorf("unexpected OCI referrer found in store when excludeExtras=true")
+		}
+	})
+
+	t.Run("cosign v2 artifacts included when excludeExtras=false", func(t *testing.T) {
+		host, rOpts := newLocalhostRegistry(t)
+
+		img := seedImage(t, host, "test/signed", "v2", rOpts...)
+		seedCosignV2Artifacts(t, host, "test/signed", img, rOpts...)
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v2"}, "", false, rso, ro, ""); err != nil {
+			t.Fatalf("storeImage without excludeExtras: %v", err)
+		}
+
+		// All four artifacts (image + sig + att + sbom) must be present.
+		assertArtifactKindInStore(t, s, "test/signed:v2", consts.KindAnnotationSigs)
+		assertArtifactKindInStore(t, s, "test/signed:v2", consts.KindAnnotationAtts)
+		assertArtifactKindInStore(t, s, "test/signed:v2", consts.KindAnnotationSboms)
+	})
 }
 
 func TestAddChartCmd_LocalTgz(t *testing.T) {
@@ -642,4 +740,118 @@ func TestStoreChart_Rewrite(t *testing.T) {
 		t.Fatalf("AddChartCmd with rewrite: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/custom-chart")
+}
+
+// seedChartWithImages builds a minimal Helm chart whose helm.sh/images
+// annotation lists the given image refs and saves it as a .tgz into dir.
+// Returns the path to the saved .tgz file.
+func seedChartWithImages(t *testing.T, dir string, images []string) string {
+	t.Helper()
+
+	// Build a helm.sh/images YAML list from the image refs.
+	var sb strings.Builder
+	for _, img := range images {
+		sb.WriteString("- image: ")
+		sb.WriteString(img)
+		sb.WriteString("\n")
+	}
+
+	c := &helmchart.Chart{
+		Metadata: &helmchart.Metadata{
+			APIVersion: "v2",
+			Name:       "test-chart",
+			Version:    "0.1.0",
+			Annotations: map[string]string{
+				"helm.sh/images": sb.String(),
+			},
+		},
+	}
+
+	saved, err := chartutil.Save(c, dir)
+	if err != nil {
+		t.Fatalf("seedChartWithImages: chartutil.Save: %v", err)
+	}
+	return saved
+}
+
+func TestStoreChart_AddImages_ExcludeExtras(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	// Seed an image with cosign v2 artifacts (sig + att + sbom).
+	img := seedImage(t, host, "test/chart-image", "v1", rOpts...)
+	seedCosignV2Artifacts(t, host, "test/chart-image", img, rOpts...)
+
+	// Build a minimal chart whose helm.sh/images annotation references the image.
+	chartDir := t.TempDir()
+	imageRef := host + "/test/chart-image:v1"
+	tgzPath := seedChartWithImages(t, chartDir, []string{imageRef})
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	t.Run("excludeExtras=true suppresses sigs/atts/sboms for chart-discovered images", func(t *testing.T) {
+		o := &flags.AddChartOpts{
+			ChartOpts:     newAddChartOpts("", "").ChartOpts,
+			AddImages:     true,
+			ExcludeExtras: true,
+		}
+		if err := storeChart(ctx, s, v1.Chart{Name: tgzPath}, o, rso, ro, ""); err != nil {
+			t.Fatalf("storeChart with ExcludeExtras: %v", err)
+		}
+
+		// The chart itself is stored as an OCI image artifact.
+		assertArtifactInStore(t, s, "test-chart")
+		// The discovered image is stored (bare, no extras).
+		assertArtifactInStore(t, s, "test/chart-image:v1")
+
+		// No sig / att / sbom entries must be present.
+		for _, kind := range []string{consts.KindAnnotationSigs, consts.KindAnnotationAtts, consts.KindAnnotationSboms} {
+			found := false
+			if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+				if desc.Annotations[consts.KindAnnotationName] == kind {
+					found = true
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("walk: %v", err)
+			}
+			if found {
+				t.Errorf("unexpected artifact with kind %q found in store when ExcludeExtras=true", kind)
+			}
+		}
+	})
+}
+
+func TestStoreChart_AddImages_IncludeExtras(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	// Seed an image with cosign v2 artifacts.
+	img := seedImage(t, host, "test/chart-image", "v2", rOpts...)
+	seedCosignV2Artifacts(t, host, "test/chart-image", img, rOpts...)
+
+	chartDir := t.TempDir()
+	imageRef := host + "/test/chart-image:v2"
+	tgzPath := seedChartWithImages(t, chartDir, []string{imageRef})
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	t.Run("excludeExtras=false includes sigs/atts/sboms for chart-discovered images", func(t *testing.T) {
+		o := &flags.AddChartOpts{
+			ChartOpts:     newAddChartOpts("", "").ChartOpts,
+			AddImages:     true,
+			ExcludeExtras: false,
+		}
+		if err := storeChart(ctx, s, v1.Chart{Name: tgzPath}, o, rso, ro, ""); err != nil {
+			t.Fatalf("storeChart without ExcludeExtras: %v", err)
+		}
+
+		assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationSigs)
+		assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationAtts)
+		assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationSboms)
+	})
 }

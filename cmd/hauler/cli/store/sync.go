@@ -59,7 +59,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		img := v1.Image{
 			Name: manifestLoc,
 		}
-		err := storeImage(ctx, s, img, o.Platform, rso, ro, "")
+		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "")
 		if err != nil {
 			return err
 		}
@@ -363,7 +363,15 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						rewrite = i.Rewrite
 					}
 
-					if err := storeImage(ctx, s, i, platform, rso, ro, rewrite); err != nil {
+					excludeExtras := o.ExcludeExtras
+					if !o.ExcludeExtras && a[consts.ImageAnnotationExcludeExtras] == "true" {
+						excludeExtras = true
+					}
+					if i.ExcludeExtras {
+						excludeExtras = i.ExcludeExtras
+					}
+
+					if err := storeImage(ctx, s, i, platform, excludeExtras, rso, ro, rewrite); err != nil {
 						return err
 					}
 				}
@@ -381,14 +389,23 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				registry := o.Registry
+				annotation := cfg.GetAnnotations()
 				if registry == "" {
-					annotation := cfg.GetAnnotations()
 					if annotation != nil {
 						registry = annotation[consts.ImageAnnotationRegistry]
 					}
 				}
 
 				for i, ch := range cfg.Spec.Charts {
+					// Resolve excludeExtras: per-chart field > chart manifest annotation > CLI flag.
+					excludeExtras := o.ExcludeExtras
+					if !o.ExcludeExtras && annotation != nil && annotation[consts.ImageAnnotationExcludeExtras] == "true" {
+						excludeExtras = true
+					}
+					if ch.ExcludeExtras {
+						excludeExtras = ch.ExcludeExtras
+					}
+
 					if err := storeChart(ctx, s, ch,
 						&flags.AddChartOpts{
 							ChartOpts: &action.ChartPathOptions{
@@ -397,6 +414,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							},
 							AddImages:       ch.AddImages,
 							AddDependencies: ch.AddDependencies,
+							ExcludeExtras:   excludeExtras,
 							Registry:        registry,
 							Platform:        o.Platform,
 						},
@@ -429,7 +447,7 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 		}
 		img := v1.Image{Name: line}
 		l.Infof("adding image [%s] to the store [%s]", line, o.StoreDir)
-		if err := storeImage(ctx, s, img, o.Platform, rso, ro, ""); err != nil {
+		if err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, ""); err != nil {
 			return err
 		}
 	}

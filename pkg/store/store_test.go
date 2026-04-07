@@ -464,7 +464,7 @@ func TestCopyDescriptorGraph_Index(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := src.AddImage(ctx, idxTag.Name(), "", remoteOpts...); err != nil {
+	if err := src.AddImage(ctx, idxTag.Name(), "", false, remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 	if err := src.OCI.SaveIndex(); err != nil {
@@ -767,7 +767,7 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new layout: %v", err)
 	}
-	if err := s.AddImage(context.Background(), baseTag.Name(), "", remoteOpts...); err != nil {
+	if err := s.AddImage(context.Background(), baseTag.Name(), "", false, remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 

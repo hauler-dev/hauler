@@ -109,7 +109,7 @@ func TestLifecycle_Image_AddSaveLoadCopyRegistry(t *testing.T) {
 	storeA := newTestStore(t)
 	rso := defaultRootOpts(storeA.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, storeA, v1.Image{Name: srcHost + "/lifecycle/app:v1"}, "", rso, ro, ""); err != nil {
+	if err := storeImage(ctx, storeA, v1.Image{Name: srcHost + "/lifecycle/app:v1"}, "", false, rso, ro, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertArtifactInStore(t, storeA, "lifecycle/app:v1")
