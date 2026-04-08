@@ -20,7 +20,7 @@ jobs:
         run: rm -rf /opt/hostedtoolcache
 
       - name: Checkout
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -30,13 +30,13 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Set Up Go
-        uses: actions/setup-go@v6.1.0
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           check-latest: true
 
       - name: Install Go Releaser
-        uses: goreleaser/goreleaser-action@v6.4.0
+        uses: goreleaser/goreleaser-action@v6
         with:
           install-only: true
 
@@ -51,13 +51,13 @@ jobs:
           make build-all
 
       - name: Upload Hauler Binaries
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v6
         with:
           name: hauler-binaries
           path: dist/*
 
       - name: Upload Coverage Report
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: coverage.out
@@ -73,7 +73,7 @@ jobs:
         run: rm -rf /opt/hostedtoolcache
 
       - name: Checkout
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -89,7 +89,7 @@ jobs:
           sudo apt-get install -y tree
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v6.0.0
+        uses: actions/download-artifact@v6
         with:
           name: hauler-binaries
           path: dist
@@ -250,6 +250,13 @@ jobs:
           hauler store save --filename store.tar.zst
           # verify via save with filename and platform (amd64)
           hauler store save --filename store-amd64.tar.zst --platform linux/amd64
+          # verify via save with chunk-size (splits into haul-chunked_0.tar.zst, haul-chunked_1.tar.zst, ...)
+          hauler store save --filename haul-chunked.tar.zst --chunk-size 50M
+          # verify chunk files exist and original is removed
+          ls haul-chunked_*.tar.zst
+          ! test -f haul-chunked.tar.zst
+          # verify at least two chunks were produced
+          [ $(ls haul-chunked_*.tar.zst | wc -l) -ge 2 ]
 
       - name: Remove Hauler Store Contents
         run: |
@@ -269,6 +276,14 @@ jobs:
           hauler store load --filename store.tar.zst --tempdir /opt
           # verify via load with filename and platform (amd64)
           hauler store load --filename store-amd64.tar.zst
+          # verify via load from chunks using explicit first chunk
+          rm -rf store
+          hauler store load --filename haul-chunked_0.tar.zst
+          hauler store info
+          # verify via load from chunks using base filename (auto-detect)
+          rm -rf store
+          hauler store load --filename haul-chunked.tar.zst
+          hauler store info
 
       - name: Verify Hauler Store Contents
         run: |
@@ -291,7 +306,7 @@ jobs:
 
       - name: Remove Hauler Store Contents
         run: |
-          rm -rf store haul.tar.zst store.tar.zst store-amd64.tar.zst
+          rm -rf store haul.tar.zst store.tar.zst store-amd64.tar.zst haul-chunked_*.tar.zst
           hauler store info
 
       - name: Verify - hauler store sync
@@ -302,6 +317,17 @@ jobs:
           # verify via sync with multiple files
           hauler store sync --filename testdata/hauler-manifest-pipeline.yaml --filename testdata/hauler-manifest.yaml
           # need more tests here
+
+      - name: Verify - hauler store sync (image list)
+        run: |
+          # verify via local image list file
+          hauler store sync --image-txt testdata/images.txt
+          # verify via multiple image list files
+          hauler store sync --image-txt testdata/images.txt --image-txt testdata/images.txt
+          # verify via remote image list file
+          hauler store sync --image-txt https://raw.githubusercontent.com/hauler-dev/hauler/main/testdata/images.txt
+          # confirm images are present in the store
+          hauler store info | grep 'busybox'
 
       - name: Verify - hauler store serve
         run: |
@@ -468,7 +494,7 @@ jobs:
           hauler store info
 
       - name: Upload Hauler Report
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v6
         with:
           name: hauler-report
           path: hauler-report.txt

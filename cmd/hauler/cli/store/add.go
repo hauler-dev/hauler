@@ -25,6 +25,7 @@ import (
 	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/reference"
+	"hauler.dev/go/hauler/pkg/retry"
 	"hauler.dev/go/hauler/pkg/store"
 )
 
@@ -52,7 +53,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 	}
 
 	l.Infof("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
-	_, err = s.AddOCI(ctx, f, ref.Name())
+	_, err = s.AddArtifact(ctx, f, ref.Name())
 	if err != nil {
 		return err
 	}
@@ -73,25 +74,28 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	// Check if the user provided a key.
 	if o.Key != "" {
 		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, s, o.Key, o.Tlog, cfg.Name, rso, ro)
+		err := cosign.VerifySignature(ctx, o.Key, o.Tlog, cfg.Name, rso, ro)
 		if err != nil {
 			return err
 		}
 		l.Infof("signature verified for image [%s]", cfg.Name)
 	} else if o.CertIdentityRegexp != "" || o.CertIdentity != "" {
-		// verify signature using keyless details
+		// verify signature using keyless details.
+		// Keyless (Fulcio) certificates expire after ~10 minutes, so the transparency
+		// log is always required to prove the cert was valid at signing time — ignore
+		// --use-tlog-verify for this path and always check tlog.
 		l.Infof("verifying keyless signature for [%s]", cfg.Name)
-		err := cosign.VerifyKeylessSignature(ctx, s, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, o.Tlog, cfg.Name, rso, ro)
+		err := cosign.VerifyKeylessSignature(ctx, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, cfg.Name, rso, ro)
 		if err != nil {
 			return err
 		}
 		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
 
-	return storeImage(ctx, s, cfg, o.Platform, rso, ro, o.Rewrite)
+	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
 	if !ro.IgnoreErrors {
@@ -114,8 +118,10 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
-	// copy and sig verification
-	err = cosign.SaveImage(ctx, s, r.Name(), platform, rso, ro)
+	// fetch image along with any associated signatures and attestations
+	err = retry.Operation(ctx, rso, ro, func() error {
+		return s.AddImage(ctx, r.Name(), platform, excludeExtras)
+	})
 	if err != nil {
 		if ro.IgnoreErrors {
 			l.Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
@@ -127,39 +133,61 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	}
 
 	if rewrite != "" {
+		rawRewrite := rewrite
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
-			rewrite = strings.Join([]string{rewrite, r.(name.Tag).TagStr()}, ":")
+			if tag, ok := r.(name.Tag); ok {
+				rewrite = rewrite + ":" + tag.TagStr()
+			} else {
+				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
+			}
 		}
 		// rename image name in store
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
-			l.Errorf("unable to parse rewrite name: %w", err)
+			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		rewriteReference(ctx, s, r, newRef)
+		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
+			return err
+		}
 	}
 
 	l.Infof("successfully added image [%s]", r.Name())
 	return nil
 }
 
-func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference) error {
+func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
 	l := log.FromContext(ctx)
 
-	s.OCI.LoadIndex()
+	if err := s.OCI.LoadIndex(); err != nil {
+		return fmt.Errorf("failed to load index: %w", err)
+	}
 
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()
 	newRefContext := newRef.Context()
 	oldRepo := oldRefContext.RepositoryStr()
 	newRepo := newRefContext.RepositoryStr()
-	oldTag := oldRef.(name.Tag).TagStr()
-	newTag := newRef.(name.Tag).TagStr()
-	oldRegistry := strings.TrimPrefix(oldRefContext.RegistryStr(), "index.")
-	newRegistry := strings.TrimPrefix(newRefContext.RegistryStr(), "index.")
-	// If new registry not set in rewrite, keep old registry instead of defaulting to docker.io
-	if newRegistry == "docker.io" && oldRegistry != "docker.io" {
+
+	oldTag := oldRef.Identifier()
+	if tag, ok := oldRef.(name.Tag); ok {
+		oldTag = tag.TagStr()
+	}
+	newTag := newRef.Identifier()
+	if tag, ok := newRef.(name.Tag); ok {
+		newTag = tag.TagStr()
+	}
+
+	// ContainerdImageNameKey stores annotationRef.Name() verbatim, which includes the
+	// "index.docker.io" prefix for docker.io images. Do not strip "index." here or the
+	// comparison will never match images stored by writeImage/writeIndex.
+	oldRegistry := oldRefContext.RegistryStr()
+	newRegistry := newRefContext.RegistryStr()
+	// If user omitted a registry in the rewrite string, go-containerregistry defaults to
+	// index.docker.io. Preserve the original registry when the source is non-docker.
+	if newRegistry == "index.docker.io" && !strings.HasPrefix(rawRewrite, "docker.io") && !strings.HasPrefix(rawRewrite, "index.docker.io") {
 		newRegistry = oldRegistry
+		newRepo = strings.TrimPrefix(newRepo, "library/") //if rewrite has library/ prefix in path it is stripped off unless registry specified in rewrite
 	}
 	oldTotal := oldRepo + ":" + oldTag
 	newTotal := newRepo + ":" + newTag
@@ -349,7 +377,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		return err
 	}
 
-	if _, err := s.AddOCI(ctx, chrt, ref.Name()); err != nil {
+	if _, err := s.AddArtifact(ctx, chrt, ref.Name()); err != nil {
 		return err
 	}
 	if err := s.OCI.SaveIndex(); err != nil {
@@ -494,14 +522,16 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 
 			imgCfg := v1.Image{Name: image}
-			if err := storeImage(ctx, s, imgCfg, opts.Platform, rso, ro, ""); err != nil {
+			if err := storeImage(ctx, s, imgCfg, opts.Platform, opts.ExcludeExtras, rso, ro, ""); err != nil {
 				if ro.IgnoreErrors {
 					l.Warnf("%s  ↳ failed to store image [%s]: %v... skipping...", prefix, image, err)
 					continue
 				}
 				return fmt.Errorf("failed to store image [%s]: %w", image, err)
 			}
-			s.OCI.LoadIndex()
+			if err := s.OCI.LoadIndex(); err != nil {
+				return err
+			}
 			if err := s.OCI.SaveIndex(); err != nil {
 				return err
 			}
@@ -521,7 +551,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			var depCfg v1.Chart
 			var err error
 
-			if strings.HasPrefix(dep.Repository, "file://") {
+			if strings.HasPrefix(dep.Repository, "file://") || dep.Repository == "" {
 				subchartPath := filepath.Join(chartPath, "charts", dep.Name)
 
 				depCfg = v1.Chart{Name: subchartPath, RepoURL: "", Version: ""}
@@ -558,7 +588,10 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		// if rewrite omits a tag... keep the existing tag
-		oldTag := ref.(name.Tag).TagStr()
+		oldTag := ref.Identifier()
+		if tag, ok := ref.(name.Tag); ok {
+			oldTag = tag.TagStr()
+		}
 		if !strings.Contains(rewrite, ":") {
 			rewrite = strings.Join([]string{rewrite, oldTag}, ":")
 			newRef, err = name.ParseReference(rewrite)
@@ -568,14 +601,19 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		// rename chart name in store
-		s.OCI.LoadIndex()
+		if err := s.OCI.LoadIndex(); err != nil {
+			return err
+		}
 
 		oldRefContext := ref.Context()
 		newRefContext := newRef.Context()
 
 		oldRepo := oldRefContext.RepositoryStr()
 		newRepo := newRefContext.RepositoryStr()
-		newTag := newRef.(name.Tag).TagStr()
+		newTag := newRef.Identifier()
+		if tag, ok := newRef.(name.Tag); ok {
+			newTag = tag.TagStr()
+		}
 
 		oldTotal := oldRepo + ":" + oldTag
 		newTotal := newRepo + ":" + newTag

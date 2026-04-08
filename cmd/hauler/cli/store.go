@@ -216,7 +216,7 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.InfoOpts{StoreRootOpts: rso}
 
-	var allowedValues = []string{"image", "chart", "file", "sigs", "atts", "sbom", "all"}
+	var allowedValues = []string{"image", "chart", "file", "sigs", "atts", "sbom", "referrer", "all"}
 
 	cmd := &cobra.Command{
 		Use:     "info",
@@ -250,7 +250,10 @@ func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "copy",
 		Short: "Copy all store content to another location",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # supported copy target prefixes
+	registry://  | reg:// | oci:// - Pushes the store to an OCI registry
+	directory:// | dir://          - Extracts the store to a directory`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -291,14 +294,14 @@ func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 	cmd := &cobra.Command{
 		Use:   "file",
 		Short: "Add a file to the store",
-		Example: `# fetch local file
-hauler store add file file.txt
+		Example: `  # fetch local file
+	hauler store add file file.txt
 
-# fetch remote file
-hauler store add file https://get.rke2.io/install.sh
+	# fetch remote file
+	hauler store add file https://get.rke2.io/install.sh
 
-# fetch remote file and assign new name
-hauler store add file https://get.hauler.dev --name hauler-install.sh`,
+	# fetch remote file and assign new name
+	hauler store add file https://get.hauler.dev --name hauler-install.sh`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -322,24 +325,24 @@ func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 	cmd := &cobra.Command{
 		Use:   "image",
 		Short: "Add a image to the store",
-		Example: `# fetch image
-hauler store add image busybox
+		Example: `	# fetch image
+	hauler store add image busybox
 
-# fetch image with repository and tag
-hauler store add image library/busybox:stable
+	# fetch image with repository and tag
+	hauler store add image library/busybox:stable
 
-# fetch image with full image reference and specific platform
-hauler store add image ghcr.io/hauler-dev/hauler-debug:v1.2.0 --platform linux/amd64
+	# fetch image with full image reference and specific platform
+	hauler store add image ghcr.io/hauler-dev/hauler-debug:v1.2.0 --platform linux/amd64
 
-# fetch image with full image reference via digest
-hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+	# fetch image with full image reference via digest
+	hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
 
-# fetch image with full image reference, specific platform, and signature verification
-curl -sfOL https://raw.githubusercontent.com/rancherfederal/carbide-releases/main/carbide-key.pub
-hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub
+	# fetch image with full image reference, specific platform, and signature verification
+	curl -sfOL https://raw.githubusercontent.com/rancherfederal/carbide-releases/main/carbide-key.pub
+	hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub
 
-# fetch image and rewrite path
-hauler store add image busybox --rewrite custom-path/busybox:latest`,
+	# fetch image and rewrite path
+	hauler store add image busybox --rewrite custom-path/busybox:latest`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -363,26 +366,26 @@ func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 	cmd := &cobra.Command{
 		Use:   "chart",
 		Short: "Add a helm chart to the store",
-		Example: `# fetch local helm chart
-hauler store add chart path/to/chart/directory --repo .
+		Example: `	# fetch local helm chart
+	hauler store add chart path/to/chart/directory --repo .
 
-# fetch local compressed helm chart
-hauler store add chart path/to/chart.tar.gz --repo .
+	# fetch local compressed helm chart
+	hauler store add chart path/to/chart.tar.gz --repo .
 
-# fetch remote oci helm chart
-hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev
+	# fetch remote oci helm chart
+	hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev
 
-# fetch remote oci helm chart with version
-hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.2.0
+	# fetch remote oci helm chart with version
+	hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.2.0
 
-# fetch remote helm chart
-hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
+	# fetch remote helm chart
+	hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
 
-# fetch remote helm chart with specific version
-hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1
+	# fetch remote helm chart with specific version
+	hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1
 
-# fetch remote helm chart and rewrite path
-hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite custom-path/hauler-chart:latest`,
+	# fetch remote helm chart and rewrite path
+	hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite custom-path/hauler-chart:latest`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -405,26 +408,26 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 	cmd := &cobra.Command{
 		Use:   "remove <artifact-ref>",
 		Short: "(EXPERIMENTAL) Remove an artifact from the content store",
-		Example: `# remove an image using full store reference
-hauler store info
-hauler store remove index.docker.io/library/busybox:stable
+		Example: `  # remove an image using full store reference
+	hauler store info
+	hauler store remove index.docker.io/library/busybox:stable
 
-# remove a chart using full store reference
-hauler store info
-hauler store remove hauler/rancher:2.8.4
+	# remove a chart using full store reference
+	hauler store info
+	hauler store remove hauler/rancher:2.8.4
 
-# remove a file using full store reference
-hauler store info
-hauler store remove hauler/rke2-install.sh
+	# remove a file using full store reference
+	hauler store info
+	hauler store remove hauler/rke2-install.sh
 
-# remove any artifact with the latest tag
-hauler store remove :latest
+	# remove any artifact with the latest tag
+	hauler store remove :latest
 
-# remove any artifact with 'busybox' in the reference
-hauler store remove busybox
+	# remove any artifact with 'busybox' in the reference
+	hauler store remove busybox
 
-# force remove without verification
-hauler store remove busybox:latest --force`,
+	# force remove without verification
+	hauler store remove busybox:latest --force`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

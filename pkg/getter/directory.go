@@ -33,30 +33,37 @@ func (d directory) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) 
 
 	digester := digest.Canonical.Digester()
 	zw := gzip.NewWriter(io.MultiWriter(tmpfile, digester.Hash()))
-	defer zw.Close()
 
 	tarDigester := digest.Canonical.Digester()
 	if err := tarDir(d.path(u), d.Name(u), io.MultiWriter(zw, tarDigester.Hash()), false); err != nil {
+		zw.Close()
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
 		return nil, err
 	}
 
 	if err := zw.Close(); err != nil {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
 		return nil, err
 	}
 	if err := tmpfile.Sync(); err != nil {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
 		return nil, err
 	}
 
-	fi, err := os.Open(tmpfile.Name())
+	// Close the write handle; re-open as read-only
+	tmpName := tmpfile.Name()
+	tmpfile.Close()
+
+	fi, err := os.Open(tmpName)
 	if err != nil {
+		os.Remove(tmpName)
 		return nil, err
 	}
 
-	// rc := &closer{
-	// 	t: io.TeeReader(tmpfile, fi),
-	// 	closes: []func() error{fi.Close, tmpfile.Close, zw.Close},
-	// }
-	return fi, nil
+	return &tempFileReadCloser{File: fi, path: tmpName}, nil
 }
 
 func (d directory) Detect(u *url.URL) bool {
@@ -144,22 +151,15 @@ func tarDir(root string, prefix string, w io.Writer, stripTimes bool) error {
 	return nil
 }
 
-type closer struct {
-	t      io.Reader
-	closes []func() error
+// tempFileReadCloser wraps an *os.File and removes the underlying
+// temp file when closed.
+type tempFileReadCloser struct {
+	*os.File
+	path string
 }
 
-func (c *closer) Read(p []byte) (n int, err error) {
-	return c.t.Read(p)
-}
-
-func (c *closer) Close() error {
-	var err error
-	for _, c := range c.closes {
-		lastErr := c()
-		if err == nil {
-			err = lastErr
-		}
-	}
+func (t *tempFileReadCloser) Close() error {
+	err := t.File.Close()
+	os.Remove(t.path)
 	return err
 }
