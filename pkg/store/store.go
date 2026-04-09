@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	gname "github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/opencontainers/go-digest"
@@ -212,6 +213,56 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 			return err
 		}
 		return l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
+	}
+	return nil
+}
+
+// AddLocalImage fetches a container image from the local Docker daemon and saves it to the store.
+// No cosign signatures, attestations, SBOMs, or OCI referrers are fetched (registry-only concepts).
+func (l *Layout) AddLocalImage(ctx context.Context, ref string) error {
+	parsedRef, err := gname.ParseReference(ref)
+	if err != nil {
+		return fmt.Errorf("parsing reference %q: %w", ref, err)
+	}
+
+	if err := ensureDockerHost(); err != nil {
+		return fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
+	}
+
+	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
+	}
+
+	if _, err := img.Digest(); err != nil {
+		return fmt.Errorf("getting image digest for %q: %w", ref, err)
+	}
+
+	return l.writeImage(parsedRef, img, consts.KindAnnotationImage, "")
+}
+
+// ensureDockerHost sets DOCKER_HOST if it is not already set and the default
+// socket (/var/run/docker.sock) does not exist. Docker Desktop on macOS places
+// its socket at ~/.docker/run/docker.sock instead of the default path.
+func ensureDockerHost() error {
+	if os.Getenv("DOCKER_HOST") != "" {
+		return nil
+	}
+
+	if _, err := os.Stat("/var/run/docker.sock"); err == nil {
+		return nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	sock := filepath.Join(home, ".docker", "run", "docker.sock")
+	if _, err := os.Stat(sock); err != nil {
+		return fmt.Errorf("no Docker socket found at /var/run/docker.sock or %s", sock)
+	}
+	if err := os.Setenv("DOCKER_HOST", "unix://"+sock); err != nil {
+		return fmt.Errorf("setting DOCKER_HOST: %w", err)
 	}
 	return nil
 }

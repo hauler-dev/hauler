@@ -316,7 +316,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				a := cfg.GetAnnotations()
 				for _, i := range cfg.Spec.Images {
 
-					if a[consts.ImageAnnotationRegistry] != "" || o.Registry != "" {
+					if !i.Local && (a[consts.ImageAnnotationRegistry] != "" || o.Registry != "") {
 						newRef, _ := reference.Parse(i.Name)
 						newReg := o.Registry
 						if o.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
@@ -329,6 +329,25 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							}
 						}
 						i.Name = newRef.Name()
+					}
+
+					if i.Local {
+						needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
+						needsKeylessVerification := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != "" ||
+							o.CertIdentityRegexp != "" || o.CertIdentity != "" ||
+							i.CertIdentityRegexp != "" || i.CertIdentity != ""
+						if needsPubKeyVerification || needsKeylessVerification {
+							return fmt.Errorf("image [%s]: --local cannot be combined with cosign verification options", i.Name)
+						}
+
+						rewrite := ""
+						if i.Rewrite != "" {
+							rewrite = i.Rewrite
+						}
+						if err := storeLocalImage(ctx, s, i, rso, ro, rewrite); err != nil {
+							return err
+						}
+						continue
 					}
 
 					hasAnnotationIdentityOptions := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != ""

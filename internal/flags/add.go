@@ -18,6 +18,7 @@ type AddImageOpts struct {
 	Platform                     string
 	Rewrite                      string
 	ExcludeExtras                bool
+	Local                        bool
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
@@ -32,6 +33,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image... i.e. linux/amd64 (defaults to all)")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(EXPERIMENTAL & Optional) Rewrite artifact path to specified string")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling the image")
+	f.BoolVar(&o.Local, "local", false, "(Optional) Add image from the local Docker daemon instead of a remote registry")
 }
 
 type AddFileOpts struct {
