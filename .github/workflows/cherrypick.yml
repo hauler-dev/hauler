@@ -164,10 +164,11 @@ jobs:
                 --arg path "$file" \
                 '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": null}]')
             else
-              CONTENT=$(base64 -w 0 "$file")
+              # Write blob payload to a temp file to avoid argument list limits
+              base64 -w 0 "$file" | jq -Rs '{"content": ., "encoding": "base64"}' > /tmp/blob.json
               BLOB_SHA=$(gh api repos/${REPO}/git/blobs \
-                -f content="$CONTENT" \
-                -f encoding="base64" \
+                --method POST \
+                --input /tmp/blob.json \
                 --jq '.sha')
               FILE_MODE=$(git ls-files -s "$file" | awk '{print $1}')
               [ -z "$FILE_MODE" ] && FILE_MODE="100644"
@@ -335,10 +336,10 @@ jobs:
                   --arg path "$file" \
                   '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": null}]')
               else
-                CONTENT=$(base64 -w 0 "$file")
+                base64 -w 0 "$file" | jq -Rs '{"content": ., "encoding": "base64"}' > /tmp/blob.json
                 BLOB_SHA=$(gh api repos/${REPO}/git/blobs \
-                  -f content="$CONTENT" \
-                  -f encoding="base64" \
+                  --method POST \
+                  --input /tmp/blob.json \
                   --jq '.sha')
                 FILE_MODE=$(git ls-files -s "$file" | awk '{print $1}')
                 [ -z "$FILE_MODE" ] && FILE_MODE="100644"
