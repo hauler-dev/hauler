@@ -4,6 +4,7 @@ import (
 	"context"
 
 	cranecmd "github.com/google/go-containerregistry/cmd/crane/cmd"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -19,6 +20,14 @@ func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 			l := log.FromContext(ctx)
 			l.SetLevel(ro.LogLevel)
 			l.Debugf("running cli command [%s]", cmd.CommandPath())
+
+			// Suppress WARN-level messages from containerd and other
+			// libraries that use the global logrus logger.
+			if ro.LogLevel == "debug" {
+				logrus.SetLevel(logrus.DebugLevel)
+			} else {
+				logrus.SetLevel(logrus.ErrorLevel)
+			}
 
 			return nil
 		},

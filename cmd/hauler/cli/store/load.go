@@ -39,8 +39,9 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 	l.Debugf("using temporary directory at [%s]", tempDir)
 
 	for _, fileName := range o.FileName {
-		l.Infof("loading haul [%s] to [%s]", fileName, o.StoreDir)
-		err := unarchiveLayoutTo(ctx, fileName, o.StoreDir, tempDir)
+		resolved := resolveHaulPath(fileName)
+		l.Infof("loading haul [%s] to [%s]", resolved, o.StoreDir)
+		err := unarchiveLayoutTo(ctx, resolved, o.StoreDir, tempDir)
 		if err != nil {
 			return err
 		}
@@ -85,6 +86,13 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		}
 	}
 
+	// reassemble chunk files if haulPath matches the chunk naming pattern
+	joined, err := archives.JoinChunks(ctx, haulPath, tempDir)
+	if err != nil {
+		return err
+	}
+	haulPath = joined
+
 	if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
 		return err
 	}
@@ -107,6 +115,9 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		if _, exists := idx.Manifests[i].Annotations[consts.KindAnnotationName]; !exists {
 			idx.Manifests[i].Annotations[consts.KindAnnotationName] = consts.KindAnnotationImage
 		}
+		// Translate legacy dev.cosignproject.cosign values to dev.hauler equivalents.
+		kind := idx.Manifests[i].Annotations[consts.KindAnnotationName]
+		idx.Manifests[i].Annotations[consts.KindAnnotationName] = consts.NormalizeLegacyKind(kind)
 		if ref, ok := idx.Manifests[i].Annotations[consts.ContainerdImageNameKey]; ok {
 			if slash := strings.Index(ref, "/"); slash != -1 {
 				ref = ref[slash+1:]
@@ -137,6 +148,29 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 
 	_, err = s.CopyAll(ctx, ts, nil)
 	return err
+}
+
+// resolveHaulPath returns path as-is if it exists or is a URL. If the file is
+// not found, it globs for chunk files matching <base>_*<ext> in the same
+// directory and returns the first match so JoinChunks can reassemble them.
+func resolveHaulPath(path string) string {
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	base := path
+	ext := ""
+	for filepath.Ext(base) != "" {
+		ext = filepath.Ext(base) + ext
+		base = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+	matches, err := filepath.Glob(base + "_*" + ext)
+	if err != nil || len(matches) == 0 {
+		return path
+	}
+	return matches[0]
 }
 
 func clearDir(path string) error {

@@ -1,0 +1,400 @@
+name: Cherry-pick to release branch
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Trigger 1: /cherrypick-X.Y comment on a PR
+  #   - If already merged  → run cherry-pick immediately
+  #   - If not yet merged  → add label, cherry-pick will run on merge
+  # ──────────────────────────────────────────────────────────────
+  handle-comment:
+    if: >
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/cherrypick-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check commenter permissions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          PERMISSION=$(gh api repos/${{ github.repository }}/collaborators/${COMMENTER}/permission \
+            --jq '.permission')
+          echo "Permission level for $COMMENTER: $PERMISSION"
+          if [[ "$PERMISSION" != "admin" && "$PERMISSION" != "maintain" && "$PERMISSION" != "write" ]]; then
+            echo "::warning::User $COMMENTER does not have write access, ignoring cherry-pick request"
+            exit 1
+          fi
+
+      - name: Parse version from comment
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          VERSION=$(echo "$COMMENT_BODY" | head -1 | grep -oP '(?<=/cherrypick-)\d+\.\d+')
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not parse version from comment"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "target_branch=release/$VERSION" >> "$GITHUB_OUTPUT"
+          echo "label=cherrypick/$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: React to comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='+1'
+
+      - name: Check if PR is merged
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number }})
+          MERGED=$(echo "$PR_JSON" | jq -r '.merged')
+          echo "merged=$MERGED" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$(echo "$PR_JSON" | jq -r '.title')" >> "$GITHUB_OUTPUT"
+
+      - name: Add cherry-pick label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LABEL: ${{ steps.parse.outputs.label }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh api repos/${{ github.repository }}/labels \
+            -f name="$LABEL" -f color="fbca04" -f description="Queued for cherry-pick" 2>/dev/null || true
+          gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/labels \
+            -f "labels[]=$LABEL"
+
+      - name: Notify if queued (not yet merged)
+        if: steps.check.outputs.merged != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LABEL: ${{ steps.parse.outputs.label }}
+          TARGET_BRANCH: ${{ steps.parse.outputs.target_branch }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+            -f body="🏷️ Labeled \`$LABEL\` — backport to \`$TARGET_BRANCH\` will be created automatically when this PR is merged."
+
+      - name: Checkout repository
+        if: steps.check.outputs.merged == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify target branch exists
+        if: steps.check.outputs.merged == 'true'
+        env:
+          TARGET_BRANCH: ${{ steps.parse.outputs.target_branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if ! git ls-remote --exit-code --heads origin "$TARGET_BRANCH" > /dev/null 2>&1; then
+            gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+              -f body="❌ Cannot cherry-pick: branch \`$TARGET_BRANCH\` does not exist."
+            exit 1
+          fi
+
+      - name: Apply PR diff and create signed commit
+        if: steps.check.outputs.merged == 'true'
+        id: apply
+        env:
+          TARGET_BRANCH: ${{ steps.parse.outputs.target_branch }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_TITLE: ${{ steps.check.outputs.pr_title }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${TARGET_BRANCH//\//-}"
+          echo "backport_branch=$BACKPORT_BRANCH" >> "$GITHUB_OUTPUT"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout "$TARGET_BRANCH"
+          git checkout -b "$BACKPORT_BRANCH"
+
+          # Download the PR's patch
+          gh api repos/${REPO}/pulls/${PR_NUMBER} \
+            -H "Accept: application/vnd.github.v3.patch" > /tmp/pr.patch
+
+          # Apply the patch locally
+          if git apply --check /tmp/pr.patch 2>/dev/null; then
+            git apply /tmp/pr.patch
+          elif git apply --3way /tmp/pr.patch; then
+            true
+          else
+            git diff --name-only --diff-filter=U | while read -r file; do
+              git checkout --theirs -- "$file"
+            done
+          fi
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+          # --- Create a verified commit via the GitHub Git Data API ---
+
+          TARGET_SHA=$(gh api repos/${REPO}/git/ref/heads/${TARGET_BRANCH} --jq '.object.sha')
+          BASE_TREE=$(gh api repos/${REPO}/git/commits/${TARGET_SHA} --jq '.tree.sha')
+
+          TREE_ENTRIES="[]"
+          for file in $(git diff --cached --name-only); do
+            if [ ! -f "$file" ]; then
+              TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq \
+                --arg path "$file" \
+                '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": null}]')
+            else
+              # Write blob payload to a temp file to avoid argument list limits
+              base64 -w 0 "$file" | jq -Rs '{"content": ., "encoding": "base64"}' > /tmp/blob.json
+              BLOB_SHA=$(gh api repos/${REPO}/git/blobs \
+                --method POST \
+                --input /tmp/blob.json \
+                --jq '.sha')
+              FILE_MODE=$(git ls-files -s "$file" | awk '{print $1}')
+              [ -z "$FILE_MODE" ] && FILE_MODE="100644"
+              TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq \
+                --arg path "$file" \
+                --arg sha "$BLOB_SHA" \
+                --arg mode "$FILE_MODE" \
+                '. + [{"path": $path, "mode": $mode, "type": "blob", "sha": $sha}]')
+            fi
+          done
+
+          TREE_SHA=$(gh api repos/${REPO}/git/trees \
+            --method POST \
+            --input <(jq -n --arg base_tree "$BASE_TREE" --argjson tree "$TREE_ENTRIES" \
+              '{"base_tree": $base_tree, "tree": $tree}') \
+            --jq '.sha')
+
+          # Use the original PR title as the commit message
+          COMMIT_SHA=$(gh api repos/${REPO}/git/commits \
+            -f message="${PR_TITLE}" \
+            -f tree="$TREE_SHA" \
+            -f "parents[]=$TARGET_SHA" \
+            --jq '.sha')
+
+          # Create or update the backport branch
+          if ! gh api repos/${REPO}/git/refs \
+            -f ref="refs/heads/${BACKPORT_BRANCH}" \
+            -f sha="$COMMIT_SHA" 2>/dev/null; then
+            gh api repos/${REPO}/git/refs/heads/${BACKPORT_BRANCH} \
+              -X PATCH \
+              -f sha="$COMMIT_SHA" \
+              -F force=true
+          fi
+
+      - name: Create or update backport PR
+        if: steps.check.outputs.merged == 'true' && steps.apply.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: ${{ steps.parse.outputs.target_branch }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          PR_TITLE: ${{ steps.check.outputs.pr_title }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          BACKPORT_BRANCH: ${{ steps.apply.outputs.backport_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          TITLE="[${VERSION}] ${PR_TITLE}"
+          BODY="Backport of #${PR_NUMBER} to \`${TARGET_BRANCH}\`."
+
+          EXISTING_PR=$(gh pr list --head "$BACKPORT_BRANCH" --base "$TARGET_BRANCH" --json url --jq '.[0].url // empty')
+
+          if [ -n "$EXISTING_PR" ]; then
+            gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
+              -f body="✅ Backport PR updated (force-pushed): ${EXISTING_PR}"
+          else
+            PR_URL=$(gh pr create \
+              --base "$TARGET_BRANCH" \
+              --head "$BACKPORT_BRANCH" \
+              --title "$TITLE" \
+              --body "$BODY")
+
+            gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
+              -f body="✅ Backport PR created: ${PR_URL}"
+          fi
+
+  # ──────────────────────────────────────────────────────────────
+  # Trigger 2: PR merged → process any queued cherrypick/* labels
+  # ──────────────────────────────────────────────────────────────
+  handle-merge:
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect cherry-pick labels
+        id: labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          LABELS=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/labels \
+            --jq '[.[] | select(.name | startswith("cherrypick/")) | .name] | join(",")')
+
+          if [ -z "$LABELS" ]; then
+            echo "No cherrypick labels found, nothing to do."
+            echo "has_labels=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Found labels: $LABELS"
+            echo "has_labels=true" >> "$GITHUB_OUTPUT"
+            echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.labels.outputs.has_labels == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download PR patch
+        if: steps.labels.outputs.has_labels == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api repos/${{ github.repository }}/pulls/${PR_NUMBER} \
+            -H "Accept: application/vnd.github.v3.patch" > /tmp/pr.patch
+
+      - name: Process each cherry-pick label
+        if: steps.labels.outputs.has_labels == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LABELS: ${{ steps.labels.outputs.labels }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          IFS=',' read -ra LABEL_ARRAY <<< "$LABELS"
+          for LABEL in "${LABEL_ARRAY[@]}"; do
+            VERSION="${LABEL#cherrypick/}"
+            TARGET_BRANCH="release/$VERSION"
+
+            echo "=== Processing backport to $TARGET_BRANCH ==="
+
+            if ! git ls-remote --exit-code --heads origin "$TARGET_BRANCH" > /dev/null 2>&1; then
+              gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
+                -f body="❌ Cannot cherry-pick to \`$TARGET_BRANCH\`: branch does not exist."
+              continue
+            fi
+
+            BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${TARGET_BRANCH//\//-}"
+
+            git checkout "$TARGET_BRANCH"
+            git checkout -b "$BACKPORT_BRANCH"
+
+            if git apply --check /tmp/pr.patch 2>/dev/null; then
+              git apply /tmp/pr.patch
+            elif git apply --3way /tmp/pr.patch; then
+              true
+            else
+              git diff --name-only --diff-filter=U | while read -r file; do
+                git checkout --theirs -- "$file"
+              done
+            fi
+
+            git add -A
+
+            if git diff --cached --quiet; then
+              echo "No changes for $TARGET_BRANCH, skipping"
+              git checkout "$TARGET_BRANCH"
+              git branch -D "$BACKPORT_BRANCH" 2>/dev/null || true
+              continue
+            fi
+
+            # --- Create a verified commit via the GitHub Git Data API ---
+
+            TARGET_SHA=$(gh api repos/${REPO}/git/ref/heads/${TARGET_BRANCH} --jq '.object.sha')
+            BASE_TREE=$(gh api repos/${REPO}/git/commits/${TARGET_SHA} --jq '.tree.sha')
+
+            TREE_ENTRIES="[]"
+            for file in $(git diff --cached --name-only); do
+              if [ ! -f "$file" ]; then
+                TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq \
+                  --arg path "$file" \
+                  '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": null}]')
+              else
+                base64 -w 0 "$file" | jq -Rs '{"content": ., "encoding": "base64"}' > /tmp/blob.json
+                BLOB_SHA=$(gh api repos/${REPO}/git/blobs \
+                  --method POST \
+                  --input /tmp/blob.json \
+                  --jq '.sha')
+                FILE_MODE=$(git ls-files -s "$file" | awk '{print $1}')
+                [ -z "$FILE_MODE" ] && FILE_MODE="100644"
+                TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq \
+                  --arg path "$file" \
+                  --arg sha "$BLOB_SHA" \
+                  --arg mode "$FILE_MODE" \
+                  '. + [{"path": $path, "mode": $mode, "type": "blob", "sha": $sha}]')
+              fi
+            done
+
+            TREE_SHA=$(gh api repos/${REPO}/git/trees \
+              --method POST \
+              --input <(jq -n --arg base_tree "$BASE_TREE" --argjson tree "$TREE_ENTRIES" \
+                '{"base_tree": $base_tree, "tree": $tree}') \
+              --jq '.sha')
+
+            # Use the original PR title as the commit message
+            COMMIT_SHA=$(gh api repos/${REPO}/git/commits \
+              -f message="${PR_TITLE}" \
+              -f tree="$TREE_SHA" \
+              -f "parents[]=$TARGET_SHA" \
+              --jq '.sha')
+
+            # Create or update the backport branch
+            if ! gh api repos/${REPO}/git/refs \
+              -f ref="refs/heads/${BACKPORT_BRANCH}" \
+              -f sha="$COMMIT_SHA" 2>/dev/null; then
+              gh api repos/${REPO}/git/refs/heads/${BACKPORT_BRANCH} \
+                -X PATCH \
+                -f sha="$COMMIT_SHA" \
+                -F force=true
+            fi
+
+            # Create or update PR
+            TITLE="[${VERSION}] ${PR_TITLE}"
+            BODY="Backport of #${PR_NUMBER} to \`${TARGET_BRANCH}\`."
+
+            EXISTING_PR=$(gh pr list --head "$BACKPORT_BRANCH" --base "$TARGET_BRANCH" --json url --jq '.[0].url // empty')
+
+            if [ -n "$EXISTING_PR" ]; then
+              gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
+                -f body="✅ Backport PR to \`$TARGET_BRANCH\` updated (force-pushed): ${EXISTING_PR}"
+            else
+              PR_URL=$(gh pr create \
+                --base "$TARGET_BRANCH" \
+                --head "$BACKPORT_BRANCH" \
+                --title "$TITLE" \
+                --body "$BODY")
+
+              gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
+                -f body="✅ Backport PR to \`$TARGET_BRANCH\` created: ${PR_URL}"
+            fi
+
+            # Clean up for next iteration
+            git checkout "$TARGET_BRANCH"
+            git branch -D "$BACKPORT_BRANCH" 2>/dev/null || true
+          done

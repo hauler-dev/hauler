@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
-	v1alpha1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1alpha1"
 )
 
 func Load(data []byte) (schema.ObjectKind, error) {
@@ -26,12 +25,10 @@ func Load(data []byte) (schema.ObjectKind, error) {
 	}
 
 	gv := tm.GroupVersionKind().GroupVersion()
-	// allow v1 and v1alpha1 content/collection
+	// allow v1 content and collections
 	if gv != v1.ContentGroupVersion &&
-		gv != v1.CollectionGroupVersion &&
-		gv != v1alpha1.ContentGroupVersion &&
-		gv != v1alpha1.CollectionGroupVersion {
-		return nil, fmt.Errorf("unrecognized content/collection [%s] with [kind=%s]", tm.APIVersion, tm.Kind)
+		gv != v1.CollectionGroupVersion {
+		return nil, fmt.Errorf("unrecognized content or collection [%s] with [kind=%s]", tm.APIVersion, tm.Kind)
 	}
 
 	return &tm, nil

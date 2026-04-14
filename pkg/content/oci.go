@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,14 +18,12 @@ import (
 	"github.com/containerd/containerd/remotes"
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/target"
 
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/reference"
 )
 
-var _ target.Target = (*OCI)(nil)
+var _ Target = (*OCI)(nil)
 
 type OCI struct {
 	root    string
@@ -76,6 +75,7 @@ func (o *OCI) LoadIndex() error {
 			Versioned: specs.Versioned{
 				SchemaVersion: 2,
 			},
+			MediaType: ocispec.MediaTypeImageIndex,
 		}
 		return nil
 	}
@@ -88,15 +88,31 @@ func (o *OCI) LoadIndex() error {
 	for _, desc := range o.index.Manifests {
 		key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
 		if err != nil {
-			return err
+			// skip malformed entries rather than making the entire store unreadable
+			continue
 		}
+
+		// Set default kind if missing; normalize legacy dev.cosignproject.cosign values.
+		kind := desc.Annotations[consts.KindAnnotationName]
+		kind = consts.NormalizeLegacyKind(kind)
+		if kind == "" {
+			kind = consts.KindAnnotationImage
+		}
+
+		// Write the normalized kind back into a copy of the annotations map so
+		// that Walk() callers receive descriptors with dev.hauler/... values.
+		// We copy the map to avoid mutating the slice element's shared map.
+		normalized := make(map[string]string, len(desc.Annotations)+1)
+		maps.Copy(normalized, desc.Annotations)
+		normalized[consts.KindAnnotationName] = kind
+		desc.Annotations = normalized
 
 		if strings.TrimSpace(key.String()) != "--" {
 			switch key.(type) {
 			case name.Digest:
-				o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), desc.Annotations[consts.KindAnnotationName]), desc)
+				o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), kind), desc)
 			case name.Tag:
-				o.nameMap.Store(fmt.Sprintf("%s-%s", key.String(), desc.Annotations[consts.KindAnnotationName]), desc)
+				o.nameMap.Store(fmt.Sprintf("%s-%s", key.String(), kind), desc)
 			}
 		}
 	}
@@ -124,7 +140,7 @@ func (o *OCI) SaveIndex() error {
 		kindI := descs[i].Annotations["kind"]
 		kindJ := descs[j].Annotations["kind"]
 
-		// Objects with the prefix of "dev.cosignproject.cosign/image" should be at the top.
+		// Objects with the prefix of KindAnnotationImage should be at the top.
 		if strings.HasPrefix(kindI, consts.KindAnnotationImage) && !strings.HasPrefix(kindJ, consts.KindAnnotationImage) {
 			return true
 		} else if !strings.HasPrefix(kindI, consts.KindAnnotationImage) && strings.HasPrefix(kindJ, consts.KindAnnotationImage) {
@@ -152,16 +168,16 @@ func (o *OCI) SaveIndex() error {
 // While the name may differ from ref, it should itself be a valid ref.
 //
 // If the resolution fails, an error will be returned.
-func (o *OCI) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
+func (o *OCI) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error) {
 	if err := o.LoadIndex(); err != nil {
-		return "", ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, err
 	}
 	d, ok := o.nameMap.Load(ref)
 	if !ok {
-		return "", ocispec.Descriptor{}, err
+		return ocispec.Descriptor{}, fmt.Errorf("reference %s not found", ref)
 	}
-	desc = d.(ocispec.Descriptor)
-	return ref, desc, nil
+	desc := d.(ocispec.Descriptor)
+	return desc, nil
 }
 
 // Fetcher returns a new fetcher for the provided reference.
@@ -271,6 +287,12 @@ func (o *OCI) path(elem ...string) string {
 	return filepath.Join(append(complete, elem...)...)
 }
 
+// IndexExists reports whether the store's OCI layout index.json exists on disk.
+func (o *OCI) IndexExists() bool {
+	_, err := os.Stat(o.path(ocispec.ImageIndexFile))
+	return err == nil
+}
+
 type ociPusher struct {
 	oci    *OCI
 	ref    string
@@ -287,7 +309,20 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 			if err := p.oci.LoadIndex(); err != nil {
 				return nil, err
 			}
-			p.oci.nameMap.Store(p.ref, d)
+			// Use compound key format: "reference-kind"; normalize legacy values.
+			kind := d.Annotations[consts.KindAnnotationName]
+			kind = consts.NormalizeLegacyKind(kind)
+			if kind == "" {
+				kind = consts.KindAnnotationImage
+			}
+			// Copy annotations map to avoid mutating the caller's descriptor,
+			// then write the normalized kind so Walk() callers see dev.hauler/... values.
+			normalizedAnnotations := make(map[string]string, len(d.Annotations)+1)
+			maps.Copy(normalizedAnnotations, d.Annotations)
+			normalizedAnnotations[consts.KindAnnotationName] = kind
+			d.Annotations = normalizedAnnotations
+			key := fmt.Sprintf("%s-%s", p.ref, kind)
+			p.oci.nameMap.Store(key, d)
 			if err := p.oci.SaveIndex(); err != nil {
 				return nil, err
 			}
@@ -301,7 +336,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 
 	if _, err := os.Stat(blobPath); err == nil {
 		// file already exists, discard (but validate digest)
-		return content.NewIoContentWriter(io.Discard, content.WithOutputHash(d.Digest)), nil
+		return NewIoContentWriter(nopCloser{io.Discard}, WithOutputHash(d.Digest.String())), nil
 	}
 
 	f, err := os.Create(blobPath)
@@ -309,10 +344,25 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 		return nil, err
 	}
 
-	w := content.NewIoContentWriter(f, content.WithInputHash(d.Digest), content.WithOutputHash(d.Digest))
+	w := NewIoContentWriter(f, WithOutputHash(d.Digest.String()))
 	return w, nil
 }
 
 func (o *OCI) RemoveFromIndex(ref string) {
 	o.nameMap.Delete(ref)
 }
+
+// ResolvePath returns the absolute path for a given relative path within the OCI root
+func (o *OCI) ResolvePath(elem string) string {
+	if elem == "" {
+		return o.root
+	}
+	return filepath.Join(o.root, elem)
+}
+
+// nopCloser wraps an io.Writer to implement io.WriteCloser
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error { return nil }

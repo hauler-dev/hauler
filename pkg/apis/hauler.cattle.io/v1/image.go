@@ -36,6 +36,7 @@ type Image struct {
 
 	// Platform of the image to be pulled.  If not specified, all platforms will be pulled.
 	//Platform string `json:"key,omitempty"`
-	Platform string `json:"platform"`
-	Rewrite  string `json:"rewrite"`
+	Platform      string `json:"platform"`
+	Rewrite       string `json:"rewrite"`
+	ExcludeExtras bool   `json:"exclude-extras"`
 }

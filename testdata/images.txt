@@ -1,0 +1,4 @@
+# hauler image list
+# one image reference per line; blank lines and comments are ignored
+ghcr.io/hauler-dev/library/busybox
+ghcr.io/hauler-dev/library/busybox:stable

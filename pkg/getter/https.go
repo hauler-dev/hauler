@@ -2,6 +2,7 @@ package getter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -24,8 +25,9 @@ func (h Http) Name(u *url.URL) string {
 	if err != nil {
 		return ""
 	}
+	defer resp.Body.Close()
 
-	name, _ := url.PathUnescape(u.String())
+	unescaped, err := url.PathUnescape(u.String())
 	if err != nil {
 		return ""
 	}
@@ -40,14 +42,17 @@ func (h Http) Name(u *url.URL) string {
 		_ = t
 	}
 
-	// TODO: Not this
-	return filepath.Base(name)
+	return filepath.Base(unescaped)
 }
 
 func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
 	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("unexpected status fetching %s: %s", u.String(), resp.Status)
 	}
 	return resp.Body, nil
 }

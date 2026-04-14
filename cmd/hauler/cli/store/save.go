@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 
 	referencev3 "github.com/distribution/distribution/v3/reference"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -72,8 +75,62 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 		return err
 	}
 
-	l.Infof("saving store [%s] to archive [%s]", o.StoreDir, o.FileName)
+	if o.ChunkSize != "" {
+		if o.ContainerdCompatibility == true {
+			l.Warnf("compatibility warning... stores split by chunk size must be imported using `hauler store load` to rejoin before import to containerd")
+		}
+		maxBytes, err := parseChunkSize(o.ChunkSize)
+		if err != nil {
+			return err
+		}
+		chunks, err := archives.SplitArchive(ctx, absOutputfile, maxBytes)
+		if err != nil {
+			return err
+		}
+		for _, c := range chunks {
+			l.Infof("saving store [%s] to chunk [%s]", o.StoreDir, filepath.Base(c))
+		}
+	} else {
+		l.Infof("saving store [%s] to archive [%s]", o.StoreDir, o.FileName)
+	}
+
 	return nil
+}
+
+// parseChunkSize parses a human-readable byte size string (e.g. "1G", "500M", "2GB")
+// into a byte count. Suffixes are treated as binary units (1K = 1024).
+func parseChunkSize(s string) (int64, error) {
+	units := map[string]int64{
+		"K": 1 << 10, "KB": 1 << 10,
+		"M": 1 << 20, "MB": 1 << 20,
+		"G": 1 << 30, "GB": 1 << 30,
+		"T": 1 << 40, "TB": 1 << 40,
+	}
+	s = strings.ToUpper(strings.TrimSpace(s))
+	var result int64
+	matched := false
+	for suffix, mult := range units {
+		if strings.HasSuffix(s, suffix) {
+			n, err := strconv.ParseInt(strings.TrimSuffix(s, suffix), 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid chunk size %q", s)
+			}
+			result = n * mult
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid chunk size %q: %w", s, err)
+		}
+		result = n
+	}
+	if result <= 0 {
+		return 0, fmt.Errorf("chunk size must be greater than zero, received %q", s)
+	}
+	return result, nil
 }
 
 type exports struct {
@@ -116,59 +173,68 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 			l.Debugf("descriptor [%s] <<< SKIPPING ARTIFACT [%q]", desc.Digest.String(), desc.ArtifactType)
 			continue
 		}
-		if desc.Annotations != nil {
-			// we only care about images that cosign has added to the layout index
-			if kind, hasKind := desc.Annotations[consts.KindAnnotationName]; hasKind {
-				if refName, hasRefName := desc.Annotations["io.containerd.image.name"]; hasRefName {
-					// branch on image (aka image manifest) or image index
-					switch kind {
-					case consts.KindAnnotationImage:
-						if err := x.record(ctx, idx, desc, refName); err != nil {
-							return err
-						}
-					case consts.KindAnnotationIndex:
-						l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
+		// The kind annotation is the only reliable way to distinguish container images from
+		// cosign signatures/attestations/SBOMs: those are stored as standard Docker/OCI
+		// manifests (same media type as real images) so media type alone is insufficient.
+		kind := desc.Annotations[consts.KindAnnotationName]
+		if kind != consts.KindAnnotationImage && kind != consts.KindAnnotationIndex {
+			l.Debugf("descriptor [%s] <<< SKIPPING KIND [%q]", desc.Digest.String(), kind)
+			continue
+		}
 
-						// when no platform is inputted... warn the user of potential mismatch on import for docker
-						// required for docker to be able to interpret and load the image correctly
-						if platform.String() == "" {
-							l.Warnf("compatibility warning... docker... specify platform to prevent potential mismatch on import of index [%s]", refName)
-						}
+		refName, hasRefName := desc.Annotations[consts.ContainerdImageNameKey]
+		if !hasRefName {
+			l.Debugf("descriptor [%s] <<< SKIPPING (no containerd image name)", desc.Digest.String())
+			continue
+		}
 
-						iix, err := idx.ImageIndex(desc.Digest)
-						if err != nil {
-							return err
-						}
-						ixm, err := iix.IndexManifest()
-						if err != nil {
-							return err
-						}
-						for _, ixd := range ixm.Manifests {
-							if ixd.MediaType.IsImage() {
-								if platform.String() != "" {
-									if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
-										l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: does not match the supplied platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
-										continue
-									}
-								}
+		// Use the descriptor's actual media type to discriminate single-image manifests
+		// from multi-arch indexes, rather than relying on the kind string for this.
+		switch {
+		case desc.MediaType.IsImage():
+			if err := x.record(ctx, idx, desc, refName); err != nil {
+				return err
+			}
+		case desc.MediaType.IsIndex():
+			l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
-								// skip any platforms of 'unknown/unknown'... docker hates
-								// required for docker to be able to interpret and load the image correctly
-								if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
-									l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: matches unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
-									continue
-								}
+			// when no platform is inputted... warn the user of potential mismatch on import for docker
+			// required for docker to be able to interpret and load the image correctly
+			if platform.String() == "" {
+				l.Warnf("compatibility warning... docker... specify platform to prevent potential mismatch on import of index [%s]", refName)
+			}
 
-								if err := x.record(ctx, iix, ixd, refName); err != nil {
-									return err
-								}
-							}
+			iix, err := idx.ImageIndex(desc.Digest)
+			if err != nil {
+				return err
+			}
+			ixm, err := iix.IndexManifest()
+			if err != nil {
+				return err
+			}
+			for _, ixd := range ixm.Manifests {
+				if ixd.MediaType.IsImage() {
+					if platform.String() != "" {
+						if ixd.Platform.Architecture != platform.Architecture || ixd.Platform.OS != platform.OS {
+							l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: does not match the supplied platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+							continue
 						}
-					default:
-						l.Debugf("descriptor [%s] <<< SKIPPING KIND [%q]", desc.Digest.String(), kind)
+					}
+
+					// skip any platforms of 'unknown/unknown'... docker hates
+					// required for docker to be able to interpret and load the image correctly
+					if ixd.Platform.Architecture == "unknown" && ixd.Platform.OS == "unknown" {
+						l.Debugf("index [%s]: digest=[%s], platform=[%s/%s]: matches unknown platform... skipping...", refName, desc.Digest.String(), ixd.Platform.OS, ixd.Platform.Architecture)
+						continue
+					}
+
+					if err := x.record(ctx, iix, ixd, refName); err != nil {
+						return err
 					}
 				}
 			}
+		default:
+			l.Debugf("descriptor [%s] <<< SKIPPING media type [%q]", desc.Digest.String(), desc.MediaType)
 		}
 	}
 
@@ -197,6 +263,17 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 	image, err := index.Image(desc.Digest)
 	if err != nil {
 		return err
+	}
+
+	// Verify this is a real container image by inspecting its manifest config media type.
+	// Non-image OCI artifacts (Helm charts, files, cosign sigs) use distinct config types.
+	manifest, err := image.Manifest()
+	if err != nil {
+		return err
+	}
+	if manifest.Config.MediaType != types.DockerConfigJSON && manifest.Config.MediaType != types.OCIConfigJSON {
+		l.Debugf("descriptor [%s] <<< SKIPPING NON-IMAGE config media type [%q]", desc.Digest.String(), manifest.Config.MediaType)
+		return nil
 	}
 
 	config, err := image.ConfigName()

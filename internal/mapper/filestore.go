@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,18 +12,21 @@ import (
 	"github.com/containerd/containerd/remotes"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"oras.land/oras-go/pkg/content"
+	"hauler.dev/go/hauler/pkg/content"
 )
 
 // NewMapperFileStore creates a new file store that uses mapper functions for each detected descriptor.
 //
-//	This extends content.File, and differs in that it allows much more functionality into how each descriptor is written.
-func NewMapperFileStore(root string, mapper map[string]Fn) *store {
-	fs := content.NewFile(root)
-	return &store{
-		File:   fs,
-		mapper: mapper,
+//	This extends content.OCI, and differs in that it allows much more functionality into how each descriptor is written.
+func NewMapperFileStore(root string, mapper map[string]Fn) (*store, error) {
+	fs, err := content.NewOCI(root)
+	if err != nil {
+		return nil, err
 	}
+	return &store{
+		OCI:    fs,
+		mapper: mapper,
+	}, nil
 }
 
 func (s *store) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
@@ -35,7 +39,7 @@ func (s *store) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) 
 		hash = parts[1]
 	}
 	return &pusher{
-		store:  s.File,
+		store:  s.OCI,
 		tag:    tag,
 		ref:    hash,
 		mapper: s.mapper,
@@ -43,43 +47,76 @@ func (s *store) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) 
 }
 
 type store struct {
-	*content.File
+	*content.OCI
 	mapper map[string]Fn
 }
 
 func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Writer, error) {
-	// TODO: This is suuuuuper ugly... redo this when oras v2 is out
+	// For manifests and indexes (which have AnnotationRefName), discard them
+	// They're metadata and don't need to be extracted
 	if _, ok := content.ResolveName(desc); ok {
-		p, err := s.store.Pusher(ctx, s.ref)
-		if err != nil {
-			return nil, err
-		}
-		return p.Push(ctx, desc)
+		// Discard manifests/indexes, they're just metadata
+		return content.NewIoContentWriter(&nopCloser{io.Discard}, content.WithOutputHash(desc.Digest.String())), nil
 	}
 
-	// If no custom mapper found, fall back to content.File mapper
-	if _, ok := s.mapper[desc.MediaType]; !ok {
-		return content.NewIoContentWriter(io.Discard, content.WithOutputHash(desc.Digest)), nil
+	// Check if this descriptor has a mapper for its media type
+	mapperFn, hasMapper := s.mapper[desc.MediaType]
+	if !hasMapper {
+		// Fall back to catch-all sentinel, then discard
+		mapperFn, hasMapper = s.mapper[DefaultCatchAll]
+	}
+	if !hasMapper {
+		// No mapper for this media type, discard it (config blobs, etc.)
+		return content.NewIoContentWriter(&nopCloser{io.Discard}, content.WithOutputHash(desc.Digest.String())), nil
 	}
 
-	filename, err := s.mapper[desc.MediaType](desc)
+	// Get the filename from the mapper function.
+	// An empty filename means the mapper explicitly declined this descriptor (e.g. a
+	// config blob that has no title annotation); treat it the same as no mapper.
+	filename, err := mapperFn(desc)
 	if err != nil {
 		return nil, err
 	}
-
-	fullFileName := filepath.Join(s.store.ResolvePath(""), filename)
-	// TODO: Don't rewrite everytime, we can check the digest
-	f, err := os.OpenFile(fullFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return nil, errors.Wrap(err, "pushing file")
+	if filename == "" {
+		return content.NewIoContentWriter(&nopCloser{io.Discard}, content.WithOutputHash(desc.Digest.String())), nil
 	}
 
-	w := content.NewIoContentWriter(f, content.WithInputHash(desc.Digest), content.WithOutputHash(desc.Digest))
+	// Get the destination directory and create the full path.
+	// Use absolute paths so the traversal check works even when destDir is relative (e.g. ".").
+	destDir, err := filepath.Abs(s.store.ResolvePath(""))
+	if err != nil {
+		return nil, errors.Wrap(err, "resolving destination dir")
+	}
+	fullFileName := filepath.Join(destDir, filename)
+
+	// Guard against path traversal (e.g. filename containing "../")
+	if !strings.HasPrefix(fullFileName, destDir+string(filepath.Separator)) {
+		return nil, fmt.Errorf("path_traversal_disallowed: %q resolves outside destination dir", filename)
+	}
+
+	// Create parent directories (e.g. when filename is "subdir/file.txt")
+	if err := os.MkdirAll(filepath.Dir(fullFileName), 0755); err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("creating directory for %s", fullFileName))
+	}
+
+	// Create the file
+	f, err := os.OpenFile(fullFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("creating file %s", fullFileName))
+	}
+
+	w := content.NewIoContentWriter(f, content.WithOutputHash(desc.Digest.String()))
 	return w, nil
 }
 
+type nopCloser struct {
+	io.Writer
+}
+
+func (*nopCloser) Close() error { return nil }
+
 type pusher struct {
-	store  *content.File
+	store  *content.OCI
 	tag    string
 	ref    string
 	mapper map[string]Fn
