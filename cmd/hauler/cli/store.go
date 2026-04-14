@@ -71,6 +71,15 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Short: "Sync content to the content store",
 		Args:  cobra.ExactArgs(0),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// --dry-run requires --products
+			if o.DryRun && len(o.Products) == 0 {
+				return fmt.Errorf("--dry-run requires --products")
+			}
+			// suppress log output during dry-run so YAML is the only stdout content
+			// must be set before any log calls to keep stdout clean for piping
+			if o.DryRun {
+				log.FromContext(cmd.Context()).SetLevel("fatal")
+			}
 			// warn if products or product-registry flag is used by the user
 			if cmd.Flags().Changed("products") {
 				log.FromContext(cmd.Context()).Warnf("!!! WARNING !!! [--products] will be updating its default registry in a future release.")
@@ -89,6 +98,10 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+
+			if o.DryRun {
+				return store.SyncCmd(ctx, o, nil, rso, ro)
+			}
 
 			s, err := o.Store(ctx)
 			if err != nil {

@@ -6,9 +6,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/static"
+	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rs/zerolog"
+
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/consts"
 )
 
 // writeManifestFile writes yamlContent to a temp file, seeks back to the
@@ -438,4 +450,111 @@ spec:
 		t.Fatalf("SyncCmd RemoteManifest: %v", err)
 	}
 	assertArtifactInStore(t, s, "synced-remote.sh")
+}
+
+// --------------------------------------------------------------------------
+// SyncCmd --dry-run tests
+// --------------------------------------------------------------------------
+
+// buildProductManifestImage constructs a synthetic OCI file-artifact image
+// containing yamlContent as a single layer. The image uses the same media
+// types and AnnotationTitle annotation that storeFile/AddArtifact produce,
+// so ExtractCmd extracts the layer to a file named fileName.
+func buildProductManifestImage(t *testing.T, fileName string, yamlContent []byte) gcrv1.Image {
+	t.Helper()
+	fileLayer := static.NewLayer(yamlContent, gvtypes.MediaType(consts.FileLayerMediaType))
+	img, err := mutate.Append(empty.Image, mutate.Addendum{
+		Layer: fileLayer,
+		Annotations: map[string]string{
+			ocispec.AnnotationTitle: fileName,
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildProductManifestImage mutate.Append: %v", err)
+	}
+	img = mutate.MediaType(img, gvtypes.OCIManifestSchema1)
+	img = mutate.ConfigMediaType(img, gvtypes.MediaType(consts.FileLocalConfigMediaType))
+	return img
+}
+
+// TestSyncCmd_DryRun_Products_PrintsManifestToStdout verifies that when
+// DryRun is true the product manifest YAML is written to stdout without
+// writing anything to the local store — storeImage is never called.
+func TestSyncCmd_DryRun_Products_PrintsManifestToStdout(t *testing.T) {
+	ctx := newTestContext(t)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(zerolog.InfoLevel) })
+
+	const productName = "testproduct"
+	const productVersion = "v1.0.0"
+	const manifestFileName = productName + "-manifest.yaml"
+
+	manifestYAML := []byte(`apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: testproduct-files
+spec:
+  files:
+    - path: https://example.com/test.sh
+`)
+
+	// Seed the product registry with the manifest as a file-artifact OCI image.
+	host, rOpts := newLocalhostRegistry(t)
+	img := buildProductManifestImage(t, manifestFileName, manifestYAML)
+	imgTag, err := name.NewTag(
+		fmt.Sprintf("%s/hauler/%s:%s", host, manifestFileName, productVersion),
+		name.Insecure,
+	)
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+	if err := remote.Write(imgTag, img, rOpts...); err != nil {
+		t.Fatalf("remote.Write product manifest image: %v", err)
+	}
+
+	// Redirect os.Stdout to capture what SyncCmd prints during dry-run.
+	oldStdout := os.Stdout
+	r, w, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatalf("os.Pipe: %v", pipeErr)
+	}
+	os.Stdout = w
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+		w.Close()
+		r.Close()
+	})
+
+	o := newSyncOpts(t.TempDir())
+	o.Products = []string{fmt.Sprintf("%s=%s", productName, productVersion)}
+	o.ProductRegistry = host
+	o.DryRun = true
+	rso := defaultRootOpts(t.TempDir())
+	ro := defaultCliOpts()
+
+	// Pass nil store — dry-run must not touch the store at all.
+	syncErr := SyncCmd(ctx, o, nil, rso, ro)
+
+	// Close the write end before reading to unblock io.Copy.
+	w.Close()
+	var buf strings.Builder
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatalf("read captured stdout: %v", err)
+	}
+	r.Close()
+	os.Stdout = oldStdout
+
+	if syncErr != nil {
+		t.Fatalf("SyncCmd dry-run: %v", syncErr)
+	}
+
+	got := buf.String()
+	if !strings.HasPrefix(got, "---\n") {
+		t.Errorf("dry-run stdout should start with YAML document separator; got:\n%s", got)
+	}
+	if !strings.Contains(got, "kind: Files") {
+		t.Errorf("dry-run stdout missing 'kind: Files'; got:\n%s", got)
+	}
+	if !strings.Contains(got, "testproduct-files") {
+		t.Errorf("dry-run stdout missing manifest name 'testproduct-files'; got:\n%s", got)
+	}
 }
