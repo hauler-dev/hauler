@@ -10,7 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+	gname "github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/mitchellh/go-homedir"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
@@ -27,6 +32,72 @@ import (
 
 func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
+
+	// Handle dry-run before any local side effects (temp dirs, store writes).
+	if o.DryRun {
+		for _, productName := range o.Products {
+			parts := strings.Split(productName, "=")
+			tag := strings.ReplaceAll(parts[1], "+", "-")
+
+			ProductRegistry := o.ProductRegistry
+			if o.ProductRegistry == "" {
+				ProductRegistry = consts.CarbideRegistry
+			}
+
+			manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", ProductRegistry, parts[0], tag)
+			fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
+
+			parsedRef, err := gname.ParseReference(manifestLoc)
+			if err != nil {
+				return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
+			}
+			remoteImg, err := remote.Image(parsedRef,
+				remote.WithAuthFromKeychain(authn.DefaultKeychain),
+				remote.WithContext(ctx),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
+			}
+			mf, err := remoteImg.Manifest()
+			if err != nil {
+				return err
+			}
+			// Select the layer whose AnnotationTitle matches the expected
+			// manifest filename, rather than assuming layer order.
+			var layerDigest *gv1.Hash
+			for _, desc := range mf.Layers {
+				if desc.Annotations[ocispec.AnnotationTitle] == fileName {
+					layerDigest = &desc.Digest
+					break
+				}
+			}
+			if layerDigest == nil {
+				return fmt.Errorf("product manifest for [%s] has no layer with title %q", productName, fileName)
+			}
+			layer, err := remoteImg.LayerByDigest(*layerDigest)
+			if err != nil {
+				return err
+			}
+			rc, err := layer.Compressed()
+			if err != nil {
+				return err
+			}
+			content, err := io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				return err
+			}
+
+			// Ensure each manifest starts with a YAML document separator.
+			if !strings.HasPrefix(string(content), "---") {
+				content = append([]byte("---\n"), content...)
+			}
+			if _, err := os.Stdout.Write(content); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
 	tempOverride := rso.TempOverride
 
@@ -56,19 +127,19 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 
 		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", ProductRegistry, parts[0], tag)
 		l.Infof("fetching product manifest from [%s]", manifestLoc)
+
 		img := v1.Image{
 			Name: manifestLoc,
 		}
 		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
 		}
 		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
 		if err != nil {
 			return err
 		}
 		fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
-
 		fi, err := os.Open(fileName)
 		if err != nil {
 			return err
