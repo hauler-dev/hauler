@@ -69,6 +69,17 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	cfg := v1.Image{
 		Name:    reference,
 		Rewrite: o.Rewrite,
+		Local:   o.Local,
+	}
+
+	if o.Local {
+		if o.Key != "" || o.CertIdentity != "" || o.CertIdentityRegexp != "" {
+			return fmt.Errorf("--local cannot be combined with cosign verification flags (--key, --certificate-identity, --certificate-identity-regexp): signatures are not available from the Docker daemon")
+		}
+		if o.Platform != "" {
+			l.Warnf("--platform is ignored when --local is set: the Docker daemon stores only the host platform image")
+		}
+		return storeLocalImage(ctx, s, cfg, rso, ro, o.Rewrite)
 	}
 
 	// Check if the user provided a key.
@@ -93,6 +104,60 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	}
 
 	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
+}
+
+func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+	l := log.FromContext(ctx)
+
+	if !ro.IgnoreErrors {
+		envVar := os.Getenv(consts.HaulerIgnoreErrors)
+		if envVar == "true" {
+			ro.IgnoreErrors = true
+		}
+	}
+
+	l.Infof("adding image [%s] from local Docker daemon to the store", i.Name)
+
+	r, err := name.ParseReference(i.Name)
+	if err != nil {
+		if ro.IgnoreErrors {
+			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
+			return nil
+		}
+		l.Errorf("unable to parse image [%s]: %v", i.Name, err)
+		return err
+	}
+
+	if err := s.AddLocalImage(ctx, r.Name()); err != nil {
+		if ro.IgnoreErrors {
+			l.Warnf("unable to add image [%s] from Docker daemon to store: %v... skipping...", r.Name(), err)
+			return nil
+		}
+		l.Errorf("unable to add image [%s] from Docker daemon to store: %v", r.Name(), err)
+		return err
+	}
+
+	if rewrite != "" {
+		rawRewrite := rewrite
+		rewrite = strings.TrimPrefix(rewrite, "/")
+		if !strings.Contains(rewrite, ":") {
+			if tag, ok := r.(name.Tag); ok {
+				rewrite = rewrite + ":" + tag.TagStr()
+			} else {
+				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
+			}
+		}
+		newRef, err := name.ParseReference(rewrite)
+		if err != nil {
+			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
+		}
+		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
+			return err
+		}
+	}
+
+	l.Infof("successfully added image [%s] from local Docker daemon", r.Name())
+	return nil
 }
 
 func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
