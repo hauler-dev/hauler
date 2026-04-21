@@ -2,12 +2,12 @@ package flags
 
 import (
 	"github.com/spf13/cobra"
-	"hauler.dev/go/hauler/pkg/consts"
 )
 
 type SyncOpts struct {
 	*StoreRootOpts
 	FileName                     []string
+	ImageTxt                     []string
 	Key                          string
 	CertOidcIssuer               string
 	CertOidcIssuerRegexp         string
@@ -19,13 +19,15 @@ type SyncOpts struct {
 	Registry                     string
 	ProductRegistry              string
 	Tlog                         bool
-	Rewrite                      string
+	ExcludeExtras                bool
+	DryRun                       bool
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
-	f.StringSliceVarP(&o.FileName, "filename", "f", []string{consts.DefaultHaulerManifestName}, "Specify the name of manifest(s) to sync")
+	f.StringSliceVarP(&o.FileName, "filename", "f", []string{}, "Specify the name of manifest(s) to sync")
+	f.StringSliceVarP(&o.ImageTxt, "image-txt", "i", []string{}, "Specify local or remote image.txt file(s) to sync images")
 	f.StringVarP(&o.Key, "key", "k", "", "(Optional) Location of public key to use for signature verification")
 	f.StringVar(&o.CertIdentity, "certificate-identity", "", "(Optional) Cosign certificate-identity (either --certificate-identity or --certificate-identity-regexp required for keyless verification)")
 	f.StringVar(&o.CertIdentityRegexp, "certificate-identity-regexp", "", "(Optional) Cosign certificate-identity-regexp (either --certificate-identity or --certificate-identity-regexp required for keyless verification)")
@@ -37,5 +39,6 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
 	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specify the product registry. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us)")
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
-	f.StringVar(&o.Rewrite, "rewrite", "", "(EXPERIMENTAL & Optional) Rewrite artifact path to specified string")
+	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images")
+	f.BoolVar(&o.DryRun, "dry-run", false, "(Optional) Output product manifest content to stdout instead of processing it (requires --products)")
 }
