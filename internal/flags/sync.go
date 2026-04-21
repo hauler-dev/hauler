@@ -19,7 +19,6 @@ type SyncOpts struct {
 	Registry                     string
 	ProductRegistry              string
 	Tlog                         bool
-	Rewrite                      string
 	ExcludeExtras                bool
 	DryRun                       bool
 }
@@ -40,7 +39,6 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
 	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specify the product registry. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us)")
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
-	f.StringVar(&o.Rewrite, "rewrite", "", "(EXPERIMENTAL & Optional) Rewrite artifact path to specified string")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images")
 	f.BoolVar(&o.DryRun, "dry-run", false, "(Optional) Output product manifest content to stdout instead of processing it (requires --products)")
 }
