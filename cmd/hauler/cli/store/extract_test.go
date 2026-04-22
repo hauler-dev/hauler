@@ -1,6 +1,8 @@
 package store
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rs/zerolog"
 
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
@@ -546,6 +549,77 @@ func TestExtractCmd_SubstringMatch(t *testing.T) {
 	}
 
 	outPath := filepath.Join(destDir, "extract-sub.txt")
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("expected extracted file at %s: %v", outPath, err)
+	}
+	if string(data) != fileContent {
+		t.Errorf("content mismatch: got %q, want %q", string(data), fileContent)
+	}
+}
+
+// newLogCaptureContext returns a context backed by a zerolog logger that writes
+// JSON log lines to buf. Use buf.String() after the call to inspect log output.
+func newLogCaptureContext(buf *bytes.Buffer) context.Context {
+	zl := zerolog.New(buf).With().Timestamp().Logger()
+	return zl.WithContext(context.Background())
+}
+
+func TestExtractCmd_CosignArtifactsProduceNoContainerImageWarning(t *testing.T) {
+	// Regression test: extracting a file ref whose store also contains cosign
+	// sig/att/sbom/referrer descriptors with the same repo prefix must not emit
+	// the "container images cannot be extracted" warning for those cosign descriptors.
+	//
+	// Before the fix, cosign manifests tripped isContainerImageManifest() and caused
+	// a misleading WRN line. The fix is a kind-annotation early-return in the Walk
+	// callback that mirrors the pattern in copy.go:49-58.
+
+	var logBuf bytes.Buffer
+	ctx := newLogCaptureContext(&logBuf)
+	s := newTestStore(t)
+
+	// Seed a real file artifact so ExtractCmd finds something to extract.
+	fileContent := "cosign-filter test file content"
+	url := seedFileInHTTPServer(t, "sigtest.txt", fileContent)
+	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	// The file is stored under "hauler/sigtest.txt:latest". Inject fake cosign
+	// sig/att/sbom/referrer descriptors sharing the same AnnotationRefName so the
+	// Walk callback's strings.Contains(reference, repo) filter matches them too.
+	baseRef := "hauler/sigtest.txt:latest"
+	for _, kind := range []string{
+		consts.KindAnnotationSigs,
+		consts.KindAnnotationAtts,
+		consts.KindAnnotationSboms,
+		consts.KindAnnotationReferrers + "/sha256" + strings.Repeat("a", 64),
+	} {
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     baseRef,
+			consts.KindAnnotationName:     kind,
+			consts.ContainerdImageNameKey: "registry.example.com/" + baseRef,
+		})
+	}
+
+	destDir := t.TempDir()
+	eo := &flags.ExtractOpts{
+		StoreRootOpts:  defaultRootOpts(s.Root),
+		DestinationDir: destDir,
+	}
+
+	if err := ExtractCmd(ctx, eo, s, baseRef); err != nil {
+		t.Fatalf("ExtractCmd: %v", err)
+	}
+
+	// The "container images cannot be extracted" warning must NOT appear for
+	// the cosign descriptors — they must be silently skipped at debug level.
+	if strings.Contains(logBuf.String(), "container images cannot be extracted") {
+		t.Errorf("unexpected warning in log output for cosign descriptors:\n%s", logBuf.String())
+	}
+
+	// The file artifact must still be extracted to the destination directory.
+	outPath := filepath.Join(destDir, "sigtest.txt")
 	data, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatalf("expected extracted file at %s: %v", outPath, err)
