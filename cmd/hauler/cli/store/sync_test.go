@@ -70,6 +70,7 @@ spec:
 
 	fi := writeManifestFile(t, manifest)
 	o := newSyncOpts(s.Root)
+	o.StoreRootOpts.AllowInternalTargets = true // test server is on loopback
 	ro := defaultCliOpts()
 
 	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
@@ -216,6 +217,7 @@ spec:
 
 	fi := writeManifestFile(t, manifest)
 	o := newSyncOpts(s.Root)
+	o.StoreRootOpts.AllowInternalTargets = true // test servers are on loopback
 	ro := defaultCliOpts()
 
 	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
@@ -260,6 +262,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	o.FileName = []string{manifestPath}
 	rso := defaultRootOpts(s.Root)
+	rso.AllowInternalTargets = true // test server is on loopback
 	ro := defaultCliOpts()
 
 	if err := SyncCmd(ctx, o, s, rso, ro); err != nil {
@@ -411,6 +414,7 @@ func TestSyncCmd_ImageTxt_RemoteFile(t *testing.T) {
 	o := newSyncOpts(s.Root)
 	o.ImageTxt = []string{imageSrv.URL + "/images.txt"}
 	rso := defaultRootOpts(s.Root)
+	rso.AllowInternalTargets = true // test server is on loopback
 	ro := defaultCliOpts()
 
 	if err := SyncCmd(ctx, o, s, rso, ro); err != nil {
@@ -444,6 +448,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	o.FileName = []string{manifestSrv.URL + "/manifest.yaml"}
 	rso := defaultRootOpts(s.Root)
+	rso.AllowInternalTargets = true // both manifest server and file server are on loopback
 	ro := defaultCliOpts()
 
 	if err := SyncCmd(ctx, o, s, rso, ro); err != nil {

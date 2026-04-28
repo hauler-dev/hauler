@@ -199,7 +199,7 @@ func TestInfoCmd(t *testing.T) {
 		t.Fatalf("write tmpFile: %v", err)
 	}
 	fi := v1.File{Path: tmpFile}
-	if err := storeFile(ctx, s, fi); err != nil {
+	if err := storeFile(ctx, s, fi, false); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 

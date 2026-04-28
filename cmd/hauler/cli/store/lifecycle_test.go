@@ -31,7 +31,7 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 
 	// Step 2: storeFile into store A.
 	storeA := newTestStore(t)
-	if err := storeFile(ctx, storeA, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url}, true); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 	assertArtifactInStore(t, storeA, "lifecycle.txt")
@@ -252,10 +252,10 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 	url2 := seedFileInHTTPServer(t, "remove-me.txt", "content to remove")
 
 	storeA := newTestStore(t)
-	if err := storeFile(ctx, storeA, v1.File{Path: url1}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url1}, true); err != nil {
 		t.Fatalf("storeFile keep-me: %v", err)
 	}
-	if err := storeFile(ctx, storeA, v1.File{Path: url2}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url2}, true); err != nil {
 		t.Fatalf("storeFile remove-me: %v", err)
 	}
 

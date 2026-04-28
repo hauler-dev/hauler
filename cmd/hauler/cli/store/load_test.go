@@ -71,7 +71,7 @@ func TestUnarchiveLayoutTo(t *testing.T) {
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
 
-	if err := unarchiveLayoutTo(ctx, testHaulArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, testHaulArchive, destDir, tempDir, false); err != nil {
 		t.Fatalf("unarchiveLayoutTo: %v", err)
 	}
 
@@ -192,12 +192,16 @@ func TestLoadCmd_RemoteArchive(t *testing.T) {
 	destDir := t.TempDir()
 	remoteURL := srv.URL + "/haul.tar.zst"
 
+	// AllowInternalTargets=true because the test server binds to loopback.
+	rso := defaultRootOpts(destDir)
+	rso.AllowInternalTargets = true
+
 	o := &flags.LoadOpts{
-		StoreRootOpts: defaultRootOpts(destDir),
+		StoreRootOpts: rso,
 		FileName:      []string{remoteURL},
 	}
 
-	if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, o, rso, defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd remote: %v", err)
 	}
 
@@ -262,7 +266,7 @@ func TestUnarchiveLayoutTo_AnnotationBackfill(t *testing.T) {
 	// Step 4: Load the stripped archive.
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
-	if err := unarchiveLayoutTo(ctx, strippedArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, strippedArchive, destDir, tempDir, false); err != nil {
 		t.Fatalf("unarchiveLayoutTo stripped: %v", err)
 	}
 
@@ -354,7 +358,7 @@ func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 	// Step 4: Load the legacy archive.
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
-	if err := unarchiveLayoutTo(ctx, legacyArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, legacyArchive, destDir, tempDir, false); err != nil {
 		t.Fatalf("unarchiveLayoutTo legacy: %v", err)
 	}
 

@@ -242,7 +242,7 @@ func TestCopyCmd_Dir_Files(t *testing.T) {
 	url := seedFileInHTTPServer(t, "data.txt", content)
 
 	s := newTestStore(t)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, true); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 

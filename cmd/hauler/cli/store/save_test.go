@@ -118,7 +118,7 @@ func TestWriteExportsManifest_SkipsNonImages(t *testing.T) {
 
 	url := seedFileInHTTPServer(t, "skip.sh", "#!/bin/sh\necho skip")
 	s := newTestStore(t)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, true); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
