@@ -23,7 +23,8 @@ type Client struct {
 
 // ClientOptions provides options for the client
 type ClientOptions struct {
-	NameOverride string
+	NameOverride         string
+	AllowInternalTargets bool
 }
 
 var (
@@ -44,7 +45,7 @@ func NewClient(opts ClientOptions) *Client {
 	defaults := map[string]Getter{
 		"file":      NewFile(),
 		"directory": NewDirectory(),
-		"http":      NewHttp(),
+		"http":      NewHttpWithOptions(HttpOptions{AllowInternalTargets: opts.AllowInternalTargets}),
 	}
 
 	c := &Client{

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -41,7 +42,7 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 	for _, fileName := range o.FileName {
 		resolved := resolveHaulPath(fileName)
 		l.Infof("loading haul [%s] to [%s]", resolved, o.StoreDir)
-		err := unarchiveLayoutTo(ctx, resolved, o.StoreDir, tempDir)
+		err := unarchiveLayoutTo(ctx, resolved, o.StoreDir, tempDir, rso.AllowInternalTargets)
 		if err != nil {
 			return err
 		}
@@ -52,13 +53,13 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 }
 
 // accepts an archived OCI layout, extracts the contents to an existing OCI layout, and preserves the index
-func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDir string) error {
+func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDir string, allowInternalTargets bool) error {
 	l := log.FromContext(ctx)
 
 	if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 		l.Debugf("detected remote archive... starting download... [%s]", haulPath)
 
-		h := getter.NewHttp()
+		h := getter.NewHttpWithOptions(getter.HttpOptions{AllowInternalTargets: allowInternalTargets})
 		parsedURL, err := url.Parse(haulPath)
 		if err != nil {
 			return err
@@ -81,8 +82,12 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		}
 		defer out.Close()
 
-		if _, err = io.Copy(out, rc); err != nil {
+		n, err := io.Copy(out, io.LimitReader(rc, consts.MaxDownloadBytes+1))
+		if err != nil {
 			return err
+		}
+		if n > consts.MaxDownloadBytes {
+			return fmt.Errorf("remote archive at %s exceeds maximum allowed size (%d bytes)", haulPath, consts.MaxDownloadBytes)
 		}
 	}
 
@@ -98,9 +103,17 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	}
 
 	// ensure the incoming index.json has the correct annotations.
-	data, err := os.ReadFile(tempDir + "/index.json")
+	indexFile, err := os.Open(tempDir + "/index.json")
 	if err != nil {
 		return (err)
+	}
+	data, err := io.ReadAll(io.LimitReader(indexFile, consts.MaxManifestBytes+1))
+	indexFile.Close()
+	if err != nil {
+		return (err)
+	}
+	if int64(len(data)) > consts.MaxManifestBytes {
+		return fmt.Errorf("index.json exceeds maximum allowed size (%d bytes)", consts.MaxManifestBytes)
 	}
 
 	var idx ocispec.Index

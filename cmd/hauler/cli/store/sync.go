@@ -82,10 +82,13 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if err != nil {
 				return err
 			}
-			content, err := io.ReadAll(rc)
+			content, err := io.ReadAll(io.LimitReader(rc, consts.MaxManifestBytes+1))
 			rc.Close()
 			if err != nil {
 				return err
+			}
+			if int64(len(content)) > consts.MaxManifestBytes {
+				return fmt.Errorf("product manifest for [%s] exceeds maximum allowed size (%d bytes)", productName, consts.MaxManifestBytes)
 			}
 
 			// Ensure each manifest starts with a YAML document separator.
@@ -161,7 +164,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp()
+				h := getter.NewHttpWithOptions(getter.HttpOptions{AllowInternalTargets: rso.AllowInternalTargets})
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -184,8 +187,12 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 				}
 				defer out.Close()
 
-				if _, err = io.Copy(out, rc); err != nil {
+				n, err := io.Copy(out, io.LimitReader(rc, consts.MaxDownloadBytes+1))
+				if err != nil {
 					return err
+				}
+				if n > consts.MaxDownloadBytes {
+					return fmt.Errorf("remote manifest at %s exceeds maximum allowed size (%d bytes)", haulPath, consts.MaxDownloadBytes)
 				}
 			}
 
@@ -213,7 +220,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote image.txt... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp()
+				h := getter.NewHttpWithOptions(getter.HttpOptions{AllowInternalTargets: rso.AllowInternalTargets})
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -236,8 +243,12 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 				}
 				defer out.Close()
 
-				if _, err = io.Copy(out, rc); err != nil {
+				n, err := io.Copy(out, io.LimitReader(rc, consts.MaxDownloadBytes+1))
+				if err != nil {
 					return err
+				}
+				if n > consts.MaxDownloadBytes {
+					return fmt.Errorf("remote image.txt at %s exceeds maximum allowed size (%d bytes)", haulPath, consts.MaxDownloadBytes)
 				}
 			}
 
@@ -296,7 +307,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				for _, f := range cfg.Spec.Files {
-					if err := storeFile(ctx, s, f); err != nil {
+					if err := storeFile(ctx, s, f, rso.AllowInternalTargets); err != nil {
 						return err
 					}
 				}
