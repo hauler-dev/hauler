@@ -49,6 +49,14 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 
 	client := action.NewInstall(actionConfig)
 	client.ChartPathOptions.Version = opts.Version
+	client.ChartPathOptions.Verify = opts.Verify
+	client.ChartPathOptions.Username = opts.Username
+	client.ChartPathOptions.Password = opts.Password
+	client.ChartPathOptions.CertFile = opts.CertFile
+	client.ChartPathOptions.KeyFile = opts.KeyFile
+	client.ChartPathOptions.CaFile = opts.CaFile
+	client.ChartPathOptions.InsecureSkipTLSverify = opts.InsecureSkipTLSverify
+	client.ChartPathOptions.PlainHTTP = opts.PlainHTTP
 
 	registryClient, err := newRegistryClient(client.CertFile, client.KeyFile, client.CaFile,
 		client.InsecureSkipTLSverify, client.PlainHTTP)
@@ -65,27 +73,17 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 		chartRef = opts.RepoURL + "/" + name
 	}
 
-	// suppress helm downloader oci logs (stdout/stderr)
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
-	rOut, wOut, _ := os.Pipe()
-	rErr, wErr, _ := os.Pipe()
-	os.Stdout = wOut
-	os.Stderr = wErr
-
-	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, settings)
-
-	wOut.Close()
-	wErr.Close()
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-	_, _ = io.Copy(io.Discard, rOut)
-	_, _ = io.Copy(io.Discard, rErr)
-	rOut.Close()
-	rErr.Close()
-
-	if err != nil {
-		return nil, err
+	// Suppress Helm downloader OCI logs via the goroutine-safe CaptureOutput.
+	// The mutex in CaptureOutput serializes all callers so concurrent chart
+	// fetches cannot race on os.Stdout/os.Stderr.
+	var chartPath string
+	captureErr := log.CaptureOutput(log.NewLogger(io.Discard), true, func() error {
+		var locErr error
+		chartPath, locErr = client.ChartPathOptions.LocateChart(chartRef, settings)
+		return locErr
+	})
+	if captureErr != nil {
+		return nil, captureErr
 	}
 
 	return &Chart{
