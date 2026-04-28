@@ -42,8 +42,17 @@ func logStream(reader io.Reader, customWriter *CustomWriter, wg *sync.WaitGroup)
 	}
 }
 
-// CaptureOutput redirects stdout and stderr to custom loggers and executes the provided function
-func CaptureOutput(logger Logger, debug bool, fn func() error) error {
+// captureOutputMu serializes all CaptureOutput calls so that concurrent
+// goroutines do not race on os.Stdout/os.Stderr.
+var captureOutputMu sync.Mutex
+
+// CaptureOutput redirects stdout and stderr to custom loggers and executes the provided function.
+// It is goroutine-safe: concurrent calls are serialized.  A panic inside fn is
+// recovered, os.Stdout/os.Stderr are restored, and an error is returned.
+func CaptureOutput(logger Logger, debug bool, fn func() error) (retErr error) {
+	captureOutputMu.Lock()
+	defer captureOutputMu.Unlock()
+
 	// Create pipes for capturing stdout and stderr
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
@@ -51,6 +60,8 @@ func CaptureOutput(logger Logger, debug bool, fn func() error) error {
 	}
 	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
+		stdoutReader.Close()
+		stdoutWriter.Close()
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
 
@@ -61,6 +72,15 @@ func CaptureOutput(logger Logger, debug bool, fn func() error) error {
 	// Redirect stdout and stderr
 	os.Stdout = stdoutWriter
 	os.Stderr = stderrWriter
+
+	// Ensure FDs are always restored — even on panic.
+	defer func() {
+		os.Stdout = origStdout
+		os.Stderr = origStderr
+		if r := recover(); r != nil {
+			retErr = fmt.Errorf("CaptureOutput: recovered from panic: %v", r)
+		}
+	}()
 
 	// Use WaitGroup to wait for logging goroutines to finish
 	var wg sync.WaitGroup
@@ -78,15 +98,21 @@ func CaptureOutput(logger Logger, debug bool, fn func() error) error {
 	// Run the provided function in a separate goroutine
 	fnErr := make(chan error, 1)
 	go func() {
+		defer func() {
+			// Propagate panics from fn back to the main goroutine via the error channel.
+			if r := recover(); r != nil {
+				fnErr <- fmt.Errorf("panic: %v", r)
+			}
+			stdoutWriter.Close() // Close writers to signal EOF to readers
+			stderrWriter.Close()
+		}()
 		fnErr <- fn()
-		stdoutWriter.Close() // Close writers to signal EOF to readers
-		stderrWriter.Close()
 	}()
 
 	// Wait for logging goroutines to finish
 	wg.Wait()
 
-	// Restore original stdout and stderr
+	// Restore stdout/stderr early so the deferred restore is a no-op.
 	os.Stdout = origStdout
 	os.Stderr = origStderr
 
