@@ -593,9 +593,12 @@ func (l *Layout) copyDescriptorGraph(ctx context.Context, desc ocispec.Descripto
 			}
 		}()
 
-		data, err := io.ReadAll(rc)
+		data, err := io.ReadAll(io.LimitReader(rc, consts.MaxManifestBytes+1))
 		if err != nil {
 			return fmt.Errorf("failed to read manifest: %w", err)
+		}
+		if int64(len(data)) > consts.MaxManifestBytes {
+			return fmt.Errorf("manifest exceeds maximum allowed size (%d bytes)", consts.MaxManifestBytes)
 		}
 
 		var manifest ocispec.Manifest
@@ -632,9 +635,12 @@ func (l *Layout) copyDescriptorGraph(ctx context.Context, desc ocispec.Descripto
 			}
 		}()
 
-		data, err := io.ReadAll(rc)
+		data, err := io.ReadAll(io.LimitReader(rc, consts.MaxManifestBytes+1))
 		if err != nil {
 			return fmt.Errorf("failed to read index: %w", err)
+		}
+		if int64(len(data)) > consts.MaxManifestBytes {
+			return fmt.Errorf("index exceeds maximum allowed size (%d bytes)", consts.MaxManifestBytes)
 		}
 
 		var index ocispec.Index
