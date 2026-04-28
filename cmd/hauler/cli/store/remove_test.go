@@ -81,7 +81,7 @@ func TestRemoveCmd_Force(t *testing.T) {
 	s := newTestStore(t)
 
 	url := seedFileInHTTPServer(t, "removeme.txt", "file-to-remove")
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, true); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -133,10 +133,10 @@ func TestRemoveCmd_Force_MultipleMatches(t *testing.T) {
 	url1 := seedFileInHTTPServer(t, "testfile-alpha.txt", "content-alpha")
 	url2 := seedFileInHTTPServer(t, "testfile-beta.txt", "content-beta")
 
-	if err := storeFile(ctx, s, v1.File{Path: url1}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url1}, true); err != nil {
 		t.Fatalf("storeFile alpha: %v", err)
 	}
-	if err := storeFile(ctx, s, v1.File{Path: url2}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url2}, true); err != nil {
 		t.Fatalf("storeFile beta: %v", err)
 	}
 
