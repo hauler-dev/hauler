@@ -13,9 +13,10 @@ import (
 )
 
 type StoreRootOpts struct {
-	StoreDir     string
-	Retries      int
-	TempOverride string
+	StoreDir             string
+	Retries              int
+	TempOverride         string
+	AllowInternalTargets bool
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
@@ -23,6 +24,7 @@ func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
 	pf.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
+	pf.BoolVar(&o.AllowInternalTargets, "allow-internal-targets", false, "(Optional) Allow fetching from private/loopback IP addresses (disables SSRF protection; for isolated internal CI use only)")
 }
 
 func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {

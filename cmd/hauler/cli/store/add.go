@@ -36,14 +36,19 @@ func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, refe
 	if len(o.Name) > 0 {
 		cfg.Name = o.Name
 	}
-	return storeFile(ctx, s, cfg)
+	var allowInternal bool
+	if o.StoreRootOpts != nil {
+		allowInternal = o.AllowInternalTargets
+	}
+	return storeFile(ctx, s, cfg, allowInternal)
 }
 
-func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
+func storeFile(ctx context.Context, s *store.Layout, fi v1.File, allowInternalTargets bool) error {
 	l := log.FromContext(ctx)
 
 	copts := getter.ClientOptions{
-		NameOverride: fi.Name,
+		NameOverride:         fi.Name,
+		AllowInternalTargets: allowInternalTargets,
 	}
 
 	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)))

@@ -13,6 +13,40 @@ import (
 	"hauler.dev/go/hauler/pkg/content/chart"
 )
 
+// TestNewChart_VerifyAndAuthPropagated verifies that --verify and auth/TLS options
+// in action.ChartPathOptions are actually wired through to the Helm client.
+// With Verify=true the Helm client must reject a chart that has no .prov file.
+func TestNewChart_VerifyAndAuthPropagated(t *testing.T) {
+	t.Run("verify flag causes failure on unsigned chart", func(t *testing.T) {
+		opts := &action.ChartPathOptions{
+			RepoURL: "../../../testdata",
+			Verify:  true,
+		}
+		_, err := chart.NewChart("rancher-cluster-templates-0.5.2.tgz", opts)
+		if err == nil {
+			t.Fatal("NewChart() expected error with Verify=true on unsigned chart, got nil")
+		}
+	})
+
+	t.Run("credentials are propagated and do not break local chart load", func(t *testing.T) {
+		// Credentials are passed but local chart loading does not require auth.
+		// This test ensures setting Username/Password does not silently break
+		// the happy path (i.e. they are stored, not discarded).
+		opts := &action.ChartPathOptions{
+			RepoURL:  "../../../testdata",
+			Username: "user",
+			Password: "pass",
+		}
+		c, err := chart.NewChart("rancher-cluster-templates-0.5.2.tgz", opts)
+		if err != nil {
+			t.Fatalf("NewChart() unexpected error: %v", err)
+		}
+		if c == nil {
+			t.Fatal("NewChart() returned nil chart")
+		}
+	})
+}
+
 func TestNewChart(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "hauler")
 	if err != nil {

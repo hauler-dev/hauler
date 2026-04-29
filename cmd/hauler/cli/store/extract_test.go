@@ -31,7 +31,7 @@ func TestExtractCmd_File(t *testing.T) {
 
 	fileContent := "hello extract test"
 	url := seedFileInHTTPServer(t, "extract-me.txt", fileContent)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, true); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -533,7 +533,7 @@ func TestExtractCmd_SubstringMatch(t *testing.T) {
 
 	fileContent := "substring match content"
 	url := seedFileInHTTPServer(t, "extract-sub.txt", fileContent)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, true); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -581,7 +581,7 @@ func TestExtractCmd_CosignArtifactsProduceNoContainerImageWarning(t *testing.T) 
 	// Seed a real file artifact so ExtractCmd finds something to extract.
 	fileContent := "cosign-filter test file content"
 	url := seedFileInHTTPServer(t, "sigtest.txt", fileContent)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, true); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 

@@ -150,8 +150,8 @@ if [ ! -d "${HAULER_DIR}" ]; then
     mkdir -p "${HAULER_DIR}" || fatal "Failed to Create Hauler Directory: ${HAULER_DIR}"
 fi
 
-# ensure hauler directory is writable (by user or root privileges)
-chmod -R 777 "${HAULER_DIR}" || fatal "Failed to Update Permissions of Hauler Directory: ${HAULER_DIR}"
+# ensure hauler directory is only accessible by the owner
+chmod -R 0700 "${HAULER_DIR}" || fatal "Failed to Update Permissions of Hauler Directory: ${HAULER_DIR}"
 
 # change to hauler directory
 cd "${HAULER_DIR}" || fatal "Failed to Change Directory to Hauler Directory: ${HAULER_DIR}"
