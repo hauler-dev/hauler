@@ -16,12 +16,18 @@ import (
 	"hauler.dev/go/hauler/pkg/consts"
 )
 
+// dialTimeout is the TCP connect and keep-alive timeout used by safeDial.
+const dialTimeout = 30 * time.Second
+
 // HttpOptions configures the behaviour of the Http getter.
 type HttpOptions struct {
-	// AllowInternalTargets disables the default SSRF guard that rejects
-	// requests whose resolved IP falls in RFC-1918, loopback, link-local, or
-	// unique-local space.  Set to true only for isolated internal CI
-	// environments that intentionally fetch from private hosts.
+	// AllowInternalTargets disables the SSRF guard that is enforced at dial
+	// time by the custom DialContext.  When false (the default), every IP
+	// address returned by DNS resolution is validated against isInternalIP
+	// before any connection is attempted, and the connection is made to the
+	// resolved IP literal directly so the check and the connect target the
+	// same address.  Set to true only for isolated internal CI environments
+	// that intentionally fetch from private or loopback hosts.
 	AllowInternalTargets bool
 
 	// Timeout overrides the default HTTP client timeout.
@@ -59,8 +65,28 @@ func NewHttpWithOptions(opts HttpOptions) *Http {
 	}
 
 	h := &Http{opts: opts, maxBytes: maxBytes}
+
+	baseDialer := &net.Dialer{
+		Timeout:   dialTimeout,
+		KeepAlive: dialTimeout,
+	}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return h.safeDial(ctx, baseDialer, network, address)
+		},
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       90 * time.Second,
+		// Do NOT set TLSClientConfig: Go derives tls.Config.ServerName from
+		// the request URL hostname, so TLS cert verification continues to use
+		// the hostname even though we dial by IP literal.
+	}
+
 	h.client = &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return h.validateRequest(req)
 		},
@@ -68,36 +94,62 @@ func NewHttpWithOptions(opts HttpOptions) *Http {
 	return h
 }
 
-// validateRequest enforces scheme and (when AllowInternalTargets is false)
-// private-IP restrictions.  It is called for the initial request and each
-// redirect hop via CheckRedirect.
+// validateRequest enforces scheme restrictions.  It is called for the initial
+// request and each redirect hop via CheckRedirect.  IP/host validation is
+// performed at dial time by safeDial so the checked address is exactly the
+// address we connect to, eliminating the DNS-rebinding TOCTOU.
 func (h *Http) validateRequest(req *http.Request) error {
 	switch req.URL.Scheme {
 	case "http", "https":
 	default:
 		return fmt.Errorf("scheme %q is not allowed; only http and https are permitted", req.URL.Scheme)
 	}
-
-	if h.opts.AllowInternalTargets {
-		return nil
-	}
-
-	host := req.URL.Hostname()
-	addrs, err := net.LookupHost(host)
-	if err != nil {
-		// If we cannot resolve, let the transport fail naturally.
-		return nil
-	}
-	for _, addr := range addrs {
-		ip := net.ParseIP(addr)
-		if ip == nil {
-			continue
-		}
-		if isInternalIP(ip) {
-			return fmt.Errorf("request to %s rejected: resolved to internal address %s (use --allow-internal-targets to override)", host, addr)
-		}
-	}
 	return nil
+}
+
+// safeDial resolves address to candidate IPs, rejects internal IPs (when
+// AllowInternalTargets=false), and dials the resolved IP literal directly.
+// Performing both the IP check and the connect against the same resolved
+// address eliminates the DNS-rebinding TOCTOU that exists when validation
+// and connect each perform their own independent resolution.
+func (h *Http) safeDial(ctx context.Context, dialer *net.Dialer, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", host, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no addresses found for %s", host)
+	}
+
+	if !h.opts.AllowInternalTargets {
+		// Reject if ANY candidate is internal — prevents an attacker from
+		// returning [public, private] and hoping fallback hits the private IP.
+		for _, ipAddr := range ips {
+			if isInternalIP(ipAddr.IP) {
+				return nil, fmt.Errorf("dial to %s rejected: resolved to internal address %s (use --allow-internal-targets to override)", host, ipAddr.IP)
+			}
+		}
+	}
+
+	// Dial each candidate by IP literal until one succeeds. Bracket IPv6.
+	var lastErr error
+	for _, ipAddr := range ips {
+		ipStr := ipAddr.IP.String()
+		if ipAddr.IP.To4() == nil {
+			ipStr = "[" + ipStr + "]"
+		}
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ipStr, port))
+		if dialErr == nil {
+			return conn, nil
+		}
+		lastErr = dialErr
+	}
+	return nil, lastErr
 }
 
 // isInternalIP reports whether ip is in a private, loopback, link-local, or
