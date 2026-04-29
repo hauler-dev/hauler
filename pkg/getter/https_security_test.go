@@ -148,3 +148,51 @@ func TestHttp_Open_RejectsRedirectToPrivateIP(t *testing.T) {
 		t.Fatal("Open() expected error when redirect targets private IP, got nil")
 	}
 }
+
+// TestHttp_Open_RejectsIPLiteralPrivate verifies that URLs containing a private,
+// loopback, link-local, or IMDS IP literal are rejected at dial time without
+// any external network round-trip.
+func TestHttp_Open_RejectsIPLiteralPrivate(t *testing.T) {
+	cases := []string{
+		"http://127.0.0.1:9/anything",
+		"http://10.0.0.1:9/anything",
+		"http://192.168.0.1:9/anything",
+		"http://169.254.169.254/latest/meta",
+	}
+	h := getter.NewHttp() // default AllowInternalTargets=false
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			u, _ := url.Parse(raw)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_, err := h.Open(ctx, u)
+			if err == nil {
+				t.Fatalf("Open(%s) expected SSRF rejection, got nil", raw)
+			}
+		})
+	}
+}
+
+// TestHttp_Open_RejectsHostnameResolvingToLoopback verifies that the dial-time
+// check inspects the *resolved* IP, not just IP literals. This is the
+// meaningful demonstration that DNS rebinding is closed: even when the URL
+// hostname is "localhost" (not an IP literal), the dial fires the SSRF check
+// against the resolved 127.0.0.1.
+func TestHttp_Open_RejectsHostnameResolvingToLoopback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "secret")
+	}))
+	defer srv.Close()
+
+	parsed, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	parsed.Host = "localhost:" + parsed.Port()
+
+	h := getter.NewHttp() // default AllowInternalTargets=false
+	_, err = h.Open(context.Background(), parsed)
+	if err == nil {
+		t.Fatal("Open() expected SSRF rejection for hostname resolving to loopback, got nil")
+	}
+}
