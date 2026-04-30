@@ -12,8 +12,6 @@ import (
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/google/go-containerregistry/pkg/v1/random"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -659,11 +657,4 @@ spec:
 	assertArtifactInStore(t, s, "rancher-cluster-templates")
 }
 
-// --------------------------------------------------------------------------
-// Unused imports suppression
-// --------------------------------------------------------------------------
 
-var (
-	_ = random.Image
-	_ = remote.Option(nil)
-)

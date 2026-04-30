@@ -21,7 +21,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/rs/zerolog"
-	"helm.sh/helm/v3/pkg/chart/loader"
 
 	"hauler.dev/go/hauler/pkg/artifacts/file"
 	"hauler.dev/go/hauler/pkg/consts"
@@ -195,20 +194,7 @@ func TestWriteExportsManifest(t *testing.T) {
 		}
 	})
 
-	t.Run("chart artifact excluded via config media type check", func(t *testing.T) {
-		chartPath := "../../testdata/rancher-cluster-templates-0.5.2.tgz"
-		// Load the chart to verify it's a valid chart file
-		_, err := loader.Load(chartPath)
-		if err != nil {
-			t.Fatalf("loader.Load: %v", err)
-		}
 
-		// Create a chart artifact using the chart package's internal structure
-		// We need to use reflection or a helper to set the path since it's unexported
-		// For now, we'll skip this test since we can't easily create a Chart artifact
-		// without using the CLI package or exposing internal fields
-		t.Skip("Skipping chart test - Chart.path is unexported and NewChart requires Helm config")
-	})
 }
 
 func TestWriteExportsManifest_SkipsNonImages(t *testing.T) {

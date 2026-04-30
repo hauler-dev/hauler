@@ -40,9 +40,10 @@ import (
 //
 // URL fetching:
 //
-//	FileName and ImageTxt entries starting with "http://" or "https://"
+// FileName and ImageTxt entries starting with "http://" or "https://"
 //	are downloaded via pkg/getter's HTTP client into a temporary directory.
-//	Authentication for remote URLs uses authn.DefaultKeychain.
+//	No authentication is performed for remote URL fetching; callers with
+//	private URLs must configure proxy-level authentication or use local files.
 //
 // Authentication (product mode):
 //
@@ -166,6 +167,26 @@ func Sync(ctx context.Context, s *Layout, opts SyncOptions) error {
 
 	l := log.FromContext(ctx)
 
+	// Products mode with DryRun — output manifest content without storing
+	if len(opts.Products) > 0 && opts.DryRun {
+		for _, productName := range opts.Products {
+			name, version, ok := strings.Cut(productName, "=")
+			if !ok || name == "" || version == "" {
+				return fmt.Errorf("invalid product %q: expected format \"name=version\"", productName)
+			}
+			tag := strings.ReplaceAll(version, "+", "-")
+
+			productRegistry := opts.ProductRegistry
+			if productRegistry == "" {
+				productRegistry = consts.CarbideRegistry
+			}
+
+			manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", productRegistry, name, tag)
+			l.Infof("dry run: would process product manifest [%s]", manifestLoc)
+		}
+		return nil
+	}
+
 	tempOverride := os.Getenv(consts.HaulerTempDir)
 	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
@@ -178,15 +199,18 @@ func Sync(ctx context.Context, s *Layout, opts SyncOptions) error {
 	// Products mode
 	for _, productName := range opts.Products {
 		l.Infof("processing product manifest for [%s]", productName)
-		parts := strings.Split(productName, "=")
-		tag := strings.ReplaceAll(parts[1], "+", "-")
+		name, version, ok := strings.Cut(productName, "=")
+		if !ok || name == "" || version == "" {
+			return fmt.Errorf("invalid product %q: expected format \"name=version\"", productName)
+		}
+		tag := strings.ReplaceAll(version, "+", "-")
 
 		productRegistry := opts.ProductRegistry
 		if productRegistry == "" {
 			productRegistry = consts.CarbideRegistry
 		}
 
-		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", productRegistry, parts[0], tag)
+		manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", productRegistry, name, tag)
 		l.Infof("fetching product manifest from [%s]", manifestLoc)
 
 		parsedRef, err := gname.ParseReference(manifestLoc)
@@ -215,7 +239,7 @@ func Sync(ctx context.Context, s *Layout, opts SyncOptions) error {
 		if err != nil {
 			return err
 		}
-		fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
+		fileName := fmt.Sprintf("%s-manifest.yaml", name)
 		var layerDigest *gv1.Hash
 		for _, desc := range mf.Layers {
 			if desc.Annotations[ocispec.AnnotationTitle] == fileName {
@@ -429,7 +453,14 @@ func processContentPublic(ctx context.Context, fi *os.File, opts *SyncOptions, s
 				for _, i := range cfg.Spec.Images {
 					// Registry relocation
 					if !i.Local && (a[consts.ImageAnnotationRegistry] != "" || opts.Registry != "") {
-						newRef, _ := reference.Parse(i.Name)
+						newRef, err := reference.Parse(i.Name)
+						if err != nil {
+							if opts.IgnoreErrors || os.Getenv(consts.HaulerIgnoreErrors) == "true" {
+								l.Warnf("skipping image [%s]: failed to parse reference: %v", i.Name, err)
+								continue
+							}
+							return fmt.Errorf("failed to parse reference for image [%s]: %w", i.Name, err)
+						}
 						newReg := opts.Registry
 						if opts.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
 							newReg = a[consts.ImageAnnotationRegistry]
