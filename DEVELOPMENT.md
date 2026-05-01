@@ -86,7 +86,7 @@ Release tags (`v1.4.1`, `v1.3.2`, etc.) are always cut from the corresponding `r
 
 ### Where to Target Your Changes
 
-All pull requests should target `main` by default and maintainers are responsible for cherry picking fixes onto release branches as part of the patch release process.
+All pull requests should target `main` by default and maintainers are responsible for backporting fixes onto release branches as part of the patch release process.
 
 | Change Type | Target branch |
 | :---------: | :-----------: |
@@ -117,17 +117,36 @@ Development on `main` immediately continues toward the next minor.
 
 ### Backporting a Fix to a Release Branch
 
-When a bug fix merged to `main` also needs to apply to an active release line, cherry-pick the commit onto the release branch and open a PR targeting it:
+Backports are handled by [Mergify](https://mergify.com/). When a PR merged to `main` also needs to apply to an active release line, comment on the merged PR with the target branch:
 
-```bash
-git checkout release/1.3
-git pull origin release/1.3
-git checkout -b backport/fix-description-to-1.3
-git cherry-pick <commit-sha>
-git push origin backport/fix-description-to-1.3
+```
+@mergifyio backport release/1.3
 ```
 
-Open a PR targeting `release/1.3` and reference the original PR in the description. If the cherry-pick doesn't apply cleanly, resolve conflicts and note them in the PR.
+To backport to multiple branches at once, list each target branch in the same comment:
+
+```
+@mergifyio backport release/1.3 release/1.4
+```
+
+Mergify will open a backport PR against the specified branch with the cherry-picked commits and a reference back to the original PR. The bot adds a label and links the backport PR in the original for traceability.
+
+You can trigger backports either before or after the original PR is merged — Mergify will queue the request and open the backport PR once the original is merged.
+
+#### When the Backport Has Conflicts
+
+If the cherry-pick doesn't apply cleanly, Mergify will still open the backport PR but mark it as having conflicts. To resolve:
+
+```bash
+git fetch origin
+git checkout mergify/bp/release/1.3/pr-<number>
+# resolve conflicts
+git add .
+git commit
+git push
+```
+
+Note the conflict resolution in the PR description so reviewers can verify the fix still behaves correctly on the older release line.
 
 ### Fixes That Only Apply to an Older Release Line
 
@@ -145,9 +164,10 @@ This keeps the history auditable and prevents future contributors from wondering
 ```
             ┌─────────────────────────────────────────► main (next minor)
             │
-            │  cherry-pick / backport PRs
+            │  @mergifyio backport release/1.4
             │  ─────────────────────────►  release/1.4  (v1.4.0, v1.4.1 ...)
             │
+            │  @mergifyio backport release/1.3
             │  ─────────────────────────►  release/1.3  (v1.3.0, v1.3.1 ...)
             │
             │  direct fix (older-only bug)
