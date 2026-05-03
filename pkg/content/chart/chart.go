@@ -61,7 +61,7 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 		chartRef = opts.RepoURL + "/" + name
 	} else if isUrl(opts.RepoURL) { // oci protocol registers as a valid url
 		client.ChartPathOptions.RepoURL = opts.RepoURL
-	} else { // handles cases like grafana and loki
+	} else if opts.RepoURL != "" { // handles non-empty cases like grafana and loki
 		chartRef = opts.RepoURL + "/" + name
 	}
 
