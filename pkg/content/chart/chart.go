@@ -63,7 +63,7 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	client.ChartPathOptions.CertFile = opts.CertFile
 	client.ChartPathOptions.KeyFile = opts.KeyFile
 	client.ChartPathOptions.CaFile = opts.CaFile
-	client.ChartPathOptions.InsecureSkipTLSverify = opts.InsecureSkipTLSverify
+	client.ChartPathOptions.InsecureSkipTLSVerify = opts.InsecureSkipTLSVerify
 	client.ChartPathOptions.PlainHTTP = opts.PlainHTTP
 
 	registryClient, err := newRegistryClient(client.CertFile, client.KeyFile, client.CaFile,

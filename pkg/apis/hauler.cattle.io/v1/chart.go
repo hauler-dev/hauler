@@ -30,14 +30,15 @@ type Chart struct {
 	Keyring string `json:"keyring,omitempty"`
 
 	// Auth (HTTP repos only — for OCI registries use `hauler login`)
-	Username           string `json:"username,omitempty"`
-	Password           string `json:"password,omitempty"`
+	// Credentials are referenced by env-var name; raw values must NOT appear in manifests.
+	UsernameEnv        string `json:"usernameEnv,omitempty"`
+	PasswordEnv        string `json:"passwordEnv,omitempty"`
 	PassCredentialsAll bool   `json:"passCredentialsAll,omitempty"`
 
 	// TLS
 	CertFile              string `json:"certFile,omitempty"`
 	KeyFile               string `json:"keyFile,omitempty"`
 	CaFile                string `json:"caFile,omitempty"`
-	InsecureSkipTLSverify bool   `json:"insecureSkipTLSverify,omitempty"`
+	InsecureSkipTLSVerify bool   `json:"insecureSkipTLSVerify,omitempty"`
 	PlainHTTP             bool   `json:"plainHTTP,omitempty"`
 }
