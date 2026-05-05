@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"hauler.dev/go/hauler/internal/flags"
+	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/consts"
 )
 
@@ -46,6 +47,95 @@ func writeManifestFile(t *testing.T, yamlContent string) *os.File {
 func newSyncOpts(storeDir string) *flags.SyncOpts {
 	return &flags.SyncOpts{
 		StoreRootOpts: defaultRootOpts(storeDir),
+	}
+}
+
+// --------------------------------------------------------------------------
+// resolveChartCreds tests
+// --------------------------------------------------------------------------
+
+func TestResolveChartCreds_BothEmpty(t *testing.T) {
+	ch := v1.Chart{Name: "mychart", RepoURL: "https://charts.example.com"}
+	u, p, err := resolveChartCreds(ch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u != "" || p != "" {
+		t.Errorf("expected empty creds, got username=%q password=%q", u, p)
+	}
+}
+
+func TestResolveChartCreds_BothSetAndEnvPopulated(t *testing.T) {
+	t.Setenv("CHART_TEST_USER", "alice")
+	t.Setenv("CHART_TEST_PASS", "s3cr3t")
+
+	ch := v1.Chart{
+		Name:        "mychart",
+		RepoURL:     "https://charts.example.com",
+		UsernameEnv: "CHART_TEST_USER",
+		PasswordEnv: "CHART_TEST_PASS",
+	}
+	u, p, err := resolveChartCreds(ch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u != "alice" {
+		t.Errorf("username: got %q, want %q", u, "alice")
+	}
+	if p != "s3cr3t" {
+		t.Errorf("password: got %q, want %q", p, "s3cr3t")
+	}
+}
+
+func TestResolveChartCreds_OnlyUsernameEnvSet_ReturnsError(t *testing.T) {
+	ch := v1.Chart{
+		Name:        "mychart",
+		RepoURL:     "https://charts.example.com",
+		UsernameEnv: "CHART_TEST_USER_ONLY",
+		// PasswordEnv intentionally omitted
+	}
+	_, _, err := resolveChartCreds(ch)
+	if err == nil {
+		t.Fatal("expected error when only usernameEnv is set, got nil")
+	}
+	if !strings.Contains(err.Error(), "usernameEnv and passwordEnv must both be set") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestResolveChartCreds_OnlyPasswordEnvSet_ReturnsError(t *testing.T) {
+	ch := v1.Chart{
+		Name:    "mychart",
+		RepoURL: "https://charts.example.com",
+		// UsernameEnv intentionally omitted
+		PasswordEnv: "CHART_TEST_PASS_ONLY",
+	}
+	_, _, err := resolveChartCreds(ch)
+	if err == nil {
+		t.Fatal("expected error when only passwordEnv is set, got nil")
+	}
+	if !strings.Contains(err.Error(), "usernameEnv and passwordEnv must both be set") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestResolveChartCreds_EnvVarUnset_ReturnsError(t *testing.T) {
+	// Ensure the env vars are definitely absent.
+	t.Setenv("CHART_UNSET_USER", "")
+	t.Setenv("CHART_UNSET_PASS", "")
+
+	ch := v1.Chart{
+		Name:        "mychart",
+		RepoURL:     "https://charts.example.com",
+		UsernameEnv: "CHART_UNSET_USER",
+		PasswordEnv: "CHART_UNSET_PASS",
+	}
+	_, _, err := resolveChartCreds(ch)
+	if err == nil {
+		t.Fatal("expected error when env vars are empty, got nil")
+	}
+	if !strings.Contains(err.Error(), "must both be set and non-empty") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 

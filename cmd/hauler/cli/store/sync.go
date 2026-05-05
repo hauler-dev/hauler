@@ -496,6 +496,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						excludeExtras = ch.ExcludeExtras
 					}
 
+					chartUsername, chartPassword, err := resolveChartCreds(ch)
+					if err != nil {
+						return err
+					}
+
 					if err := storeChart(ctx, s, ch,
 						&flags.AddChartOpts{
 							ChartOpts: &action.ChartPathOptions{
@@ -503,8 +508,8 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 								Version:               ch.Version,
 								Verify:                ch.Verify,
 								Keyring:               ch.Keyring,
-								Username:              ch.Username,
-								Password:              ch.Password,
+								Username:              chartUsername,
+								Password:              chartPassword,
 								PassCredentialsAll:    ch.PassCredentialsAll,
 								CertFile:              ch.CertFile,
 								KeyFile:               ch.KeyFile,
@@ -534,6 +539,25 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 	}
 	return nil
+}
+
+// resolveChartCreds reads credentials for a Chart entry from the env vars
+// named by UsernameEnv and PasswordEnv.  Both fields must be set or both must
+// be empty; a mix is a configuration error.  If both are set, the env vars
+// must be non-empty at runtime.
+func resolveChartCreds(ch v1.Chart) (username, password string, err error) {
+	if ch.UsernameEnv == "" && ch.PasswordEnv == "" {
+		return "", "", nil
+	}
+	if ch.UsernameEnv == "" || ch.PasswordEnv == "" {
+		return "", "", fmt.Errorf("chart %q: usernameEnv and passwordEnv must both be set or both be empty", ch.Name)
+	}
+	username = os.Getenv(ch.UsernameEnv)
+	password = os.Getenv(ch.PasswordEnv)
+	if username == "" || password == "" {
+		return "", "", fmt.Errorf("chart %q: env vars %q and %q must both be set and non-empty", ch.Name, ch.UsernameEnv, ch.PasswordEnv)
+	}
+	return username, password, nil
 }
 
 func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
