@@ -3,52 +3,14 @@ package getter_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
 	"hauler.dev/go/hauler/pkg/getter"
 )
-
-// --- A3: Unbounded download protection ---
-
-// TestHttp_Open_RejectsOversizedBody verifies that Open wraps the response body
-// in an io.LimitReader so a server that streams more than MaxBytes causes an
-// error rather than exhausting disk/memory.
-func TestHttp_Open_RejectsOversizedBody(t *testing.T) {
-	const cap int64 = 1024 // 1 KiB test cap
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Stream cap+1 bytes so the limiter fires.
-		payload := strings.Repeat("x", int(cap)+1)
-		fmt.Fprint(w, payload)
-	}))
-	defer srv.Close()
-
-	// AllowInternalTargets=true because the test server binds to loopback.
-	h := getter.NewHttpWithOptions(getter.HttpOptions{
-		AllowInternalTargets: true,
-		MaxBytes:             cap,
-	})
-	u, _ := url.Parse(srv.URL + "/big")
-	// The size cap must be enforced either at Open() (via Content-Length header)
-	// or at read time (via LimitReader).  Both are acceptable.
-	rc, openErr := h.Open(context.Background(), u)
-	if openErr != nil {
-		// Content-Length header triggered the cap early — that is correct.
-		return
-	}
-	defer rc.Close()
-
-	_, readErr := io.ReadAll(rc)
-	if readErr == nil {
-		t.Fatal("expected an error from Open() or ReadAll() for oversized body, got neither")
-	}
-}
 
 // TestHttp_Open_Timeout verifies that Open uses a client with a timeout so
 // Slowloris-style servers do not hang indefinitely.

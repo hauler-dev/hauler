@@ -32,17 +32,12 @@ type HttpOptions struct {
 
 	// Timeout overrides the default HTTP client timeout.
 	Timeout time.Duration
-
-	// MaxBytes overrides the default per-response download cap.  Zero means
-	// use consts.MaxDownloadBytes.
-	MaxBytes int64
 }
 
 // Http is the Getter for http/https URLs.
 type Http struct {
-	opts     HttpOptions
-	client   *http.Client
-	maxBytes int64
+	opts   HttpOptions
+	client *http.Client
 }
 
 func NewHttp() *Http {
@@ -59,12 +54,7 @@ func NewHttpWithOptions(opts HttpOptions) *Http {
 		timeout = opts.Timeout
 	}
 
-	maxBytes := opts.MaxBytes
-	if maxBytes <= 0 {
-		maxBytes = consts.MaxDownloadBytes
-	}
-
-	h := &Http{opts: opts, maxBytes: maxBytes}
+	h := &Http{opts: opts}
 
 	baseDialer := &net.Dialer{
 		Timeout:   dialTimeout,
@@ -230,21 +220,7 @@ func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("unexpected status fetching %s: %s", u.String(), resp.Status)
 	}
 
-	// Validate Content-Length header if the server provided one.
-	if resp.ContentLength > h.maxBytes {
-		resp.Body.Close()
-		return nil, fmt.Errorf("remote file at %s exceeds maximum allowed size (%d bytes)", u.String(), h.maxBytes)
-	}
-
-	// Wrap the body so a server that lies about Content-Length (or omits it)
-	// is still bounded.  Read maxBytes+1 so we can distinguish "exactly at cap"
-	// from "exceeded cap".
-	limited := &limitedReadCloser{
-		r:   io.LimitReader(resp.Body, h.maxBytes+1),
-		c:   resp.Body,
-		max: h.maxBytes,
-	}
-	return limited, nil
+	return resp.Body, nil
 }
 
 func (h Http) Detect(u *url.URL) bool {
@@ -260,28 +236,6 @@ func (h *Http) Config(u *url.URL) artifacts.Config {
 		config{Reference: u.String()},
 	}
 	return artifacts.ToConfig(c, artifacts.WithConfigMediaType(consts.FileHttpConfigMediaType))
-}
-
-// limitedReadCloser wraps an io.LimitReader and returns an error when the cap
-// is hit rather than silently returning EOF.
-type limitedReadCloser struct {
-	r    io.Reader
-	c    io.Closer
-	max  int64
-	read int64
-}
-
-func (l *limitedReadCloser) Read(p []byte) (int, error) {
-	n, err := l.r.Read(p)
-	l.read += int64(n)
-	if l.read > l.max {
-		return n, fmt.Errorf("download exceeded maximum allowed size of %d bytes", l.max)
-	}
-	return n, err
-}
-
-func (l *limitedReadCloser) Close() error {
-	return l.c.Close()
 }
 
 type httpConfig struct {

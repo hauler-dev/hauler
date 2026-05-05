@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -82,12 +81,8 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		}
 		defer out.Close()
 
-		n, err := io.Copy(out, io.LimitReader(rc, consts.MaxDownloadBytes+1))
-		if err != nil {
+		if _, err = io.Copy(out, rc); err != nil {
 			return err
-		}
-		if n > consts.MaxDownloadBytes {
-			return fmt.Errorf("remote archive at %s exceeds maximum allowed size (%d bytes)", haulPath, consts.MaxDownloadBytes)
 		}
 	}
 
@@ -103,17 +98,9 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	}
 
 	// ensure the incoming index.json has the correct annotations.
-	indexFile, err := os.Open(tempDir + "/index.json")
+	data, err := os.ReadFile(tempDir + "/index.json")
 	if err != nil {
-		return (err)
-	}
-	data, err := io.ReadAll(io.LimitReader(indexFile, consts.MaxManifestBytes+1))
-	indexFile.Close()
-	if err != nil {
-		return (err)
-	}
-	if int64(len(data)) > consts.MaxManifestBytes {
-		return fmt.Errorf("index.json exceeds maximum allowed size (%d bytes)", consts.MaxManifestBytes)
+		return err
 	}
 
 	var idx ocispec.Index

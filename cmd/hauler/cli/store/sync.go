@@ -82,13 +82,10 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if err != nil {
 				return err
 			}
-			content, err := io.ReadAll(io.LimitReader(rc, consts.MaxManifestBytes+1))
+			content, err := io.ReadAll(rc)
 			rc.Close()
 			if err != nil {
 				return err
-			}
-			if int64(len(content)) > consts.MaxManifestBytes {
-				return fmt.Errorf("product manifest for [%s] exceeds maximum allowed size (%d bytes)", productName, consts.MaxManifestBytes)
 			}
 
 			// Ensure each manifest starts with a YAML document separator.
@@ -187,12 +184,8 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 				}
 				defer out.Close()
 
-				n, err := io.Copy(out, io.LimitReader(rc, consts.MaxDownloadBytes+1))
-				if err != nil {
+				if _, err = io.Copy(out, rc); err != nil {
 					return err
-				}
-				if n > consts.MaxDownloadBytes {
-					return fmt.Errorf("remote manifest at %s exceeds maximum allowed size (%d bytes)", haulPath, consts.MaxDownloadBytes)
 				}
 			}
 
@@ -243,12 +236,8 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 				}
 				defer out.Close()
 
-				n, err := io.Copy(out, io.LimitReader(rc, consts.MaxDownloadBytes+1))
-				if err != nil {
+				if _, err = io.Copy(out, rc); err != nil {
 					return err
-				}
-				if n > consts.MaxDownloadBytes {
-					return fmt.Errorf("remote image.txt at %s exceeds maximum allowed size (%d bytes)", haulPath, consts.MaxDownloadBytes)
 				}
 			}
 

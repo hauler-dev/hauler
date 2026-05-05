@@ -111,4 +111,9 @@ const (
 	DefaultRetries            = 3
 	RetriesInterval           = 5
 	CustomTimeFormat          = "2006-01-02 15:04:05"
+
+	// HTTPClientTimeout is the default timeout for outbound HTTP requests in
+	// the HTTP getter.  Set to 30 minutes to handle large archive downloads
+	// without hanging indefinitely.
+	HTTPClientTimeout = 30 * 60 // seconds — resolved to time.Duration at use site
 )

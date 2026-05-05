@@ -12,13 +12,6 @@ import (
 	"hauler.dev/go/hauler/pkg/log"
 )
 
-// compressionZstd and archivalTar are package-level vars so tests can reference
-// them without importing mholt/archives directly.
-var (
-	compressionZstd = archives.Zstd{}
-	archivalTar     = archives.Tar{}
-)
-
 // maps to handle compression types
 var CompressionMap = map[string]archives.Compression{
 	"gz":  archives.Gz{},
