@@ -24,4 +24,21 @@ type Chart struct {
 	AddImages       bool `json:"add-images,omitempty"`
 	AddDependencies bool `json:"add-dependencies,omitempty"`
 	ExcludeExtras   bool `json:"exclude-extras,omitempty"`
+
+	// Verification
+	Verify  bool   `json:"verify,omitempty"`
+	Keyring string `json:"keyring,omitempty"`
+
+	// Auth (HTTP repos only — for OCI registries use `hauler login`)
+	// Credentials are referenced by env-var name; raw values must NOT appear in manifests.
+	UsernameEnv        string `json:"usernameEnv,omitempty"`
+	PasswordEnv        string `json:"passwordEnv,omitempty"`
+	PassCredentialsAll bool   `json:"passCredentialsAll,omitempty"`
+
+	// TLS
+	CertFile              string `json:"certFile,omitempty"`
+	KeyFile               string `json:"keyFile,omitempty"`
+	CaFile                string `json:"caFile,omitempty"`
+	InsecureSkipTLSverify bool   `json:"insecureSkipTLSverify,omitempty"`
+	PlainHTTP             bool   `json:"plainHTTP,omitempty"`
 }

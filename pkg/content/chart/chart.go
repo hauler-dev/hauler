@@ -48,7 +48,21 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	}
 
 	client := action.NewInstall(actionConfig)
+
+	// Propagate auth, TLS, and verification options from the caller.
+	// RepoURL is intentionally NOT copied here — it is set conditionally below
+	// based on URL scheme (OCI vs HTTP vs bare).
 	client.ChartPathOptions.Version = opts.Version
+	client.ChartPathOptions.Verify = opts.Verify
+	client.ChartPathOptions.Keyring = opts.Keyring
+	client.ChartPathOptions.Username = opts.Username
+	client.ChartPathOptions.Password = opts.Password
+	client.ChartPathOptions.PassCredentialsAll = opts.PassCredentialsAll
+	client.ChartPathOptions.CertFile = opts.CertFile
+	client.ChartPathOptions.KeyFile = opts.KeyFile
+	client.ChartPathOptions.CaFile = opts.CaFile
+	client.ChartPathOptions.InsecureSkipTLSverify = opts.InsecureSkipTLSverify
+	client.ChartPathOptions.PlainHTTP = opts.PlainHTTP
 
 	registryClient, err := newRegistryClient(client.CertFile, client.KeyFile, client.CaFile,
 		client.InsecureSkipTLSverify, client.PlainHTTP)
