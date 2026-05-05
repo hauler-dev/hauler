@@ -3,6 +3,7 @@ package chart_test
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -103,5 +104,21 @@ func TestNewChart(t *testing.T) {
 				return
 			}
 		})
+	}
+}
+
+func TestNewChart_VerifyOnUnsignedChartFails(t *testing.T) {
+	_, err := chart.NewChart(
+		"rancher-cluster-templates-0.5.2.tgz",
+		&action.ChartPathOptions{
+			RepoURL: "../../../testdata",
+			Verify:  true,
+		},
+	)
+	if err == nil {
+		t.Fatalf("expected verify failure on unsigned chart, got nil error")
+	}
+	if !strings.Contains(err.Error(), "provenance") {
+		t.Fatalf("expected provenance error, got: %v", err)
 	}
 }

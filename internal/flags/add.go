@@ -66,6 +66,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.RepoURL, "repo", "", "Location of the chart (https:// | http:// | oci://)")
 	f.StringVar(&o.ChartOpts.Version, "version", "", "(Optional) Specify the version of the chart (v1.0.0 | 2.0.0 | ^2.0.0)")
 	f.BoolVar(&o.ChartOpts.Verify, "verify", false, "(Optional) Verify the chart before fetching it")
+	f.StringVar(&o.ChartOpts.Keyring, "keyring", "", "(Optional) Location of public keyring used by --verify (default: $HOME/.gnupg/pubring.gpg)")
 	f.StringVar(&o.ChartOpts.Username, "username", "", "(Optional) Username to use for authentication")
 	f.StringVar(&o.ChartOpts.Password, "password", "", "(Optional) Password to use for authentication")
 	f.StringVar(&o.ChartOpts.CertFile, "cert-file", "", "(Optional) Location of the TLS Certificate to use for client authentication")
