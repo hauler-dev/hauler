@@ -6,7 +6,7 @@ replace github.com/distribution/distribution/v3 => github.com/distribution/distr
 
 require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
-	github.com/containerd/containerd v1.7.30
+	github.com/containerd/containerd v1.7.31
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/distribution/v3 v3.0.0
 	github.com/google/go-containerregistry v0.21.5
