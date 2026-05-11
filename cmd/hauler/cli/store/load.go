@@ -125,6 +125,28 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 			if idx.Manifests[i].Annotations[consts.ImageRefKey] != ref {
 				idx.Manifests[i].Annotations[consts.ImageRefKey] = ref
 			}
+		} else {
+			// Synthesize io.containerd.image.name from fallback annotation keys.
+			// If the image was created by buildah, skopeo, or any non-hauler tool,
+			// index.json entries may lack io.containerd.image.name entirely.
+			var synthesizedRef string
+			if refName, ok := idx.Manifests[i].Annotations["org.opencontainers.image.ref.name"]; ok && refName != "" {
+				// Strip registry prefix like existing code does for ImageRefKey
+				if slash := strings.Index(refName, "/"); slash != -1 {
+					refName = refName[slash+1:]
+				}
+				synthesizedRef = refName
+			} else if refName, ok := idx.Manifests[i].Annotations["io.containerd.image.ref.name"]; ok && refName != "" {
+				synthesizedRef = refName
+			}
+			if synthesizedRef != "" {
+				idx.Manifests[i].Annotations[consts.ContainerdImageNameKey] = synthesizedRef
+				// For org.opencontainers.image.ref.name fallback, also set ImageRefKey
+				// to match the existing behavior when ContainerdImageNameKey is present
+				if refName, ok := idx.Manifests[i].Annotations["org.opencontainers.image.ref.name"]; ok && refName != "" {
+					idx.Manifests[i].Annotations[consts.ImageRefKey] = synthesizedRef
+				}
+			}
 		}
 	}
 
