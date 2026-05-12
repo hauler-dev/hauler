@@ -134,7 +134,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		// rename image name in store
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
-			l.Errorf("unable to parse rewrite name: %w", err)
+			l.Errorf("unable to parse rewrite name: %v", err)
 		}
 		rewriteReference(ctx, s, r, newRef)
 	}

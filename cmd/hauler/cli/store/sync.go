@@ -261,7 +261,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						if i.Tlog {
 							tlog = i.Tlog
 						}
-						l.Debugf("transparency log for verification [%b]", tlog)
+						l.Debugf("transparency log for verification [%t]", tlog)
 
 						if err := cosign.VerifySignature(ctx, s, key, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
@@ -321,7 +321,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						if i.Tlog {
 							tlog = i.Tlog
 						}
-						l.Debugf("transparency log for verification [%b]", tlog)
+						l.Debugf("transparency log for verification [%t]", tlog)
 
 						if err := cosign.VerifyKeylessSignature(ctx, s, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
@@ -402,7 +402,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						if i.Tlog {
 							tlog = i.Tlog
 						}
-						l.Debugf("transparency log for verification [%b]", tlog)
+						l.Debugf("transparency log for verification [%t]", tlog)
 
 						if err := cosign.VerifySignature(ctx, s, key, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
@@ -462,7 +462,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						if i.Tlog {
 							tlog = i.Tlog
 						}
-						l.Debugf("transparency log for verification [%b]", tlog)
+						l.Debugf("transparency log for verification [%t]", tlog)
 
 						if err := cosign.VerifyKeylessSignature(ctx, s, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("keyless signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
