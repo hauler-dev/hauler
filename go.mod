@@ -29,7 +29,7 @@ require (
 	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 	helm.sh/helm/v3 v3.20.2
-	k8s.io/apimachinery v0.35.1
+	k8s.io/apimachinery v0.36.1
 	k8s.io/client-go v0.35.1
 	oras.land/oras-go v1.2.7
 )
