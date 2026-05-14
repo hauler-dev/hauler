@@ -12,7 +12,7 @@ import (
 	"github.com/olekukonko/tablewriter/tw"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/reference"
 	"hauler.dev/go/hauler/pkg/store"

@@ -18,7 +18,7 @@ import (
 	"github.com/distribution/distribution/v3/version"
 	"gopkg.in/yaml.v3"
 
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	"hauler.dev/go/hauler/internal/server"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"

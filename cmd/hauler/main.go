@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"hauler.dev/go/hauler/cmd/hauler/cli"
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	"hauler.dev/go/hauler/pkg/log"
 )
 

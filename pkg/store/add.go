@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v3/pkg/action"
 	helmchart "helm.sh/helm/v3/pkg/chart"
@@ -144,6 +145,25 @@ func AddImageWithOpts(ctx context.Context, s *Layout, ref string, opts ImageAddO
 
 	l.Infof("successfully added image [%s]", r.Name())
 	return nil
+}
+
+// WriteImage adds img to the store's OCI layout under annotationRef with
+// the given kind annotation. If containerdName is empty, it defaults to
+// annotationRef.Name() (matching the behavior of remote-pull and
+// docker-daemon-pull paths).
+//
+// This is the public counterpart of the internal writeImage. Use it when
+// an image has already been materialized as a v1.Image — e.g. loaded
+// from a docker-save tarball via go-containerregistry's tarball package,
+// or produced by any other in-memory v1.Image source — and the caller
+// wants to add it to the store without re-fetching from a registry.
+//
+// The resulting OCI index entry is byte-identically structured to entries
+// produced by AddImage / AddLocalImage (same KindAnnotationName,
+// AnnotationRefName, and ContainerdImageNameKey annotations), so consumers
+// downstream of the store cannot distinguish how the image was sourced.
+func (l *Layout) WriteImage(annotationRef name.Reference, img gv1.Image, kind, containerdName string) error {
+	return l.writeImage(annotationRef, img, kind, containerdName)
 }
 
 // RewriteReference updates index annotations to replace an old image

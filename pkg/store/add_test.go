@@ -822,3 +822,104 @@ func TestAddChartWithOpts_AddImages_IncludeExtras(t *testing.T) {
 	assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationAtts)
 	assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationSboms)
 }
+
+// --------------------------------------------------------------------------
+// WriteImage tests
+// --------------------------------------------------------------------------
+
+// TestWriteImage_DefaultContainerdName verifies that passing an empty
+// containerdName falls back to annotationRef.Name(), matching the
+// behavior of writeImage's existing internal contract.
+func TestWriteImage_DefaultContainerdName(t *testing.T) {
+	img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("random.Image: %v", err)
+	}
+	ref, err := name.NewTag("example.com/test/img:v1")
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+
+	s := newTestStore(t)
+	if err := s.WriteImage(ref, img, consts.KindAnnotationImage, ""); err != nil {
+		t.Fatalf("WriteImage: %v", err)
+	}
+
+	// Containerd name should default to ref.Name() ("example.com/test/img:v1").
+	assertAnnotationsInStore(t, s, "test/img:v1", "example.com/test/img:v1")
+}
+
+// TestWriteImage_ExplicitContainerdName verifies that a caller-supplied
+// containerdName overrides the default.
+func TestWriteImage_ExplicitContainerdName(t *testing.T) {
+	img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("random.Image: %v", err)
+	}
+	ref, err := name.NewTag("example.com/test/img:v1")
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+
+	s := newTestStore(t)
+	if err := s.WriteImage(ref, img, consts.KindAnnotationImage, "mirror.example.com/test/img:v1"); err != nil {
+		t.Fatalf("WriteImage: %v", err)
+	}
+
+	assertAnnotationsInStore(t, s, "test/img:v1", "mirror.example.com/test/img:v1")
+}
+
+// TestWriteImage_PreservesFileEntries verifies that calling WriteImage
+// after AddFile leaves file entries' annotations untouched — guards
+// against the historical aliasing bug where docker-save-tar bridging
+// code in downstream callers polluted file entries with image-name
+// annotations.
+func TestWriteImage_PreservesFileEntries(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	// Seed a file entry.
+	tmp, err := os.CreateTemp(t.TempDir(), "data-*.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp.WriteString("payload") //nolint:errcheck
+	tmp.Close()
+	if err := AddFile(ctx, s, v1.File{Path: tmp.Name()}); err != nil {
+		t.Fatalf("AddFile: %v", err)
+	}
+
+	// Write an image. File entry's annotations must be unaffected.
+	img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("random.Image: %v", err)
+	}
+	ref, err := name.NewTag("example.com/test/img:v1")
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+	if err := s.WriteImage(ref, img, consts.KindAnnotationImage, ""); err != nil {
+		t.Fatalf("WriteImage: %v", err)
+	}
+
+	// File entry must have ref starting with "hauler/" and NO containerd image name.
+	fileBase := filepath.Base(tmp.Name())
+	var fileFound bool
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		refName := desc.Annotations[ocispec.AnnotationRefName]
+		if !strings.HasPrefix(refName, "hauler/") || !strings.Contains(refName, fileBase) {
+			return nil
+		}
+		fileFound = true
+		if v, ok := desc.Annotations[consts.ContainerdImageNameKey]; ok {
+			t.Errorf("file entry polluted: %s=%q (file should have no containerd image name)",
+				consts.ContainerdImageNameKey, v)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	if !fileFound {
+		t.Fatal("seeded file entry missing from store after WriteImage")
+	}
+}
