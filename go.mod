@@ -10,7 +10,7 @@ replace github.com/docker/cli => github.com/docker/cli v28.5.1+incompatible // n
 
 require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
-	github.com/containerd/containerd v1.7.31
+	github.com/containerd/containerd v1.7.32
 	github.com/distribution/distribution/v3 v3.0.0
 	github.com/google/go-containerregistry v0.21.6
 	github.com/gorilla/handlers v1.5.2
