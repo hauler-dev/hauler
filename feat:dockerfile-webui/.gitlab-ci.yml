@@ -1,0 +1,125 @@
+stages:
+  - test
+  - build
+  - security
+  - deploy
+
+variables:
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  DOCKER_LATEST: $CI_REGISTRY_IMAGE:latest
+
+# Test stage
+test:unit:
+  stage: test
+  image: golang:1.21-alpine
+  script:
+    - cd backend
+    - go test -v ./...
+  only:
+    - merge_requests
+    - main
+
+test:integration:
+  stage: test
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - apk add --no-cache bash
+    - chmod +x tests/comprehensive_test_suite.sh
+    - ./tests/comprehensive_test_suite.sh
+  artifacts:
+    reports:
+      junit: tests/reports/*.xml
+    paths:
+      - tests/reports/
+    expire_in: 1 week
+  only:
+    - merge_requests
+    - main
+
+# Build stage
+build:docker:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build -t $DOCKER_IMAGE .
+    - docker push $DOCKER_IMAGE
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        docker tag $DOCKER_IMAGE $DOCKER_LATEST
+        docker push $DOCKER_LATEST
+      fi
+  only:
+    - main
+    - tags
+
+# Security stage
+security:scan:
+  stage: security
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - apk add --no-cache bash
+    - chmod +x tests/security_scan.sh
+    - ./tests/security_scan.sh
+  artifacts:
+    reports:
+      sast: tests/reports/security-reports/*.json
+    paths:
+      - tests/reports/security-reports/
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - main
+    - merge_requests
+
+# Deploy stage
+deploy:staging:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$STAGING_HOST "
+        cd /opt/hauler-ui &&
+        docker compose pull &&
+        docker compose up -d
+      "
+  environment:
+    name: staging
+    url: http://staging.example.com
+  only:
+    - main
+  when: manual
+
+deploy:production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$PRODUCTION_HOST "
+        cd /opt/hauler-ui &&
+        docker compose pull &&
+        docker compose up -d
+      "
+  environment:
+    name: production
+    url: http://production.example.com
+  only:
+    - tags
+  when: manual
