@@ -10,36 +10,27 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"helm.sh/helm/v3/pkg/action"
 	helmchart "helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/engine"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"hauler.dev/go/hauler/pkg/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts/file"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content/chart"
-	"hauler.dev/go/hauler/pkg/cosign"
 	"hauler.dev/go/hauler/pkg/getter"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/reference"
-	"hauler.dev/go/hauler/pkg/retry"
-	"hauler.dev/go/hauler/pkg/store"
+
+	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 )
 
-func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
-	cfg := v1.File{
-		Path: reference,
-	}
-	if len(o.Name) > 0 {
-		cfg.Name = o.Name
-	}
-	return storeFile(ctx, s, cfg)
-}
-
-func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
+// AddFile adds a file artifact to the store. The file can be a local
+// path or a URL. An OCI tag is generated from the file name.
+func AddFile(ctx context.Context, s *Layout, fi v1.File) error {
 	l := log.FromContext(ctx)
 
 	copts := getter.ClientOptions{
@@ -63,143 +54,78 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 	return nil
 }
 
-func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
-	l := log.FromContext(ctx)
+// ImageAddOptions contains options for adding a container image to the store
+// with verification, platform filtering, and reference rewriting.
+type ImageAddOptions struct {
+	// Platform is the OCI platform to fetch (e.g. "linux/amd64").
+	// Empty means all platforms.
+	Platform string
 
-	cfg := v1.Image{
-		Name:    reference,
-		Rewrite: o.Rewrite,
-		Local:   o.Local,
-	}
+	// ExcludeExtras skips cosign signatures, attestations, SBOMs,
+	// and OCI referrers when pulling the image.
+	ExcludeExtras bool
 
-	if o.Local {
-		if o.Key != "" || o.CertIdentity != "" || o.CertIdentityRegexp != "" {
-			return fmt.Errorf("--local cannot be combined with cosign verification flags (--key, --certificate-identity, --certificate-identity-regexp): signatures are not available from the Docker daemon")
-		}
-		if o.Platform != "" {
-			l.Warnf("--platform is ignored when --local is set: the Docker daemon stores only the host platform image")
-		}
-		return storeLocalImage(ctx, s, cfg, rso, ro, o.Rewrite)
-	}
+	// IgnoreErrors causes the operation to log a warning and continue
+	// on failure instead of returning an error. Also respects the
+	// HAULER_IGNORE_ERRORS environment variable.
+	IgnoreErrors bool
 
-	// Check if the user provided a key.
-	if o.Key != "" {
-		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, o.Key, o.Tlog, cfg.Name, rso, ro)
-		if err != nil {
-			return err
-		}
-		l.Infof("signature verified for image [%s]", cfg.Name)
-	} else if o.CertIdentityRegexp != "" || o.CertIdentity != "" {
-		// verify signature using keyless details.
-		// Keyless (Fulcio) certificates expire after ~10 minutes, so the transparency
-		// log is always required to prove the cert was valid at signing time — ignore
-		// --use-tlog-verify for this path and always check tlog.
-		l.Infof("verifying keyless signature for [%s]", cfg.Name)
-		err := cosign.VerifyKeylessSignature(ctx, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, cfg.Name, rso, ro)
-		if err != nil {
-			return err
-		}
-		l.Infof("keyless signature verified for image [%s]", cfg.Name)
-	}
+	// Rewrite is a new reference to replace the stored image with.
+	// If empty, no rewrite is performed.
+	Rewrite string
 
-	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
+	// RawRewrite is the original user-supplied rewrite string, preserved
+	// for registry-preservation logic. Required when Rewrite is non-empty.
+	RawRewrite string
 }
 
-func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+// AddImageWithOpts adds a container image to the store with optional
+// platform filtering, extra artifact exclusion, error tolerance, and
+// reference rewriting. It wraps Layout.AddImage() with verification-
+// aware error handling.
+//
+// Retry logic is not included in this function. Callers who need retries
+// should wrap the call themselves.
+func AddImageWithOpts(ctx context.Context, s *Layout, ref string, opts ImageAddOptions) error {
 	l := log.FromContext(ctx)
 
-	if !ro.IgnoreErrors {
+	ignoreErrors := opts.IgnoreErrors
+	if !ignoreErrors {
 		envVar := os.Getenv(consts.HaulerIgnoreErrors)
 		if envVar == "true" {
-			ro.IgnoreErrors = true
+			ignoreErrors = true
 		}
 	}
 
-	l.Infof("adding image [%s] from local Docker daemon to the store", i.Name)
+	l.Infof("adding image [%s] to the store", ref)
 
-	r, err := name.ParseReference(i.Name)
+	r, err := name.ParseReference(ref)
 	if err != nil {
-		if ro.IgnoreErrors {
-			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
+		if ignoreErrors {
+			l.Warnf("unable to parse image [%s]: %v... skipping...", ref, err)
 			return nil
 		}
-		l.Errorf("unable to parse image [%s]: %v", i.Name, err)
+		l.Errorf("unable to parse image [%s]: %v", ref, err)
 		return err
-	}
-
-	if err := s.AddLocalImage(ctx, r.Name()); err != nil {
-		if ro.IgnoreErrors {
-			l.Warnf("unable to add image [%s] from Docker daemon to store: %v... skipping...", r.Name(), err)
-			return nil
-		}
-		l.Errorf("unable to add image [%s] from Docker daemon to store: %v", r.Name(), err)
-		return err
-	}
-
-	if rewrite != "" {
-		rawRewrite := rewrite
-		rewrite = strings.TrimPrefix(rewrite, "/")
-		if !strings.Contains(rewrite, ":") {
-			if tag, ok := r.(name.Tag); ok {
-				rewrite = rewrite + ":" + tag.TagStr()
-			} else {
-				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
-			}
-		}
-		newRef, err := name.ParseReference(rewrite)
-		if err != nil {
-			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
-		}
-		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
-			return err
-		}
-	}
-
-	l.Infof("successfully added image [%s] from local Docker daemon", r.Name())
-	return nil
-}
-
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
-	l := log.FromContext(ctx)
-
-	if !ro.IgnoreErrors {
-		envVar := os.Getenv(consts.HaulerIgnoreErrors)
-		if envVar == "true" {
-			ro.IgnoreErrors = true
-		}
-	}
-
-	l.Infof("adding image [%s] to the store", i.Name)
-
-	r, err := name.ParseReference(i.Name)
-	if err != nil {
-		if ro.IgnoreErrors {
-			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
-			return nil
-		} else {
-			l.Errorf("unable to parse image [%s]: %v", i.Name, err)
-			return err
-		}
 	}
 
 	// fetch image along with any associated signatures and attestations
-	err = retry.Operation(ctx, rso, ro, func() error {
-		return s.AddImage(ctx, r.Name(), platform, excludeExtras)
-	})
+	err = s.AddImage(ctx, r.Name(), opts.Platform, opts.ExcludeExtras)
 	if err != nil {
-		if ro.IgnoreErrors {
+		if ignoreErrors {
 			l.Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
 			return nil
-		} else {
-			l.Errorf("unable to add image [%s] to store: %v", r.Name(), err)
-			return err
 		}
+		l.Errorf("unable to add image [%s] to store: %v", r.Name(), err)
+		return err
 	}
 
-	if rewrite != "" {
-		rawRewrite := rewrite
-		rewrite = strings.TrimPrefix(rewrite, "/")
+	if opts.Rewrite != "" {
+		rawRewrite := opts.RawRewrite
+		if rawRewrite == "" {
+			rawRewrite = opts.Rewrite
+		}
+		rewrite := strings.TrimPrefix(opts.Rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
 			if tag, ok := r.(name.Tag); ok {
 				rewrite = rewrite + ":" + tag.TagStr()
@@ -212,7 +138,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
+		if err := RewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
 			return err
 		}
 	}
@@ -221,7 +147,31 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	return nil
 }
 
-func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
+// WriteImage adds img to the store's OCI layout under annotationRef with
+// the given kind annotation. If containerdName is empty, it defaults to
+// annotationRef.Name() (matching the behavior of remote-pull and
+// docker-daemon-pull paths).
+//
+// This is the public counterpart of the internal writeImage. Use it when
+// an image has already been materialized as a v1.Image — e.g. loaded
+// from a docker-save tarball via go-containerregistry's tarball package,
+// or produced by any other in-memory v1.Image source — and the caller
+// wants to add it to the store without re-fetching from a registry.
+//
+// The resulting OCI index entry is byte-identically structured to entries
+// produced by AddImage / AddLocalImage (same KindAnnotationName,
+// AnnotationRefName, and ContainerdImageNameKey annotations), so consumers
+// downstream of the store cannot distinguish how the image was sourced.
+func (l *Layout) WriteImage(annotationRef name.Reference, img gv1.Image, kind, containerdName string) error {
+	return l.writeImage(annotationRef, img, kind, containerdName)
+}
+
+// RewriteReference updates index annotations to replace an old image
+// reference with a new one in the store. The rawRewrite parameter is
+// the original user-supplied rewrite string, used to preserve the
+// original registry when the user omitted it (e.g., "library/nginx"
+// vs "docker.io/library/nginx").
+func RewriteReference(ctx context.Context, s *Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
 	l := log.FromContext(ctx)
 
 	if err := s.OCI.LoadIndex(); err != nil {
@@ -279,37 +229,71 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	}
 
 	return s.OCI.SaveIndex()
-
 }
 
-func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
-	cfg := v1.Chart{
-		Name:    chartName,
-		RepoURL: o.ChartOpts.RepoURL,
-		Version: o.ChartOpts.Version,
-	}
+// --------------------------------------------------------------------------
+// Chart exports
+// --------------------------------------------------------------------------
 
-	rewrite := ""
-	if o.Rewrite != "" {
-		rewrite = o.Rewrite
-	}
-	return storeChart(ctx, s, cfg, o, rso, ro, rewrite)
+// ChartAddOptions contains options for adding a Helm chart to the store
+// with optional image discovery and dependency resolution.
+type ChartAddOptions struct {
+	// RepoURL is the chart repository URL (https://, http://, or oci://).
+	RepoURL string
+
+	// Version is the chart version to fetch. Empty means latest.
+	Version string
+
+	// AddImages extracts container image references from the rendered
+	// Helm templates, annotations, and images lock files, then adds
+	// them to the store.
+	AddImages bool
+
+	// AddDependencies recursively fetches and adds dependent charts.
+	AddDependencies bool
+
+	// ExcludeExtras skips cosign signatures, attestations, SBOMs,
+	// and OCI referrers when pulling images discovered via AddImages.
+	ExcludeExtras bool
+
+	// Registry is the default registry to use for images that do not
+	// already define one. Applied via ApplyDefaultRegistry().
+	Registry string
+
+	// Platform is the OCI platform to use when pulling images discovered
+	// via AddImages.
+	Platform string
+
+	// HelmValues is a path to a values file for Helm template rendering
+	// when AddImages is true.
+	HelmValues string
+
+	// KubeVersion overrides the Kubernetes version for Helm template rendering.
+	// Defaults to v1.34.1 if empty.
+	KubeVersion string
+
+	// Rewrite is a new reference to replace the stored chart with.
+	// If empty, no rewrite is performed.
+	Rewrite string
+
+	// IgnoreErrors causes the operation to log a warning and continue
+	// on failure instead of returning an error. Also respects the
+	// HAULER_IGNORE_ERRORS environment variable.
+	IgnoreErrors bool
 }
 
-// unexported type for the context key to avoid collisions
-type isSubchartKey struct{}
+// chartImageRegex parses image references starting with "image:" and with optional spaces or optional quotes
+var chartImageRegex = regexp.MustCompile(`(?m)^[ \t]*image:[ \t]*['"]?([^\s'"#]+)`)
 
-// imageregex parses image references starting with "image:" and with optional spaces or optional quotes
-var imageRegex = regexp.MustCompile(`(?m)^[ \t]*image:[ \t]*['"]?([^\s'"#]+)`)
-
-// helmAnnotatedImage parses images references from helm chart annotations
-type helmAnnotatedImage struct {
+// chartHelmAnnotatedImage parses images references from helm chart annotations
+type chartHelmAnnotatedImage struct {
 	Image string `yaml:"image"`
 	Name  string `yaml:"name,omitempty"`
 }
 
-// imagesFromChartAnnotations parses image references from helm chart annotations
-func imagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
+// ImagesFromChartAnnotations parses image references from Helm chart
+// metadata annotations (helm.sh/images or images keys).
+func ImagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
 	if c == nil || c.Metadata == nil || c.Metadata.Annotations == nil {
 		return nil, nil
 	}
@@ -327,7 +311,7 @@ func imagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
 			continue
 		}
 
-		var items []helmAnnotatedImage
+		var items []chartHelmAnnotatedImage
 		if err := yaml.Unmarshal([]byte(raw), &items); err != nil {
 			return nil, fmt.Errorf("failed to parse helm chart annotation %q: %w", k, err)
 		}
@@ -348,8 +332,9 @@ func imagesFromChartAnnotations(c *helmchart.Chart) ([]string, error) {
 	return out, nil
 }
 
-// imagesFromImagesLock parses image references from images lock files in the chart directory
-func imagesFromImagesLock(chartDir string) ([]string, error) {
+// ImagesFromImagesLock parses image references from images lock files
+// in the chart directory (images.lock, images-lock.yaml, etc.).
+func ImagesFromImagesLock(chartDir string) ([]string, error) {
 	var out []string
 
 	for _, name := range []string{
@@ -364,7 +349,7 @@ func imagesFromImagesLock(chartDir string) ([]string, error) {
 			continue
 		}
 
-		matches := imageRegex.FindAllSubmatch(b, -1)
+		matches := chartImageRegex.FindAllSubmatch(b, -1)
 		for _, m := range matches {
 			if len(m) > 1 {
 				out = append(out, string(m[1]))
@@ -384,7 +369,9 @@ func imagesFromImagesLock(chartDir string) ([]string, error) {
 	return out, nil
 }
 
-func applyDefaultRegistry(img string, defaultRegistry string) (string, error) {
+// ApplyDefaultRegistry prepends a default registry to an image
+// reference that does not already have one.
+func ApplyDefaultRegistry(img, defaultRegistry string) (string, error) {
 	img = strings.TrimSpace(strings.TrimPrefix(img, "/"))
 	if img == "" || defaultRegistry == "" {
 		return img, nil
@@ -407,27 +394,34 @@ func applyDefaultRegistry(img string, defaultRegistry string) (string, error) {
 	return newRef.Name(), nil
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+// AddChartWithOpts adds a Helm chart to the store. If opts.AddImages
+// is true, container images referenced in the chart's templates,
+// annotations, and lock files are also added. If opts.AddDependencies
+// is true, dependent charts are recursively fetched and added.
+func AddChartWithOpts(ctx context.Context, s *Layout, chartRef string, opts ChartAddOptions) error {
 	l := log.FromContext(ctx)
 
-	// subchart logging prefix
-	isSubchart := ctx.Value(isSubchartKey{}) == true
-	prefix := ""
-	if isSubchart {
-		prefix = "  ↳ "
+	ignoreErrors := opts.IgnoreErrors
+	if !ignoreErrors {
+		envVar := os.Getenv(consts.HaulerIgnoreErrors)
+		if envVar == "true" {
+			ignoreErrors = true
+		}
 	}
 
 	// normalize chart name for logging
-	displayName := cfg.Name
-	if strings.Contains(cfg.Name, string(os.PathSeparator)) {
-		displayName = filepath.Base(cfg.Name)
+	displayName := chartRef
+	if strings.Contains(chartRef, string(os.PathSeparator)) {
+		displayName = filepath.Base(chartRef)
 	}
-	l.Infof("%sadding chart [%s] to the store", prefix, displayName)
+	l.Infof("adding chart [%s] to the store", displayName)
 
-	opts.ChartOpts.RepoURL = cfg.RepoURL
-	opts.ChartOpts.Version = cfg.Version
+	chartOpts := &action.ChartPathOptions{
+		RepoURL: opts.RepoURL,
+		Version: opts.Version,
+	}
 
-	chrt, err := chart.NewChart(cfg.Name, opts.ChartOpts)
+	chrt, err := chart.NewChart(chartRef, chartOpts)
 	if err != nil {
 		return err
 	}
@@ -449,12 +443,9 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		return err
 	}
 
-	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)
+	l.Infof("successfully added chart [%s:%s]", c.Name(), c.Metadata.Version)
 
-	tempOverride := rso.TempOverride
-	if tempOverride == "" {
-		tempOverride = os.Getenv(consts.HaulerTempDir)
-	}
+	tempOverride := os.Getenv(consts.HaulerTempDir)
 	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
@@ -463,7 +454,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 	chartPath := chrt.Path()
 	if strings.HasSuffix(chartPath, ".tgz") {
-		l.Debugf("%sextracting chart archive [%s]", prefix, filepath.Base(chartPath))
+		l.Debugf("extracting chart archive [%s]", filepath.Base(chartPath))
 		if err := chartutil.ExpandFile(tempDir, chartPath); err != nil {
 			return fmt.Errorf("failed to extract chart: %w", err)
 		}
@@ -493,7 +484,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		if opts.KubeVersion != "" {
 			kubeVersion, err := chartutil.ParseKubeVersion(opts.KubeVersion)
 			if err != nil {
-				l.Warnf("%sinvalid kube-version [%s], using default kubernetes version", prefix, opts.KubeVersion)
+				l.Warnf("invalid kube-version [%s], using default kubernetes version", opts.KubeVersion)
 			} else {
 				caps.KubeVersion = *kubeVersion
 			}
@@ -527,12 +518,12 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		rendered, err := engine.Render(c, values)
 		if err != nil {
 			// charts may fail due to values so still try helm chart annotations and lock
-			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
+			l.Warnf("failed to render chart [%s]: %v", c.Name(), err)
 			rendered = map[string]string{}
 		}
 
 		for _, manifest := range rendered {
-			matches := imageRegex.FindAllStringSubmatch(manifest, -1)
+			matches := chartImageRegex.FindAllStringSubmatch(manifest, -1)
 			for _, match := range matches {
 				if len(match) > 1 {
 					templateImages = append(templateImages, match[1])
@@ -541,16 +532,16 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		// parse helm chart annotations for images
-		annotationImages, err = imagesFromChartAnnotations(c)
+		annotationImages, err = ImagesFromChartAnnotations(c)
 		if err != nil {
-			l.Warnf("%sfailed to parse helm chart annotation for [%s:%s]: %v", prefix, c.Name(), c.Metadata.Version, err)
+			l.Warnf("failed to parse helm chart annotation for [%s:%s]: %v", c.Name(), c.Metadata.Version, err)
 			annotationImages = nil
 		}
 
 		// parse images lock files for images
-		lockImages, err = imagesFromImagesLock(chartPath)
+		lockImages, err = ImagesFromImagesLock(chartPath)
 		if err != nil {
-			l.Warnf("%sfailed to parse images lock: %v", prefix, err)
+			l.Warnf("failed to parse images lock: %v", err)
 			lockImages = nil
 		}
 
@@ -563,33 +554,30 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		images := append(append(templateImages, annotationImages...), lockImages...)
 		images = normalizeUniq(images)
 
-		l.Debugf("%simage references identified for helm template: [%d] image(s)", prefix, len(templateImages))
-
-		l.Debugf("%simage references identified for helm chart annotations: [%d] image(s)", prefix, len(annotationImages))
-
-		l.Debugf("%simage references identified for helm image lock file: [%d] image(s)", prefix, len(lockImages))
-		l.Debugf("%ssuccessfully parsed and deduped image references: [%d] image(s)", prefix, len(images))
-
-		l.Debugf("%ssuccessfully parsed image references %v", prefix, images)
+		l.Debugf("image references identified for helm template: [%d] image(s)", len(templateImages))
+		l.Debugf("image references identified for helm chart annotations: [%d] image(s)", len(annotationImages))
+		l.Debugf("image references identified for helm image lock file: [%d] image(s)", len(lockImages))
+		l.Debugf("successfully parsed and deduped image references: [%d] image(s)", len(images))
+		l.Debugf("successfully parsed image references %v", images)
 
 		if len(images) > 0 {
-			l.Infof("%s  ↳ identified [%d] image(s) in [%s:%s]", prefix, len(images), c.Name(), c.Metadata.Version)
+			l.Infof("  ↳ identified [%d] image(s) in [%s:%s]", len(images), c.Name(), c.Metadata.Version)
 		}
 
 		for _, image := range images {
-			image, err := applyDefaultRegistry(image, opts.Registry)
+			image, err := ApplyDefaultRegistry(image, opts.Registry)
 			if err != nil {
-				if ro.IgnoreErrors {
-					l.Warnf("%s  ↳ unable to apply registry to image [%s]: %v... skipping...", prefix, image, err)
+				if ignoreErrors {
+					l.Warnf("  ↳ unable to apply registry to image [%s]: %v... skipping...", image, err)
 					continue
 				}
 				return fmt.Errorf("unable to apply registry to image [%s]: %w", image, err)
 			}
 
 			imgCfg := v1.Image{Name: image}
-			if err := storeImage(ctx, s, imgCfg, opts.Platform, opts.ExcludeExtras, rso, ro, ""); err != nil {
-				if ro.IgnoreErrors {
-					l.Warnf("%s  ↳ failed to store image [%s]: %v... skipping...", prefix, image, err)
+			if err := storeImageFromLayout(ctx, s, imgCfg, opts.Platform, opts.ExcludeExtras, ignoreErrors); err != nil {
+				if ignoreErrors {
+					l.Warnf("  ↳ failed to store image [%s]: %v... skipping...", image, err)
 					continue
 				}
 				return fmt.Errorf("failed to store image [%s]: %w", image, err)
@@ -606,37 +594,41 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 	// add-dependencies
 	if opts.AddDependencies && len(c.Metadata.Dependencies) > 0 {
 		for _, dep := range c.Metadata.Dependencies {
-			l.Infof("%sadding dependent chart [%s:%s]", prefix, dep.Name, dep.Version)
+			l.Infof("adding dependent chart [%s:%s]", dep.Name, dep.Version)
 
-			depOpts := *opts
-			depOpts.AddDependencies = true
-			depOpts.AddImages = true
-			subCtx := context.WithValue(ctx, isSubchartKey{}, true)
+			depCfg := ChartAddOptions{
+				RepoURL:         opts.RepoURL,
+				Version:         opts.Version,
+				AddImages:       true,
+				AddDependencies: true,
+				ExcludeExtras:   opts.ExcludeExtras,
+				Registry:        opts.Registry,
+				Platform:        opts.Platform,
+				HelmValues:      opts.HelmValues,
+				KubeVersion:     opts.KubeVersion,
+				IgnoreErrors:    opts.IgnoreErrors,
+			}
 
-			var depCfg v1.Chart
+			var depChartRef string
 			var err error
 
 			if strings.HasPrefix(dep.Repository, "file://") || dep.Repository == "" {
 				subchartPath := filepath.Join(chartPath, "charts", dep.Name)
-
-				depCfg = v1.Chart{Name: subchartPath, RepoURL: "", Version: ""}
-				depOpts.ChartOpts.RepoURL = ""
-				depOpts.ChartOpts.Version = ""
-
-				err = storeChart(subCtx, s, depCfg, &depOpts, rso, ro, "")
+				depCfg.RepoURL = ""
+				depCfg.Version = ""
+				depChartRef = subchartPath
 			} else {
-				depCfg = v1.Chart{Name: dep.Name, RepoURL: dep.Repository, Version: dep.Version}
-				depOpts.ChartOpts.RepoURL = dep.Repository
-				depOpts.ChartOpts.Version = dep.Version
-
-				err = storeChart(subCtx, s, depCfg, &depOpts, rso, ro, "")
+				depCfg.RepoURL = dep.Repository
+				depCfg.Version = dep.Version
+				depChartRef = dep.Name
 			}
 
+			err = AddChartWithOpts(ctx, s, depChartRef, depCfg)
 			if err != nil {
-				if ro.IgnoreErrors {
-					l.Warnf("%s  ↳ failed to add dependent chart [%s]: %v... skipping...", prefix, dep.Name, err)
+				if ignoreErrors {
+					l.Warnf("  ↳ failed to add dependent chart [%s]: %v... skipping...", dep.Name, err)
 				} else {
-					l.Errorf("%s  ↳ failed to add dependent chart [%s]: %v", prefix, dep.Name, err)
+					l.Errorf("  ↳ failed to add dependent chart [%s]: %v", dep.Name, err)
 					return err
 				}
 			}
@@ -644,8 +636,8 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 	}
 
 	// chart rewrite functionality
-	if rewrite != "" {
-		rewrite = strings.TrimPrefix(rewrite, "/")
+	if opts.Rewrite != "" {
+		rewrite := strings.TrimPrefix(opts.Rewrite, "/")
 		newRef, err := name.ParseReference(rewrite)
 		if err != nil {
 			// error... don't continue with a bad reference
@@ -703,5 +695,35 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 	}
 
+	return nil
+}
+
+// storeImageFromLayout adds an image to the store using Layout.AddImage,
+// with error handling based on ignoreErrors. This is an internal helper
+// used by AddChartWithOpts for discovered images.
+func storeImageFromLayout(ctx context.Context, s *Layout, i v1.Image, platform string, excludeExtras bool, ignoreErrors bool) error {
+	l := log.FromContext(ctx)
+
+	r, err := name.ParseReference(i.Name)
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
+			return nil
+		}
+		l.Errorf("unable to parse image [%s]: %v", i.Name, err)
+		return err
+	}
+
+	err = s.AddImage(ctx, r.Name(), platform, excludeExtras)
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
+			return nil
+		}
+		l.Errorf("unable to add image [%s] to store: %v", r.Name(), err)
+		return err
+	}
+
+	l.Infof("successfully added image [%s]", r.Name())
 	return nil
 }

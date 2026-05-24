@@ -5,7 +5,7 @@ import (
 
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/retry"
 )

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	"hauler.dev/go/hauler/internal/version"
 )
 

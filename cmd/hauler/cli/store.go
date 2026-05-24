@@ -7,7 +7,7 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 
 	"hauler.dev/go/hauler/cmd/hauler/cli/store"
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	"hauler.dev/go/hauler/pkg/log"
 )
 

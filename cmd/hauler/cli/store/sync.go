@@ -19,7 +19,7 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 )
 
 func addCompletion(parent *cobra.Command, ro *flags.CliRootOpts) {

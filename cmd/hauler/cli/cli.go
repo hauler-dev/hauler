@@ -6,7 +6,7 @@ import (
 	cranecmd "github.com/google/go-containerregistry/cmd/crane/cmd"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/log"
 )
