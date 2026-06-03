@@ -262,7 +262,6 @@ func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
 		}
 	}
 
-	// capture log output to assert warning messages
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf)
 	ctx = logger.WithContext(ctx)
@@ -278,7 +277,7 @@ func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
 
 	logs := buf.String()
 
-	// each invalid file should have triggered a skip warning
+	// each invalid file should have triggered a skip warning, check output to see if it contains warning string
 	for _, pf := range files {
 		if pf.valid {
 			continue
