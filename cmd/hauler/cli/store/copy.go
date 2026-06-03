@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/containerd/containerd/remotes"
@@ -209,6 +210,9 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			}
 			baseRef := desc.Annotations[ocispec.AnnotationRefName]
 			if baseRef == "" {
+				return nil
+			} else if regexp.MustCompile(consts.FileExcludePattern).MatchString(baseRef) {
+				l.Warnf("skipping file artifact [%s]: invalid filename for registry serve", baseRef)
 				return nil
 			}
 			if o.Only != "" && !strings.Contains(baseRef, o.Only) {
