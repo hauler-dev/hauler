@@ -1,5 +1,7 @@
 package consts
 
+import "fmt"
+
 const (
 	// container media types
 	OCIManifestSchema1        = "application/vnd.oci.image.manifest.v1+json"
@@ -112,3 +114,5 @@ const (
 	RetriesInterval           = 5
 	CustomTimeFormat          = "2006-01-02 15:04:05"
 )
+
+var FileExcludePattern = fmt.Sprintf(`^%s/[.\-_]`, DefaultNamespace)
