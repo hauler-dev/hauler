@@ -3,6 +3,8 @@ package store
 // copy_test.go covers CopyCmd for both registry:// and dir:// targets.
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/rs/zerolog"
 
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
@@ -229,45 +232,63 @@ func TestCopyCmd_Registry_IgnoreErrors(t *testing.T) {
 	}
 }
 
-// TestCopyCmd_Registry_InvalidFilenameSkipTest verifies that a file artifact
-// whose title starts with "." is silently skipped when copying to a registry
-// target since the title cannot be used as a valid OCI tag.
+// TestCopyCmd_Registry_InvalidFilenameSkipTest verifies that CopyCmd emits a
+// warning and skips file artifacts whose names begin with characters invalid
+// as OCI tag starts, rather than attempting to push them to the registry.
 func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
-	punctuationFiles := []struct {
+	ctx := newTestContext(t)
+	srcDir := t.TempDir()
+
+	files := []struct {
 		name    string
 		content string
+		valid   bool
 	}{
-		{".test", "dot"},
-		{"-test", "dash"},
-		{"+test", "plus"},
-		{"_test", "underscore"},
-		{"test", "valid"},
+		{".test", "dot", false},
+		{"-test", "dash", false},
+		{"+test", "plus", false},
+		{"_test", "underscore", false},
+		{"valid.txt", "valid content", true},
 	}
 
-	for _, pf := range punctuationFiles {
-		t.Run(pf.name, func(t *testing.T) {
-			ctx := newTestContext(t)
+	s := newTestStore(t)
+	for _, pf := range files {
+		p := filepath.Join(srcDir, pf.name)
+		if err := os.WriteFile(p, []byte(pf.content), 0644); err != nil {
+			t.Fatalf("WriteFile %s: %v", pf.name, err)
+		}
+		if err := storeFile(ctx, s, v1.File{Path: p}); err != nil {
+			t.Fatalf("storeFile %s: %v", pf.name, err)
+		}
+	}
 
-			srcDir := t.TempDir()
-			dotPath := filepath.Join(srcDir, pf.name)
-			if err := os.WriteFile(dotPath, []byte(pf.content), 0644); err != nil {
-				t.Fatalf("WriteFile %s: %v", pf.name, err)
-			}
+	// capture log output to assert warning messages
+	var buf bytes.Buffer
+	logger := zerolog.New(&buf)
+	ctx = logger.WithContext(ctx)
 
-			s := newTestStore(t)
-			if err := storeFile(ctx, s, v1.File{Path: dotPath}); err != nil {
-				t.Fatalf("storeFile %s: %v", pf.name, err)
-			}
+	dstHost, _ := newTestRegistry(t)
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+	}
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, defaultCliOpts()); err != nil {
+		t.Fatalf("CopyCmd: %v", err)
+	}
 
-			dstHost, _ := newTestRegistry(t)
-			o := &flags.CopyOpts{
-				StoreRootOpts: defaultRootOpts(s.Root),
-				PlainHTTP:     true,
-			}
-			if err := CopyCmd(ctx, o, s, "registry://"+dstHost, defaultCliOpts()); err != nil {
-				t.Errorf("expected no error when skipping artifact [%s], got: %v", pf.name, err)
-			}
-		})
+	logs := buf.String()
+
+	// each invalid file should have triggered a skip warning
+	for _, pf := range files {
+		if pf.valid {
+			continue
+		}
+		// hauler normalizes + to - in refs
+		refName := strings.ReplaceAll(pf.name, "+", "-")
+		expected := fmt.Sprintf("hauler/%s:latest", refName)
+		if !strings.Contains(logs, expected) || !strings.Contains(logs, "skipping file artifact") {
+			t.Errorf("expected skip warning for [%s] in logs, got: %s", pf.name, logs)
+		}
 	}
 }
 
