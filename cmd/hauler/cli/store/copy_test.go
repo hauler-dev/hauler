@@ -229,6 +229,48 @@ func TestCopyCmd_Registry_IgnoreErrors(t *testing.T) {
 	}
 }
 
+// TestCopyCmd_Registry_InvalidFilenameSkipTest verifies that a file artifact
+// whose title starts with "." is silently skipped when copying to a registry
+// target since the title cannot be used as a valid OCI tag.
+func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
+	punctuationFiles := []struct {
+		name    string
+		content string
+	}{
+		{".test", "dot"},
+		{"-test", "dash"},
+		{"+test", "plus"},
+		{"_test", "underscore"},
+		{"test", "valid"},
+	}
+
+	for _, pf := range punctuationFiles {
+		t.Run(pf.name, func(t *testing.T) {
+			ctx := newTestContext(t)
+
+			srcDir := t.TempDir()
+			dotPath := filepath.Join(srcDir, pf.name)
+			if err := os.WriteFile(dotPath, []byte(pf.content), 0644); err != nil {
+				t.Fatalf("WriteFile %s: %v", pf.name, err)
+			}
+
+			s := newTestStore(t)
+			if err := storeFile(ctx, s, v1.File{Path: dotPath}); err != nil {
+				t.Fatalf("storeFile %s: %v", pf.name, err)
+			}
+
+			dstHost, _ := newTestRegistry(t)
+			o := &flags.CopyOpts{
+				StoreRootOpts: defaultRootOpts(s.Root),
+				PlainHTTP:     true,
+			}
+			if err := CopyCmd(ctx, o, s, "registry://"+dstHost, defaultCliOpts()); err != nil {
+				t.Errorf("expected no error when skipping artifact [%s], got: %v", pf.name, err)
+			}
+		})
+	}
+}
+
 // --------------------------------------------------------------------------
 // Directory copy tests
 // --------------------------------------------------------------------------
