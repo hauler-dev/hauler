@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/archives"
 	"hauler.dev/go/hauler/pkg/consts"

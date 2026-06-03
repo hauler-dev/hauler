@@ -9,7 +9,7 @@ import (
 	// Register the filesystem storage driver for the distribution registry.
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 
-	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/flags"
 )
 
 func TestNewTempRegistry_StartStop(t *testing.T) {
