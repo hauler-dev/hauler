@@ -300,7 +300,7 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 type isSubchartKey struct{}
 
 // imageregex parses image references starting with "image:" and with optional spaces or optional quotes
-var imageRegex = regexp.MustCompile(`(?m)^[ \t]*image:[ \t]*['"]?([^\s'"#]+)`)
+var imageRegex = regexp.MustCompile(`(?m)^[ \t-]*image:[ \t]*['"]?([^\s'"#]+)`)
 
 // helmAnnotatedImage parses images references from helm chart annotations
 type helmAnnotatedImage struct {
