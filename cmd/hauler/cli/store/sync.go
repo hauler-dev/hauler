@@ -379,7 +379,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						if i.Tlog {
 							tlog = i.Tlog
 						}
-						l.Debugf("transparency log for verification [%b]", tlog)
+						l.Debugf("transparency log for verification [%t]", tlog)
 
 						if err := cosign.VerifySignature(ctx, key, tlog, i.Name, rso, ro); err != nil {
 							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)

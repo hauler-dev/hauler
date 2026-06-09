@@ -3,6 +3,8 @@ package store
 // copy_test.go covers CopyCmd for both registry:// and dir:// targets.
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/rs/zerolog"
 
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
@@ -226,6 +229,65 @@ func TestCopyCmd_Registry_IgnoreErrors(t *testing.T) {
 	roIgnore.IgnoreErrors = true
 	if err := CopyCmd(ctx, o, s, "registry://localhost:1", roIgnore); err != nil {
 		t.Errorf("expected no error with IgnoreErrors=true, got: %v", err)
+	}
+}
+
+// TestCopyCmd_Registry_InvalidFilenameSkipTest verifies that CopyCmd emits a
+// warning and skips file artifacts whose names begin with characters invalid
+// as OCI tag starts, rather than attempting to push them to the registry.
+func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
+	ctx := newTestContext(t)
+	srcDir := t.TempDir()
+
+	files := []struct {
+		name    string
+		content string
+		valid   bool
+	}{
+		{".test", "dot", false},
+		{"-test", "dash", false},
+		{"+test", "plus", false},
+		{"_test", "underscore", false},
+		{"valid.txt", "valid content", true},
+	}
+
+	s := newTestStore(t)
+	for _, pf := range files {
+		p := filepath.Join(srcDir, pf.name)
+		if err := os.WriteFile(p, []byte(pf.content), 0644); err != nil {
+			t.Fatalf("WriteFile %s: %v", pf.name, err)
+		}
+		if err := storeFile(ctx, s, v1.File{Path: p}); err != nil {
+			t.Fatalf("storeFile %s: %v", pf.name, err)
+		}
+	}
+
+	var buf bytes.Buffer
+	logger := zerolog.New(&buf)
+	ctx = logger.WithContext(ctx)
+
+	dstHost, _ := newTestRegistry(t)
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+	}
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, defaultCliOpts()); err != nil {
+		t.Fatalf("CopyCmd: %v", err)
+	}
+
+	logs := buf.String()
+
+	// each invalid file should have triggered a skip warning, check output to see if it contains warning string
+	for _, pf := range files {
+		if pf.valid {
+			continue
+		}
+		// hauler normalizes + to - in refs
+		refName := strings.ReplaceAll(pf.name, "+", "-")
+		expected := fmt.Sprintf("hauler/%s:latest", refName)
+		if !strings.Contains(logs, expected) || !strings.Contains(logs, "skipping file artifact") {
+			t.Errorf("expected skip warning for [%s] in logs, got: %s", pf.name, logs)
+		}
 	}
 }
 
