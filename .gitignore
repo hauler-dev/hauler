@@ -18,3 +18,4 @@ testdata/certs/
 coverage.out
 vulncheck.out
 CLAUDE.md
+**/CLAUDE.*
