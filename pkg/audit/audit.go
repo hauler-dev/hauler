@@ -62,7 +62,7 @@ func BuildGlobal(ro *flags.CliRootOpts, rso *flags.StoreRootOpts) GlobalEntry {
 	g := GlobalEntry{}
 	PopulateHostInfo(&g)
 	if ro != nil {
-		g.HaulerDir = ro.HaulerDir
+		g.HaulerDir = resolveDir(ro.HaulerDir)
 		g.IgnoreErrors = ro.IgnoreErrors
 		g.LogLevel = ro.LogLevel
 		g.AuditLevel = ro.AuditLevel
