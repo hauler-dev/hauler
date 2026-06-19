@@ -96,6 +96,7 @@ type Entry struct {
 	AuditID   string         `json:"audit-id,omitempty"`
 	Timestamp string         `json:"timestamp"`
 	Store     string         `json:"store,omitempty"`
+	Type      string         `json:"type,omitempty"`
 	Global    *GlobalEntry   `json:"global,omitempty"`
 	Reference string         `json:"reference,omitempty"`
 	Command   string         `json:"command"`

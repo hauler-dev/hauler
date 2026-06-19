@@ -68,6 +68,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			Store:     s.Root,
+			Type:      "file",
 			Command:   "store add file",
 			Args:      []string{fi.Path},
 			Reference: resolvedPath,
@@ -195,6 +196,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			Store:     s.Root,
+			Type:      "image",
 			Command:   "store add image",
 			Args:      []string{i.Name},
 			Reference: r.Name(),
@@ -279,6 +281,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			Store:     rso.StoreDir,
+			Type:      "image",
 			Command:   "store add image",
 			Args:      []string{i.Name},
 			Reference: r.Name(),
@@ -541,6 +544,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			Store:     rso.StoreDir,
+			Type:      "chart",
 			Command:   "store add chart",
 			Args:      []string{c.Name()},
 			Reference: c.Name() + ":" + c.Metadata.Version,

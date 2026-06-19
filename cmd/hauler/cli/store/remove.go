@@ -13,9 +13,23 @@ import (
 
 	"hauler.dev/go/hauler/internal/flags"
 	"hauler.dev/go/hauler/pkg/audit"
+	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
 )
+
+func artifactTypeFromKind(kind string) string {
+	switch {
+	case strings.Contains(kind, "image"), strings.Contains(kind, "Image"):
+		return "image"
+	case strings.Contains(kind, "helm"):
+		return "chart"
+	case strings.Contains(kind, "file"):
+		return "file"
+	default:
+		return "image"
+	}
+}
 
 func formatReference(ref string) string {
 	tagIdx := strings.LastIndex(ref, ":")
@@ -110,6 +124,7 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 		if auditLevel(ro) != "none" {
 			e := audit.Entry{
 				Store:   s.Root,
+				Type:    artifactTypeFromKind(m.desc.Annotations[consts.KindAnnotationName]),
 				Command: "store remove",
 				Args:    []string{m.reference},
 			}
