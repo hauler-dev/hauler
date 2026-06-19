@@ -138,12 +138,12 @@ func defaultRootOpts(storeDir string) *flags.StoreRootOpts {
 	}
 }
 
-// defaultCliOpts returns CliRootOpts with error-level logging and IgnoreErrors=false.
+// defaultCliOpts returns CliRootOpts with log level error, audit level standard, and ignore errors false
 func defaultCliOpts() *flags.CliRootOpts {
 	return &flags.CliRootOpts{
 		IgnoreErrors: false,
 		LogLevel:     "error",
-		AuditLevel:   "verbose",
+		AuditLevel:   "standard",
 	}
 }
 
