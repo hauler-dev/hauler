@@ -25,6 +25,9 @@ func init() {
 	}
 }
 
+// ID returns the audit ID for the current process invocation
+func ID() string { return auditID }
+
 // GlobalEntry captures the global flags and environment active when the command ran
 type GlobalEntry struct {
 	User         string            `json:"user,omitempty"`

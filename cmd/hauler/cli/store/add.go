@@ -80,6 +80,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 			}
 		}
 		_ = audit.Append(ro.HaulerDir, e)
+		l.Debugf("generated audit id of [%s]", audit.ID())
 	}
 
 	l.Infof("successfully added file [%s]", ref.Name())
@@ -206,6 +207,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 			}
 		}
 		_ = audit.Append(ro.HaulerDir, e)
+		l.Debugf("generated audit id of [%s]", audit.ID())
 	}
 
 	l.Infof("successfully added image [%s] from local Docker daemon", r.Name())
@@ -295,6 +297,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 			}
 		}
 		_ = audit.Append(ro.HaulerDir, e)
+		l.Debugf("generated audit id of [%s]", audit.ID())
 	}
 
 	l.Infof("successfully added image [%s]", r.Name())
@@ -558,6 +561,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 		}
 		_ = audit.Append(ro.HaulerDir, e)
+		l.Debugf("generated audit id of [%s]", audit.ID())
 	}
 
 	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)

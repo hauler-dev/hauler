@@ -121,6 +121,7 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 				}
 			}
 			_ = audit.Append(ro.HaulerDir, e)
+			l.Debugf("generated audit id of [%s]", audit.ID())
 		}
 
 		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference), m.desc.MediaType, m.desc.Digest.String())
