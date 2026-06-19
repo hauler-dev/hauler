@@ -143,6 +143,7 @@ func defaultCliOpts() *flags.CliRootOpts {
 	return &flags.CliRootOpts{
 		IgnoreErrors: false,
 		LogLevel:     "error",
+		AuditLevel:   "verbose",
 	}
 }
 

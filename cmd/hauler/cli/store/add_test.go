@@ -371,7 +371,7 @@ func TestStoreFile(t *testing.T) {
 		tmp.Close()
 
 		s := newTestStore(t)
-		if err := storeFile(ctx, s, v1.File{Path: tmp.Name()}); err != nil {
+		if err := storeFile(ctx, s, v1.File{Path: tmp.Name()}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 			t.Fatalf("storeFile: %v", err)
 		}
 		assertArtifactInStore(t, s, filepath.Base(tmp.Name()))
@@ -380,7 +380,7 @@ func TestStoreFile(t *testing.T) {
 	t.Run("HTTP URL stored under basename", func(t *testing.T) {
 		url := seedFileInHTTPServer(t, "script.sh", "#!/bin/sh\necho ok")
 		s := newTestStore(t)
-		if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+		if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 			t.Fatalf("storeFile: %v", err)
 		}
 		assertArtifactInStore(t, s, "script.sh")
@@ -394,7 +394,7 @@ func TestStoreFile(t *testing.T) {
 		tmp.Close()
 
 		s := newTestStore(t)
-		if err := storeFile(ctx, s, v1.File{Path: tmp.Name(), Name: "custom.sh"}); err != nil {
+		if err := storeFile(ctx, s, v1.File{Path: tmp.Name(), Name: "custom.sh"}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 			t.Fatalf("storeFile: %v", err)
 		}
 		assertArtifactInStore(t, s, "custom.sh")
@@ -402,7 +402,7 @@ func TestStoreFile(t *testing.T) {
 
 	t.Run("nonexistent local path returns error", func(t *testing.T) {
 		s := newTestStore(t)
-		err := storeFile(ctx, s, v1.File{Path: "/nonexistent/path/missing-file.txt"})
+		err := storeFile(ctx, s, v1.File{Path: "/nonexistent/path/missing-file.txt"}, defaultCliOpts(), defaultRootOpts(s.Root))
 		if err == nil {
 			t.Fatal("expected error for nonexistent path, got nil")
 		}
@@ -421,7 +421,7 @@ func TestAddFileCmd(t *testing.T) {
 	tmp.Close()
 
 	o := &flags.AddFileOpts{Name: "renamed.txt"}
-	if err := AddFileCmd(ctx, o, s, tmp.Name()); err != nil {
+	if err := AddFileCmd(ctx, o, s, tmp.Name(), defaultCliOpts()); err != nil {
 		t.Fatalf("AddFileCmd: %v", err)
 	}
 	assertArtifactInStore(t, s, "renamed.txt")

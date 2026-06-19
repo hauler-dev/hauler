@@ -19,6 +19,7 @@ import (
 	"hauler.dev/go/hauler/internal/flags"
 	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/pkg/artifacts/file"
+	"hauler.dev/go/hauler/pkg/audit"
 	"hauler.dev/go/hauler/pkg/consts"
 	"hauler.dev/go/hauler/pkg/content/chart"
 	"hauler.dev/go/hauler/pkg/cosign"
@@ -29,17 +30,17 @@ import (
 	"hauler.dev/go/hauler/pkg/store"
 )
 
-func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
+func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string, ro *flags.CliRootOpts) error {
 	cfg := v1.File{
 		Path: reference,
 	}
 	if len(o.Name) > 0 {
 		cfg.Name = o.Name
 	}
-	return storeFile(ctx, s, cfg)
+	return storeFile(ctx, s, cfg, ro, o.StoreRootOpts)
 }
 
-func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
+func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
 	l := log.FromContext(ctx)
 
 	copts := getter.ClientOptions{
@@ -58,6 +59,29 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 		return err
 	}
 
+	resolvedPath := fi.Path
+	if !strings.HasPrefix(fi.Path, "http://") && !strings.HasPrefix(fi.Path, "https://") {
+		if abs, err := filepath.Abs(fi.Path); err == nil {
+			resolvedPath = abs
+		}
+	}
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			Store:     s.Root,
+			Command:   "store add file",
+			Args:      []string{fi.Path},
+			Reference: resolvedPath,
+		}
+		if auditLevel(ro) == "verbose" {
+			g := audit.BuildGlobal(ro, rso)
+			e.Global = &g
+			e.Flags = map[string]any{
+				"name": fi.Name,
+			}
+		}
+		_ = audit.Append(ro.HaulerDir, e)
+	}
+
 	l.Infof("successfully added file [%s]", ref.Name())
 
 	return nil
@@ -67,9 +91,18 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	l := log.FromContext(ctx)
 
 	cfg := v1.Image{
-		Name:    reference,
-		Rewrite: o.Rewrite,
-		Local:   o.Local,
+		Name:                         reference,
+		Key:                          o.Key,
+		Tlog:                         o.Tlog,
+		CertIdentity:                 o.CertIdentity,
+		CertIdentityRegexp:           o.CertIdentityRegexp,
+		CertOidcIssuer:               o.CertOidcIssuer,
+		CertOidcIssuerRegexp:         o.CertOidcIssuerRegexp,
+		CertGithubWorkflowRepository: o.CertGithubWorkflowRepository,
+		Platform:                     o.Platform,
+		Rewrite:                      o.Rewrite,
+		ExcludeExtras:                o.ExcludeExtras,
+		Local:                        o.Local,
 	}
 
 	if o.Local {
@@ -156,6 +189,25 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		}
 	}
 
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			Store:     s.Root,
+			Command:   "store add image",
+			Args:      []string{i.Name},
+			Reference: r.Name(),
+		}
+		if auditLevel(ro) == "verbose" {
+			g := audit.BuildGlobal(ro, nil)
+			e.Global = &g
+			e.Flags = map[string]any{
+				"verified": false,
+				"local":    true,
+				"rewrite":  rewrite,
+			}
+		}
+		_ = audit.Append(ro.HaulerDir, e)
+	}
+
 	l.Infof("successfully added image [%s] from local Docker daemon", r.Name())
 	return nil
 }
@@ -215,6 +267,34 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
 			return err
 		}
+	}
+
+	verified := i.Key != "" || i.CertIdentity != "" || i.CertIdentityRegexp != ""
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			Store:     rso.StoreDir,
+			Command:   "store add image",
+			Args:      []string{i.Name},
+			Reference: r.Name(),
+		}
+		if auditLevel(ro) == "verbose" {
+			g := audit.BuildGlobal(ro, rso)
+			e.Global = &g
+			e.Flags = map[string]any{
+				"verified":                               verified,
+				"platform":                               platform,
+				"key":                                    i.Key,
+				"use-tlog-verify":                        i.Tlog,
+				"certificate-identity":                   i.CertIdentity,
+				"certificate-identity-regexp":            i.CertIdentityRegexp,
+				"certificate-oidc-issuer":                i.CertOidcIssuer,
+				"certificate-oidc-issuer-regexp":         i.CertOidcIssuerRegexp,
+				"certificate-github-workflow-repository": i.CertGithubWorkflowRepository,
+				"rewrite":                                rewrite,
+				"exclude-extras":                         excludeExtras,
+			}
+		}
+		_ = audit.Append(ro.HaulerDir, e)
 	}
 
 	l.Infof("successfully added image [%s]", r.Name())
@@ -447,6 +527,37 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 	}
 	if err := s.OCI.SaveIndex(); err != nil {
 		return err
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			Store:     rso.StoreDir,
+			Command:   "store add chart",
+			Args:      []string{c.Name()},
+			Reference: c.Name() + ":" + c.Metadata.Version,
+		}
+		if auditLevel(ro) == "verbose" {
+			g := audit.BuildGlobal(ro, rso)
+			e.Global = &g
+			e.Flags = map[string]any{
+				"repo":                     cfg.RepoURL,
+				"version":                  c.Metadata.Version,
+				"rewrite":                  rewrite,
+				"add-images":               opts.AddImages,
+				"add-dependencies":         opts.AddDependencies,
+				"exclude-extras":           opts.ExcludeExtras,
+				"values":                   opts.HelmValues,
+				"platform":                 opts.Platform,
+				"registry":                 opts.Registry,
+				"kube-version":             opts.KubeVersion,
+				"verify":                   opts.ChartOpts.Verify,
+				"insecure-skip-tls-verify": opts.ChartOpts.InsecureSkipTLSverify,
+				"ca-file":                  opts.ChartOpts.CaFile,
+				"cert-file":                opts.ChartOpts.CertFile,
+				"key-file":                 opts.ChartOpts.KeyFile,
+			}
+		}
+		_ = audit.Append(ro.HaulerDir, e)
 	}
 
 	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)

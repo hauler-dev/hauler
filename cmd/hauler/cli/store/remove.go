@@ -12,6 +12,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/internal/flags"
+	"hauler.dev/go/hauler/pkg/audit"
 	"hauler.dev/go/hauler/pkg/log"
 	"hauler.dev/go/hauler/pkg/store"
 )
@@ -39,7 +40,7 @@ func formatReference(ref string) string {
 	return fmt.Sprintf("%s [%s]", base, suffix)
 }
 
-func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string) error {
+func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
 	l := log.FromContext(ctx)
 
 	// collect matching artifacts
@@ -104,6 +105,22 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	for _, m := range matches {
 		if err := s.RemoveArtifact(ctx, m.reference, m.desc); err != nil {
 			return fmt.Errorf("failed to remove artifact [%s]: %w", formatReference(m.reference), err)
+		}
+
+		if auditLevel(ro) != "none" {
+			e := audit.Entry{
+				Store:   s.Root,
+				Command: "store remove",
+				Args:    []string{m.reference},
+			}
+			if auditLevel(ro) == "verbose" {
+				g := audit.BuildGlobal(ro, rso)
+				e.Global = &g
+				e.Flags = map[string]any{
+					"force": o.Force,
+				}
+			}
+			_ = audit.Append(ro.HaulerDir, e)
 		}
 
 		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference), m.desc.MediaType, m.desc.Digest.String())

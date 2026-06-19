@@ -81,7 +81,7 @@ func TestRemoveCmd_Force(t *testing.T) {
 	s := newTestStore(t)
 
 	url := seedFileInHTTPServer(t, "removeme.txt", "file-to-remove")
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestRemoveCmd_Force(t *testing.T) {
 		t.Fatal("could not find stored artifact reference containing 'removeme'")
 	}
 
-	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "removeme"); err != nil {
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "removeme", defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("RemoveCmd: %v", err)
 	}
 
@@ -116,7 +116,7 @@ func TestRemoveCmd_NotFound(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
 
-	err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "nonexistent-ref")
+	err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "nonexistent-ref", defaultCliOpts(), defaultRootOpts(s.Root))
 	if err == nil {
 		t.Fatal("expected error for non-existent ref, got nil")
 	}
@@ -133,10 +133,10 @@ func TestRemoveCmd_Force_MultipleMatches(t *testing.T) {
 	url1 := seedFileInHTTPServer(t, "testfile-alpha.txt", "content-alpha")
 	url2 := seedFileInHTTPServer(t, "testfile-beta.txt", "content-beta")
 
-	if err := storeFile(ctx, s, v1.File{Path: url1}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url1}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile alpha: %v", err)
 	}
-	if err := storeFile(ctx, s, v1.File{Path: url2}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url2}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile beta: %v", err)
 	}
 
@@ -145,7 +145,7 @@ func TestRemoveCmd_Force_MultipleMatches(t *testing.T) {
 	}
 
 	// Remove using a substring that matches both.
-	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "testfile"); err != nil {
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "testfile", defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("RemoveCmd: %v", err)
 	}
 

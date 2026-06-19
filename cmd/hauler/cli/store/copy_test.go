@@ -257,7 +257,7 @@ func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
 		if err := os.WriteFile(p, []byte(pf.content), 0644); err != nil {
 			t.Fatalf("WriteFile %s: %v", pf.name, err)
 		}
-		if err := storeFile(ctx, s, v1.File{Path: p}); err != nil {
+		if err := storeFile(ctx, s, v1.File{Path: p}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 			t.Fatalf("storeFile %s: %v", pf.name, err)
 		}
 	}
@@ -304,7 +304,7 @@ func TestCopyCmd_Dir_Files(t *testing.T) {
 	url := seedFileInHTTPServer(t, "data.txt", content)
 
 	s := newTestStore(t)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
