@@ -122,14 +122,23 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 		}
 
 		if auditLevel(ro) != "none" {
+			cleanRef := m.desc.Annotations[consts.ContainerdImageNameKey]
+			if cleanRef == "" {
+				cleanRef = m.desc.Annotations[ocispec.AnnotationRefName]
+			}
 			e := audit.Entry{
-				Store:   s.Root,
-				Type:    artifactTypeFromKind(m.desc.Annotations[consts.KindAnnotationName]),
-				Command: "store remove",
-				Args:    []string{m.reference},
+				StoreID:   s.StoreID,
+				Store:     s.Root,
+				Type:      artifactTypeFromKind(m.desc.Annotations[consts.KindAnnotationName]),
+				Command:   "store remove",
+				Args:      []string{ref},
+				Reference: cleanRef,
+				Digest:    m.desc.Digest.String(),
 			}
 			if auditLevel(ro) == "verbose" {
+				sys := audit.BuildSystem()
 				g := audit.BuildGlobal(ro, rso)
+				e.System = &sys
 				e.Global = &g
 				e.Flags = map[string]any{
 					"force": o.Force,

@@ -167,7 +167,7 @@ func TestExtractCmd_OciArtifactKindImage(t *testing.T) {
 
 	// Pull into a fresh store — AddImage sets kind=KindAnnotationImage on all manifests.
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -249,7 +249,7 @@ func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -359,7 +359,7 @@ func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -427,7 +427,7 @@ func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -497,7 +497,7 @@ func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 

@@ -54,7 +54,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	}
 
 	l.Infof("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
-	_, err = s.AddArtifact(ctx, f, ref.Name())
+	desc, err := s.AddArtifact(ctx, f, ref.Name())
 	if err != nil {
 		return err
 	}
@@ -67,14 +67,18 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	}
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
+			StoreID:   s.StoreID,
 			Store:     s.Root,
 			Type:      "file",
 			Command:   "store add file",
 			Args:      []string{fi.Path},
 			Reference: resolvedPath,
+			Digest:    desc.Digest.String(),
 		}
 		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
 			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
 				"name": fi.Name,
@@ -165,7 +169,8 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		return err
 	}
 
-	if err := s.AddLocalImage(ctx, r.Name()); err != nil {
+	localDigest, err := s.AddLocalImage(ctx, r.Name())
+	if err != nil {
 		if ro.IgnoreErrors {
 			l.Warnf("unable to add image [%s] from Docker daemon to store: %v... skipping...", r.Name(), err)
 			return nil
@@ -195,14 +200,18 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
+			StoreID:   s.StoreID,
 			Store:     s.Root,
 			Type:      "image",
 			Command:   "store add image",
 			Args:      []string{i.Name},
 			Reference: r.Name(),
+			Digest:    localDigest,
 		}
 		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
 			g := audit.BuildGlobal(ro, nil)
+			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
 				"verified": false,
@@ -244,8 +253,11 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	}
 
 	// fetch image along with any associated signatures and attestations
+	var imageDigest string
 	err = retry.Operation(ctx, rso, ro, func() error {
-		return s.AddImage(ctx, r.Name(), platform, excludeExtras)
+		var addErr error
+		imageDigest, addErr = s.AddImage(ctx, r.Name(), platform, excludeExtras)
+		return addErr
 	})
 	if err != nil {
 		if ro.IgnoreErrors {
@@ -280,14 +292,18 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	verified := i.Key != "" || i.CertIdentity != "" || i.CertIdentityRegexp != ""
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
-			Store:     rso.StoreDir,
+			StoreID:   s.StoreID,
+			Store:     s.Root,
 			Type:      "image",
 			Command:   "store add image",
 			Args:      []string{i.Name},
 			Reference: r.Name(),
+			Digest:    imageDigest,
 		}
 		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
 			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
 				"verified":                               verified,
@@ -534,7 +550,8 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		return err
 	}
 
-	if _, err := s.AddArtifact(ctx, chrt, ref.Name()); err != nil {
+	chartDesc, err := s.AddArtifact(ctx, chrt, ref.Name())
+	if err != nil {
 		return err
 	}
 	if err := s.OCI.SaveIndex(); err != nil {
@@ -543,14 +560,18 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
-			Store:     rso.StoreDir,
+			StoreID:   s.StoreID,
+			Store:     s.Root,
 			Type:      "chart",
 			Command:   "store add chart",
 			Args:      []string{c.Name()},
 			Reference: c.Name() + ":" + c.Metadata.Version,
+			Digest:    chartDesc.Digest.String(),
 		}
 		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
 			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
 				"repo":                     cfg.RepoURL,

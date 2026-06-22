@@ -53,31 +53,35 @@ func TestTruncateReference(t *testing.T) {
 	}
 }
 
-func TestBuildJson(t *testing.T) {
+func TestInfoOutputJSON(t *testing.T) {
 	items := []item{
 		{Reference: "myrepo/myimage:v1", Type: "image", Platform: "linux/amd64", Size: 1024, Layers: 2},
 		{Reference: "myrepo/mychart:v1", Type: "chart", Platform: "-", Size: 512, Layers: 1},
 	}
-	out := buildJson(items...)
-	if out == "" {
-		t.Fatal("buildJson returned empty string")
+	out := infoOutput{
+		StoreID:   "test-store-id",
+		Artifacts: items,
 	}
-	var got []item
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("buildJson output is not valid JSON: %v\noutput: %s", err, out)
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("json.Marshal infoOutput: %v", err)
 	}
-	if len(got) != len(items) {
-		t.Fatalf("buildJson: got %d items, want %d", len(got), len(items))
+	var got infoOutput
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("json.Unmarshal infoOutput: %v\ndata: %s", err, data)
+	}
+	if len(got.Artifacts) != len(items) {
+		t.Fatalf("Artifacts len = %d, want %d", len(got.Artifacts), len(items))
 	}
 	for i, want := range items {
-		if got[i].Reference != want.Reference {
-			t.Errorf("item[%d].Reference = %q, want %q", i, got[i].Reference, want.Reference)
+		if got.Artifacts[i].Reference != want.Reference {
+			t.Errorf("Artifacts[%d].Reference = %q, want %q", i, got.Artifacts[i].Reference, want.Reference)
 		}
-		if got[i].Type != want.Type {
-			t.Errorf("item[%d].Type = %q, want %q", i, got[i].Type, want.Type)
+		if got.Artifacts[i].Type != want.Type {
+			t.Errorf("Artifacts[%d].Type = %q, want %q", i, got.Artifacts[i].Type, want.Type)
 		}
-		if got[i].Size != want.Size {
-			t.Errorf("item[%d].Size = %d, want %d", i, got[i].Size, want.Size)
+		if got.Artifacts[i].Size != want.Size {
+			t.Errorf("Artifacts[%d].Size = %d, want %d", i, got.Artifacts[i].Size, want.Size)
 		}
 	}
 }

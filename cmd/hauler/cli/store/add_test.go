@@ -237,7 +237,7 @@ func TestRewriteReference(t *testing.T) {
 		seedImage(t, host, "src/repo", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/src/repo:v1", "", false, rOpts...); err != nil {
+		if _, err := s.AddImage(ctx, host+"/src/repo:v1", "", false, rOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -339,7 +339,7 @@ func TestRewriteReference(t *testing.T) {
 		seedImage(t, host, "src/repo", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/src/repo:v1", "", false, rOpts...); err != nil {
+		if _, err := s.AddImage(ctx, host+"/src/repo:v1", "", false, rOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 

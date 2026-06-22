@@ -176,7 +176,7 @@ func TestCopyCmd_Registry_SigTagDerivation(t *testing.T) {
 
 	// AddImage discovers and stores the .sig/.att/.sbom tags automatically.
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, srcHost+"/test/signed:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, srcHost+"/test/signed:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
