@@ -99,6 +99,21 @@ func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref 
 		if !strings.Contains(reference, repo) {
 			return nil
 		}
+
+		// Cosign sig/att/sbom/referrer descriptors are registry-only metadata —
+		// they are never extractable to disk. Skip them silently at debug level,
+		// mirroring the same guard in copy.go (directory-target path).
+		kind := desc.Annotations[consts.KindAnnotationName]
+		switch kind {
+		case consts.KindAnnotationSigs, consts.KindAnnotationAtts, consts.KindAnnotationSboms:
+			l.Debugf("skipping cosign artifact [%s] for extract", reference)
+			return nil
+		}
+		if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
+			l.Debugf("skipping OCI referrer [%s] for extract", reference)
+			return nil
+		}
+
 		found = true
 
 		rc, err := s.Fetch(ctx, desc)

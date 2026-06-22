@@ -39,4 +39,5 @@ type Image struct {
 	Platform      string `json:"platform"`
 	Rewrite       string `json:"rewrite"`
 	ExcludeExtras bool   `json:"exclude-extras"`
+	Local         bool   `json:"local"`
 }

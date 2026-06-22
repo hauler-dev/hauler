@@ -355,7 +355,10 @@ func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 	hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub
 
 	# fetch image and rewrite path
-	hauler store add image busybox --rewrite custom-path/busybox:latest`,
+	hauler store add image busybox --rewrite custom-path/busybox:latest
+
+	# add image from local Docker daemon
+	hauler store add image my-local-app:latest --local`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -420,7 +423,7 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 	o := &flags.RemoveOpts{}
 	cmd := &cobra.Command{
 		Use:   "remove <artifact-ref>",
-		Short: "(EXPERIMENTAL) Remove an artifact from the content store",
+		Short: "Remove an artifact from the content store",
 		Example: `  # remove an image using full store reference
 	hauler store info
 	hauler store remove index.docker.io/library/busybox:stable

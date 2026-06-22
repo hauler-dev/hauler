@@ -855,3 +855,85 @@ func TestStoreChart_AddImages_IncludeExtras(t *testing.T) {
 		assertArtifactKindInStore(t, s, "test/chart-image:v2", consts.KindAnnotationSboms)
 	})
 }
+
+// --------------------------------------------------------------------------
+// --local flag validation tests
+// --------------------------------------------------------------------------
+
+func TestAddImageCmd_LocalFlagValidation(t *testing.T) {
+	ctx := newTestContext(t)
+
+	tests := []struct {
+		name string
+		opts *flags.AddImageOpts
+	}{
+		{
+			name: "Local with Key returns error",
+			opts: &flags.AddImageOpts{
+				Local: true,
+				Key:   "some.pub",
+			},
+		},
+		{
+			name: "Local with CertIdentity returns error",
+			opts: &flags.AddImageOpts{
+				Local:        true,
+				CertIdentity: "foo@bar.com",
+			},
+		},
+		{
+			name: "Local with CertIdentityRegexp returns error",
+			opts: &flags.AddImageOpts{
+				Local:              true,
+				CertIdentityRegexp: ".*",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestStore(t)
+			rso := defaultRootOpts(s.Root)
+			ro := defaultCliOpts()
+
+			err := AddImageCmd(ctx, tc.opts, s, "nginx:latest", rso, ro)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), "--local cannot be combined") {
+				t.Errorf("expected '--local cannot be combined' in error, got: %v", err)
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// storeLocalImage unit tests
+// --------------------------------------------------------------------------
+
+func TestStoreLocalImage_InvalidReference(t *testing.T) {
+	ctx := newTestContext(t)
+
+	t.Run("malformed reference returns error", func(t *testing.T) {
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		err := storeLocalImage(ctx, s, v1.Image{Name: "INVALID:::ref"}, rso, ro, "")
+		if err == nil {
+			t.Fatal("expected error for malformed reference, got nil")
+		}
+	})
+
+	t.Run("malformed reference with IgnoreErrors returns nil", func(t *testing.T) {
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+		ro.IgnoreErrors = true
+
+		err := storeLocalImage(ctx, s, v1.Image{Name: "INVALID:::ref"}, rso, ro, "")
+		if err != nil {
+			t.Fatalf("expected nil with IgnoreErrors=true, got: %v", err)
+		}
+	})
+}
