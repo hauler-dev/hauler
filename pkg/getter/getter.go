@@ -10,10 +10,10 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 
-	content2 "hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/content"
-	"hauler.dev/go/hauler/pkg/layer"
+	content2 "hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/layer"
 )
 
 type Client struct {

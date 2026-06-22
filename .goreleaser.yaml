@@ -14,7 +14,7 @@ release:
   make_latest: false
 
 env:
-  - vpkg=hauler.dev/go/hauler/internal/version
+  - vpkg=hauler.dev/go/hauler/v2/internal/version
 
 builds:
   - dir: ./cmd/hauler/.

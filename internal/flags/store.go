@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/log"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 type StoreRootOpts struct {

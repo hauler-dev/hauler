@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/mholt/archives"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 const (

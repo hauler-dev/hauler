@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"hauler.dev/go/hauler/pkg/reference"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 )
 
 func TestParse(t *testing.T) {

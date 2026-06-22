@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // writeIndexJSON writes a minimal valid OCI index.json to dir so that

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 // Operation retries the given operation according to the retry settings in rso/ro.

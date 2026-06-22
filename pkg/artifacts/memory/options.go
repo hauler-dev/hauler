@@ -1,6 +1,6 @@
 package memory
 
-import "hauler.dev/go/hauler/pkg/artifacts"
+import "hauler.dev/go/hauler/v2/pkg/artifacts"
 
 type Option func(*Memory)
 
