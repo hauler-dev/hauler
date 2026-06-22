@@ -6,9 +6,9 @@ import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/action"
 
-	"hauler.dev/go/hauler/cmd/hauler/cli/store"
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/cmd/hauler/cli/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {

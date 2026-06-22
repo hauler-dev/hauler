@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hauler.dev/go/hauler/pkg/getter"
+	"hauler.dev/go/hauler/v2/pkg/getter"
 )
 
 func TestClient_Detect(t *testing.T) {

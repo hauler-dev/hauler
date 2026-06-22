@@ -18,10 +18,10 @@ import (
 	"github.com/distribution/distribution/v3/version"
 	"gopkg.in/yaml.v3"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/internal/server"
-	"hauler.dev/go/hauler/pkg/log"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/internal/server"
+	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 func validateStoreExists(s *store.Layout) error {

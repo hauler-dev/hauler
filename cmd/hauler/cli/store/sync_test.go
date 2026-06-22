@@ -19,8 +19,8 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // writeManifestFile writes yamlContent to a temp file, seeks back to the

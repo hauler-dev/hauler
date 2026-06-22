@@ -16,16 +16,16 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/log"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/registry"
 
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/layer"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/layer"
 )
 
 var (

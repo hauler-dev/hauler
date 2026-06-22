@@ -17,7 +17,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // buildMinimalOCILayout writes the smallest valid OCI layout (oci-layout marker

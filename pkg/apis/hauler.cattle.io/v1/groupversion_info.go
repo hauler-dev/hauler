@@ -3,7 +3,7 @@ package v1
 import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 var (
