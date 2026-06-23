@@ -13,13 +13,13 @@ import (
 	"github.com/containerd/errdefs"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/internal/mapper"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/content"
-	"hauler.dev/go/hauler/pkg/log"
-	"hauler.dev/go/hauler/pkg/retry"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/internal/mapper"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/retry"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef string, ro *flags.CliRootOpts) error {

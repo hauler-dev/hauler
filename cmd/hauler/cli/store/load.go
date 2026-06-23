@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/archives"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/content"
-	"hauler.dev/go/hauler/pkg/getter"
-	"hauler.dev/go/hauler/pkg/log"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/getter"
+	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/store"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
