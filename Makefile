@@ -7,6 +7,7 @@ SHELL=/bin/bash
 GO_FILES=./...
 GO_COVERPROFILE=coverage.out
 GO_VULNCHECKS=vulncheck.out
+TRIVY_RESULTS=trivy.out
 
 # set build variables
 BIN_DIRECTORY=bin
@@ -45,10 +46,11 @@ vet:
 test:
 	go test $(GO_FILES) -cover -race -covermode=atomic -coverprofile=$(GO_COVERPROFILE)
 
-# check for vulnerabilities
+# check for vulnerabilities (run after `make build` / `make build-all` so dist/ exists)
 vulns:
 	govulncheck $(GO_FILES) > $(GO_VULNCHECKS) 2>&1 || true
+	trivy rootfs $(DIST_DIRECTORY) > $(TRIVY_RESULTS) 2>&1 || true
 
 # cleanup artifacts
 clean:
-	rm -rf $(BIN_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE) $(GO_VULNCHECKS)
+	rm -rf $(BIN_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE) $(GO_VULNCHECKS) $(TRIVY_RESULTS)
