@@ -9,8 +9,8 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // NewFile returns a fileserver

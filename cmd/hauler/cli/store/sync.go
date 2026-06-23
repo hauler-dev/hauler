@@ -19,15 +19,15 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/content"
-	"hauler.dev/go/hauler/pkg/cosign"
-	"hauler.dev/go/hauler/pkg/getter"
-	"hauler.dev/go/hauler/pkg/log"
-	"hauler.dev/go/hauler/pkg/reference"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/cosign"
+	"hauler.dev/go/hauler/v2/pkg/getter"
+	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/reference"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {

@@ -77,11 +77,11 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	cmd.MarkFlagsRequiredTogether("username", "password")
 	cmd.MarkFlagsRequiredTogether("cert-file", "key-file", "ca-file")
 
-	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(EXPERIMENTAL & Optional) Fetch dependent helm charts")
-	f.BoolVar(&o.AddImages, "add-images", false, "(EXPERIMENTAL & Optional) Fetch images referenced in helm charts")
+	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(Optional) Fetch dependent helm charts")
+	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in helm charts")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images discovered via --add-images")
-	f.StringVar(&o.HelmValues, "values", "", "(EXPERIMENTAL & Optional) Specify helm chart values when fetching images")
+	f.StringVar(&o.HelmValues, "values", "", "(Optional) Specify helm chart values when fetching images")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64")
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
-	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(EXPERIMENTAL & Optional) Override the kubernetes version for helm template rendering")
+	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(Optional) Override the kubernetes version for helm template rendering")
 }

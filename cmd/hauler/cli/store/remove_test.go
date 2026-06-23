@@ -6,8 +6,8 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 )
 
 // --------------------------------------------------------------------------

@@ -12,7 +12,7 @@ import (
 	"github.com/containerd/containerd/remotes"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"hauler.dev/go/hauler/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/content"
 )
 
 // NewMapperFileStore creates a new file store that uses mapper functions for each detected descriptor.

@@ -8,8 +8,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 func testContext() context.Context {

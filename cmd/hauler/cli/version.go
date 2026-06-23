@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/internal/version"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/internal/version"
 )
 
 func addVersion(parent *cobra.Command, ro *flags.CliRootOpts) {

@@ -7,7 +7,7 @@ import (
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	"hauler.dev/go/hauler/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/artifacts"
 )
 
 var _ artifacts.OCI = (*Image)(nil)

@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
-	"hauler.dev/go/hauler/pkg/archives"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // manifestEntry mirrors tarball.Descriptor for asserting manifest.json contents.

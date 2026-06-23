@@ -15,9 +15,9 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 // TestLifecycle_FileArtifact_AddSaveLoadCopy exercises the full lifecycle for a

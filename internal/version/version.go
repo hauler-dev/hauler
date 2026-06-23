@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/common-nighthawk/go-figure"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // Base version information.

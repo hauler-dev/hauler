@@ -1,8 +1,8 @@
 package file
 
 import (
-	"hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/getter"
+	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/getter"
 )
 
 type Option func(*File)

@@ -19,8 +19,8 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/reference"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 )
 
 var _ Target = (*OCI)(nil)
