@@ -1,6 +1,6 @@
 module hauler.dev/go/hauler/v2
 
-go 1.26.0
+go 1.26.4
 
 replace github.com/distribution/distribution/v3 => github.com/distribution/distribution/v3 v3.0.0-20221208165359-362910506bc2
 
