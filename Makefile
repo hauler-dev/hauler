@@ -46,10 +46,10 @@ vet:
 test:
 	go test $(GO_FILES) -cover -race -covermode=atomic -coverprofile=$(GO_COVERPROFILE)
 
-# check for vulnerabilities (run after `make build` / `make build-all` so dist/ exists)
+# check for vulnerabilities
 vulns:
 	govulncheck $(GO_FILES) > $(GO_VULNCHECKS) 2>&1 || true
-	trivy rootfs $(DIST_DIRECTORY) > $(TRIVY_RESULTS) 2>&1 || true
+	trivy fs . > $(TRIVY_RESULTS) 2>&1 || true
 
 # cleanup artifacts
 clean:
