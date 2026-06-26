@@ -322,6 +322,20 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 		slices.Sort(xd.RepoTags)
 		xd.RepoTags = slices.Compact(xd.RepoTags)
 		ref = tag.Digest(digest)
+	case name.Digest:
+		// For digest-only refs, derive a deterministic, docker-valid tag from
+		// the manifest digest so ctr/docker can import the image (#642).
+		// Convention mirrors copy.go:229: "sha256-<hex>".
+		named, err := referencev3.ParseNormalizedNamed(tag.Repository.Name())
+		if err != nil {
+			return err
+		}
+		familiarRepo := referencev3.FamiliarName(named)
+		digestTag := strings.ReplaceAll(digest, ":", "-") // e.g. "sha256-498a..."
+		repotag := familiarRepo + ":" + digestTag
+		xd.RepoTags = append(xd.RepoTags[:], repotag)
+		slices.Sort(xd.RepoTags)
+		xd.RepoTags = slices.Compact(xd.RepoTags)
 	}
 
 	l.Debugf("image [%s]: type=%s, size=%d", ref.Name(), desc.MediaType, desc.Size)
