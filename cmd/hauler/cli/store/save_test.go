@@ -113,6 +113,37 @@ func TestWriteExportsManifest(t *testing.T) {
 	})
 }
 
+func TestWriteExportsManifest_DigestOnlyImageHasRepoTag(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// Seed a tagged image so we can reference it by digest
+	host, srcOpts := newLocalhostRegistry(t)
+	img := seedImage(t, host, "test/digestonly", "v1", srcOpts...)
+	hash, err := img.Digest()
+	if err != nil {
+		t.Fatalf("img.Digest: %v", err)
+	}
+
+	// Add the image BY DIGEST
+	s := newTestStore(t)
+	if err := s.AddImage(ctx, host+"/test/digestonly@"+hash.String(), "", false); err != nil {
+		t.Fatalf("AddImage by digest: %v", err)
+	}
+
+	if err := writeExportsManifest(ctx, s.Root, ""); err != nil {
+		t.Fatalf("writeExportsManifest: %v", err)
+	}
+
+	entries := readManifestJSON(t, s.Root)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 manifest entry, got %d", len(entries))
+	}
+	// Before fix 2, digest-only refs fall through the switch without setting RepoTags.
+	if len(entries[0].RepoTags) == 0 {
+		t.Errorf("expected at least one RepoTag for digest-only image, got none")
+	}
+}
+
 func TestWriteExportsManifest_SkipsNonImages(t *testing.T) {
 	ctx := newTestContext(t)
 

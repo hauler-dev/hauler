@@ -1,0 +1,13 @@
+name: Vulnerability Scan Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - release/*
+
+jobs:
+  vulnerability-scan:
+    name: Vulnerability Scan
+    uses: ./.github/workflows/vulnerability-scan.yaml

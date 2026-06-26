@@ -241,6 +241,63 @@ func TestLifecycle_Chart_AddSaveLoadExtract(t *testing.T) {
 	}
 }
 
+// TestLifecycle_DigestOnlyImage_AddSaveLoad exercises the full save/load round-trip
+// for an image added by digest only (no tag). Before fix #642, the image disappeared
+// from index.json after LoadCmd because CopyAll appended a double-@ digest.
+func TestLifecycle_DigestOnlyImage_AddSaveLoad(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// Step 1: seed a tagged image so we can get its digest
+	srcHost, srcOpts := newLocalhostRegistry(t)
+	srcImg := seedImage(t, srcHost, "lifecycle/digestonly", "v1", srcOpts...)
+	hash, err := srcImg.Digest()
+	if err != nil {
+		t.Fatalf("srcImg.Digest: %v", err)
+	}
+
+	// Step 2: add BY DIGEST (not tag) into store A
+	storeA := newTestStore(t)
+	rso := defaultRootOpts(storeA.Root)
+	ro := defaultCliOpts()
+	digestRef := srcHost + "/lifecycle/digestonly@" + hash.String()
+	if err := storeImage(ctx, storeA, v1.Image{Name: digestRef}, "", false, rso, ro, ""); err != nil {
+		t.Fatalf("storeImage by digest: %v", err)
+	}
+	// The image should be findable by its digest hex
+	assertArtifactInStore(t, storeA, hash.Hex)
+
+	// Flush index.json for SaveCmd
+	if err := storeA.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	// Step 3: SaveCmd -> archive
+	archivePath := filepath.Join(t.TempDir(), "lifecycle-digestonly.tar.zst")
+	saveOpts := newSaveOpts(storeA.Root, archivePath)
+	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("SaveCmd: %v", err)
+	}
+
+	// Step 4: LoadCmd -> fresh store B
+	storeBDir := t.TempDir()
+	loadOpts := &flags.LoadOpts{
+		StoreRootOpts: defaultRootOpts(storeBDir),
+		FileName:      []string{archivePath},
+	}
+	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+		t.Fatalf("LoadCmd: %v", err)
+	}
+
+	storeB, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB): %v", err)
+	}
+
+	// Regression assertion: the digest-only image must survive the save/load round-trip.
+	// Before fix 1, the image disappears from the loaded store's index.json.
+	assertArtifactInStore(t, storeB, hash.Hex)
+}
+
 // TestLifecycle_Remove_ThenSave verifies that removing one artifact from a store
 // with two file artifacts, then saving/loading, results in only the retained
 // artifact being present.
