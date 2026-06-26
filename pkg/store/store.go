@@ -753,9 +753,15 @@ func (l *Layout) CopyAll(ctx context.Context, to content.Target, toMapper func(s
 			toRef = tr
 		}
 
-		// Append the digest to help the target pusher identify the root descriptor
-		// Format: "reference@digest" allows the pusher to update its index.json
+		// Append the digest to help the target pusher identify the root descriptor.
+		// AnnotationRefName for digest-only images already ends in "@sha256:...".
+		// Strip any existing digest before appending the authoritative descriptor
+		// digest so the destination pusher can match the root manifest. A double "@"
+		// yields a digest the pusher never matches, leaving the image unindexed (#642).
 		if desc.Digest.Validate() == nil {
+			if at := strings.Index(toRef, "@"); at != -1 {
+				toRef = toRef[:at]
+			}
 			toRef = fmt.Sprintf("%s@%s", toRef, desc.Digest)
 		}
 
