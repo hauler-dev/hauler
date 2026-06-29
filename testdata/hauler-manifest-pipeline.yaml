@@ -41,6 +41,8 @@ spec:
     - name: chart-with-file-dependency-chart-1.0.0.tgz
       repoURL: testdata
       add-dependencies: true
+      add-images: true
+      values: chart-with-file-dependency-chart-required-values.yaml
 ---
 apiVersion: content.hauler.cattle.io/v1
 kind: Files

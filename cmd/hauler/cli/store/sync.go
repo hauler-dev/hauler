@@ -496,6 +496,12 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						excludeExtras = ch.ExcludeExtras
 					}
 
+					var valuesPath string
+					if ch.Values != "" {
+						valuesPath = filepath.Join(filepath.Dir(fi.Name()), ch.Values)
+						l.Debugf("values for chart [%s]", valuesPath)
+					}
+
 					if err := storeChart(ctx, s, ch,
 						&flags.AddChartOpts{
 							ChartOpts: &action.ChartPathOptions{
@@ -507,6 +513,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							ExcludeExtras:   excludeExtras,
 							Registry:        registry,
 							Platform:        o.Platform,
+							HelmValues:      valuesPath,
 						},
 						rso, ro,
 						cfg.Spec.Charts[i].Rewrite,
