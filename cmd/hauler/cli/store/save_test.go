@@ -59,7 +59,7 @@ func TestWriteExportsManifest(t *testing.T) {
 		seedIndex(t, host, "test/multiarch", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/test/multiarch:v1", "", false); err != nil {
+		if _, err := s.AddImage(ctx, host+"/test/multiarch:v1", "", false); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -78,7 +78,7 @@ func TestWriteExportsManifest(t *testing.T) {
 		seedIndex(t, host, "test/multiarch", "v2", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/test/multiarch:v2", "", false); err != nil {
+		if _, err := s.AddImage(ctx, host+"/test/multiarch:v2", "", false); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -126,7 +126,7 @@ func TestWriteExportsManifest_DigestOnlyImageHasRepoTag(t *testing.T) {
 
 	// Add the image BY DIGEST
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/digestonly@"+hash.String(), "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/digestonly@"+hash.String(), "", false); err != nil {
 		t.Fatalf("AddImage by digest: %v", err)
 	}
 
@@ -149,7 +149,7 @@ func TestWriteExportsManifest_SkipsNonImages(t *testing.T) {
 
 	url := seedFileInHTTPServer(t, "skip.sh", "#!/bin/sh\necho skip")
 	s := newTestStore(t)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -174,7 +174,7 @@ func TestSaveCmd(t *testing.T) {
 	seedImage(t, host, "test/save", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/save:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/save:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -207,7 +207,7 @@ func TestSaveCmd_ContainerdCompatibility(t *testing.T) {
 	seedImage(t, host, "test/containerd-compat", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/containerd-compat:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/containerd-compat:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -306,7 +306,7 @@ func TestSaveCmd_ChunkSize(t *testing.T) {
 	seedImage(t, host, "test/chunksave", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/chunksave:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/chunksave:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 

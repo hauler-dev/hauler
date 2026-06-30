@@ -324,7 +324,7 @@ func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 				return err
 			}
 
-			return store.AddFileCmd(ctx, o, s, args[0])
+			return store.AddFileCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -453,7 +453,7 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 				return err
 			}
 
-			return store.RemoveCmd(ctx, o, s, args[0])
+			return store.RemoveCmd(ctx, o, s, args[0], ro, rso)
 		},
 	}
 	o.AddFlags(cmd)

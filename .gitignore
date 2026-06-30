@@ -20,3 +20,4 @@ vulncheck.out
 trivy.out
 CLAUDE.md
 **/CLAUDE.*
+.claude**

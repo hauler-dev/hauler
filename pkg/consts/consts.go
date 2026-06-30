@@ -91,6 +91,8 @@ const (
 	HaulerTempDir      = "HAULER_TEMP_DIR"
 	HaulerStoreDir     = "HAULER_STORE_DIR"
 	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
+	HaulerLogLevel     = "HAULER_LOG_LEVEL"
+	HaulerAuditLevel   = "HAULER_AUDIT_LEVEL"
 
 	// container files and directories
 	ImageManifestFile = "manifest.json"

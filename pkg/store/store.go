@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/uuid"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -31,8 +32,9 @@ import (
 
 type Layout struct {
 	*content.OCI
-	Root  string
-	cache layer.Cache
+	Root    string
+	StoreID string
+	cache   layer.Cache
 }
 
 type Options func(*Layout)
@@ -54,8 +56,9 @@ func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 	}
 
 	l := &Layout{
-		Root: rootdir,
-		OCI:  ociStore,
+		Root:    rootdir,
+		OCI:     ociStore,
+		StoreID: loadOrCreateStoreID(rootdir),
 	}
 
 	for _, opt := range opts {
@@ -63,6 +66,27 @@ func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 	}
 
 	return l, nil
+}
+
+type storeMetadata struct {
+	StoreID string `json:"store-id"`
+}
+
+// loadOrCreateStoreID returns the persistent store identity from <rootdir>/metadata.json,
+// creating the file with a fresh UUID on first use.
+func loadOrCreateStoreID(rootdir string) string {
+	metaPath := filepath.Join(rootdir, "metadata.json")
+	if data, err := os.ReadFile(metaPath); err == nil {
+		var m storeMetadata
+		if json.Unmarshal(data, &m) == nil && m.StoreID != "" {
+			return m.StoreID
+		}
+	}
+	m := storeMetadata{StoreID: uuid.New().String()}
+	if data, err := json.Marshal(m); err == nil {
+		_ = os.WriteFile(metaPath, data, 0o644)
+	}
+	return m.StoreID
 }
 
 // AddArtifact adds an artifacts.OCI to the store
@@ -157,7 +181,7 @@ func (l *Layout) AddArtifactCollection(ctx context.Context, collection artifacts
 // discovered via cosign's tag convention (<digest>.sig, <digest>.att, <digest>.sbom).
 // When platform is non-empty and the ref is a multi-arch index, only that platform is fetched.
 // When excludeExtras is true, cosign signatures, attestations, SBOMs, and OCI referrers are skipped.
-func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, opts ...remote.Option) error {
+func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, opts ...remote.Option) (string, error) {
 	allOpts := append([]remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		remote.WithContext(ctx),
@@ -165,12 +189,12 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 
 	parsedRef, err := gname.ParseReference(ref)
 	if err != nil {
-		return fmt.Errorf("parsing reference %q: %w", ref, err)
+		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
 
 	desc, err := remote.Get(parsedRef, allOpts...)
 	if err != nil {
-		return fmt.Errorf("fetching descriptor for %q: %w", ref, err)
+		return "", fmt.Errorf("fetching descriptor for %q: %w", ref, err)
 	}
 
 	var imageDigest v1.Hash
@@ -179,10 +203,10 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		// Multi-arch image with no platform filter: save the full index.
 		imageDigest, err = idx.Digest()
 		if err != nil {
-			return fmt.Errorf("getting index digest for %q: %w", ref, err)
+			return "", fmt.Errorf("getting index digest for %q: %w", ref, err)
 		}
 		if err := l.writeIndex(parsedRef, idx, consts.KindAnnotationIndex); err != nil {
-			return err
+			return "", err
 		}
 	} else {
 		// Single-platform image, or the caller requested a specific platform.
@@ -190,55 +214,59 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if platform != "" {
 			p, err := parsePlatform(platform)
 			if err != nil {
-				return err
+				return "", err
 			}
 			imgOpts = append(imgOpts, remote.WithPlatform(p))
 		}
 		img, err := remote.Image(parsedRef, imgOpts...)
 		if err != nil {
-			return fmt.Errorf("fetching image %q: %w", ref, err)
+			return "", fmt.Errorf("fetching image %q: %w", ref, err)
 		}
 		imageDigest, err = img.Digest()
 		if err != nil {
-			return fmt.Errorf("getting image digest for %q: %w", ref, err)
+			return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 		}
 		if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
-			return err
+			return "", err
 		}
 	}
 
 	if !excludeExtras {
 		savedDigests, err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...)
 		if err != nil {
-			return err
+			return "", err
 		}
-		return l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
+		return imageDigest.String(), l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
 	}
-	return nil
+	return imageDigest.String(), nil
 }
 
 // AddLocalImage fetches a container image from the local Docker daemon and saves it to the store.
 // No cosign signatures, attestations, SBOMs, or OCI referrers are fetched (registry-only concepts).
-func (l *Layout) AddLocalImage(ctx context.Context, ref string) error {
+func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) {
 	parsedRef, err := gname.ParseReference(ref)
 	if err != nil {
-		return fmt.Errorf("parsing reference %q: %w", ref, err)
+		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
 
 	if err := ensureDockerHost(); err != nil {
-		return fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
+		return "", fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
 	}
 
 	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx))
 	if err != nil {
-		return fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
+		return "", fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
 	}
 
-	if _, err := img.Digest(); err != nil {
-		return fmt.Errorf("getting image digest for %q: %w", ref, err)
+	d, err := img.Digest()
+	if err != nil {
+		return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 	}
 
-	return l.writeImage(parsedRef, img, consts.KindAnnotationImage, "")
+	if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+		return "", err
+	}
+	return d.String(), nil
 }
 
 // ensureDockerHost sets DOCKER_HOST if it is not already set and the default

@@ -12,9 +12,24 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/audit"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
+
+func artifactTypeFromKind(kind string) string {
+	switch {
+	case strings.Contains(kind, "image"), strings.Contains(kind, "Image"):
+		return "image"
+	case strings.Contains(kind, "helm"):
+		return "chart"
+	case strings.Contains(kind, "file"):
+		return "file"
+	default:
+		return "image"
+	}
+}
 
 func formatReference(ref string) string {
 	tagIdx := strings.LastIndex(ref, ":")
@@ -39,7 +54,7 @@ func formatReference(ref string) string {
 	return fmt.Sprintf("%s [%s]", base, suffix)
 }
 
-func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string) error {
+func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
 	l := log.FromContext(ctx)
 
 	// collect matching artifacts
@@ -104,6 +119,35 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	for _, m := range matches {
 		if err := s.RemoveArtifact(ctx, m.reference, m.desc); err != nil {
 			return fmt.Errorf("failed to remove artifact [%s]: %w", formatReference(m.reference), err)
+		}
+
+		if auditLevel(ro) != "none" {
+			cleanRef := m.desc.Annotations[consts.ContainerdImageNameKey]
+			if cleanRef == "" {
+				cleanRef = m.desc.Annotations[ocispec.AnnotationRefName]
+			}
+			e := audit.Entry{
+				StoreID:   s.StoreID,
+				Store:     s.Root,
+				Type:      artifactTypeFromKind(m.desc.Annotations[consts.KindAnnotationName]),
+				Command:   "store remove",
+				Args:      []string{ref},
+				Reference: cleanRef,
+				Digest:    m.desc.Digest.String(),
+			}
+			if auditLevel(ro) == "verbose" {
+				sys := audit.BuildSystem()
+				g := audit.BuildGlobal(ro, rso)
+				e.System = &sys
+				e.Global = &g
+				e.Flags = map[string]any{
+					"force": o.Force,
+				}
+			}
+			_ = audit.Append(ro.HaulerDir, e)
+			l.Debugf("generated audit id of [%s]", audit.ID())
+		} else {
+			l.Debugf("generated audit id of [none]")
 		}
 
 		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference), m.desc.MediaType, m.desc.Digest.String())
