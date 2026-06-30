@@ -126,7 +126,7 @@ func TestWriteExportsManifest_DigestOnlyImageHasRepoTag(t *testing.T) {
 
 	// Add the image BY DIGEST
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/digestonly@"+hash.String(), "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/digestonly@"+hash.String(), "", false); err != nil {
 		t.Fatalf("AddImage by digest: %v", err)
 	}
 
