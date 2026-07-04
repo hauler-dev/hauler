@@ -11,11 +11,9 @@ import (
 	"strings"
 
 	"github.com/distribution/distribution/v3/configuration"
-	dcontext "github.com/distribution/distribution/v3/context"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/base"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
-	"github.com/distribution/distribution/v3/version"
 	"gopkg.in/yaml.v3"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -86,7 +84,6 @@ func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts,
 
 func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
-	ctx = dcontext.WithVersion(ctx, version.Version)
 
 	if err := validateStoreExists(s); err != nil {
 		return err
@@ -138,7 +135,6 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 
 func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
-	ctx = dcontext.WithVersion(ctx, version.Version)
 
 	if err := validateStoreExists(s); err != nil {
 		return err

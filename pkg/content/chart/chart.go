@@ -4,10 +4,13 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,12 +20,11 @@ import (
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
-	"hauler.dev/go/hauler/v2/pkg/log"
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/registry"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart/v2"
+	"helm.sh/helm/v4/pkg/chart/v2/loader"
+	"helm.sh/helm/v4/pkg/cli"
+	"helm.sh/helm/v4/pkg/registry"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/layer"
@@ -43,7 +45,7 @@ type Chart struct {
 func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	chartRef := name
 	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER"), log.NewLogger(os.Stdout).Debugf); err != nil {
+	if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER")); err != nil {
 		return nil, err
 	}
 
@@ -51,7 +53,7 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	client.ChartPathOptions.Version = opts.Version
 
 	registryClient, err := newRegistryClient(client.CertFile, client.KeyFile, client.CaFile,
-		client.InsecureSkipTLSverify, client.PlainHTTP)
+		client.InsecureSkipTLSVerify, client.PlainHTTP)
 	if err != nil {
 		return nil, fmt.Errorf("missing registry client: %w", err)
 	}
@@ -148,7 +150,7 @@ func (h *Chart) configDescriptor() (gv1.Descriptor, error) {
 	}, nil
 }
 
-func (h *Chart) Load() (*chart.Chart, error) {
+func (h *Chart) Load() (*v2.Chart, error) {
 	return loader.Load(h.path)
 }
 
@@ -234,8 +236,25 @@ func (h *Chart) chartData() (gv1.Layer, error) {
 		chartdata = data
 	}
 
+	// title defaults to the downloaded file's basename. Helm v4's
+	// ChartPathOptions.LocateChart downloads any non-local chart (HTTP repo or
+	// OCI) into a content-addressed cache and returns a hash-named path (e.g.
+	// "<sha256hex>.chart", using the literal extension defined by
+	// downloader.CacheChart) rather than a human-readable filename, so
+	// filepath.Base(h.path) is meaningless for those sources. In that specific
+	// case only, prefer the canonical "<name>-<version>.tgz" form derived from
+	// the chart's own Chart.yaml metadata. Genuinely local archives (".tgz" or
+	// any other extension a user's file might carry) keep their real filename,
+	// even if it doesn't follow the "<name>-<version>.tgz" convention.
+	title := filepath.Base(h.path)
+	if !info.IsDir() && filepath.Ext(h.path) == ".chart" {
+		if ch, err := loader.Load(h.path); err == nil && ch.Metadata != nil && ch.Metadata.Name != "" && ch.Metadata.Version != "" {
+			title = fmt.Sprintf("%s-%s.tgz", ch.Metadata.Name, ch.Metadata.Version)
+		}
+	}
+
 	annotations := make(map[string]string)
-	annotations[ocispec.AnnotationTitle] = filepath.Base(h.path)
+	annotations[ocispec.AnnotationTitle] = title
 
 	opener := func() layer.Opener {
 		return func() (io.ReadCloser, error) {
@@ -287,19 +306,70 @@ func newDefaultRegistryClient(plainHTTP bool) (*registry.Client, error) {
 	return registryClient, nil
 }
 
+// newRegistryClientWithTLS builds a registry client backed by an HTTP client with a custom
+// TLS config. Helm v4 removed the registry.NewRegistryClientWithTLS convenience wrapper (it
+// delegated to helm's internal/tlsutil package, which is not importable outside the helm
+// module), so the TLS config construction is inlined here to match its prior behavior.
 func newRegistryClientWithTLS(certFile, keyFile, caFile string, insecureSkipTLSverify bool) (*registry.Client, error) {
-	// create a new registry client
-	registryClient, err := registry.NewRegistryClientWithTLS(
-		io.Discard,
-		certFile, keyFile, caFile,
-		insecureSkipTLSverify,
-		settings.RegistryConfig,
-		settings.Debug,
+	tlsConf, err := newTLSConfig(certFile, keyFile, caFile, insecureSkipTLSverify)
+	if err != nil {
+		return nil, fmt.Errorf("can't create TLS config for client: %w", err)
+	}
+
+	registryClient, err := registry.NewClient(
+		registry.ClientOptDebug(settings.Debug),
+		registry.ClientOptEnableCache(true),
+		registry.ClientOptWriter(io.Discard),
+		registry.ClientOptCredentialsFile(settings.RegistryConfig),
+		registry.ClientOptHTTPClient(&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConf,
+				Proxy:           http.ProxyFromEnvironment,
+			},
+		}),
 	)
 	if err != nil {
 		return nil, err
 	}
 	return registryClient, nil
+}
+
+// newTLSConfig constructs a *tls.Config from the given cert/key/CA files, mirroring the
+// behavior of helm's internal tlsutil.NewTLSConfig.
+func newTLSConfig(certFile, keyFile, caFile string, insecureSkipTLSverify bool) (*tls.Config, error) {
+	config := &tls.Config{
+		InsecureSkipVerify: insecureSkipTLSverify,
+	}
+
+	if certFile != "" && keyFile != "" {
+		certPEMBlock, err := os.ReadFile(certFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read cert file: %q: %w", certFile, err)
+		}
+		keyPEMBlock, err := os.ReadFile(keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read key file: %q: %w", keyFile, err)
+		}
+		cert, err := tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load cert from key pair: %w", err)
+		}
+		config.Certificates = []tls.Certificate{cert}
+	}
+
+	if caFile != "" {
+		caPEMBlock, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("can't read CA file: %q: %w", caFile, err)
+		}
+		cp := x509.NewCertPool()
+		if !cp.AppendCertsFromPEM(caPEMBlock) {
+			return nil, fmt.Errorf("failed to append certificates from pem block")
+		}
+		config.RootCAs = cp
+	}
+
+	return config, nil
 }
 
 // path returns the local filesystem path to the chart archive or directory
