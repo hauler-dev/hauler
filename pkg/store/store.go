@@ -32,9 +32,10 @@ import (
 
 type Layout struct {
 	*content.OCI
-	Root    string
-	StoreID string
-	cache   layer.Cache
+	Root      string
+	StoreID   string
+	haulerDir string
+	cache     layer.Cache
 }
 
 type Options func(*Layout)
@@ -42,6 +43,14 @@ type Options func(*Layout)
 func WithCache(c layer.Cache) Options {
 	return func(l *Layout) {
 		l.cache = c
+	}
+}
+
+// WithHaulerDir records this store in <haulerDir>/stores.json so it can
+// later be referenced by StoreID. If unset, NewLayout skips the inventory
+func WithHaulerDir(dir string) Options {
+	return func(l *Layout) {
+		l.haulerDir = dir
 	}
 }
 
@@ -65,6 +74,10 @@ func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 		opt(l)
 	}
 
+	if l.haulerDir != "" {
+		updateStoreInventory(l.haulerDir, l.StoreID, rootdir)
+	}
+
 	return l, nil
 }
 
@@ -72,10 +85,10 @@ type storeMetadata struct {
 	StoreID string `json:"store-id"`
 }
 
-// loadOrCreateStoreID returns the persistent store identity from <rootdir>/metadata.json,
+// loadOrCreateStoreID returns the persistent store identity from <rootdir>/hauler.json,
 // creating the file with a fresh UUID on first use.
 func loadOrCreateStoreID(rootdir string) string {
-	metaPath := filepath.Join(rootdir, "metadata.json")
+	metaPath := filepath.Join(rootdir, consts.DefaultStoreMetadataName)
 	if data, err := os.ReadFile(metaPath); err == nil {
 		var m storeMetadata
 		if json.Unmarshal(data, &m) == nil && m.StoreID != "" {

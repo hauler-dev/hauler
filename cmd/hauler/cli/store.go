@@ -50,7 +50,7 @@ func addStoreExtract(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -103,7 +103,7 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return store.SyncCmd(ctx, o, nil, rso, ro)
 			}
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -126,7 +126,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -165,7 +165,7 @@ func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cob
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -188,7 +188,7 @@ func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -212,7 +212,7 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -239,7 +239,7 @@ func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -270,7 +270,7 @@ func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -319,7 +319,7 @@ func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -363,7 +363,7 @@ func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -406,7 +406,7 @@ func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -448,7 +448,7 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := rso.Store(ctx)
+			s, err := rso.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
