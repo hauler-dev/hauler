@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	referencev3 "github.com/distribution/distribution/v3/reference"
+	referencev3 "github.com/distribution/reference"
 	"github.com/google/go-containerregistry/pkg/name"
 	libv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
