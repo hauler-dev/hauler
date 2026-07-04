@@ -14,7 +14,7 @@ func TestAppend(t *testing.T) {
 		Command: "store add image",
 		Args:    []string{"busybox:latest"},
 		Flags:   map[string]any{"platform": "linux/amd64"},
-		Store:   "/tmp/store",
+		Store:   filepath.Join(dir, "store"),
 	}
 
 	if err := Append(dir, e); err != nil {

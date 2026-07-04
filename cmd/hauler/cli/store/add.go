@@ -84,7 +84,9 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 				"name": fi.Name,
 			}
 		}
-		_ = audit.Append(ro.HaulerDir, e)
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
 		l.Debugf("generated audit id of [%s]", audit.ID())
 	} else {
 		l.Debugf("generated audit id of [none]")
@@ -219,7 +221,9 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 				"rewrite":  rewrite,
 			}
 		}
-		_ = audit.Append(ro.HaulerDir, e)
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
 		l.Debugf("generated audit id of [%s]", audit.ID())
 	} else {
 		l.Debugf("generated audit id of [none]")
@@ -319,7 +323,9 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 				"exclude-extras":                         excludeExtras,
 			}
 		}
-		_ = audit.Append(ro.HaulerDir, e)
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
 		l.Debugf("generated audit id of [%s]", audit.ID())
 	} else {
 		l.Debugf("generated audit id of [none]")
@@ -591,7 +597,9 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 				"key-file":                 opts.ChartOpts.KeyFile,
 			}
 		}
-		_ = audit.Append(ro.HaulerDir, e)
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
 		l.Debugf("generated audit id of [%s]", audit.ID())
 	} else {
 		l.Debugf("generated audit id of [none]")

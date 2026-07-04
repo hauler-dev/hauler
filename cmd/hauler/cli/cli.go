@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	cranecmd "github.com/google/go-containerregistry/cmd/crane/cmd"
@@ -34,6 +35,11 @@ func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 			// default to standard audit level
 			if ro.AuditLevel == "" {
 				ro.AuditLevel = "standard"
+			}
+			switch ro.AuditLevel {
+			case "none", "standard", "verbose":
+			default:
+				return fmt.Errorf("invalid --audit-level %q: must be one of none, standard, verbose", ro.AuditLevel)
 			}
 
 			l := log.FromContext(ctx)

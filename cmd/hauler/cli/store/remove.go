@@ -3,6 +3,7 @@ package store
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,13 +19,38 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
-func artifactTypeFromKind(kind string) string {
+// artifactType derives a human-readable content type for an artifact the same way `store info`
+// does: from the manifest's config media type, since AddArtifact stores every non-image-command
+// artifact (files, charts) under the same "kind" annotation and can't distinguish them
+func artifactType(ctx context.Context, s *store.Layout, desc ocispec.Descriptor) string {
 	switch {
-	case strings.Contains(kind, "image"), strings.Contains(kind, "Image"):
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSigs:
+		return "sigs"
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationAtts:
+		return "atts"
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSboms:
+		return "sbom"
+	case strings.HasPrefix(desc.Annotations[consts.KindAnnotationName], consts.KindAnnotationReferrers):
+		return "referrer"
+	case desc.MediaType == consts.OCIImageIndexSchema, desc.MediaType == consts.DockerManifestListSchema2:
 		return "image"
-	case strings.Contains(kind, "helm"):
+	}
+
+	rc, err := s.Fetch(ctx, desc)
+	if err != nil {
+		return "image"
+	}
+	defer rc.Close()
+
+	var m ocispec.Manifest
+	if err := json.NewDecoder(rc).Decode(&m); err != nil {
+		return "image"
+	}
+
+	switch m.Config.MediaType {
+	case consts.ChartConfigMediaType:
 		return "chart"
-	case strings.Contains(kind, "file"):
+	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType, consts.FileDirectoryConfigMediaType:
 		return "file"
 	default:
 		return "image"
@@ -129,7 +155,7 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 			e := audit.Entry{
 				StoreID:   s.StoreID,
 				Store:     s.Root,
-				Type:      artifactTypeFromKind(m.desc.Annotations[consts.KindAnnotationName]),
+				Type:      artifactType(ctx, s, m.desc),
 				Command:   "store remove",
 				Args:      []string{ref},
 				Reference: cleanRef,
@@ -144,7 +170,9 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 					"force": o.Force,
 				}
 			}
-			_ = audit.Append(ro.HaulerDir, e)
+			if err := audit.Append(ro.HaulerDir, e); err != nil {
+				l.Warnf("failed to write audit entry: %v", err)
+			}
 			l.Debugf("generated audit id of [%s]", audit.ID())
 		} else {
 			l.Debugf("generated audit id of [none]")

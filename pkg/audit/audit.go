@@ -149,7 +149,9 @@ func Append(haulerDir string, e Entry) error {
 			Reference: e.Reference,
 			Digest:    e.Digest,
 		}
-		_ = appendLine(e.Store, pe)
+		if err := appendLine(e.Store, pe); err != nil {
+			return fmt.Errorf("audit: store-local write: %w", err)
+		}
 	}
 
 	return nil

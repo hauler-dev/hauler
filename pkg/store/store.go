@@ -22,6 +22,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
@@ -96,8 +97,13 @@ func loadOrCreateStoreID(rootdir string) string {
 		}
 	}
 	m := storeMetadata{StoreID: uuid.New().String()}
-	if data, err := json.Marshal(m); err == nil {
-		_ = os.WriteFile(metaPath, data, 0o644)
+	data, err := json.Marshal(m)
+	if err != nil {
+		zlog.Warn().Err(err).Msg("failed to marshal store metadata; store id will not persist across runs")
+		return m.StoreID
+	}
+	if err := os.WriteFile(metaPath, data, 0o644); err != nil {
+		zlog.Warn().Err(err).Str("path", metaPath).Msg("failed to write store metadata; store id will not persist across runs")
 	}
 	return m.StoreID
 }
