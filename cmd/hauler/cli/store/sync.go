@@ -16,7 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/mitchellh/go-homedir"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
