@@ -7,7 +7,7 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/pkg/action"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content/chart"
@@ -45,6 +45,30 @@ func TestNewChart(t *testing.T) {
 				},
 				Annotations: map[string]string{
 					ocispec.AnnotationTitle: "rancher-cluster-templates-0.5.2.tgz",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			// Local chart archives keep the caller-provided filename as the OCI
+			// title annotation even when it doesn't follow the "<name>-<version>.tgz"
+			// convention (e.g. a user-renamed or repackaged chart file). Only
+			// Helm v4's content-addressed cache paths (".chart" extension) should
+			// fall back to a metadata-derived title.
+			name: "should preserve real filename for local archive with mismatched name",
+			args: args{
+				name: "mismatched-filename-chart.tgz",
+				opts: &action.ChartPathOptions{RepoURL: "../../../testdata"},
+			},
+			want: v1.Descriptor{
+				MediaType: consts.ChartLayerMediaType,
+				Size:      14970,
+				Digest: v1.Hash{
+					Algorithm: "sha256",
+					Hex:       "0905de044a6e57cf3cd27bfc8482753049920050b10347ae2315599bd982a0e3",
+				},
+				Annotations: map[string]string{
+					ocispec.AnnotationTitle: "mismatched-filename-chart.tgz",
 				},
 			},
 			wantErr: false,
