@@ -7,5 +7,8 @@ func auditLevel(ro *flags.CliRootOpts) string {
 	if ro == nil {
 		return "none"
 	}
+	if ro.AuditLevel == "" {
+		return "standard"
+	}
 	return ro.AuditLevel
 }

@@ -593,7 +593,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 				"registry":                 opts.Registry,
 				"kube-version":             opts.KubeVersion,
 				"verify":                   opts.ChartOpts.Verify,
-				"insecure-skip-tls-verify": opts.ChartOpts.InsecureSkipTLSverify,
+				"insecure-skip-tls-verify": opts.ChartOpts.InsecureSkipTLSVerify,
 				"ca-file":                  opts.ChartOpts.CaFile,
 				"cert-file":                opts.ChartOpts.CertFile,
 				"key-file":                 opts.ChartOpts.KeyFile,

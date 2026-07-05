@@ -138,12 +138,14 @@ func defaultRootOpts(storeDir string) *flags.StoreRootOpts {
 	}
 }
 
-// defaultCliOpts returns CliRootOpts with log level error, audit level standard, and ignore errors false
+// defaultCliOpts returns CliRootOpts with log level error, audit level none, and ignore errors false.
+// Audit is disabled here rather than pointed at a temp HaulerDir so tests don't write to the
+// developer/CI user's real $HOME/.hauler/audit.log.
 func defaultCliOpts() *flags.CliRootOpts {
 	return &flags.CliRootOpts{
 		IgnoreErrors: false,
 		LogLevel:     "error",
-		AuditLevel:   "standard",
+		AuditLevel:   "none",
 	}
 }
 

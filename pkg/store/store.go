@@ -102,7 +102,13 @@ func loadOrCreateStoreID(rootdir string) string {
 		zlog.Warn().Err(err).Msg("failed to marshal store metadata; store id will not persist across runs")
 		return m.StoreID
 	}
-	if err := os.WriteFile(metaPath, data, 0o644); err != nil {
+	tmp := metaPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		zlog.Warn().Err(err).Str("path", tmp).Msg("failed to write store metadata; store id will not persist across runs")
+		return m.StoreID
+	}
+	_ = os.Remove(metaPath) // Windows cannot rename over an existing file
+	if err := os.Rename(tmp, metaPath); err != nil {
 		zlog.Warn().Err(err).Str("path", metaPath).Msg("failed to write store metadata; store id will not persist across runs")
 	}
 	return m.StoreID

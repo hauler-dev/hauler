@@ -7,6 +7,7 @@ import (
 	"os"
 	osuser "os/user"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -144,9 +145,9 @@ func Append(haulerDir string, e Entry) error {
 			StoreID:   e.StoreID,
 			Timestamp: e.Timestamp,
 			Command:   e.Command,
-			Args:      e.Args,
+			Args:      sanitizeFileRefs(e.Type, e.Args),
 			Type:      e.Type,
-			Reference: e.Reference,
+			Reference: sanitizeFileRef(e.Type, e.Reference),
 			Digest:    e.Digest,
 		}
 		if err := appendLine(e.Store, pe); err != nil {
@@ -155,6 +156,31 @@ func Append(haulerDir string, e Entry) error {
 	}
 
 	return nil
+}
+
+// sanitizeFileRef strips local filesystem path components from file-type references so the
+// store-local (portable) audit log — which travels with the store across the air gap — does
+// not leak machine-specific absolute paths. Non-file entries (images, charts) and URLs are
+// already portable identifiers and are returned unchanged.
+func sanitizeFileRef(entryType, ref string) string {
+	if entryType != "file" || ref == "" {
+		return ref
+	}
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+		return ref
+	}
+	return filepath.Base(ref)
+}
+
+func sanitizeFileRefs(entryType string, refs []string) []string {
+	if entryType != "file" || len(refs) == 0 {
+		return refs
+	}
+	out := make([]string, len(refs))
+	for i, r := range refs {
+		out[i] = sanitizeFileRef(entryType, r)
+	}
+	return out
 }
 
 func appendLine(dir string, v any) error {

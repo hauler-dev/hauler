@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	zlog "github.com/rs/zerolog/log"
+
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
@@ -46,7 +48,9 @@ func saveInventory(haulerDir string, inv storeInventory) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, inventoryPath(haulerDir))
+	dst := inventoryPath(haulerDir)
+	_ = os.Remove(dst) // Windows cannot rename over an existing file
+	return os.Rename(tmp, dst)
 }
 
 // updateStoreInventory records storeID's path in <haulerDir>/stores.json and
@@ -68,7 +72,9 @@ func updateStoreInventory(haulerDir, storeID, path string) {
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	_ = saveInventory(haulerDir, inv)
+	if err := saveInventory(haulerDir, inv); err != nil {
+		zlog.Warn().Err(err).Msg("failed to update store inventory; store id lookup may not find this store later")
+	}
 }
 
 // MatchesStoreID reports whether path still contains a store whose
