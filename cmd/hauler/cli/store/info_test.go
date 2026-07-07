@@ -59,6 +59,7 @@ func TestInfoOutputJSON(t *testing.T) {
 		{Reference: "myrepo/mychart:v1", Type: "chart", Platform: "-", Size: 512, Layers: 1},
 	}
 	out := infoOutput{
+		StorePath: "/tmp/test-store",
 		StoreID:   "test-store-id",
 		Artifacts: items,
 	}
@@ -69,6 +70,9 @@ func TestInfoOutputJSON(t *testing.T) {
 	var got infoOutput
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("json.Unmarshal infoOutput: %v\ndata: %s", err, data)
+	}
+	if got.StorePath != out.StorePath {
+		t.Errorf("StorePath = %q, want %q", got.StorePath, out.StorePath)
 	}
 	if len(got.Artifacts) != len(items) {
 		t.Fatalf("Artifacts len = %d, want %d", len(got.Artifacts), len(items))

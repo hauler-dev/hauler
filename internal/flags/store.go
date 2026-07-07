@@ -59,7 +59,7 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 			storeDir = resolved
 		case storeIDPattern.MatchString(storeDir):
 			// looks like an ID, not a directory name to create
-			return nil, fmt.Errorf("no store found matching id %q", storeDir)
+			return nil, fmt.Errorf("no store found matching id %q (for directories, use the absolute path)", storeDir)
 		}
 	}
 
@@ -84,12 +84,11 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 	if err != nil {
 		return nil, err
 	}
+	l.Debugf("generated store id of [%s]", s.StoreID)
 	return s, nil
 }
 
-// resolveHaulerDir mirrors pkg/audit's resolution of the hauler directory
-// (flag > env var > $HOME/.hauler). Duplicated instead of shared: pkg/audit
-// imports this package, so importing it back would cycle
+// resolveHaulerDir mirrors other variable detection, but duplicated to avoid an import cycle
 func resolveHaulerDir(ro *CliRootOpts) string {
 	if ro != nil && ro.HaulerDir != "" {
 		return ro.HaulerDir

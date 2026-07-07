@@ -112,7 +112,7 @@ const (
 	DefaultFileserverTimeout  = 60
 	DefaultHaulerArchiveName  = "haul.tar.zst"
 	DefaultHaulerManifestName = "hauler-manifest.yaml"
-	DefaultStoreMetadataName  = "hauler.json"
+	DefaultStoreMetadataName  = "store.json"
 	DefaultStoreInventoryName = "stores.json"
 	DefaultRetries            = 3
 	RetriesInterval           = 5

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	osuser "os/user"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -62,18 +64,32 @@ type Entry struct {
 	System    *SystemEntry   `json:"system,omitempty"`
 	Global    *GlobalEntry   `json:"global,omitempty"`
 	Flags     map[string]any `json:"flags,omitempty"`
+
+	// PortableReference replaces Reference in the store audit log
+	PortableReference string `json:"-"`
 }
 
-// portableEntry is the machine-agnostic subset written to the store-local audit.log
+// portableEntry is the machine-agnostic subset written to the store audit log
 type portableEntry struct {
-	AuditID   string   `json:"audit-id"`
-	StoreID   string   `json:"store-id,omitempty"`
-	Timestamp string   `json:"timestamp"`
-	Command   string   `json:"command"`
-	Args      []string `json:"args,omitempty"`
-	Type      string   `json:"type,omitempty"`
-	Reference string   `json:"reference,omitempty"`
-	Digest    string   `json:"digest,omitempty"`
+	AuditID   string `json:"audit-id"`
+	StoreID   string `json:"store-id,omitempty"`
+	Timestamp string `json:"timestamp"`
+	Command   string `json:"command"`
+	Type      string `json:"type,omitempty"`
+	Reference string `json:"reference,omitempty"`
+	Digest    string `json:"digest,omitempty"`
+}
+
+// ShortFileRef returns a portable-safe short name for a local path or URL
+func ShortFileRef(raw string) string {
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		if u, err := url.Parse(raw); err == nil {
+			if base := path.Base(u.Path); base != "." && base != "/" {
+				return base
+			}
+		}
+	}
+	return filepath.Base(raw)
 }
 
 // BuildSystem returns OS level context for verbose audit entries
@@ -134,53 +150,35 @@ func Append(haulerDir string, e Entry) error {
 	e.Timestamp = time.Now().UTC().Format(time.RFC3339)
 
 	// global write... full entry including system/global/flags
+	var globalErr error
 	if err := appendLine(resolveDir(haulerDir), e); err != nil {
-		return err
+		globalErr = fmt.Errorf("audit: global write: %w", err)
 	}
 
-	// store write... portable subset only with no machine specific data
+	// store write... portable subset only, attempted even if the global write above failed
 	if e.Store != "" {
+		reference := e.Reference
+		if e.PortableReference != "" {
+			reference = e.PortableReference
+		}
 		pe := portableEntry{
 			AuditID:   e.AuditID,
 			StoreID:   e.StoreID,
 			Timestamp: e.Timestamp,
 			Command:   e.Command,
-			Args:      sanitizeFileRefs(e.Type, e.Args),
 			Type:      e.Type,
-			Reference: sanitizeFileRef(e.Type, e.Reference),
+			Reference: reference,
 			Digest:    e.Digest,
 		}
 		if err := appendLine(e.Store, pe); err != nil {
-			return fmt.Errorf("audit: store-local write: %w", err)
+			if globalErr != nil {
+				return fmt.Errorf("%v; audit: store write: %w", globalErr, err)
+			}
+			return fmt.Errorf("audit: store write: %w", err)
 		}
 	}
 
-	return nil
-}
-
-// sanitizeFileRef strips local filesystem path components from file-type references so the
-// store-local (portable) audit log — which travels with the store across the air gap — does
-// not leak machine-specific absolute paths. Non-file entries (images, charts) and URLs are
-// already portable identifiers and are returned unchanged.
-func sanitizeFileRef(entryType, ref string) string {
-	if entryType != "file" || ref == "" {
-		return ref
-	}
-	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
-		return ref
-	}
-	return filepath.Base(ref)
-}
-
-func sanitizeFileRefs(entryType string, refs []string) []string {
-	if entryType != "file" || len(refs) == 0 {
-		return refs
-	}
-	out := make([]string, len(refs))
-	for i, r := range refs {
-		out[i] = sanitizeFileRef(entryType, r)
-	}
-	return out
+	return globalErr
 }
 
 func appendLine(dir string, v any) error {

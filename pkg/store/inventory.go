@@ -49,7 +49,8 @@ func saveInventory(haulerDir string, inv storeInventory) error {
 		return err
 	}
 	dst := inventoryPath(haulerDir)
-	_ = os.Remove(dst) // Windows cannot rename over an existing file
+	// Windows cannot rename over an existing file
+	_ = os.Remove(dst)
 	return os.Rename(tmp, dst)
 }
 
@@ -77,8 +78,7 @@ func updateStoreInventory(haulerDir, storeID, path string) {
 	}
 }
 
-// MatchesStoreID reports whether path still contains a store whose
-// hauler.json identifies it as storeID
+// MatchesStoreID reports whether path's store.json identifies it as storeID
 func MatchesStoreID(path, storeID string) bool {
 	data, err := os.ReadFile(filepath.Join(path, consts.DefaultStoreMetadataName))
 	if err != nil {

@@ -69,13 +69,14 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	}
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
-			StoreID:   s.StoreID,
-			Store:     s.Root,
-			Type:      "file",
-			Command:   "store add file",
-			Args:      []string{fi.Path},
-			Reference: resolvedPath,
-			Digest:    desc.Digest.String(),
+			StoreID:           s.StoreID,
+			Store:             s.Root,
+			Type:              "file",
+			Command:           "store add file",
+			Args:              []string{fi.Path},
+			Reference:         resolvedPath,
+			PortableReference: audit.ShortFileRef(fi.Path),
+			Digest:            desc.Digest.String(),
 		}
 		if auditLevel(ro) == "verbose" {
 			sys := audit.BuildSystem()

@@ -86,14 +86,18 @@ type storeMetadata struct {
 	StoreID string `json:"store-id"`
 }
 
-// loadOrCreateStoreID returns the persistent store identity from <rootdir>/hauler.json,
+// loadOrCreateStoreID returns the persistent store identity from <rootdir>/store.json,
 // creating the file with a fresh UUID on first use.
 func loadOrCreateStoreID(rootdir string) string {
 	metaPath := filepath.Join(rootdir, consts.DefaultStoreMetadataName)
 	if data, err := os.ReadFile(metaPath); err == nil {
 		var m storeMetadata
-		if json.Unmarshal(data, &m) == nil && m.StoreID != "" {
+		if uerr := json.Unmarshal(data, &m); uerr == nil && m.StoreID != "" {
 			return m.StoreID
+		} else if uerr != nil {
+			zlog.Warn().Err(uerr).Str("path", metaPath).Msg("failed to parse store metadata; generating new store id")
+		} else {
+			zlog.Warn().Str("path", metaPath).Msg("store metadata missing store-id; generating new store id")
 		}
 	}
 	m := storeMetadata{StoreID: uuid.New().String()}
@@ -107,7 +111,8 @@ func loadOrCreateStoreID(rootdir string) string {
 		zlog.Warn().Err(err).Str("path", tmp).Msg("failed to write store metadata; store id will not persist across runs")
 		return m.StoreID
 	}
-	_ = os.Remove(metaPath) // Windows cannot rename over an existing file
+	// Windows cannot rename over an existing file
+	_ = os.Remove(metaPath)
 	if err := os.Rename(tmp, metaPath); err != nil {
 		zlog.Warn().Err(err).Str("path", metaPath).Msg("failed to write store metadata; store id will not persist across runs")
 	}

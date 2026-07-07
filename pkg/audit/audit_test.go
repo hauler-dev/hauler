@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,23 +44,26 @@ func TestAppend(t *testing.T) {
 	}
 }
 
-func TestAppend_StoreLocalFileIsPortable(t *testing.T) {
+// TestAppend_PortableReferenceOverridesStoreCopy verifies PortableReference only affects the store audit log
+func TestAppend_PortableReferenceOverridesStoreCopy(t *testing.T) {
 	dir := t.TempDir()
 
-	secretPath := filepath.Join(string(filepath.Separator), "tmp", "some", "secret.txt")
+	absPath := filepath.Join(string(filepath.Separator), "home", "example", "scripts", "install.sh")
+	typedPath := filepath.Join(".", "scripts", "install.sh")
 	e := Entry{
-		Command:   "store add file",
-		Type:      "file",
-		Args:      []string{secretPath},
-		Reference: secretPath,
-		Store:     filepath.Join(dir, "store"),
+		Command:           "store add file",
+		Type:              "file",
+		Args:              []string{typedPath},
+		Reference:         absPath,
+		PortableReference: typedPath,
+		Store:             filepath.Join(dir, "store"),
 	}
 
 	if err := Append(dir, e); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
 
-	// the global log keeps the full, machine-specific path
+	// global log keeps the full path and the as-typed args
 	globalData, err := os.ReadFile(filepath.Join(dir, "audit.log"))
 	if err != nil {
 		t.Fatalf("ReadFile global audit.log: %v", err)
@@ -68,27 +72,89 @@ func TestAppend_StoreLocalFileIsPortable(t *testing.T) {
 	if err := json.Unmarshal(globalData, &globalGot); err != nil {
 		t.Fatalf("unmarshal global audit line: %v\nraw: %s", err, globalData)
 	}
-	if len(globalGot.Args) != 1 || globalGot.Args[0] != secretPath {
-		t.Errorf("global Args = %v, want [%s]", globalGot.Args, secretPath)
+	if globalGot.Reference != absPath {
+		t.Errorf("global Reference = %q, want %q", globalGot.Reference, absPath)
 	}
-	if globalGot.Reference != secretPath {
-		t.Errorf("global Reference = %q, want %q", globalGot.Reference, secretPath)
+	if len(globalGot.Args) != 1 || globalGot.Args[0] != typedPath {
+		t.Errorf("global Args = %v, want [%s]", globalGot.Args, typedPath)
 	}
 
-	// the store-local log is portable and must not leak the local path
+	// store log uses PortableReference instead, and carries no args at all
 	storeData, err := os.ReadFile(filepath.Join(dir, "store", "audit.log"))
 	if err != nil {
-		t.Fatalf("ReadFile store-local audit.log: %v", err)
+		t.Fatalf("ReadFile store audit log: %v", err)
 	}
 	var got portableEntry
 	if err := json.Unmarshal(storeData, &got); err != nil {
-		t.Fatalf("unmarshal store-local audit line: %v\nraw: %s", err, storeData)
+		t.Fatalf("unmarshal store audit line: %v\nraw: %s", err, storeData)
 	}
-	if len(got.Args) != 1 || got.Args[0] != "secret.txt" {
-		t.Errorf("store-local Args = %v, want [secret.txt]", got.Args)
+	if got.Reference != typedPath {
+		t.Errorf("store Reference = %q, want %q", got.Reference, typedPath)
 	}
-	if got.Reference != "secret.txt" {
-		t.Errorf("store-local Reference = %q, want %q", got.Reference, "secret.txt")
+	if strings.Contains(string(storeData), `"args"`) {
+		t.Errorf("store entry should not carry args: %s", storeData)
+	}
+}
+
+// TestAppend_StoreDefaultsToReference verifies the fallback when PortableReference is unset
+func TestAppend_StoreDefaultsToReference(t *testing.T) {
+	dir := t.TempDir()
+
+	e := Entry{
+		Command:   "store remove",
+		Type:      "file",
+		Args:      []string{"install.sh"},
+		Reference: "hauler/install.sh:latest",
+		Store:     filepath.Join(dir, "store"),
+	}
+
+	if err := Append(dir, e); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	storeData, err := os.ReadFile(filepath.Join(dir, "store", "audit.log"))
+	if err != nil {
+		t.Fatalf("ReadFile store audit log: %v", err)
+	}
+	var got portableEntry
+	if err := json.Unmarshal(storeData, &got); err != nil {
+		t.Fatalf("unmarshal store audit line: %v\nraw: %s", err, storeData)
+	}
+	if got.Reference != e.Reference {
+		t.Errorf("store Reference = %q, want %q (unmodified)", got.Reference, e.Reference)
+	}
+}
+
+func TestAppend_StoreWriteSucceedsWhenGlobalWriteFails(t *testing.T) {
+	dir := t.TempDir()
+
+	// occupy the path so appendLine's MkdirAll fails for the global write only
+	blockedHaulerDir := filepath.Join(dir, "blocked")
+	if err := os.WriteFile(blockedHaulerDir, []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	storeDir := filepath.Join(dir, "store")
+	e := Entry{
+		Command: "store add image",
+		Args:    []string{"busybox:latest"},
+		Store:   storeDir,
+	}
+
+	if err := Append(blockedHaulerDir, e); err == nil {
+		t.Fatal("Append: expected error from unwritable global haulerDir, got nil")
+	}
+
+	storeData, err := os.ReadFile(filepath.Join(storeDir, "audit.log"))
+	if err != nil {
+		t.Fatalf("ReadFile store audit log: %v", err)
+	}
+	var got portableEntry
+	if err := json.Unmarshal(storeData, &got); err != nil {
+		t.Fatalf("unmarshal store audit line: %v\nraw: %s", err, storeData)
+	}
+	if got.Command != e.Command {
+		t.Errorf("store command = %q, want = %q", got.Command, e.Command)
 	}
 }
 
@@ -114,6 +180,29 @@ func TestAppend_MultipleEntries(t *testing.T) {
 	}
 	if lines != 3 {
 		t.Errorf("expected 3 lines, got %d\nlog:\n%s", lines, data)
+	}
+}
+
+func TestShortFileRef(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"local relative path", "./scripts/install.sh", "install.sh"},
+		{"local absolute path", "/home/example/scripts/install.sh", "install.sh"},
+		{"bare filename", "install.sh", "install.sh"},
+		{"plain URL", "https://get.rke2.io/install.sh", "install.sh"},
+		{"URL with credentials", "https://user:pass@get.rke2.io/install.sh", "install.sh"},
+		{"URL with query token", "https://get.rke2.io/install.sh?token=abc123", "install.sh"},
+		{"URL with credentials and query", "https://user:pass@get.rke2.io/install.sh?sig=abc123", "install.sh"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ShortFileRef(tc.in); got != tc.want {
+				t.Errorf("ShortFileRef(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }
 

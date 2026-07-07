@@ -19,6 +19,7 @@ import (
 )
 
 type infoOutput struct {
+	StorePath string `json:"store-path"`
 	StoreID   string `json:"store-id"`
 	Artifacts []item `json:"artifacts"`
 }
@@ -132,6 +133,7 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 	switch o.OutputFormat {
 	case "json":
 		out := infoOutput{
+			StorePath: s.Root,
 			StoreID:   s.StoreID,
 			Artifacts: items,
 		}
@@ -141,7 +143,7 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 		}
 		fmt.Println(string(data))
 	default:
-		if err := buildTable(s.StoreID, o.ShowDigests, items...); err != nil {
+		if err := buildTable(s.Root, s.StoreID, o.ShowDigests, items...); err != nil {
 			return err
 		}
 	}
@@ -172,10 +174,11 @@ func buildListRepos(items ...item) {
 	}
 }
 
-func buildTable(storeID string, showDigests bool, items ...item) error {
+func buildTable(storePath, storeID string, showDigests bool, items ...item) error {
 	table := tablewriter.NewTable(os.Stdout)
 	table.Configure(func(cfg *tablewriter.Config) {
 		cfg.Header.Alignment.Global = tw.AlignLeft
+		cfg.Footer.Alignment.PerColumn = []tw.Align{tw.AlignLeft}
 		cfg.Row.Merging.Mode = tw.MergeVertical
 		cfg.Row.Merging.ByColumnIndex = tw.NewBoolMapper(0)
 	})
@@ -225,11 +228,11 @@ func buildTable(storeID string, showDigests bool, items ...item) error {
 		}
 	}
 
-	storeIDLabel := "store-id: " + storeID
+	footerLabel := "store-path: " + storePath + "\nstore-id: " + storeID
 	if showDigests {
-		table.Footer(storeIDLabel, "", "", "", "Total", byteCountSI(totalSize))
+		table.Footer(footerLabel, "", "", "", "Total", byteCountSI(totalSize))
 	} else {
-		table.Footer(storeIDLabel, "", "", "Total", byteCountSI(totalSize))
+		table.Footer(footerLabel, "", "", "Total", byteCountSI(totalSize))
 	}
 
 	return table.Render()
