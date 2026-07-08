@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"helm.sh/helm/v4/pkg/chart/common"
 	commonutil "helm.sh/helm/v4/pkg/chart/common/util"
 	helmchart "helm.sh/helm/v4/pkg/chart/v2"
+	"helm.sh/helm/v4/pkg/chart/v2/loader"
 	"helm.sh/helm/v4/pkg/chart/v2/util"
 	"helm.sh/helm/v4/pkg/engine"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -484,12 +486,22 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 	// add-images
 	if opts.AddImages {
-		userValues := common.Values{}
-		if opts.HelmValues != "" {
-			userValues, err = common.ReadValuesFile(opts.HelmValues)
+		userValues := map[string]any{}
+
+		for _, valuesFile := range opts.ValuesFiles {
+			l.Debugf("loading values for chart [%s]", valuesFile)
+
+			valuesContent, err := os.ReadFile(valuesFile)
 			if err != nil {
-				return fmt.Errorf("failed to read helm values file [%s]: %w", opts.HelmValues, err)
+				return fmt.Errorf("failed to read values file [%s]: %w", valuesFile, err)
 			}
+
+			vals, err := loader.LoadValues(bytes.NewReader(valuesContent))
+			if err != nil {
+				return fmt.Errorf("failed to read helm values file [%s]: %w", valuesFile, err)
+			}
+
+			userValues = loader.MergeMaps(userValues, vals)
 		}
 
 		// set helm default capabilities
