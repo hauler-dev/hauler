@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/pkg/action"
 
 	"hauler.dev/go/hauler/v2/cmd/hauler/cli/store"
 	"hauler.dev/go/hauler/v2/internal/flags"

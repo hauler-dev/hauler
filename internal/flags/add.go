@@ -2,7 +2,7 @@ package flags
 
 import (
 	"github.com/spf13/cobra"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/pkg/action"
 )
 
 type AddImageOpts struct {
@@ -70,7 +70,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.Password, "password", "", "(Optional) Password to use for authentication")
 	f.StringVar(&o.ChartOpts.CertFile, "cert-file", "", "(Optional) Location of the TLS Certificate to use for client authentication")
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authentication")
-	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
+	f.BoolVar(&o.ChartOpts.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 

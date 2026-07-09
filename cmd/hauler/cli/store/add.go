@@ -12,18 +12,12 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-<<<<<<< HEAD
-	helmchart "helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/engine"
-=======
 	"helm.sh/helm/v4/pkg/chart/common"
 	commonutil "helm.sh/helm/v4/pkg/chart/common/util"
 	helmchart "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
 	"helm.sh/helm/v4/pkg/chart/v2/util"
 	"helm.sh/helm/v4/pkg/engine"
->>>>>>> d931671 (feat: extend charts resource with helm values (#644))
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -472,9 +466,13 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 	defer os.RemoveAll(tempDir)
 
 	chartPath := chrt.Path()
-	if strings.HasSuffix(chartPath, ".tgz") {
+	chartPathInfo, err := os.Stat(chartPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat chart path '%s': %w", chartPath, err)
+	}
+	if !chartPathInfo.IsDir() {
 		l.Debugf("%sextracting chart archive [%s]", prefix, filepath.Base(chartPath))
-		if err := chartutil.ExpandFile(tempDir, chartPath); err != nil {
+		if err := util.ExpandFile(tempDir, chartPath); err != nil {
 			return fmt.Errorf("failed to extract chart: %w", err)
 		}
 
@@ -488,23 +486,22 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 	// add-images
 	if opts.AddImages {
-<<<<<<< HEAD
-		userValues := chartutil.Values{}
-		if opts.HelmValues != "" {
-			userValues, err = chartutil.ReadValuesFile(opts.HelmValues)
-=======
 		userValues := map[string]any{}
 
 		for _, valuesFile := range opts.ValuesFiles {
 			l.Debugf("loading values for chart [%s]", valuesFile)
 
 			valuesContent, err := os.ReadFile(valuesFile)
->>>>>>> d931671 (feat: extend charts resource with helm values (#644))
 			if err != nil {
 				return fmt.Errorf("failed to read values file [%s]: %w", valuesFile, err)
 			}
 
 			vals, err := loader.LoadValues(bytes.NewReader(valuesContent))
+      
+		userValues := common.Values{}
+		if opts.HelmValues != "" {
+			userValues, err = common.ReadValuesFile(opts.HelmValues)
+
 			if err != nil {
 				return fmt.Errorf("failed to read helm values file [%s]: %w", valuesFile, err)
 			}
@@ -513,11 +510,11 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		// set helm default capabilities
-		caps := chartutil.DefaultCapabilities.Copy()
+		caps := common.DefaultCapabilities.Copy()
 
 		// only parse and override if provided kube version
 		if opts.KubeVersion != "" {
-			kubeVersion, err := chartutil.ParseKubeVersion(opts.KubeVersion)
+			kubeVersion, err := common.ParseKubeVersion(opts.KubeVersion)
 			if err != nil {
 				l.Warnf("%sinvalid kube-version [%s], using default kubernetes version", prefix, opts.KubeVersion)
 			} else {
@@ -525,7 +522,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 		}
 
-		values, err := chartutil.ToRenderValues(c, userValues, chartutil.ReleaseOptions{Namespace: "hauler"}, caps)
+		values, err := commonutil.ToRenderValues(c, userValues, common.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {
 			return err
 		}
