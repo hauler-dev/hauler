@@ -13,8 +13,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	helmchart "helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
+	helmchart "helm.sh/helm/v4/pkg/chart/v2"
+	"helm.sh/helm/v4/pkg/chart/v2/util"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
@@ -767,9 +767,9 @@ func seedChartWithImages(t *testing.T, dir string, images []string) string {
 		},
 	}
 
-	saved, err := chartutil.Save(c, dir)
+	saved, err := util.Save(c, dir)
 	if err != nil {
-		t.Fatalf("seedChartWithImages: chartutil.Save: %v", err)
+		t.Fatalf("seedChartWithImages: util.Save: %v", err)
 	}
 	return saved
 }
