@@ -486,21 +486,17 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 	// add-images
 	if opts.AddImages {
-		userValues := common.Values{}
-
+		userValues := map[string]any{}
 		for _, valuesFile := range opts.ValuesFiles {
 			l.Debugf("loading values for chart [%s]", valuesFile)
-
 			valuesContent, err := os.ReadFile(valuesFile)
 			if err != nil {
 				return fmt.Errorf("failed to read values file [%s]: %w", valuesFile, err)
 			}
-
 			vals, err := loader.LoadValues(bytes.NewReader(valuesContent))
 			if err != nil {
-				return fmt.Errorf("failed to parse values file [%s]: %w", valuesFile, err)
+				return fmt.Errorf("failed to read helm values file [%s]: %w", valuesFile, err)
 			}
-
 			userValues = loader.MergeMaps(userValues, vals)
 		}
 
