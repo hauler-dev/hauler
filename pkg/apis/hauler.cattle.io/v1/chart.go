@@ -21,6 +21,7 @@ type Chart struct {
 	Version     string   `json:"version,omitempty"`
 	Rewrite     string   `json:"rewrite,omitempty"`
 	ValuesFiles []string `json:"valuesFiles,omitempty"`
+	Platform    string   `json:"platform,omitempty"`
 
 	AddImages       bool `json:"add-images,omitempty"`
 	AddDependencies bool `json:"add-dependencies,omitempty"`
