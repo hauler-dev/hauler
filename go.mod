@@ -26,7 +26,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/sync v0.21.0
+	golang.org/x/sync v0.22.0
 	gopkg.in/yaml.v3 v3.0.1
 	helm.sh/helm/v3 v3.21.2
 	k8s.io/apimachinery v0.36.2
