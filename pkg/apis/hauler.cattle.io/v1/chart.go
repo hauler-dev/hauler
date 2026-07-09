@@ -16,10 +16,11 @@ type ChartSpec struct {
 }
 
 type Chart struct {
-	Name    string `json:"name,omitempty"`
-	RepoURL string `json:"repoURL,omitempty"`
-	Version string `json:"version,omitempty"`
-	Rewrite string `json:"rewrite,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	RepoURL     string   `json:"repoURL,omitempty"`
+	Version     string   `json:"version,omitempty"`
+	Rewrite     string   `json:"rewrite,omitempty"`
+	ValuesFiles []string `json:"valuesFiles,omitempty"`
 
 	AddImages       bool `json:"add-images,omitempty"`
 	AddDependencies bool `json:"add-dependencies,omitempty"`
