@@ -591,7 +591,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 				"add-images":               opts.AddImages,
 				"add-dependencies":         opts.AddDependencies,
 				"exclude-extras":           opts.ExcludeExtras,
-				"values":                   opts.HelmValues,
+				"values":                   opts.ValuesFiles,
 				"platform":                 opts.Platform,
 				"registry":                 opts.Registry,
 				"kube-version":             opts.KubeVersion,
