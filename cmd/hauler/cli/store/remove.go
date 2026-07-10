@@ -3,6 +3,7 @@ package store
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,9 +13,49 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/audit"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
+
+// artifactType derives a human-readable content type for an artifact the same way `store info`
+// does: from the manifest's config media type, since AddArtifact stores every non-image-command
+// artifact (files, charts) under the same "kind" annotation and can't distinguish them
+func artifactType(ctx context.Context, s *store.Layout, desc ocispec.Descriptor) string {
+	switch {
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSigs:
+		return "sigs"
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationAtts:
+		return "atts"
+	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSboms:
+		return "sbom"
+	case strings.HasPrefix(desc.Annotations[consts.KindAnnotationName], consts.KindAnnotationReferrers):
+		return "referrer"
+	case desc.MediaType == consts.OCIImageIndexSchema, desc.MediaType == consts.DockerManifestListSchema2:
+		return "image"
+	}
+
+	rc, err := s.Fetch(ctx, desc)
+	if err != nil {
+		return "image"
+	}
+	defer rc.Close()
+
+	var m ocispec.Manifest
+	if err := json.NewDecoder(rc).Decode(&m); err != nil {
+		return "image"
+	}
+
+	switch m.Config.MediaType {
+	case consts.ChartConfigMediaType:
+		return "chart"
+	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType, consts.FileDirectoryConfigMediaType:
+		return "file"
+	default:
+		return "image"
+	}
+}
 
 func formatReference(ref string) string {
 	tagIdx := strings.LastIndex(ref, ":")
@@ -39,7 +80,7 @@ func formatReference(ref string) string {
 	return fmt.Sprintf("%s [%s]", base, suffix)
 }
 
-func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string) error {
+func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
 	l := log.FromContext(ctx)
 
 	// collect matching artifacts
@@ -104,6 +145,37 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	for _, m := range matches {
 		if err := s.RemoveArtifact(ctx, m.reference, m.desc); err != nil {
 			return fmt.Errorf("failed to remove artifact [%s]: %w", formatReference(m.reference), err)
+		}
+
+		if auditLevel(ro) != "none" {
+			cleanRef := m.desc.Annotations[consts.ContainerdImageNameKey]
+			if cleanRef == "" {
+				cleanRef = m.desc.Annotations[ocispec.AnnotationRefName]
+			}
+			e := audit.Entry{
+				StoreID:   s.StoreID,
+				Store:     s.Root,
+				Type:      artifactType(ctx, s, m.desc),
+				Command:   "store remove",
+				Args:      []string{ref},
+				Reference: cleanRef,
+				Digest:    m.desc.Digest.String(),
+			}
+			if auditLevel(ro) == "verbose" {
+				sys := audit.BuildSystem()
+				g := audit.BuildGlobal(ro, rso)
+				e.System = &sys
+				e.Global = &g
+				e.Flags = map[string]any{
+					"force": o.Force,
+				}
+			}
+			if err := audit.Append(ro.HaulerDir, e); err != nil {
+				l.Warnf("failed to write audit entry: %v", err)
+			}
+			l.Debugf("generated audit id of [%s]", audit.ID())
+		} else {
+			l.Debugf("generated audit id of [none]")
 		}
 
 		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference), m.desc.MediaType, m.desc.Digest.String())

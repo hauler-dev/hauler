@@ -118,11 +118,11 @@ func TestLoadIndex_NormalizesLegacyKindInDescriptorAnnotations(t *testing.T) {
 	for _, desc := range walked {
 		kind := desc.Annotations[consts.KindAnnotationName]
 		if strings.HasPrefix(kind, legacyPrefix) {
-			t.Errorf("descriptor %s: Walk returned legacy kind %q; want normalized dev.hauler/... value",
+			t.Errorf("descriptor %s: Walk returned legacy kind %q... want normalized dev.hauler/... value",
 				desc.Digest, kind)
 		}
 		if !strings.HasPrefix(kind, newPrefix) {
-			t.Errorf("descriptor %s: Walk returned unexpected kind %q; want dev.hauler/... prefix",
+			t.Errorf("descriptor %s: Walk returned unexpected kind %q... want dev.hauler/... prefix",
 				desc.Digest, kind)
 		}
 	}
@@ -260,10 +260,10 @@ func TestPush_NormalizesLegacyKindInStoredDescriptor(t *testing.T) {
 		found = true
 		kind := d.Annotations[consts.KindAnnotationName]
 		if strings.HasPrefix(kind, legacyPrefix) {
-			t.Errorf("Push stored descriptor with legacy kind %q; want normalized dev.hauler/... value", kind)
+			t.Errorf("Push stored descriptor with legacy kind %q... want normalized dev.hauler/... value", kind)
 		}
 		if !strings.HasPrefix(kind, newPrefix) {
-			t.Errorf("Push stored descriptor with unexpected kind %q; want dev.hauler/... prefix", kind)
+			t.Errorf("Push stored descriptor with unexpected kind %q... want dev.hauler/... prefix", kind)
 		}
 		return nil
 	}); err != nil {

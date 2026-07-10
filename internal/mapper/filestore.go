@@ -72,7 +72,7 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 
 	// Get the filename from the mapper function.
 	// An empty filename means the mapper explicitly declined this descriptor (e.g. a
-	// config blob that has no title annotation); treat it the same as no mapper.
+	// config blob that has no title annotation... treat it the same as no mapper.
 	filename, err := mapperFn(desc)
 	if err != nil {
 		return nil, err

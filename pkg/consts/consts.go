@@ -91,6 +91,8 @@ const (
 	HaulerTempDir      = "HAULER_TEMP_DIR"
 	HaulerStoreDir     = "HAULER_STORE_DIR"
 	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
+	HaulerLogLevel     = "HAULER_LOG_LEVEL"
+	HaulerAuditLevel   = "HAULER_AUDIT_LEVEL"
 
 	// container files and directories
 	ImageManifestFile = "manifest.json"
@@ -110,6 +112,8 @@ const (
 	DefaultFileserverTimeout  = 60
 	DefaultHaulerArchiveName  = "haul.tar.zst"
 	DefaultHaulerManifestName = "hauler-manifest.yaml"
+	DefaultStoreMetadataName  = "store.json"
+	DefaultStoreInventoryName = "stores.json"
 	DefaultRetries            = 3
 	RetriesInterval           = 5
 	CustomTimeFormat          = "2006-01-02 15:04:05"

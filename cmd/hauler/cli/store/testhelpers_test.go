@@ -58,7 +58,7 @@ func newTestRegistry(t *testing.T) (host string, remoteOpts []remote.Option) {
 }
 
 // seedImage pushes a random single-platform image to the test registry.
-// repo is a bare path like "myorg/myimage"; tag is the image tag string.
+// repo is a bare path like "myorg/myimage"... tag is the image tag string.
 // Pass the remoteOpts from newTestRegistry so writes use the correct transport.
 func seedImage(t *testing.T, host, repo, tag string, opts ...remote.Option) gcrv1.Image {
 	t.Helper()
@@ -138,11 +138,14 @@ func defaultRootOpts(storeDir string) *flags.StoreRootOpts {
 	}
 }
 
-// defaultCliOpts returns CliRootOpts with error-level logging and IgnoreErrors=false.
+// defaultCliOpts returns CliRootOpts with log level error, audit level none, and ignore errors false.
+// Audit is disabled here rather than pointed at a temp HaulerDir so tests don't write to the
+// developer/CI user's real $HOME/.hauler/audit.log.
 func defaultCliOpts() *flags.CliRootOpts {
 	return &flags.CliRootOpts{
 		IgnoreErrors: false,
 		LogLevel:     "error",
+		AuditLevel:   "none",
 	}
 }
 

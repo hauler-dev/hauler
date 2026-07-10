@@ -23,7 +23,7 @@ func isIndexMediaType(mt string) bool {
 
 // firstLeafManifest walks a (potentially nested) OCI index and returns the
 // decoded manifest of the first non-index child. It prefers non-index children
-// at each level; if all children are indexes it descends into the first one.
+// at each level... if all children are indexes it descends into the first one.
 // Returns an error if any nested index or manifest cannot be decoded.
 func firstLeafManifest(ctx context.Context, s *store.Layout, idx ocispec.Index) (ocispec.Manifest, error) {
 	for {
@@ -31,7 +31,7 @@ func firstLeafManifest(ctx context.Context, s *store.Layout, idx ocispec.Index) 
 			return ocispec.Manifest{}, fmt.Errorf("image index has no child manifests")
 		}
 
-		// Prefer the first non-index child; fall back to the first child (an index) if all are indexes.
+		// Prefer the first non-index child... fall back to the first child (an index) if all are indexes.
 		desc := idx.Manifests[0]
 		for _, d := range idx.Manifests {
 			if !isIndexMediaType(d.MediaType) {
