@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 
-	ccontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/remotes"
+	ccontent "github.com/containerd/containerd/v2/core/content"
+	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 

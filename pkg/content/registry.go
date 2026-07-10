@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/containerd/containerd/remotes"
-	cdocker "github.com/containerd/containerd/remotes/docker"
+	"github.com/containerd/containerd/v2/core/remotes"
+	cdocker "github.com/containerd/containerd/v2/core/remotes/docker"
 	goauthn "github.com/google/go-containerregistry/pkg/authn"
 	goname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
