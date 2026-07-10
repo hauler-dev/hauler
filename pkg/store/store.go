@@ -95,26 +95,24 @@ func loadOrCreateStoreID(rootdir string) string {
 		if uerr := json.Unmarshal(data, &m); uerr == nil && m.StoreID != "" {
 			return m.StoreID
 		} else if uerr != nil {
-			zlog.Warn().Err(uerr).Str("path", metaPath).Msg("failed to parse store metadata; generating new store id")
+			zlog.Warn().Err(uerr).Str("path", metaPath).Msg("failed to parse store metadata... generating new store id")
 		} else {
-			zlog.Warn().Str("path", metaPath).Msg("store metadata missing store-id; generating new store id")
+			zlog.Warn().Str("path", metaPath).Msg("store metadata missing store-id... generating new store id")
 		}
 	}
 	m := storeMetadata{StoreID: uuid.New().String()}
 	data, err := json.Marshal(m)
 	if err != nil {
-		zlog.Warn().Err(err).Msg("failed to marshal store metadata; store id will not persist across runs")
+		zlog.Warn().Err(err).Msg("failed to marshal store metadata... store id will not persist across runs")
 		return m.StoreID
 	}
 	tmp := metaPath + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		zlog.Warn().Err(err).Str("path", tmp).Msg("failed to write store metadata; store id will not persist across runs")
+		zlog.Warn().Err(err).Str("path", tmp).Msg("failed to write store metadata... store id will not persist across runs")
 		return m.StoreID
 	}
-	// Windows cannot rename over an existing file
-	_ = os.Remove(metaPath)
 	if err := os.Rename(tmp, metaPath); err != nil {
-		zlog.Warn().Err(err).Str("path", metaPath).Msg("failed to write store metadata; store id will not persist across runs")
+		zlog.Warn().Err(err).Str("path", metaPath).Msg("failed to write store metadata... store id will not persist across runs")
 	}
 	return m.StoreID
 }

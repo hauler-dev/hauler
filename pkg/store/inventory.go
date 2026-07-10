@@ -27,11 +27,15 @@ func inventoryPath(haulerDir string) string {
 
 func loadInventory(haulerDir string) storeInventory {
 	inv := storeInventory{}
-	data, err := os.ReadFile(inventoryPath(haulerDir))
+	p := inventoryPath(haulerDir)
+	data, err := os.ReadFile(p)
 	if err != nil {
 		return inv
 	}
-	_ = json.Unmarshal(data, &inv)
+	if err := json.Unmarshal(data, &inv); err != nil {
+		zlog.Warn().Err(err).Str("path", p).Msg("failed to parse store inventory... ignoring")
+		return storeInventory{}
+	}
 	return inv
 }
 
@@ -48,10 +52,7 @@ func saveInventory(haulerDir string, inv storeInventory) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	dst := inventoryPath(haulerDir)
-	// Windows cannot rename over an existing file
-	_ = os.Remove(dst)
-	return os.Rename(tmp, dst)
+	return os.Rename(tmp, inventoryPath(haulerDir))
 }
 
 // updateStoreInventory records storeID's path in <haulerDir>/stores.json and
@@ -74,7 +75,7 @@ func updateStoreInventory(haulerDir, storeID, path string) {
 	}
 
 	if err := saveInventory(haulerDir, inv); err != nil {
-		zlog.Warn().Err(err).Msg("failed to update store inventory; store id lookup may not find this store later")
+		zlog.Warn().Err(err).Msg("failed to update store inventory... store id lookup may not find this store later")
 	}
 }
 

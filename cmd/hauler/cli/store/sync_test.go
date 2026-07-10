@@ -110,7 +110,7 @@ func TestProcessContent_Images_v1(t *testing.T) {
 	s := newTestStore(t)
 
 	host, _ := newLocalhostRegistry(t)
-	seedImage(t, host, "myorg/myimage", "v1") // transport not needed; AddImage reads via localhost scheme
+	seedImage(t, host, "myorg/myimage", "v1") // transport not needed... AddImage reads via localhost scheme
 
 	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
 kind: Images

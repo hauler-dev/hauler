@@ -367,11 +367,11 @@ func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
 		kind := desc.Annotations[consts.KindAnnotationName]
 		if strings.HasPrefix(kind, legacyPrefix) {
-			t.Errorf("descriptor %s still has legacy kind %q; expected dev.hauler prefix",
+			t.Errorf("descriptor %s still has legacy kind %q... expected dev.hauler prefix",
 				desc.Digest, kind)
 		}
 		if !strings.HasPrefix(kind, newPrefix) {
-			t.Errorf("descriptor %s has unexpected kind %q; expected dev.hauler prefix",
+			t.Errorf("descriptor %s has unexpected kind %q... expected dev.hauler prefix",
 				desc.Digest, kind)
 		}
 		return nil

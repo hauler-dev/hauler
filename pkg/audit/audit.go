@@ -190,7 +190,7 @@ func Append(haulerDir string, e Entry) error {
 		}
 		if err := appendLine(e.Store, pe); err != nil {
 			if globalErr != nil {
-				return fmt.Errorf("%v; audit: store write: %w", globalErr, err)
+				return fmt.Errorf("%v: audit: store write: %w", globalErr, err)
 			}
 			return fmt.Errorf("audit: store write: %w", err)
 		}

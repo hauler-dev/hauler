@@ -236,7 +236,7 @@ func TestSaveCmd_EmptyStore(t *testing.T) {
 	s := newTestStore(t)
 
 	// SaveCmd uses layout.FromPath which stats index.json — it must exist on
-	// disk. A fresh store holds the index only in memory; SaveIndex flushes it.
+	// disk. A fresh store holds the index only in memory... SaveIndex flushes it.
 	if err := s.SaveIndex(); err != nil {
 		t.Fatalf("SaveIndex: %v", err)
 	}

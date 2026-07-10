@@ -395,6 +395,6 @@ func TestCopyCmd_Dir_Charts(t *testing.T) {
 		for i, e := range entries {
 			names[i] = e.Name()
 		}
-		t.Errorf("no .tgz found in destDir after chart copy; found: %v", names)
+		t.Errorf("no .tgz found in destDir after chart copy... found: %v", names)
 	}
 }

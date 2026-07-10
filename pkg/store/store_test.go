@@ -392,7 +392,7 @@ func TestCopyDescriptorGraph_Manifest(t *testing.T) {
 
 	// --- Error path: delete a layer blob from source, expect Copy to fail ---
 	if len(srcManifest.Layers) == 0 {
-		t.Skip("artifact has no layers; skipping missing-blob error path")
+		t.Skip("artifact has no layers... skipping missing blob error path")
 	}
 	if err := os.Remove(blobPath(srcRoot, srcManifest.Layers[0].Digest)); err != nil {
 		t.Fatalf("could not remove layer blob to simulate corruption: %v", err)
@@ -751,7 +751,7 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 	referrerImg = mutate.ConfigMediaType(referrerImg, types.MediaType(consts.OCIEmptyConfigMediaType))
 	referrerImg = mutate.Subject(referrerImg, baseDesc).(v1.Image)
 
-	// Push the referrer under an arbitrary tag; the in-process registry auto-wires the
+	// Push the referrer under an arbitrary tag... the in-process registry auto-wires the
 	// subject field and makes the manifest discoverable via GET /v2/.../referrers/<digest>.
 	referrerTag, err := gname.NewTag(host+"/test/image:bundle-referrer", gname.Insecure)
 	if err != nil {

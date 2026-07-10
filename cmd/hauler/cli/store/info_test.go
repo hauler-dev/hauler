@@ -91,7 +91,7 @@ func TestInfoOutputJSON(t *testing.T) {
 }
 
 func TestNewItem(t *testing.T) {
-	// newItem uses s only for its signature; it does not dereference s in practice.
+	// newItem uses s only for its signature... it does not dereference s in practice.
 	// We pass nil to keep tests dependency-free.
 	const validRef = "myrepo/myimage:latest"
 
@@ -232,7 +232,7 @@ func TestInfoCmd(t *testing.T) {
 	})
 
 	t.Run("TypeFilter:image json", func(t *testing.T) {
-		// Store has only a file artifact; image filter returns no items (no error).
+		// Store has only a file artifact... image filter returns no items (no error).
 		if err := InfoCmd(ctx, baseOpts("image", "json"), s); err != nil {
 			t.Errorf("InfoCmd(image, json): %v", err)
 		}

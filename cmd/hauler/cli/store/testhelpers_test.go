@@ -58,7 +58,7 @@ func newTestRegistry(t *testing.T) (host string, remoteOpts []remote.Option) {
 }
 
 // seedImage pushes a random single-platform image to the test registry.
-// repo is a bare path like "myorg/myimage"; tag is the image tag string.
+// repo is a bare path like "myorg/myimage"... tag is the image tag string.
 // Pass the remoteOpts from newTestRegistry so writes use the correct transport.
 func seedImage(t *testing.T, host, repo, tag string, opts ...remote.Option) gcrv1.Image {
 	t.Helper()

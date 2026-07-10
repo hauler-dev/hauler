@@ -294,7 +294,7 @@ func TestRewriteReference(t *testing.T) {
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
 			t.Fatalf("rewriteReference: %v", err)
 		}
-		// library/ must be stripped; registry stays index.docker.io
+		// library/ must be stripped... registry stays index.docker.io
 		assertAnnotationsInStore(t, s, "nginx:v2", "index.docker.io/nginx:v2")
 	})
 

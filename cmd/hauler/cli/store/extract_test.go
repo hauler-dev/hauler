@@ -288,7 +288,7 @@ func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("expected binary %q not found; got: %v", want, names)
+			t.Errorf("expected binary %q not found... got: %v", want, names)
 		}
 	}
 }
@@ -398,7 +398,7 @@ func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("expected binary %q not found; got: %v", want, names)
+			t.Errorf("expected binary %q not found... got: %v", want, names)
 		}
 	}
 }
