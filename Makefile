@@ -49,7 +49,9 @@ test:
 # check for vulnerabilities
 vulns:
 	govulncheck $(GO_FILES) > $(GO_VULNCHECKS) 2>&1 || true
-	trivy fs . > $(TRIVY_RESULTS) 2>&1 || true
+	curl -fsSL -o rancher.openvex.json https://media.githubusercontent.com/media/rancher/vexhub/refs/heads/main/reports/rancher.openvex.json || true
+	trivy fs --vex rancher.openvex.json --skip-files rancher.openvex.json . > $(TRIVY_RESULTS) 2>&1 || true
+	rm rancher.openvex.json || true
 
 # cleanup artifacts
 clean:
