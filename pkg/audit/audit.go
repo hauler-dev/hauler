@@ -92,6 +92,24 @@ func ShortFileRef(raw string) string {
 	return filepath.Base(raw)
 }
 
+// SanitizeURL strips userinfo and the query string from an http(s) URL so
+// embedded credentials (presigned signatures, tokens, API keys) never reach
+// the audit log, at any audit level. Non-URL values (local paths, image or
+// chart references) are returned unchanged.
+func SanitizeURL(raw string) string {
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
 // BuildSystem returns OS level context for verbose audit entries
 func BuildSystem() SystemEntry {
 	s := SystemEntry{}

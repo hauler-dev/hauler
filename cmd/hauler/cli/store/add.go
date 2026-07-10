@@ -75,8 +75,8 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 			Store:             s.Root,
 			Type:              "file",
 			Command:           "store add file",
-			Args:              []string{fi.Path},
-			Reference:         resolvedPath,
+			Args:              []string{audit.SanitizeURL(fi.Path)},
+			Reference:         audit.SanitizeURL(resolvedPath),
 			PortableReference: audit.ShortFileRef(fi.Path),
 			Digest:            desc.Digest.String(),
 		}
@@ -585,7 +585,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
-				"repo":                     cfg.RepoURL,
+				"repo":                     audit.SanitizeURL(cfg.RepoURL),
 				"version":                  c.Metadata.Version,
 				"rewrite":                  rewrite,
 				"add-images":               opts.AddImages,
