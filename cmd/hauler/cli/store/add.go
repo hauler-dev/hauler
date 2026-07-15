@@ -23,6 +23,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content/chart"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
@@ -33,17 +34,17 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
-func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string) error {
+func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string, ro *flags.CliRootOpts) error {
 	cfg := v1.File{
 		Path: reference,
 	}
 	if len(o.Name) > 0 {
 		cfg.Name = o.Name
 	}
-	return storeFile(ctx, s, cfg)
+	return storeFile(ctx, s, cfg, ro, o.StoreRootOpts)
 }
 
-func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
+func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
 	l := log.FromContext(ctx)
 
 	copts := getter.ClientOptions{
@@ -57,9 +58,43 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File) error {
 	}
 
 	l.Infof("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
-	_, err = s.AddArtifact(ctx, f, ref.Name())
+	desc, err := s.AddArtifact(ctx, f, ref.Name())
 	if err != nil {
 		return err
+	}
+
+	resolvedPath := fi.Path
+	if !strings.HasPrefix(fi.Path, "http://") && !strings.HasPrefix(fi.Path, "https://") {
+		if abs, err := filepath.Abs(fi.Path); err == nil {
+			resolvedPath = abs
+		}
+	}
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:           s.StoreID,
+			Store:             s.Root,
+			Type:              "file",
+			Command:           "store add file",
+			Args:              []string{audit.SanitizeURL(fi.Path)},
+			Reference:         audit.SanitizeURL(resolvedPath),
+			PortableReference: audit.ShortFileRef(fi.Path),
+			Digest:            desc.Digest.String(),
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"name": fi.Name,
+			}
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
 	}
 
 	l.Infof("successfully added file [%s]", ref.Name())
@@ -71,9 +106,18 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	l := log.FromContext(ctx)
 
 	cfg := v1.Image{
-		Name:    reference,
-		Rewrite: o.Rewrite,
-		Local:   o.Local,
+		Name:                         reference,
+		Key:                          o.Key,
+		Tlog:                         o.Tlog,
+		CertIdentity:                 o.CertIdentity,
+		CertIdentityRegexp:           o.CertIdentityRegexp,
+		CertOidcIssuer:               o.CertOidcIssuer,
+		CertOidcIssuerRegexp:         o.CertOidcIssuerRegexp,
+		CertGithubWorkflowRepository: o.CertGithubWorkflowRepository,
+		Platform:                     o.Platform,
+		Rewrite:                      o.Rewrite,
+		ExcludeExtras:                o.ExcludeExtras,
+		Local:                        o.Local,
 	}
 
 	if o.Local {
@@ -132,7 +176,8 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		return err
 	}
 
-	if err := s.AddLocalImage(ctx, r.Name()); err != nil {
+	localDigest, err := s.AddLocalImage(ctx, r.Name())
+	if err != nil {
 		if ro.IgnoreErrors {
 			l.Warnf("unable to add image [%s] from Docker daemon to store: %v... skipping...", r.Name(), err)
 			return nil
@@ -158,6 +203,35 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
 			return err
 		}
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:   s.StoreID,
+			Store:     s.Root,
+			Type:      "image",
+			Command:   "store add image",
+			Args:      []string{i.Name},
+			Reference: r.Name(),
+			Digest:    localDigest,
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, nil)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"verified": false,
+				"local":    true,
+				"rewrite":  rewrite,
+			}
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
 	}
 
 	l.Infof("successfully added image [%s] from local Docker daemon", r.Name())
@@ -188,8 +262,11 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	}
 
 	// fetch image along with any associated signatures and attestations
+	var imageDigest string
 	err = retry.Operation(ctx, rso, ro, func() error {
-		return s.AddImage(ctx, r.Name(), platform, excludeExtras)
+		var addErr error
+		imageDigest, addErr = s.AddImage(ctx, r.Name(), platform, excludeExtras)
+		return addErr
 	})
 	if err != nil {
 		if ro.IgnoreErrors {
@@ -219,6 +296,44 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
 			return err
 		}
+	}
+
+	verified := i.Key != "" || i.CertIdentity != "" || i.CertIdentityRegexp != ""
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:   s.StoreID,
+			Store:     s.Root,
+			Type:      "image",
+			Command:   "store add image",
+			Args:      []string{i.Name},
+			Reference: r.Name(),
+			Digest:    imageDigest,
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"verified":                               verified,
+				"platform":                               platform,
+				"key":                                    i.Key,
+				"use-tlog-verify":                        i.Tlog,
+				"certificate-identity":                   i.CertIdentity,
+				"certificate-identity-regexp":            i.CertIdentityRegexp,
+				"certificate-oidc-issuer":                i.CertOidcIssuer,
+				"certificate-oidc-issuer-regexp":         i.CertOidcIssuerRegexp,
+				"certificate-github-workflow-repository": i.CertGithubWorkflowRepository,
+				"rewrite":                                rewrite,
+				"exclude-extras":                         excludeExtras,
+			}
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
 	}
 
 	l.Infof("successfully added image [%s]", r.Name())
@@ -446,11 +561,53 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		return err
 	}
 
-	if _, err := s.AddArtifact(ctx, chrt, ref.Name()); err != nil {
+	chartDesc, err := s.AddArtifact(ctx, chrt, ref.Name())
+	if err != nil {
 		return err
 	}
 	if err := s.OCI.SaveIndex(); err != nil {
 		return err
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:   s.StoreID,
+			Store:     s.Root,
+			Type:      "chart",
+			Command:   "store add chart",
+			Args:      []string{c.Name()},
+			Reference: c.Name() + ":" + c.Metadata.Version,
+			Digest:    chartDesc.Digest.String(),
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"repo":                     audit.SanitizeURL(cfg.RepoURL),
+				"version":                  c.Metadata.Version,
+				"rewrite":                  rewrite,
+				"add-images":               opts.AddImages,
+				"add-dependencies":         opts.AddDependencies,
+				"exclude-extras":           opts.ExcludeExtras,
+				"values":                   opts.ValuesFiles,
+				"platform":                 opts.Platform,
+				"registry":                 opts.Registry,
+				"kube-version":             opts.KubeVersion,
+				"verify":                   opts.ChartOpts.Verify,
+				"insecure-skip-tls-verify": opts.ChartOpts.InsecureSkipTLSVerify,
+				"ca-file":                  opts.ChartOpts.CaFile,
+				"cert-file":                opts.ChartOpts.CertFile,
+				"key-file":                 opts.ChartOpts.KeyFile,
+			}
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
 	}
 
 	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)

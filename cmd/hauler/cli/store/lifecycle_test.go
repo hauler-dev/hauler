@@ -31,7 +31,7 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 
 	// Step 2: storeFile into store A.
 	storeA := newTestStore(t)
-	if err := storeFile(ctx, storeA, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 	assertArtifactInStore(t, storeA, "lifecycle.txt")
@@ -309,10 +309,10 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 	url2 := seedFileInHTTPServer(t, "remove-me.txt", "content to remove")
 
 	storeA := newTestStore(t)
-	if err := storeFile(ctx, storeA, v1.File{Path: url1}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url1}, defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("storeFile keep-me: %v", err)
 	}
-	if err := storeFile(ctx, storeA, v1.File{Path: url2}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url2}, defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("storeFile remove-me: %v", err)
 	}
 
@@ -321,7 +321,7 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 	}
 
 	// Step 2: RemoveCmd(Force:true) on the "remove-me" artifact.
-	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, storeA, "remove-me"); err != nil {
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, storeA, "remove-me", defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("RemoveCmd: %v", err)
 	}
 

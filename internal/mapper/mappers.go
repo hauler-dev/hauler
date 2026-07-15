@@ -131,7 +131,7 @@ func Files() map[string]Fn {
 	m["application/vnd.oci.image.layer.v1.tar"] = fileMapperFn // And the tar variant
 
 	// Catch-all for OCI artifacts that use custom layer media types (e.g. rke2-binary).
-	// Write the blob if it carries an AnnotationTitle; silently discard everything else
+	// Write the blob if it carries an AnnotationTitle... silently discard everything else
 	// (config blobs, metadata) by returning an empty filename.
 	m[DefaultCatchAll] = Fn(func(desc ocispec.Descriptor) (string, error) {
 		if title, ok := desc.Annotations[ocispec.AnnotationTitle]; ok {

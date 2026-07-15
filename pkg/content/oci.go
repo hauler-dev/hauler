@@ -92,7 +92,7 @@ func (o *OCI) LoadIndex() error {
 			continue
 		}
 
-		// Set default kind if missing; normalize legacy dev.cosignproject.cosign values.
+		// Set default kind if missing... normalize legacy dev.cosignproject.cosign values
 		kind := desc.Annotations[consts.KindAnnotationName]
 		kind = consts.NormalizeLegacyKind(kind)
 		if kind == "" {

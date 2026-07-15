@@ -296,7 +296,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				for _, f := range cfg.Spec.Files {
-					if err := storeFile(ctx, s, f); err != nil {
+					if err := storeFile(ctx, s, f, ro, rso); err != nil {
 						return err
 					}
 				}

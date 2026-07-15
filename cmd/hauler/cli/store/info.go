@@ -18,6 +18,12 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
+type infoOutput struct {
+	StorePath string `json:"store-path"`
+	StoreID   string `json:"store-id"`
+	Artifacts []item `json:"artifacts"`
+}
+
 func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 	var items []item
 	if err := s.Walk(func(ref string, desc ocispec.Descriptor) error {
@@ -124,13 +130,20 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 	// sort items by ref and arch
 	sort.Sort(byReferenceAndArch(items))
 
-	var msg string
 	switch o.OutputFormat {
 	case "json":
-		msg = buildJson(items...)
-		fmt.Println(msg)
+		out := infoOutput{
+			StorePath: s.Root,
+			StoreID:   s.StoreID,
+			Artifacts: items,
+		}
+		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
 	default:
-		if err := buildTable(o.ShowDigests, items...); err != nil {
+		if err := buildTable(s.Root, s.StoreID, o.ShowDigests, items...); err != nil {
 			return err
 		}
 	}
@@ -161,10 +174,11 @@ func buildListRepos(items ...item) {
 	}
 }
 
-func buildTable(showDigests bool, items ...item) error {
+func buildTable(storePath, storeID string, showDigests bool, items ...item) error {
 	table := tablewriter.NewTable(os.Stdout)
 	table.Configure(func(cfg *tablewriter.Config) {
 		cfg.Header.Alignment.Global = tw.AlignLeft
+		cfg.Footer.Alignment.PerColumn = []tw.Align{tw.AlignLeft}
 		cfg.Row.Merging.Mode = tw.MergeVertical
 		cfg.Row.Merging.ByColumnIndex = tw.NewBoolMapper(0)
 	})
@@ -214,11 +228,11 @@ func buildTable(showDigests bool, items ...item) error {
 		}
 	}
 
-	// align total column based on digest visibility
+	footerLabel := "store-path: " + storePath + "\nstore-id: " + storeID
 	if showDigests {
-		table.Footer("", "", "", "", "Total", byteCountSI(totalSize))
+		table.Footer(footerLabel, "", "", "", "Total", byteCountSI(totalSize))
 	} else {
-		table.Footer("", "", "", "Total", byteCountSI(totalSize))
+		table.Footer(footerLabel, "", "", "Total", byteCountSI(totalSize))
 	}
 
 	return table.Render()
@@ -237,21 +251,13 @@ func truncateReference(ref string) string {
 	return ref
 }
 
-func buildJson(item ...item) string {
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
 type item struct {
-	Reference string
-	Type      string
-	Platform  string
-	Digest    string
-	Layers    int
-	Size      int64
+	Reference string `json:"reference"`
+	Type      string `json:"type"`
+	Platform  string `json:"platform"`
+	Digest    string `json:"digest,omitempty"`
+	Layers    int    `json:"layers"`
+	Size      int64  `json:"size"`
 }
 
 type byReferenceAndArch []item

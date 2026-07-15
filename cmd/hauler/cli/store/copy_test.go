@@ -176,7 +176,7 @@ func TestCopyCmd_Registry_SigTagDerivation(t *testing.T) {
 
 	// AddImage discovers and stores the .sig/.att/.sbom tags automatically.
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, srcHost+"/test/signed:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, srcHost+"/test/signed:v1", "", false); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -257,7 +257,7 @@ func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
 		if err := os.WriteFile(p, []byte(pf.content), 0644); err != nil {
 			t.Fatalf("WriteFile %s: %v", pf.name, err)
 		}
-		if err := storeFile(ctx, s, v1.File{Path: p}); err != nil {
+		if err := storeFile(ctx, s, v1.File{Path: p}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 			t.Fatalf("storeFile %s: %v", pf.name, err)
 		}
 	}
@@ -304,7 +304,7 @@ func TestCopyCmd_Dir_Files(t *testing.T) {
 	url := seedFileInHTTPServer(t, "data.txt", content)
 
 	s := newTestStore(t)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -395,6 +395,6 @@ func TestCopyCmd_Dir_Charts(t *testing.T) {
 		for i, e := range entries {
 			names[i] = e.Name()
 		}
-		t.Errorf("no .tgz found in destDir after chart copy; found: %v", names)
+		t.Errorf("no .tgz found in destDir after chart copy... found: %v", names)
 	}
 }

@@ -31,7 +31,7 @@ func TestExtractCmd_File(t *testing.T) {
 
 	fileContent := "hello extract test"
 	url := seedFileInHTTPServer(t, "extract-me.txt", fileContent)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -167,7 +167,7 @@ func TestExtractCmd_OciArtifactKindImage(t *testing.T) {
 
 	// Pull into a fresh store — AddImage sets kind=KindAnnotationImage on all manifests.
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -249,7 +249,7 @@ func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -288,7 +288,7 @@ func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("expected binary %q not found; got: %v", want, names)
+			t.Errorf("expected binary %q not found... got: %v", want, names)
 		}
 	}
 }
@@ -359,7 +359,7 @@ func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -398,7 +398,7 @@ func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("expected binary %q not found; got: %v", want, names)
+			t.Errorf("expected binary %q not found... got: %v", want, names)
 		}
 	}
 }
@@ -427,7 +427,7 @@ func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -497,7 +497,7 @@ func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
+	if _, err := s.AddImage(ctx, ref, "", false, rOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -533,7 +533,7 @@ func TestExtractCmd_SubstringMatch(t *testing.T) {
 
 	fileContent := "substring match content"
 	url := seedFileInHTTPServer(t, "extract-sub.txt", fileContent)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -581,7 +581,7 @@ func TestExtractCmd_CosignArtifactsProduceNoContainerImageWarning(t *testing.T) 
 	// Seed a real file artifact so ExtractCmd finds something to extract.
 	fileContent := "cosign-filter test file content"
 	url := seedFileInHTTPServer(t, "sigtest.txt", fileContent)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
