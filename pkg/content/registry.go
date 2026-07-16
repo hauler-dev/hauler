@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"strings"
@@ -22,9 +23,33 @@ type RegistryTarget struct {
 	resolver remotes.Resolver
 }
 
+// NewRegistryHTTPClient builds an *http.Client configured for opts, cloning
+// http.DefaultTransport rather than mutating it in place, which would leak
+// InsecureSkipVerify into every other HTTP client in the process.
+//
+// Build this once and share it across all RegistryTargets for a copy: a
+// transport per target defeats connection pooling and can exhaust file
+// descriptors on large copies.
+func NewRegistryHTTPClient(opts RegistryOptions) *http.Client {
+	var transport *http.Transport
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = dt.Clone()
+	} else {
+		// Replaced by instrumentation or a test harness.
+		transport = &http.Transport{}
+	}
+	if opts.Insecure {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	return &http.Client{Transport: transport}
+}
+
 // NewRegistryTarget returns a RegistryTarget that pushes to host (e.g. "localhost:5000").
-func NewRegistryTarget(host string, opts RegistryOptions) *RegistryTarget {
+// client must also back the authorizer: otherwise Bearer token fetches fall back to
+// http.DefaultClient and ignore opts.Insecure.
+func NewRegistryTarget(host string, opts RegistryOptions, client *http.Client) *RegistryTarget {
 	authorizer := cdocker.NewDockerAuthorizer(
+		cdocker.WithAuthClient(client),
 		cdocker.WithAuthCreds(func(h string) (string, string, error) {
 			if opts.Username != "" {
 				return opts.Username, opts.Password, nil
@@ -52,11 +77,11 @@ func NewRegistryTarget(host string, opts RegistryOptions) *RegistryTarget {
 			return nil, err
 		}
 		scheme := "https"
-		if opts.PlainHTTP || opts.Insecure {
+		if opts.PlainHTTP {
 			scheme = "http"
 		}
 		return []cdocker.RegistryHost{{
-			Client:       http.DefaultClient,
+			Client:       client,
 			Authorizer:   authorizer,
 			Scheme:       scheme,
 			Host:         host,
