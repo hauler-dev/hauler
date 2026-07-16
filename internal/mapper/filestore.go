@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	ccontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/remotes"
+	ccontent "github.com/containerd/containerd/v2/core/content"
+	"github.com/containerd/containerd/v2/core/remotes"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"hauler.dev/go/hauler/v2/pkg/content"
