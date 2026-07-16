@@ -180,6 +180,8 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			PlainHTTP: o.PlainHTTP,
 			Insecure:  o.Insecure,
 		}
+		// Shared across every per-artifact RegistryTarget below to keep connections pooled.
+		registryClient := content.NewRegistryHTTPClient(registryOpts)
 
 		// Pre-build a map from base ref → image manifest digest so that sig/att/sbom
 		// descriptors (which store the base image ref, not the cosign tag) can be routed
@@ -256,7 +258,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			// so a shared tracker would mark shared blobs as "already exists" after
 			// the first image, skipping the per-repository blob link creation that
 			// Docker Distribution requires for manifest validation.
-			target := content.NewRegistryTarget(components[1], registryOpts)
+			target := content.NewRegistryTarget(components[1], registryOpts, registryClient)
 			var pushed ocispec.Descriptor
 			if err := retry.Operation(ctx, o.StoreRootOpts, ro, func() error {
 				var copyErr error
