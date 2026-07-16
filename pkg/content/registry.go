@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/containerd/containerd/remotes"
-	cdocker "github.com/containerd/containerd/remotes/docker"
+	"github.com/containerd/containerd/v2/core/remotes"
+	cdocker "github.com/containerd/containerd/v2/core/remotes/docker"
 	goauthn "github.com/google/go-containerregistry/pkg/authn"
 	goname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -97,6 +97,13 @@ func NewRegistryTarget(host string, opts RegistryOptions, client *http.Client) *
 	}
 }
 
+// Resolve and Fetcher exist only to satisfy the Target interface; Hauler never
+// reads from a registry through RegistryTarget (store copy resolves and fetches
+// from the local OCI layout and uses this target only for Pusher, and image
+// pulls go through go-containerregistry). Note that the underlying containerd v2
+// docker resolver no longer converts legacy Docker Schema1 manifests on the read
+// path (it returns ErrNotImplemented), so wiring these into a pull-from-registry
+// flow would not handle Schema1 sources.
 func (t *RegistryTarget) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error) {
 	_, desc, err := t.resolver.Resolve(ctx, ref)
 	return desc, err
