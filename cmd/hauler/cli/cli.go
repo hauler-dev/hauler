@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/user"
 
 	cranecmd "github.com/google/go-containerregistry/cmd/crane/cmd"
 	"github.com/sirupsen/logrus"
@@ -46,6 +47,26 @@ func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 			l.SetLevel(ro.LogLevel)
 			l.Debugf("running cli command [%s]", cmd.CommandPath())
 
+			// without a $HOME set... credential lookup in ~/.docker/config.json breaks
+			// fall back to the current user's real home dir instead of the plain $HOME env var
+			if os.Getenv("HOME") == "" {
+				if u, err := user.Current(); err == nil && u.HomeDir != "" {
+					l.Debugf("$HOME unset... using [%s] resolved from the current user", u.HomeDir)
+					if err := os.Setenv("HOME", u.HomeDir); err != nil {
+						l.Warnf("failed to set $HOME to [%s]: %v", u.HomeDir, err)
+					}
+				} else if home, herr := os.UserHomeDir(); herr == nil && home != "" {
+					l.Debugf("$HOME unset... using [%s] resolved from the operating system", home)
+					if err := os.Setenv("HOME", home); err != nil {
+						l.Warnf("failed to set $HOME to [%s]: %v", home, err)
+					}
+				} else {
+					l.Warnf("$HOME unset and could not be resolved... %v / %v", err, herr)
+				}
+			}
+
+			// suppress WARN level messages from containerd
+			// and other libraries that use the global logrus logger
 			if ro.LogLevel == "debug" {
 				logrus.SetLevel(logrus.DebugLevel)
 			} else {
