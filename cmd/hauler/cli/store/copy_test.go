@@ -295,6 +295,61 @@ func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
 // Directory copy tests
 // --------------------------------------------------------------------------
 
+// TestCopyCmd_Registry_RewriteStripsLibraryPrefix proves that when --rewrite
+// strips the Docker Hub "library/" prefix, store copy pushes the image to the
+// rewritten path (dstHost/myimg:v1) and NOT to the path with library/ re-added
+// (dstHost/library/myimg:v1).
+//
+// This is a regression test for the round-trip bug: rewriteReference correctly
+// updates AnnotationRefName to "myimg:v1" (library/ stripped), but
+// RewriteRefToRegistry re-adds library/ by parsing through go-containerregistry,
+// which normalises bare Docker Hub names.
+func TestCopyCmd_Registry_RewriteStripsLibraryPrefix(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// Seed the image under a "library/"-style path to simulate a Docker Hub
+	// official image stored under its normalised repository name.
+	srcHost, srcOpts := newTestRegistry(t)
+	seedImage(t, srcHost, "library/myimg", "v1", srcOpts...)
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	// Store with --rewrite myimg, which should strip the library/ prefix so
+	// that copies land at targetRegistry/myimg:v1, not targetRegistry/library/myimg:v1.
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/library/myimg:v1"}, "", false, rso, ro, "myimg"); err != nil {
+		t.Fatalf("storeImage with rewrite: %v", err)
+	}
+
+	dstHost, dstOpts := newTestRegistry(t)
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+	}
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+		t.Fatalf("CopyCmd: %v", err)
+	}
+
+	// The image must be reachable at dstHost/myimg:v1 (library/ stripped).
+	wantRef, err := name.NewTag(dstHost+"/myimg:v1", name.Insecure)
+	if err != nil {
+		t.Fatalf("name.NewTag dstHost/myimg:v1: %v", err)
+	}
+	if _, err := remote.Get(wantRef, dstOpts...); err != nil {
+		t.Errorf("image not found at rewritten path %s after --rewrite myimg (library/ was re-added by RewriteRefToRegistry): %v", wantRef, err)
+	}
+
+	// And must NOT be at the library/ path.
+	badRef, err := name.NewTag(dstHost+"/library/myimg:v1", name.Insecure)
+	if err != nil {
+		t.Fatalf("name.NewTag dstHost/library/myimg:v1: %v", err)
+	}
+	if _, err := remote.Get(badRef, dstOpts...); err == nil {
+		t.Error("image should NOT be pushed to library/myimg:v1 after --rewrite myimg, but was found there")
+	}
+}
+
 // TestCopyCmd_Dir_Files copies a file artifact to a directory target and
 // verifies the file appears under its original basename.
 func TestCopyCmd_Dir_Files(t *testing.T) {

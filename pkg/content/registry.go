@@ -163,19 +163,23 @@ func (t *RegistryTarget) Pusher(ctx context.Context, ref string) (remotes.Pusher
 // RewriteRefToRegistry rewrites sourceRef to use targetRegistry as its host, preserving the
 // repository path and tag or digest. For example:
 //
-//	"index.docker.io/library/nginx:latest" + "localhost:5000" → "localhost:5000/library/nginx:latest"
+//	"library/nginx:latest" + "localhost:5000" → "localhost:5000/library/nginx:latest"
+//	"busybox:latest"       + "localhost:5000" → "localhost:5000/busybox:latest"
+//
+// sourceRef is an AnnotationRefName value: always registry-free (the registry has
+// been stripped by writeImage). It is parsed as a raw string rather than through
+// goname.ParseReference, which would re-add "library/" for bare Docker Hub names
+// (e.g. "busybox" → "index.docker.io/library/busybox"), silently undoing any
+// library/ strip that rewriteReference performed.
 func RewriteRefToRegistry(sourceRef string, targetRegistry string) (string, error) {
-	ref, err := goname.ParseReference(sourceRef)
-	if err != nil {
-		return "", fmt.Errorf("parsing reference %q: %w", sourceRef, err)
+	if at := strings.LastIndex(sourceRef, "@"); at != -1 {
+		// digest ref: "[repo/]name@algo:hex"
+		return fmt.Sprintf("%s/%s@%s", targetRegistry, sourceRef[:at], sourceRef[at+1:]), nil
 	}
-	repo := strings.TrimPrefix(ref.Context().RepositoryStr(), "/")
-	switch r := ref.(type) {
-	case goname.Tag:
-		return fmt.Sprintf("%s/%s:%s", targetRegistry, repo, r.TagStr()), nil
-	case goname.Digest:
-		return fmt.Sprintf("%s/%s@%s", targetRegistry, repo, r.DigestStr()), nil
-	default:
-		return fmt.Sprintf("%s/%s:latest", targetRegistry, repo), nil
+	if colon := strings.LastIndex(sourceRef, ":"); colon != -1 {
+		// tag ref: "[repo/]name:tag"
+		return fmt.Sprintf("%s/%s:%s", targetRegistry, sourceRef[:colon], sourceRef[colon+1:]), nil
 	}
+	// no tag or digest separator — default to :latest
+	return fmt.Sprintf("%s/%s:latest", targetRegistry, sourceRef), nil
 }
