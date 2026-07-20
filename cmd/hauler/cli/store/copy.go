@@ -181,7 +181,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			Insecure:  o.Insecure,
 		}
 		// Shared across every per-artifact RegistryTarget below to keep connections pooled.
-		registryClient := content.NewRegistryHTTPClient(registryOpts)
+		registryClient := content.NewRegistryHTTPClient(components[1], registryOpts)
 
 		// Pre-build a map from base ref → image manifest digest so that sig/att/sbom
 		// descriptors (which store the base image ref, not the cosign tag) can be routed

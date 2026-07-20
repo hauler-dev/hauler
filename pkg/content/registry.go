@@ -23,18 +23,27 @@ type RegistryTarget struct {
 	resolver remotes.Resolver
 }
 
-// plainHTTPRoundTripper rewrites every outgoing https:// URL to http://.
-// This is required when PlainHTTP is set: the Docker authorizer follows the
-// Bearer realm URL from the WWW-Authenticate header literally. If a registry
-// advertises realm="https://host/service/token" the token fetch will fail with
-// "server gave HTTP response to HTTPS client" unless the scheme is rewritten
-// before the request leaves the client.
+// plainHTTPRoundTripper rewrites outgoing https:// requests to http:// for a
+// single registry authority (host:port). This is required when PlainHTTP is
+// set: the Docker authorizer follows the Bearer realm URL from the
+// WWW-Authenticate header literally, and registries like Harbor always
+// advertise an https:// realm regardless of the incoming transport, so the
+// token fetch fails with "server gave HTTP response to HTTPS client" unless
+// the scheme is rewritten before the request leaves the client.
+//
+// The rewrite is scoped to the registry's exact authority on purpose: a
+// plain-http registry may legitimately 301-redirect blob fetches to a real
+// HTTPS object store or CDN on a different host (or even a different port on
+// the same host), and those must NOT be downgraded. host must already be a
+// bare authority (no path) -- NewRegistryHTTPClient strips any path before
+// building this struct, since req.URL.Host is never anything but the authority.
 type plainHTTPRoundTripper struct {
 	inner http.RoundTripper
+	host  string // registry authority (host:port), the only host we downgrade
 }
 
 func (r plainHTTPRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Scheme == "https" {
+	if req.URL.Scheme == "https" && req.URL.Host == r.host {
 		reqCopy := req.Clone(req.Context())
 		reqCopy.URL.Scheme = "http"
 		req = reqCopy
@@ -46,10 +55,18 @@ func (r plainHTTPRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 // http.DefaultTransport rather than mutating it in place, which would leak
 // InsecureSkipVerify into every other HTTP client in the process.
 //
+// host is the registry this client talks to (e.g. "localhost:5000"). Callers
+// such as cmd/hauler/cli/store/copy.go derive it from a target reference's
+// remainder after "://", so it may arrive as "host:port/repo/path"; any path
+// is stripped to the bare authority before use. When opts.PlainHTTP is set,
+// that authority scopes a targeted https->http rewrite (see
+// plainHTTPRoundTripper) so a legitimate cross-host https redirect (e.g. to a
+// CDN or object store) is not downgraded.
+//
 // Build this once and share it across all RegistryTargets for a copy: a
 // transport per target defeats connection pooling and can exhaust file
 // descriptors on large copies.
-func NewRegistryHTTPClient(opts RegistryOptions) *http.Client {
+func NewRegistryHTTPClient(host string, opts RegistryOptions) *http.Client {
 	var transport *http.Transport
 	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
 		transport = dt.Clone()
@@ -62,7 +79,10 @@ func NewRegistryHTTPClient(opts RegistryOptions) *http.Client {
 	}
 	var rt http.RoundTripper = transport
 	if opts.PlainHTTP {
-		rt = plainHTTPRoundTripper{inner: transport}
+		// host may arrive as "registry:port/repo/path" (copy.go passes
+		// components[1]); req.URL.Host is only ever the authority, so match on that.
+		authority, _, _ := strings.Cut(host, "/")
+		rt = plainHTTPRoundTripper{inner: transport, host: authority}
 	}
 	return &http.Client{Transport: rt}
 }
