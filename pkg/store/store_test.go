@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -702,6 +703,27 @@ func TestCopy_MultiPlatform(t *testing.T) {
 //   - "docker.io/nginx:latest"               → "nginx:latest"        / "docker.io/nginx:latest"
 //   - "docker.io/library/nginx:latest"       → "library/nginx:latest"/ "docker.io/library/nginx:latest"
 //   - "index.docker.io/library/nginx:latest" → "library/nginx:latest"/ "index.docker.io/library/nginx:latest"
+//
+// dockerHubRedirectTransport rewrites any outgoing request whose host is
+// "index.docker.io" to point at a local stand-in registry, letting tests
+// exercise code paths gated on registry=="index.docker.io" (e.g. Docker Hub
+// library/ normalisation) without making real network calls to Docker Hub.
+type dockerHubRedirectTransport struct {
+	inner    http.RoundTripper
+	toScheme string
+	toHost   string
+}
+
+func (rt *dockerHubRedirectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "index.docker.io" {
+		req = req.Clone(req.Context())
+		req.URL.Scheme = rt.toScheme
+		req.URL.Host = rt.toHost
+		req.Host = rt.toHost
+	}
+	return rt.inner.RoundTrip(req)
+}
+
 func TestAddImage_DockerHubLibraryNormalisation(t *testing.T) {
 	srv := httptest.NewServer(registry.New())
 	t.Cleanup(srv.Close)
@@ -747,11 +769,17 @@ func TestAddImage_DockerHubLibraryNormalisation(t *testing.T) {
 		},
 	}
 
-	// The two "explicit docker.io" cases only make sense against the real Docker Hub
-	// (we cannot redirect "docker.io/..." to our local server), so we simulate them
-	// with a stand-in local registry that mimics the docker.io→index.docker.io
-	// normalisation by checking the annotation values produced by dockerHubAnnotationRef.
-	// We test those via the unit table below, which exercises the helper directly.
+	// The two "explicit docker.io" forms (and the bare/library forms, which also
+	// resolve to registry "index.docker.io") are additionally exercised end-to-end
+	// through AddImage in the "roundtrip_index_docker_io" sub-tests below, using a
+	// RoundTripper that redirects requests bound for "index.docker.io" to this local
+	// registry. This is what actually caught a real regression: cmd/hauler/cli/store's
+	// storeImage/storeLocalImage originally called s.AddImage(ctx, r.Name(), ...) using
+	// the go-containerregistry-*normalized* reference instead of the raw string the user
+	// typed, which silently defeated the library/ preservation below because AddImage
+	// uses the same string both to parse the reference and as DockerHubAnnotationRef's
+	// originalRef. Any caller of AddImage/AddLocalImage must pass the reference exactly
+	// as the user wrote it.
 	dockerHubCases := []struct {
 		inputRef           string
 		wantAnnotationRef  string
@@ -775,6 +803,58 @@ func TestAddImage_DockerHubLibraryNormalisation(t *testing.T) {
 			}
 			if gotContainerd != tc.wantContainerdName {
 				t.Errorf("ContainerdImageNameKey = %q, want %q", gotContainerd, tc.wantContainerdName)
+			}
+		})
+	}
+
+	// dockerHubRedirectTransport rewrites any request bound for the "index.docker.io"
+	// host to the local test registry, letting us exercise AddImage's real
+	// registry=="index.docker.io" branch (all four Docker Hub reference forms below
+	// normalize to that registry) without touching the real Docker Hub.
+	dockerHubRedirect := &dockerHubRedirectTransport{
+		inner:    srv.Client().Transport,
+		toScheme: "http",
+		toHost:   srcHost,
+	}
+	redirectOpts := []remote.Option{remote.WithTransport(dockerHubRedirect)}
+
+	// All four of these forms resolve to the same underlying repository/tag
+	// ("library/nginx:latest") already seeded above, so they can share the fixture.
+	indexDockerIOCases := []struct {
+		inputRef           string
+		wantAnnotationRef  string
+		wantContainerdName string
+	}{
+		{"nginx:latest", "nginx:latest", "index.docker.io/nginx:latest"},
+		{"library/nginx:latest", "library/nginx:latest", "index.docker.io/library/nginx:latest"},
+		{"docker.io/nginx:latest", "nginx:latest", "docker.io/nginx:latest"},
+		{"docker.io/library/nginx:latest", "library/nginx:latest", "docker.io/library/nginx:latest"},
+	}
+	ctx2 := context.Background()
+	for _, tc := range indexDockerIOCases {
+		t.Run("roundtrip_index_docker_io/"+tc.inputRef, func(t *testing.T) {
+			s, err := store.NewLayout(t.TempDir())
+			if err != nil {
+				t.Fatalf("NewLayout: %v", err)
+			}
+			// excludeExtras=true skips the cosign sig/att/sbom lookups, which are
+			// irrelevant here and would otherwise also need redirecting.
+			if _, err := s.AddImage(ctx2, tc.inputRef, "", true, redirectOpts...); err != nil {
+				t.Fatalf("AddImage(%q): %v", tc.inputRef, err)
+			}
+			found := false
+			if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+				ann := desc.Annotations[ocispec.AnnotationRefName]
+				cdn := desc.Annotations[consts.ContainerdImageNameKey]
+				if ann == tc.wantAnnotationRef && cdn == tc.wantContainerdName {
+					found = true
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("Walk: %v", err)
+			}
+			if !found {
+				t.Errorf("AddImage(%q): no descriptor with AnnotationRefName=%q ContainerdImageNameKey=%q", tc.inputRef, tc.wantAnnotationRef, tc.wantContainerdName)
 			}
 		})
 	}

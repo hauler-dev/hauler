@@ -176,7 +176,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		return err
 	}
 
-	localDigest, err := s.AddLocalImage(ctx, r.Name())
+	localDigest, err := s.AddLocalImage(ctx, i.Name)
 	if err != nil {
 		if ro.IgnoreErrors {
 			l.Warnf("unable to add image [%s] from Docker daemon to store: %v... skipping...", r.Name(), err)
@@ -265,7 +265,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	var imageDigest string
 	err = retry.Operation(ctx, rso, ro, func() error {
 		var addErr error
-		imageDigest, addErr = s.AddImage(ctx, r.Name(), platform, excludeExtras)
+		imageDigest, addErr = s.AddImage(ctx, i.Name, platform, excludeExtras)
 		return addErr
 	})
 	if err != nil {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -632,6 +633,74 @@ func TestStoreImage_Rewrite(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
+}
+
+// dockerHubRedirectTransport rewrites any outgoing request whose host is
+// "index.docker.io" to point at a local stand-in registry, letting tests
+// exercise code paths gated on registry=="index.docker.io" (e.g. Docker Hub
+// library/ normalisation) without making real network calls to Docker Hub.
+type dockerHubRedirectTransport struct {
+	inner  http.RoundTripper
+	toHost string
+}
+
+func (rt *dockerHubRedirectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "index.docker.io" {
+		req = req.Clone(req.Context())
+		req.URL.Scheme = "http"
+		req.URL.Host = rt.toHost
+		req.Host = rt.toHost
+	}
+	return rt.inner.RoundTrip(req)
+}
+
+// TestStoreImage_DockerHubReferenceWiring is a regression test for a bug where
+// storeImage called s.AddImage(ctx, r.Name(), ...) using the
+// go-containerregistry-*normalized* reference instead of the raw string the
+// user typed on the CLI. AddImage uses that same string both to parse the
+// reference and (via store.DockerHubAnnotationRef) to decide whether to keep
+// or strip the Docker Hub "library/" prefix -- so passing the normalized form
+// silently defeated library/ preservation for every Docker Hub image add.
+//
+// This exercises storeImage itself (the real production caller), not just the
+// lower-level helper, by temporarily redirecting requests bound for
+// "index.docker.io" to a local stand-in registry via remote.DefaultTransport
+// (the fallback transport go-containerregistry's remote package uses when no
+// per-call remote.Option is supplied, which is exactly storeImage's case).
+func TestStoreImage_DockerHubReferenceWiring(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	srcHost := strings.TrimPrefix(srv.URL, "http://")
+	seedImage(t, srcHost, "library/nginx", "latest", remote.WithTransport(srv.Client().Transport))
+
+	original := remote.DefaultTransport
+	remote.DefaultTransport = &dockerHubRedirectTransport{inner: original, toHost: srcHost}
+	t.Cleanup(func() { remote.DefaultTransport = original })
+
+	tests := []struct {
+		imageName          string
+		wantAnnotationRef  string
+		wantContainerdName string
+	}{
+		{"nginx:latest", "nginx:latest", "index.docker.io/nginx:latest"},
+		{"library/nginx:latest", "library/nginx:latest", "index.docker.io/library/nginx:latest"},
+		{"docker.io/nginx:latest", "nginx:latest", "docker.io/nginx:latest"},
+		{"docker.io/library/nginx:latest", "library/nginx:latest", "docker.io/library/nginx:latest"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.imageName, func(t *testing.T) {
+			s := newTestStore(t)
+			rso := defaultRootOpts(s.Root)
+			ro := defaultCliOpts()
+
+			if err := storeImage(ctx, s, v1.Image{Name: tc.imageName}, "", true, rso, ro, ""); err != nil {
+				t.Fatalf("storeImage(%q): %v", tc.imageName, err)
+			}
+			assertAnnotationsInStore(t, s, tc.wantAnnotationRef, tc.wantContainerdName)
+		})
+	}
 }
 
 func TestStoreImage_MultiArch(t *testing.T) {
