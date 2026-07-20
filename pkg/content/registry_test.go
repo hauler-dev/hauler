@@ -176,6 +176,46 @@ func TestNewRegistryTarget_SchemeSelection(t *testing.T) {
 	}
 }
 
+// TestNewRegistryTarget_PlainHTTPRewritesBearerTokenFetchScheme reproduces the
+// exact production failure reported with --plain-http against a Harbor-style
+// registry: the registry returns 401 with WWW-Authenticate realm="https://..."
+// (always HTTPS), but the server only speaks plain HTTP. Without the scheme
+// rewrite in plainHTTPRoundTripper the token fetch fails with:
+//
+//	"http: server gave HTTP response to HTTPS client"
+func TestNewRegistryTarget_PlainHTTPRewritesBearerTokenFetchScheme(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"token":"fake-token"}`))
+	}))
+	defer tokenSrv.Close()
+
+	// The token server speaks plain HTTP, but we advertise its URL with an
+	// https:// scheme in the WWW-Authenticate header -- exactly what Harbor
+	// (and similar registries) do regardless of the transport they receive.
+	tokenURL := strings.Replace(tokenSrv.URL, "http://", "https://", 1)
+
+	registrySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="`+tokenURL+`/token",service="registry"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer registrySrv.Close()
+
+	host := strings.TrimPrefix(registrySrv.URL, "http://")
+
+	opts := RegistryOptions{PlainHTTP: true}
+	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(opts))
+
+	_, err := target.Resolve(context.Background(), host+"/library/test:latest")
+	// A non-nil error is expected (the fake registry never returns a valid
+	// manifest), but it must NOT be the scheme-mismatch error -- that would
+	// mean plainHTTPRoundTripper did not rewrite the realm URL.
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "server gave http response to https client") {
+		t.Fatalf("PlainHTTP did not rewrite the Bearer token realm URL to http: %v", err)
+	}
+}
+
 // TestNewRegistryHTTPClient_DoesNotLeakGlobalTLSConfig asserts that building
 // an insecure client never mutates http.DefaultTransport in place, which
 // would leak InsecureSkipVerify into every other HTTP client in the process.

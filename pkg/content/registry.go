@@ -23,6 +23,25 @@ type RegistryTarget struct {
 	resolver remotes.Resolver
 }
 
+// plainHTTPRoundTripper rewrites every outgoing https:// URL to http://.
+// This is required when PlainHTTP is set: the Docker authorizer follows the
+// Bearer realm URL from the WWW-Authenticate header literally. If a registry
+// advertises realm="https://host/service/token" the token fetch will fail with
+// "server gave HTTP response to HTTPS client" unless the scheme is rewritten
+// before the request leaves the client.
+type plainHTTPRoundTripper struct {
+	inner http.RoundTripper
+}
+
+func (r plainHTTPRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Scheme == "https" {
+		reqCopy := req.Clone(req.Context())
+		reqCopy.URL.Scheme = "http"
+		req = reqCopy
+	}
+	return r.inner.RoundTrip(req)
+}
+
 // NewRegistryHTTPClient builds an *http.Client configured for opts, cloning
 // http.DefaultTransport rather than mutating it in place, which would leak
 // InsecureSkipVerify into every other HTTP client in the process.
@@ -41,7 +60,11 @@ func NewRegistryHTTPClient(opts RegistryOptions) *http.Client {
 	if opts.Insecure {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	return &http.Client{Transport: transport}
+	var rt http.RoundTripper = transport
+	if opts.PlainHTTP {
+		rt = plainHTTPRoundTripper{inner: transport}
+	}
+	return &http.Client{Transport: rt}
 }
 
 // NewRegistryTarget returns a RegistryTarget that pushes to host (e.g. "localhost:5000").
