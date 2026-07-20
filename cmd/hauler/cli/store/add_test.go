@@ -252,7 +252,7 @@ func TestRewriteReference(t *testing.T) {
 
 		rawRewrite := newRef.String()
 
-		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite, host+"/src/repo:v1"); err != nil {
 			t.Fatalf("rewriteReference: %v", err)
 		}
 
@@ -265,7 +265,7 @@ func TestRewriteReference(t *testing.T) {
 		newRef, _ := name.NewTag("docker.io/new/repo:v2")
 		rawRewrite := newRef.String()
 
-		err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite)
+		err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite, "docker.io/missing/repo:v1")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -274,65 +274,170 @@ func TestRewriteReference(t *testing.T) {
 		}
 	})
 
-	// Tests for the registry-preservation / library/-stripping logic (lines 188-191).
-	// go-containerregistry normalises bare single-name Docker Hub refs (e.g. "nginx:latest")
-	// to "index.docker.io/library/nginx:latest". When the rewrite string omits a registry,
-	// rewriteReference must (a) preserve the source registry and (b) strip the injected
-	// "library/" prefix so that the stored ref looks like "nginx:v2", not "library/nginx:v2".
+	// Tests for the registry-preservation / library/-stripping logic.
+	// These cover the full 12-combination matrix: 4 source forms × 3 rewrite forms.
+	// The "sourceRef" passed to rewriteReference must match what the user originally
+	// typed (or what came from a chart annotation), so the lookup keys produced by
+	// DockerHubAnnotationRef match what writeImage actually stored.
 
-	t.Run("path-only rewrite strips library/ prefix from docker hub official image", func(t *testing.T) {
+	// ── Source: nginx:latest (no registry, no library/) ──────────────────────────
+
+	t.Run("nginx:latest / no rewrite", func(t *testing.T) {
+		// verify storage; rewriteReference not called
 		s := newTestStore(t)
 		seedStoreDescriptor(t, s, map[string]string{
-			ocispec.AnnotationRefName:     "library/nginx:latest",
-			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+			ocispec.AnnotationRefName:     "nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/nginx:latest",
 		})
+		assertAnnotationsInStore(t, s, "nginx:latest", "index.docker.io/nginx:latest")
+	})
 
-		oldRef, _ := name.NewTag("nginx:latest") // → index.docker.io/library/nginx:latest
-		newRef, _ := name.NewTag("nginx:v2")     // → index.docker.io/library/nginx:v2
-		rawRewrite := "nginx:v2"
-
-		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+	t.Run("nginx:latest / rewrite library/nginx", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/nginx:latest",
+		})
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:latest")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "library/nginx", "nginx:latest"); err != nil {
 			t.Fatalf("rewriteReference: %v", err)
 		}
-		// library/ must be stripped... registry stays index.docker.io
+		assertAnnotationsInStore(t, s, "library/nginx:latest", "index.docker.io/library/nginx:latest")
+	})
+
+	t.Run("nginx:latest / rewrite nginx", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/nginx:latest",
+		})
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("nginx:v2")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "nginx", "nginx:latest"); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
 		assertAnnotationsInStore(t, s, "nginx:v2", "index.docker.io/nginx:v2")
 	})
 
-	t.Run("explicit docker.io rewrite preserves library/ prefix", func(t *testing.T) {
+	// ── Source: library/nginx:latest (explicit library/) ─────────────────────────
+
+	t.Run("library/nginx:latest / no rewrite", func(t *testing.T) {
 		s := newTestStore(t)
 		seedStoreDescriptor(t, s, map[string]string{
 			ocispec.AnnotationRefName:     "library/nginx:latest",
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
-
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
-		rawRewrite := "docker.io/nginx:v2"
-
-		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
-			t.Fatalf("rewriteReference: %v", err)
-		}
-		// rawRewrite starts with "docker.io" → condition must NOT fire → library/ preserved
-		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
+		assertAnnotationsInStore(t, s, "library/nginx:latest", "index.docker.io/library/nginx:latest")
 	})
 
-	t.Run("explicit index.docker.io rewrite preserves library/ prefix", func(t *testing.T) {
+	t.Run("library/nginx:latest / rewrite library/nginx", func(t *testing.T) {
 		s := newTestStore(t)
 		seedStoreDescriptor(t, s, map[string]string{
 			ocispec.AnnotationRefName:     "library/nginx:latest",
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
-
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("index.docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
-		rawRewrite := "index.docker.io/nginx:v2"
-
-		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+		oldRef, _ := name.NewTag("library/nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:v2")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "library/nginx", "library/nginx:latest"); err != nil {
 			t.Fatalf("rewriteReference: %v", err)
 		}
-		// rawRewrite starts with "index.docker.io" → condition must NOT fire → library/ preserved
 		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
 	})
+
+	t.Run("library/nginx:latest / rewrite nginx", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+		oldRef, _ := name.NewTag("library/nginx:latest")
+		newRef, _ := name.NewTag("nginx:v2")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "nginx", "library/nginx:latest"); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		assertAnnotationsInStore(t, s, "nginx:v2", "index.docker.io/nginx:v2")
+	})
+
+	// ── Source: docker.io/nginx:latest (explicit docker.io, no library/) ─────────
+
+	t.Run("docker.io/nginx:latest / no rewrite", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "nginx:latest",
+			consts.ContainerdImageNameKey: "docker.io/nginx:latest",
+		})
+		assertAnnotationsInStore(t, s, "nginx:latest", "docker.io/nginx:latest")
+	})
+
+	t.Run("docker.io/nginx:latest / rewrite library/nginx", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "nginx:latest",
+			consts.ContainerdImageNameKey: "docker.io/nginx:latest",
+		})
+		oldRef, _ := name.NewTag("docker.io/nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:latest")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "library/nginx", "docker.io/nginx:latest"); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		assertAnnotationsInStore(t, s, "library/nginx:latest", "docker.io/library/nginx:latest")
+	})
+
+	t.Run("docker.io/nginx:latest / rewrite nginx", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "nginx:latest",
+			consts.ContainerdImageNameKey: "docker.io/nginx:latest",
+		})
+		oldRef, _ := name.NewTag("docker.io/nginx:latest")
+		newRef, _ := name.NewTag("nginx:v2")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "nginx", "docker.io/nginx:latest"); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		assertAnnotationsInStore(t, s, "nginx:v2", "docker.io/nginx:v2")
+	})
+
+	// ── Source: docker.io/library/nginx:latest (explicit docker.io + library/) ───
+
+	t.Run("docker.io/library/nginx:latest / no rewrite", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "docker.io/library/nginx:latest",
+		})
+		assertAnnotationsInStore(t, s, "library/nginx:latest", "docker.io/library/nginx:latest")
+	})
+
+	t.Run("docker.io/library/nginx:latest / rewrite library/nginx", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "docker.io/library/nginx:latest",
+		})
+		oldRef, _ := name.NewTag("docker.io/library/nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:v2")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "library/nginx", "docker.io/library/nginx:latest"); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		assertAnnotationsInStore(t, s, "library/nginx:v2", "docker.io/library/nginx:v2")
+	})
+
+	t.Run("docker.io/library/nginx:latest / rewrite nginx", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "docker.io/library/nginx:latest",
+		})
+		oldRef, _ := name.NewTag("docker.io/library/nginx:latest")
+		newRef, _ := name.NewTag("nginx:v2")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "nginx", "docker.io/library/nginx:latest"); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		assertAnnotationsInStore(t, s, "nginx:v2", "docker.io/nginx:v2")
+	})
+
+	// ── Non-Docker Hub: path-only rewrite inherits source registry ────────────────
 
 	t.Run("non-docker source with path-only rewrite preserves original registry", func(t *testing.T) {
 		host, rOpts := newTestRegistry(t)
@@ -344,13 +449,10 @@ func TestRewriteReference(t *testing.T) {
 		}
 
 		oldRef, _ := name.NewTag(host+"/src/repo:v1", name.Insecure)
-		newRef, _ := name.NewTag("newrepo/img:v2") // defaults to index.docker.io
-		rawRewrite := "newrepo/img:v2"
-
-		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+		newRef, _ := name.NewTag("newrepo/img:v2")
+		if err := rewriteReference(ctx, s, oldRef, newRef, "newrepo/img:v2", host+"/src/repo:v1"); err != nil {
 			t.Fatalf("rewriteReference: %v", err)
 		}
-		// condition fires → registry reverts to host, no library/ to strip
 		assertAnnotationsInStore(t, s, "newrepo/img:v2", host+"/newrepo/img:v2")
 	})
 }

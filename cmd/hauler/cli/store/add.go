@@ -200,7 +200,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
+		if err := rewriteReference(ctx, s, r, newRef, rawRewrite, i.Name); err != nil {
 			return err
 		}
 	}
@@ -210,7 +210,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 			StoreID:   s.StoreID,
 			Store:     s.Root,
 			Type:      "image",
-			Command:   "store add image",
+			Command:   "store add local image",
 			Args:      []string{i.Name},
 			Reference: r.Name(),
 			Digest:    localDigest,
@@ -293,7 +293,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
+		if err := rewriteReference(ctx, s, r, newRef, rawRewrite, i.Name); err != nil {
 			return err
 		}
 	}
@@ -340,52 +340,43 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	return nil
 }
 
-func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
+func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string, sourceRef string) error {
 	l := log.FromContext(ctx)
 
 	if err := s.OCI.LoadIndex(); err != nil {
 		return fmt.Errorf("failed to load index: %w", err)
 	}
 
-	//TODO: improve string manipulation
-	oldRefContext := oldRef.Context()
-	newRefContext := newRef.Context()
-	oldRepo := oldRefContext.RepositoryStr()
-	newRepo := newRefContext.RepositoryStr()
+	// Compute the annotation pair that was actually stored by writeImage/writeIndex.
+	// Using the same DockerHubAnnotationRef logic guarantees the lookup keys match,
+	// regardless of whether the user typed "nginx", "library/nginx", "docker.io/nginx", etc.
+	oldAnnotationRef, oldContainerdName := store.DockerHubAnnotationRef(oldRef, sourceRef)
 
-	oldTag := oldRef.Identifier()
-	if tag, ok := oldRef.(name.Tag); ok {
-		oldTag = tag.TagStr()
+	// The registry stored in ContainerdImageNameKey ("docker.io" or "index.docker.io").
+	// When the rewrite string has no explicit registry, we inherit this so that
+	// docker.io sources stay as docker.io after the rewrite.
+	storedRegistry := strings.SplitN(oldContainerdName, "/", 2)[0]
+
+	// Compute the new annotation pair from the rewrite target.
+	// DockerHubAnnotationRef handles library/ stripping based on rawRewrite:
+	//   "nginx"          → strip library/   ; "library/nginx" → keep library/
+	//   "docker.io/nginx"→ use docker.io registry, strip library/
+	newAnnotationRef, newContainerdName := store.DockerHubAnnotationRef(newRef, rawRewrite)
+
+	// If rawRewrite has no explicit registry (bare path or library/-prefixed path),
+	// inherit the source's stored registry instead of defaulting to index.docker.io.
+	if rewriteHasNoRegistry(rawRewrite) {
+		newContainerdName = storedRegistry + "/" + newAnnotationRef
 	}
-	newTag := newRef.Identifier()
-	if tag, ok := newRef.(name.Tag); ok {
-		newTag = tag.TagStr()
-	}
 
-	// ContainerdImageNameKey stores annotationRef.Name() verbatim, which includes the
-	// "index.docker.io" prefix for docker.io images. Do not strip "index." here or the
-	// comparison will never match images stored by writeImage/writeIndex.
-	oldRegistry := oldRefContext.RegistryStr()
-	newRegistry := newRefContext.RegistryStr()
-	// If user omitted a registry in the rewrite string, go-containerregistry defaults to
-	// index.docker.io. Preserve the original registry when the source is non-docker.
-	if newRegistry == "index.docker.io" && !strings.HasPrefix(rawRewrite, "docker.io") && !strings.HasPrefix(rawRewrite, "index.docker.io") {
-		newRegistry = oldRegistry
-		newRepo = strings.TrimPrefix(newRepo, "library/") //if rewrite has library/ prefix in path it is stripped off unless registry specified in rewrite
-	}
-	oldTotal := oldRepo + ":" + oldTag
-	newTotal := newRepo + ":" + newTag
-	oldTotalReg := oldRegistry + "/" + oldTotal
-	newTotalReg := newRegistry + "/" + newTotal
+	l.Infof("rewriting [%s] to [%s]", oldContainerdName, newContainerdName)
 
-	l.Infof("rewriting [%s] to [%s]", oldTotalReg, newTotalReg)
-
-	//find and update reference
 	found := false
 	if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
-		if d.Annotations[ocispec.AnnotationRefName] == oldTotal && d.Annotations[consts.ContainerdImageNameKey] == oldTotalReg {
-			d.Annotations[ocispec.AnnotationRefName] = newTotal
-			d.Annotations[consts.ContainerdImageNameKey] = newTotalReg
+		if d.Annotations[ocispec.AnnotationRefName] == oldAnnotationRef &&
+			d.Annotations[consts.ContainerdImageNameKey] == oldContainerdName {
+			d.Annotations[ocispec.AnnotationRefName] = newAnnotationRef
+			d.Annotations[consts.ContainerdImageNameKey] = newContainerdName
 			found = true
 		}
 		return nil
@@ -398,7 +389,19 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	}
 
 	return s.OCI.SaveIndex()
+}
 
+// rewriteHasNoRegistry reports whether rawRewrite is a bare path that does not
+// include an explicit registry host (e.g. "nginx", "library/nginx", "myorg/myimage")
+// as opposed to a fully qualified reference like "docker.io/nginx".
+func rewriteHasNoRegistry(rawRewrite string) bool {
+	slash := strings.Index(rawRewrite, "/")
+	if slash == -1 {
+		return true // bare name
+	}
+	prefix := rawRewrite[:slash]
+	// A registry host contains a dot or a colon (port), or is "localhost".
+	return !strings.ContainsAny(prefix, ".:") && prefix != "localhost"
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
