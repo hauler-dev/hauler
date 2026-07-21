@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -30,7 +31,7 @@ func TestNewRegistryTarget_InsecureSkipsTLSVerification(t *testing.T) {
 	host := strings.TrimPrefix(srv.URL, "https://")
 
 	opts := RegistryOptions{Insecure: true}
-	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(opts))
+	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(host, opts))
 
 	_, err := target.Resolve(context.Background(), host+"/library/test:latest")
 	if err == nil {
@@ -53,8 +54,17 @@ func TestNewRegistryTarget_InsecureSkipsTLSVerification(t *testing.T) {
 // HTTPS endpoint signed by a private CA. With --insecure --plain-http,
 // hauler should dial http, follow the redirect to https, and skip cert
 // verification on the redirected request.
+//
+// The two httptest servers both listen on 127.0.0.1, on different ports, so
+// this also proves that the PlainHTTP https->http rewrite is scoped
+// precisely enough to leave the redirect target's scheme alone: a blanket
+// rewrite of every outgoing https request (as opposed to one scoped to the
+// registry's own host:port) would downgrade this redirect to http and the
+// TLS-only redirect target would never be reached.
 func TestNewRegistryTarget_InsecurePlainHTTPFollowsHTTPSRedirect(t *testing.T) {
+	var tlsReached atomic.Bool
 	tlsSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tlsReached.Store(true)
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer tlsSrv.Close()
@@ -67,7 +77,7 @@ func TestNewRegistryTarget_InsecurePlainHTTPFollowsHTTPSRedirect(t *testing.T) {
 	host := strings.TrimPrefix(httpSrv.URL, "http://")
 
 	opts := RegistryOptions{Insecure: true, PlainHTTP: true}
-	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(opts))
+	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(host, opts))
 
 	_, err := target.Resolve(context.Background(), host+"/library/test:latest")
 	if err == nil {
@@ -76,6 +86,90 @@ func TestNewRegistryTarget_InsecurePlainHTTPFollowsHTTPSRedirect(t *testing.T) {
 	lower := strings.ToLower(err.Error())
 	if strings.Contains(lower, "certificate signed by unknown authority") || strings.Contains(lower, "certificate") {
 		t.Fatalf("expected no certificate verification error after following http->https redirect with Insecure: true, got: %v", err)
+	}
+	if !tlsReached.Load() {
+		t.Fatal("plain-http downgraded a cross-host https redirect: TLS endpoint was never reached")
+	}
+}
+
+// TestNewRegistryTarget_PlainHTTPRewritesBearerTokenFetchScheme reproduces
+// issue #677: a plain-http Bearer-auth registry (e.g. Harbor) that always
+// advertises an https:// realm in its WWW-Authenticate challenge, even
+// though the registry itself is only reachable over plain http. The token
+// realm is on the SAME host:port as the registry (Harbor's own token
+// service is co-located behind the same reverse proxy), which is what makes
+// the host-scoped rewrite in plainHTTPRoundTripper apply here. Before the
+// fix, the containerd Docker authorizer dialed the https realm literally
+// and failed with "server gave HTTP response to HTTPS client".
+func TestNewRegistryTarget_PlainHTTPRewritesBearerTokenFetchScheme(t *testing.T) {
+	var registrySrv *httptest.Server
+	registrySrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/service/token" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"token":"fake-token"}`))
+			return
+		}
+		realm := "https://" + strings.TrimPrefix(registrySrv.URL, "http://") + "/service/token"
+		w.Header().Set("WWW-Authenticate", `Bearer realm="`+realm+`",service="registry"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer registrySrv.Close()
+
+	host := strings.TrimPrefix(registrySrv.URL, "http://")
+
+	opts := RegistryOptions{PlainHTTP: true}
+	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(host, opts))
+
+	_, err := target.Resolve(context.Background(), host+"/library/test:latest")
+	if err == nil {
+		t.Fatalf("expected an error resolving against a 401-only fake registry, got nil")
+	}
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "server gave http response to https client") {
+		t.Fatalf("plain-http Bearer token fetch dialed the https realm literally instead of being rewritten to http, got: %v", err)
+	}
+}
+
+// TestNewRegistryTarget_PlainHTTPRewritesBearerTokenFetchScheme_PathBearingHost
+// reproduces the real call path used by `hauler store copy registry://`:
+// cmd/hauler/cli/store/copy.go derives its host argument from
+// strings.SplitN(targetRef, "://", 2)[1], which for a target reference like
+// "oci://harbor:80/library" is "harbor:80/library" -- host:port WITH the
+// repo path still attached, not a clean authority. NewRegistryHTTPClient
+// must normalize that down to just the authority before comparing against
+// req.URL.Host (which is never anything but the authority), or the
+// plainHTTPRoundTripper rewrite silently never fires and #677 recurs in
+// production even though the "clean host" tests above pass.
+func TestNewRegistryTarget_PlainHTTPRewritesBearerTokenFetchScheme_PathBearingHost(t *testing.T) {
+	var registrySrv *httptest.Server
+	registrySrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/service/token" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"token":"fake-token"}`))
+			return
+		}
+		realm := "https://" + strings.TrimPrefix(registrySrv.URL, "http://") + "/service/token"
+		w.Header().Set("WWW-Authenticate", `Bearer realm="`+realm+`",service="registry"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer registrySrv.Close()
+
+	hostPort := strings.TrimPrefix(registrySrv.URL, "http://")
+	// Mirrors copy.go's components[1]: host:port with a repo path attached.
+	componentsOne := hostPort + "/library"
+
+	opts := RegistryOptions{PlainHTTP: true}
+	target := NewRegistryTarget(componentsOne, opts, NewRegistryHTTPClient(componentsOne, opts))
+
+	_, err := target.Resolve(context.Background(), hostPort+"/library/test:latest")
+	if err == nil {
+		t.Fatalf("expected an error resolving against a 401-only fake registry, got nil")
+	}
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "server gave http response to https client") {
+		t.Fatalf("plain-http Bearer token fetch dialed the https realm literally instead of being rewritten to http (path-bearing host arg like copy.go passes), got: %v", err)
 	}
 }
 
@@ -106,7 +200,7 @@ func TestNewRegistryTarget_InsecureAppliesToBearerTokenFetch(t *testing.T) {
 	host := strings.TrimPrefix(registrySrv.URL, "https://")
 
 	opts := RegistryOptions{Insecure: true}
-	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(opts))
+	target := NewRegistryTarget(host, opts, NewRegistryHTTPClient(host, opts))
 
 	_, err := target.Resolve(context.Background(), host+"/library/test:latest")
 	if err == nil {
@@ -164,7 +258,7 @@ func TestNewRegistryTarget_SchemeSelection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			target := NewRegistryTarget(host, tt.opts, NewRegistryHTTPClient(tt.opts))
+			target := NewRegistryTarget(host, tt.opts, NewRegistryHTTPClient(host, tt.opts))
 
 			_, err := target.Resolve(context.Background(), host+"/library/test:latest")
 
@@ -192,7 +286,7 @@ func TestNewRegistryHTTPClient_DoesNotLeakGlobalTLSConfig(t *testing.T) {
 	}
 	before := dt.TLSClientConfig
 
-	_ = NewRegistryHTTPClient(RegistryOptions{Insecure: true})
+	_ = NewRegistryHTTPClient("registry.example.com", RegistryOptions{Insecure: true})
 
 	if dt.TLSClientConfig != before {
 		t.Fatalf("NewRegistryHTTPClient mutated the global http.DefaultTransport.TLSClientConfig: before=%+v after=%+v", before, dt.TLSClientConfig)
@@ -226,7 +320,7 @@ func TestNewRegistryHTTPClient_FallsBackWhenDefaultTransportIsNotHTTPTransport(t
 				t.Fatalf("NewRegistryHTTPClient panicked with a non-*http.Transport DefaultTransport: %v", r)
 			}
 		}()
-		client = NewRegistryHTTPClient(RegistryOptions{Insecure: true})
+		client = NewRegistryHTTPClient("registry.example.com", RegistryOptions{Insecure: true})
 	}()
 
 	if client == nil {
