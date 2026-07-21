@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	ccontent "github.com/containerd/containerd/content"
+	ccontent "github.com/containerd/containerd/v2/core/content"
 	gname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
