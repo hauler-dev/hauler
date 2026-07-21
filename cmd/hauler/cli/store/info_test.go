@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -11,6 +12,37 @@ import (
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
+
+// TestNewItem_LibraryPrefixRoundTrip proves that store info re-adds "library/"
+// to single-component Docker Hub image names that were correctly stripped by
+// rewriteReference.  This reproduces the round-trip bug where
+// "hauler store add image busybox --rewrite busybox" is logged as
+// "rewriting to index.docker.io/busybox:latest" but store info still displays
+// "index.docker.io/library/busybox:latest".
+//
+// rewriteReference sets ContainerdImageNameKey = "index.docker.io/busybox:latest".
+// newItem passes that value through reference.Parse, which uses
+// go-containerregistry and re-normalises the single-component Docker Hub path
+// back to library/busybox — making the rewrite a display no-op.
+func TestNewItem_LibraryPrefixRoundTrip(t *testing.T) {
+	// Post-rewrite annotations: rewriteReference has already stripped library/.
+	desc := ocispec.Descriptor{
+		Annotations: map[string]string{
+			ocispec.AnnotationRefName:     "busybox:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/busybox:latest",
+			consts.KindAnnotationName:     consts.KindAnnotationImage,
+		},
+	}
+	o := &flags.InfoOpts{TypeFilter: "all"}
+	i := newItem(nil, desc, ocispec.Manifest{Config: ocispec.Descriptor{MediaType: consts.DockerConfigJSON}}, "linux/amd64", o)
+
+	// The displayed reference must NOT contain "library/" — the whole point of
+	// --rewrite busybox is to strip that prefix so copies land at
+	// targetRegistry/busybox:latest, not targetRegistry/library/busybox:latest.
+	if strings.Contains(i.Reference, "library/") {
+		t.Errorf("store info re-added library/ after --rewrite: got %q, want a reference without library/", i.Reference)
+	}
+}
 
 func TestByteCountSI(t *testing.T) {
 	tests := []struct {

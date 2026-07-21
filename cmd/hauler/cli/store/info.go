@@ -319,11 +319,22 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 
 	refName := desc.Annotations["io.containerd.image.name"]
 	if refName == "" {
-		refName = desc.Annotations[ocispec.AnnotationRefName]
-	}
-	ref, err := reference.Parse(refName)
-	if err != nil {
-		return item{}
+		// Fall back to AnnotationRefName. It lacks a registry prefix, so pass it
+		// through reference.Parse to add the default registry for display.
+		rannotation := desc.Annotations[ocispec.AnnotationRefName]
+		ref, err := reference.Parse(rannotation)
+		if err != nil {
+			return item{}
+		}
+		refName = ref.Name()
+	} else {
+		// ContainerdImageNameKey already contains the full reference with registry.
+		// Use it verbatim: passing it through reference.Parse would re-add "library/"
+		// for bare Docker Hub paths (e.g. "index.docker.io/busybox" normalises to
+		// "index.docker.io/library/busybox"), silently undoing a --rewrite strip.
+		if _, err := reference.Parse(refName); err != nil {
+			return item{}
+		}
 	}
 
 	if o.TypeFilter != "all" && ctype != o.TypeFilter {
@@ -331,7 +342,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	}
 
 	return item{
-		Reference: ref.Name(),
+		Reference: refName,
 		Type:      ctype,
 		Platform:  plat,
 		Digest:    desc.Digest.String(),
