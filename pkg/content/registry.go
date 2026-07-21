@@ -100,15 +100,19 @@ func NewRegistryTarget(host string, opts RegistryOptions, client *http.Client) *
 			// Bridge to go-containerregistry's keychain for credential lookup.
 			reg, err := goname.NewRegistry(h, goname.Insecure)
 			if err != nil {
-				return "", "", nil
+				return "", "", fmt.Errorf("parsing registry host [%s] for credential lookup: %w", h, err)
 			}
 			a, err := goauthn.DefaultKeychain.Resolve(reg)
-			if err != nil || a == goauthn.Anonymous {
+			if err != nil {
+				// don't fall back to anonymous on a real resolution error
+				return "", "", fmt.Errorf("resolving credentials for [%s]: %w", h, err)
+			}
+			if a == goauthn.Anonymous {
 				return "", "", nil
 			}
 			cfg, err := a.Authorization()
 			if err != nil {
-				return "", "", nil
+				return "", "", fmt.Errorf("reading resolved authorization for [%s]: %w", h, err)
 			}
 			return cfg.Username, cfg.Password, nil
 		}),
