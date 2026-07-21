@@ -502,6 +502,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					}
 
 					platform := o.Platform
+					if annotation != nil && annotation[consts.ImageAnnotationPlatform] != "" {
+						platform = annotation[consts.ImageAnnotationPlatform]
+					}
 					if ch.Platform != "" {
 						platform = ch.Platform
 					}
