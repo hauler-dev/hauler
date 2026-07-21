@@ -1,6 +1,6 @@
 module hauler.dev/go/hauler/v2
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
