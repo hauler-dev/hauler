@@ -3,14 +3,18 @@ package store_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	ccontent "github.com/containerd/containerd/v2/core/content"
 	gname "github.com/google/go-containerregistry/pkg/name"
@@ -24,8 +28,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rs/zerolog"
 
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/blob"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
@@ -786,4 +792,430 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 		t.Fatal("expected at least one OCI referrer entry in the store, got none")
 	}
 	t.Logf("captured %d OCI referrer(s) for %s", referrerCount, baseTag.Name())
+}
+
+// TestAddImage_ChunkedMatchesSingleStream proves the store is byte-identical
+// whether large-layer chunking runs or not: same index.json and same blob files.
+func TestAddImage_ChunkedMatchesSingleStream(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	remoteOpts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+	// Build a single-arch image with one ~256 KiB layer and push it.
+	img, err := random.Image(256*1024, 1)
+	if err != nil {
+		t.Fatalf("random image: %v", err)
+	}
+	tag, err := gname.NewTag(host+"/test/big:v1", gname.Insecure)
+	if err != nil {
+		t.Fatalf("new tag: %v", err)
+	}
+	if err := remote.Write(tag, img, remoteOpts...); err != nil {
+		t.Fatalf("push image: %v", err)
+	}
+
+	// helper: pull into a fresh store with a given BlobOpts, return blob dir hash set.
+	pull := func(t *testing.T, bo blob.Options) (string, map[string][]byte) {
+		root := t.TempDir()
+		s, err := store.NewLayout(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bo.Transport = srv.Client().Transport // reach the in-process registry
+		s.BlobOpts = bo
+		if _, err := s.AddImage(ctx, tag.Name(), "", true, remoteOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+		if err := s.OCI.SaveIndex(); err != nil {
+			t.Fatal(err)
+		}
+		idx, err := os.ReadFile(filepath.Join(root, "index.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		blobs := map[string][]byte{}
+		base := filepath.Join(root, "blobs", "sha256")
+		entries, err := os.ReadDir(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			b, err := os.ReadFile(filepath.Join(base, e.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			blobs[e.Name()] = b
+		}
+		return string(idx), blobs
+	}
+
+	// Single-stream: connections=1 disables chunking.
+	single := blob.DefaultOptions()
+	single.Connections = 1
+	singleIdx, singleBlobs := pull(t, single)
+
+	// Chunked: threshold + chunk size below the layer size to force ranged path.
+	chunked := blob.DefaultOptions()
+	chunked.Connections = 3
+	chunked.ChunkThreshold = 64 * 1024
+	chunked.ChunkSize = 64 * 1024
+	chunkedIdx, chunkedBlobs := pull(t, chunked)
+
+	if singleIdx != chunkedIdx {
+		t.Fatalf("index.json differs between single-stream and chunked pulls")
+	}
+	if len(singleBlobs) != len(chunkedBlobs) {
+		t.Fatalf("blob count differs: single=%d chunked=%d", len(singleBlobs), len(chunkedBlobs))
+	}
+	for name, sb := range singleBlobs {
+		cb, ok := chunkedBlobs[name]
+		if !ok {
+			t.Fatalf("blob %s missing from chunked pull", name)
+		}
+		if string(sb) != string(cb) {
+			t.Fatalf("blob %s differs between single-stream and chunked pulls", name)
+		}
+	}
+}
+
+// TestWriteLayerFrom_ChunkedFetch_NoLeftoverTempFile proves that a successful
+// chunked writeLayerFrom fetch (routed through a temp file + atomic rename)
+// leaves exactly the verified blob at its final path and no ".tmp" sibling
+// behind in the blobs directory.
+func TestWriteLayerFrom_ChunkedFetch_NoLeftoverTempFile(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	remoteOpts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+	img, err := random.Image(256*1024, 1)
+	if err != nil {
+		t.Fatalf("random image: %v", err)
+	}
+	tag, err := gname.NewTag(host+"/test/clean:v1", gname.Insecure)
+	if err != nil {
+		t.Fatalf("new tag: %v", err)
+	}
+	if err := remote.Write(tag, img, remoteOpts...); err != nil {
+		t.Fatalf("push image: %v", err)
+	}
+
+	layers, err := img.Layers()
+	if err != nil {
+		t.Fatalf("layers: %v", err)
+	}
+	layerDigest, err := layers[0].Digest()
+	if err != nil {
+		t.Fatalf("layer digest: %v", err)
+	}
+
+	root := t.TempDir()
+	s, err := store.NewLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bo := blob.DefaultOptions()
+	bo.Transport = srv.Client().Transport
+	bo.Connections = 3
+	bo.ChunkThreshold = 64 * 1024
+	bo.ChunkSize = 64 * 1024
+	s.BlobOpts = bo
+
+	if _, err := s.AddImage(ctx, tag.Name(), "", true, remoteOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	dir := filepath.Join(root, "blobs", "sha256")
+	blobPath := filepath.Join(dir, layerDigest.Hex)
+	b, err := os.ReadFile(blobPath)
+	if err != nil {
+		t.Fatalf("reading final blob: %v", err)
+	}
+	sum := sha256.Sum256(b)
+	if got := "sha256:" + hex.EncodeToString(sum[:]); got != layerDigest.String() {
+		t.Fatalf("blob digest mismatch: got %s want %s", got, layerDigest.String())
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading blobs dir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp") {
+			t.Fatalf("leftover temp file in blobs dir after successful fetch: %s", e.Name())
+		}
+	}
+}
+
+// TestWriteLayerFrom_ChunkedFetch_PublishedBlobPermissions proves that a blob
+// published through writeLayerFrom's temp-file-then-rename path ends up with
+// the same 0644 permissions as blobs written via the ordinary writeLayer
+// os.Create path, rather than inheriting os.CreateTemp's 0600 owner-only
+// mode. os.CreateTemp always creates its file at 0600 regardless of umask,
+// and blob.Fetch's internal os.OpenFile/os.Create calls silently ignore
+// their mode argument because the temp file already exists by the time they
+// run — so without an explicit chmod after the rename, chunked blobs would
+// be unreadable by anyone but the process that fetched them.
+func TestWriteLayerFrom_ChunkedFetch_PublishedBlobPermissions(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	remoteOpts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+	img, err := random.Image(256*1024, 1)
+	if err != nil {
+		t.Fatalf("random image: %v", err)
+	}
+	tag, err := gname.NewTag(host+"/test/perms:v1", gname.Insecure)
+	if err != nil {
+		t.Fatalf("new tag: %v", err)
+	}
+	if err := remote.Write(tag, img, remoteOpts...); err != nil {
+		t.Fatalf("push image: %v", err)
+	}
+
+	layers, err := img.Layers()
+	if err != nil {
+		t.Fatalf("layers: %v", err)
+	}
+	layerDigest, err := layers[0].Digest()
+	if err != nil {
+		t.Fatalf("layer digest: %v", err)
+	}
+
+	root := t.TempDir()
+	s, err := store.NewLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bo := blob.DefaultOptions()
+	bo.Transport = srv.Client().Transport
+	bo.Connections = 3
+	bo.ChunkThreshold = 64 * 1024
+	bo.ChunkSize = 64 * 1024
+	s.BlobOpts = bo
+
+	if _, err := s.AddImage(ctx, tag.Name(), "", true, remoteOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	blobPath := filepath.Join(root, "blobs", "sha256", layerDigest.Hex)
+	info, err := os.Stat(blobPath)
+	if err != nil {
+		t.Fatalf("stat blob: %v", err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o644); got != want {
+		t.Fatalf("chunked blob %s has permissions %o, want %o (blob published via temp-file rename must not retain os.CreateTemp's 0600 mode)", blobPath, got, want)
+	}
+}
+
+// TestWriteLayerFrom_ChunkedFetch_FailedFetchLeavesNoPartialOrTempFile proves
+// that when the ranged fetch of a large layer fails (digest verification
+// fails because the server serves corrupted content), no file — neither the
+// final blobPath nor any temp file — is left behind in the blobs directory.
+// This is the property that makes crash-mid-fetch safe: a corrupt/incomplete
+// blob can never reach the final path, because it only ever gets there via a
+// rename performed after blob.Fetch has already verified its digest.
+func TestWriteLayerFrom_ChunkedFetch_FailedFetchLeavesNoPartialOrTempFile(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	backend := registry.New()
+
+	img, err := random.Image(256*1024, 1)
+	if err != nil {
+		t.Fatalf("random image: %v", err)
+	}
+	layers, err := img.Layers()
+	if err != nil {
+		t.Fatalf("layers: %v", err)
+	}
+	layerDigest, err := layers[0].Digest()
+	if err != nil {
+		t.Fatalf("layer digest: %v", err)
+	}
+	layerSize, err := layers[0].Size()
+	if err != nil {
+		t.Fatalf("layer size: %v", err)
+	}
+
+	// Corrupted content of the same size: real compressed layer content is
+	// never all-zero, so this reliably fails digest verification.
+	corrupt := make([]byte, layerSize)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/blobs/"+layerDigest.String()) {
+			http.ServeContent(w, r, "blob", time.Time{}, bytes.NewReader(corrupt))
+			return
+		}
+		backend.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	host := strings.TrimPrefix(srv.URL, "http://")
+	remoteOpts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+	tag, err := gname.NewTag(host+"/test/corrupt:v1", gname.Insecure)
+	if err != nil {
+		t.Fatalf("new tag: %v", err)
+	}
+	if err := remote.Write(tag, img, remoteOpts...); err != nil {
+		t.Fatalf("push image: %v", err)
+	}
+
+	root := t.TempDir()
+	s, err := store.NewLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bo := blob.DefaultOptions()
+	bo.Transport = srv.Client().Transport
+	bo.Connections = 3
+	bo.ChunkThreshold = 64 * 1024
+	bo.ChunkSize = 64 * 1024
+	s.BlobOpts = bo
+
+	if _, err := s.AddImage(ctx, tag.Name(), "", true, remoteOpts...); err == nil {
+		t.Fatal("expected AddImage to fail due to corrupted blob content")
+	}
+
+	dir := filepath.Join(root, "blobs", "sha256")
+	blobPath := filepath.Join(dir, layerDigest.Hex)
+	if _, statErr := os.Stat(blobPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no blob at final path %s after failed fetch, stat err = %v", blobPath, statErr)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, layerDigest.Hex+"*"))
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected no leftover files (final or temp) for %s after failed fetch, found %v", layerDigest.Hex, matches)
+	}
+}
+
+// TestWriteLayerFrom_ChunkedFetch_LogsThroughput proves that a successful
+// chunked writeLayerFrom fetch emits exactly one Info-level "chunked blob
+// fetch:" log line naming the fetched layer's digest, and that the
+// small/fallback (non-chunked) writeLayer path stays silent — no such line
+// is emitted when the blob is below ChunkThreshold or Connections<=1.
+func TestWriteLayerFrom_ChunkedFetch_LogsThroughput(t *testing.T) {
+	t.Run("chunked path logs throughput", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		srv := httptest.NewServer(registry.New())
+		t.Cleanup(srv.Close)
+		host := strings.TrimPrefix(srv.URL, "http://")
+		remoteOpts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+		img, err := random.Image(256*1024, 1)
+		if err != nil {
+			t.Fatalf("random image: %v", err)
+		}
+		tag, err := gname.NewTag(host+"/test/logthroughput:v1", gname.Insecure)
+		if err != nil {
+			t.Fatalf("new tag: %v", err)
+		}
+		if err := remote.Write(tag, img, remoteOpts...); err != nil {
+			t.Fatalf("push image: %v", err)
+		}
+
+		layers, err := img.Layers()
+		if err != nil {
+			t.Fatalf("layers: %v", err)
+		}
+		layerDigest, err := layers[0].Digest()
+		if err != nil {
+			t.Fatalf("layer digest: %v", err)
+		}
+
+		root := t.TempDir()
+		s, err := store.NewLayout(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bo := blob.DefaultOptions()
+		bo.Transport = srv.Client().Transport
+		bo.Connections = 3
+		bo.ChunkThreshold = 64 * 1024
+		bo.ChunkSize = 64 * 1024
+		s.BlobOpts = bo
+
+		var buf bytes.Buffer
+		logger := zerolog.New(&buf).Level(zerolog.InfoLevel)
+		logCtx := logger.WithContext(context.Background())
+
+		if _, err := s.AddImage(logCtx, tag.Name(), "", true, remoteOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+
+		out := buf.String()
+		if !strings.Contains(out, "chunked blob fetch:") {
+			t.Fatalf("expected log output to contain %q, got: %s", "chunked blob fetch:", out)
+		}
+		shortDigest := "sha256:" + layerDigest.Hex[:12]
+		if !strings.Contains(out, shortDigest) {
+			t.Fatalf("expected log output to contain short digest %q, got: %s", shortDigest, out)
+		}
+		if !strings.Contains(out, "conns x") {
+			t.Fatalf("expected log output to contain %q, got: %s", "conns x", out)
+		}
+	})
+
+	t.Run("fallback path stays silent", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		srv := httptest.NewServer(registry.New())
+		t.Cleanup(srv.Close)
+		host := strings.TrimPrefix(srv.URL, "http://")
+		remoteOpts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+		img, err := random.Image(256*1024, 1)
+		if err != nil {
+			t.Fatalf("random image: %v", err)
+		}
+		tag, err := gname.NewTag(host+"/test/logsilent:v1", gname.Insecure)
+		if err != nil {
+			t.Fatalf("new tag: %v", err)
+		}
+		if err := remote.Write(tag, img, remoteOpts...); err != nil {
+			t.Fatalf("push image: %v", err)
+		}
+
+		root := t.TempDir()
+		s, err := store.NewLayout(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bo := blob.DefaultOptions()
+		bo.Transport = srv.Client().Transport
+		bo.Connections = 3
+		// Threshold above the layer's size forces the small/fallback path.
+		bo.ChunkThreshold = 10 * 1024 * 1024
+		bo.ChunkSize = 64 * 1024
+		s.BlobOpts = bo
+
+		var buf bytes.Buffer
+		logger := zerolog.New(&buf).Level(zerolog.InfoLevel)
+		logCtx := logger.WithContext(context.Background())
+
+		if _, err := s.AddImage(logCtx, tag.Name(), "", true, remoteOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+
+		out := buf.String()
+		if strings.Contains(out, "chunked blob fetch:") {
+			t.Fatalf("expected no %q in log output for fallback path, got: %s", "chunked blob fetch:", out)
+		}
+	})
 }

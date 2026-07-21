@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 
+	"github.com/docker/go-units"
 	"github.com/spf13/cobra"
+	"hauler.dev/go/hauler/v2/pkg/blob"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/store"
@@ -22,6 +25,11 @@ type StoreRootOpts struct {
 	StoreDir     string
 	Retries      int
 	TempOverride string
+
+	// Large-blob parallel retrieval knobs. Empty/zero → env var → built-in default.
+	Concurrency    int    // --concurrency
+	ChunkThreshold string // --chunk-threshold (human size, e.g. "100MiB")
+	ChunkSize      string // --chunk-size (human size, e.g. "32MiB")
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
@@ -29,6 +37,58 @@ func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
 	pf.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
+	pf.IntVar(&o.Concurrency, "concurrency", 0,
+		"(Optional) Parallel connections per blob for large-blob retrieval (0 = default 10; 1 disables chunking)")
+	pf.StringVar(&o.ChunkThreshold, "chunk-threshold", "",
+		"(Optional) Minimum blob size to trigger parallel ranged retrieval, e.g. 100MiB (default 100MiB)")
+	pf.StringVar(&o.ChunkSize, "chunk-size", "",
+		"(Optional) Range window per parallel request, e.g. 8MiB (default 8MiB)")
+}
+
+// BlobOptions resolves large-blob retrieval settings with precedence
+// flag > env var > built-in default, and returns the blob.Options to attach to
+// the store.
+func (o *StoreRootOpts) BlobOptions() (blob.Options, error) {
+	opts := blob.DefaultOptions()
+
+	// connections
+	if o.Concurrency > 0 {
+		opts.Connections = o.Concurrency
+	} else if v := os.Getenv(consts.HaulerBlobConnections); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return opts, fmt.Errorf("invalid %s=%q: %w", consts.HaulerBlobConnections, v, err)
+		}
+		opts.Connections = n
+	}
+
+	// chunk threshold
+	if v := firstNonEmpty(o.ChunkThreshold, os.Getenv(consts.HaulerBlobChunkThreshold)); v != "" {
+		n, err := units.RAMInBytes(v)
+		if err != nil {
+			return opts, fmt.Errorf("invalid chunk-threshold %q: %w", v, err)
+		}
+		opts.ChunkThreshold = n
+	}
+
+	// chunk size
+	if v := firstNonEmpty(o.ChunkSize, os.Getenv(consts.HaulerBlobChunkSize)); v != "" {
+		n, err := units.RAMInBytes(v)
+		if err != nil {
+			return opts, fmt.Errorf("invalid chunk-size %q: %w", v, err)
+		}
+		opts.ChunkSize = n
+	}
+
+	return opts, nil
+}
+
+// firstNonEmpty returns the flag value if set, else the env value.
+func firstNonEmpty(flagVal, envVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return envVal
 }
 
 func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layout, error) {
@@ -84,6 +144,13 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 		return nil, err
 	}
 	l.Debugf("generated store id of [%s]", s.StoreID)
+
+	bo, err := o.BlobOptions()
+	if err != nil {
+		return nil, err
+	}
+	s.BlobOpts = bo
+
 	return s, nil
 }
 

@@ -94,6 +94,10 @@ const (
 	HaulerLogLevel     = "HAULER_LOG_LEVEL"
 	HaulerAuditLevel   = "HAULER_AUDIT_LEVEL"
 
+	HaulerBlobChunkThreshold = "HAULER_BLOB_CHUNK_THRESHOLD"
+	HaulerBlobConnections    = "HAULER_BLOB_CONNECTIONS"
+	HaulerBlobChunkSize      = "HAULER_BLOB_CHUNK_SIZE"
+
 	// container files and directories
 	ImageManifestFile = "manifest.json"
 	ImageConfigFile   = "config.json"

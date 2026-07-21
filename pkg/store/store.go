@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/errdefs"
+	units "github.com/docker/go-units"
 	"github.com/google/go-containerregistry/pkg/authn"
 	gname "github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -26,6 +28,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/blob"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/layer"
@@ -37,6 +40,7 @@ type Layout struct {
 	StoreID   string
 	haulerDir string
 	cache     layer.Cache
+	BlobOpts  blob.Options
 }
 
 type Options func(*Layout)
@@ -66,9 +70,10 @@ func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 	}
 
 	l := &Layout{
-		Root:    rootdir,
-		OCI:     ociStore,
-		StoreID: loadOrCreateStoreID(rootdir),
+		Root:     rootdir,
+		OCI:      ociStore,
+		StoreID:  loadOrCreateStoreID(rootdir),
+		BlobOpts: blob.DefaultOptions(),
 	}
 
 	for _, opt := range opts {
@@ -233,7 +238,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting index digest for %q: %w", ref, err)
 		}
-		if err := l.writeIndex(parsedRef, idx, consts.KindAnnotationIndex); err != nil {
+		if err := l.writeIndex(ctx, parsedRef, parsedRef, idx, consts.KindAnnotationIndex); err != nil {
 			return "", err
 		}
 	} else {
@@ -254,7 +259,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 		}
-		if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+		if err := l.writeImage(ctx, parsedRef, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
 			return "", err
 		}
 	}
@@ -291,7 +296,7 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 	}
 
-	if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+	if err := l.writeImage(ctx, nil, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
 		return "", err
 	}
 	return d.String(), nil
@@ -325,7 +330,7 @@ func ensureDockerHost() error {
 
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's
 // blob directory. It does not add an entry to the OCI index.
-func (l *Layout) writeImageBlobs(img v1.Image) error {
+func (l *Layout) writeImageBlobs(ctx context.Context, fetchRef gname.Reference, img v1.Image) error {
 	layers, err := img.Layers()
 	if err != nil {
 		return fmt.Errorf("getting layers: %w", err)
@@ -333,7 +338,7 @@ func (l *Layout) writeImageBlobs(img v1.Image) error {
 	var g errgroup.Group
 	for _, lyr := range layers {
 		lyr := lyr
-		g.Go(func() error { return l.writeLayer(lyr) })
+		g.Go(func() error { return l.writeLayerFrom(ctx, fetchRef, lyr) })
 	}
 	if err := g.Wait(); err != nil {
 		return err
@@ -357,8 +362,8 @@ func (l *Layout) writeImageBlobs(img v1.Image) error {
 // writeImage writes all blobs for img and adds a descriptor entry to the OCI index with the
 // given annotationRef and kind. containerdName overrides the io.containerd.image.name annotation;
 // if empty it defaults to annotationRef.Name().
-func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
-	if err := l.writeImageBlobs(img); err != nil {
+func (l *Layout) writeImage(ctx context.Context, fetchRef, annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
+	if err := l.writeImageBlobs(ctx, fetchRef, img); err != nil {
 		return err
 	}
 
@@ -397,7 +402,7 @@ func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind st
 
 // writeIndexBlobs recursively writes all child image blobs for an image index to the store's blob
 // directory. It does not write the top-level index manifest or add index entries.
-func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
+func (l *Layout) writeIndexBlobs(ctx context.Context, fetchRef gname.Reference, idx v1.ImageIndex) error {
 	manifest, err := idx.IndexManifest()
 	if err != nil {
 		return fmt.Errorf("getting index manifest: %w", err)
@@ -406,7 +411,7 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 	for _, childDesc := range manifest.Manifests {
 		// Try as a nested index first, then fall back to a regular image.
 		if childIdx, err := idx.ImageIndex(childDesc.Digest); err == nil {
-			if err := l.writeIndexBlobs(childIdx); err != nil {
+			if err := l.writeIndexBlobs(ctx, fetchRef, childIdx); err != nil {
 				return err
 			}
 			raw, err := childIdx.RawManifest()
@@ -421,7 +426,7 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 			if err != nil {
 				return fmt.Errorf("getting child image %v: %w", childDesc.Digest, err)
 			}
-			if err := l.writeImageBlobs(childImg); err != nil {
+			if err := l.writeImageBlobs(ctx, fetchRef, childImg); err != nil {
 				return err
 			}
 		}
@@ -431,8 +436,8 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 
 // writeIndex writes all blobs for an image index (including all child platform images) and adds
 // a descriptor entry to the OCI index with the given annotationRef and kind.
-func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
-	if err := l.writeIndexBlobs(idx); err != nil {
+func (l *Layout) writeIndex(ctx context.Context, fetchRef, annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
+	if err := l.writeIndexBlobs(ctx, fetchRef, idx); err != nil {
 		return err
 	}
 
@@ -521,7 +526,7 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 		// Embed the referrer manifest digest in the kind annotation so that multiple
 		// referrers for the same base image each get a unique entry in the OCI index.
 		kind := consts.KindAnnotationReferrers + "/" + referrerDesc.Digest.Hex
-		if err := l.writeImage(ref, img, kind, ""); err != nil {
+		if err := l.writeImage(ctx, ref, ref, img, kind, ""); err != nil {
 			return fmt.Errorf("saving OCI referrer %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
 		}
 		log.Debug().Msgf("saved OCI referrer %s (%s) for %s", referrerDesc.Digest, string(referrerDesc.ArtifactType), ref.Name())
@@ -558,7 +563,7 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, 
 			// Artifact doesn't exist at this registry; skip silently.
 			continue
 		}
-		if err := l.writeImage(ref, img, r.kind, ""); err != nil {
+		if err := l.writeImage(ctx, ref, ref, img, r.kind, ""); err != nil {
 			return saved, fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
 		}
 		if d, err := img.Digest(); err == nil {
@@ -855,9 +860,97 @@ func (l *Layout) Identify(ctx context.Context, desc ocispec.Descriptor) string {
 	return m.Config.MediaType
 }
 
+// shortHex truncates a hex digest string to its first 12 characters for
+// compact log output, returning it unchanged if it's already shorter.
+func shortHex(hex string) string {
+	if len(hex) <= 12 {
+		return hex
+	}
+	return hex[:12]
+}
+
 func (l *Layout) writeBlobData(data []byte) error {
 	blob := static.NewLayer(data, "") // NOTE: MediaType isn't actually used in the writing
 	return l.writeLayer(blob)
+}
+
+// writeLayerFrom writes a single layer to the store's blob directory. For large
+// remote layers (fetchRef != nil, size >= threshold, connections > 1) it uses
+// the parallel ranged fetcher; otherwise it falls back to the single-stream
+// writeLayer path. The on-disk "already present" skip is honored first.
+func (l *Layout) writeLayerFrom(ctx context.Context, fetchRef gname.Reference, lyr v1.Layer) error {
+	if fetchRef == nil || l.BlobOpts.Connections <= 1 {
+		return l.writeLayer(lyr)
+	}
+
+	d, err := lyr.Digest()
+	if err != nil {
+		return err
+	}
+	size, err := lyr.Size()
+	if err != nil {
+		return err
+	}
+	if size < l.BlobOpts.ChunkThreshold {
+		return l.writeLayer(lyr)
+	}
+
+	dir := filepath.Join(l.Root, ocispec.ImageBlobsDir, d.Algorithm)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
+		return err
+	}
+	blobPath := filepath.Join(dir, d.Hex)
+	// Skip entirely if the blob already exists (mirrors writeLayer).
+	if _, err := os.Stat(blobPath); err == nil {
+		return nil
+	}
+
+	// Fetch to a temp file in the same directory as blobPath (same
+	// filesystem is required for os.Rename to be atomic) rather than
+	// blobPath itself. blob.Fetch's ranged path truncates its destination to
+	// the full blob size up front to pre-size it for parallel writes; if the
+	// process crashed mid-assembly while fetching directly to blobPath, a
+	// full-size-but-incomplete file would be left there, and the "already
+	// present" skip above would trust it as complete on the next run. Using
+	// a temp sibling and only publishing via rename after blob.Fetch has
+	// already verified the sha256 digest guarantees only complete,
+	// verified blobs ever land at blobPath.
+	tmp, err := os.CreateTemp(dir, d.Hex+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file for blob %s: %w", d, err)
+	}
+	tmpPath := tmp.Name()
+	tmp.Close() // blob.Fetch opens/truncates/writes tmpPath itself
+
+	desc := v1.Descriptor{Digest: d, Size: size}
+	fetchStart := time.Now()
+	if err := blob.Fetch(ctx, fetchRef, desc, tmpPath, l.BlobOpts); err != nil {
+		// Defense-in-depth: blob.Fetch already removes its own dest file on
+		// any internal error, but clean up here too in case it didn't.
+		os.Remove(tmpPath)
+		return fmt.Errorf("fetching blob %s: %w", d, err)
+	}
+	elapsed := time.Since(fetchStart).Seconds()
+	if elapsed <= 0 {
+		elapsed = 1e-6
+	}
+	rate := (float64(size) / (1024 * 1024)) / elapsed
+	zerolog.Ctx(ctx).Info().Msgf("chunked blob fetch: sha256:%s… %s in %.1fs (%.1f MiB/s, %d conns x %s)",
+		shortHex(d.Hex), units.BytesSize(float64(size)), elapsed, rate, l.BlobOpts.Connections, units.BytesSize(float64(l.BlobOpts.ChunkSize)))
+	if err := os.Rename(tmpPath, blobPath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("publishing blob %s: %w", d, err)
+	}
+	// os.CreateTemp always creates tmpPath at mode 0600 regardless of umask,
+	// and blob.Fetch's internal opens ignore their mode argument because
+	// tmpPath already exists by the time they run. Explicitly chmod the
+	// published blob so it matches the 0644 (umask-adjusted) permissions
+	// that writeLayer's os.Create path already produces for every other
+	// blob in the store.
+	if err := os.Chmod(blobPath, 0o644); err != nil {
+		return fmt.Errorf("setting permissions on blob %s: %w", d, err)
+	}
+	return nil
 }
 
 func (l *Layout) writeLayer(layer v1.Layer) error {
