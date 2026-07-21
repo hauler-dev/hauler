@@ -12,10 +12,15 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	digest "github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 // --------------------------------------------------------------------------
@@ -75,6 +80,47 @@ func TestCopyCmd_UnknownProtocol(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "detecting protocol") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// --------------------------------------------------------------------------
+// repoFromBaseRef / destination ref derivation tests (#667)
+// --------------------------------------------------------------------------
+
+func TestRepoFromBaseRef(t *testing.T) {
+	cases := map[string]string{
+		"myorg/myimage@sha256:" + strings.Repeat("a", 64):   "myorg/myimage",
+		"myorg/myimage:v1.0.2":                              "myorg/myimage",
+		"myorg/myimage":                                     "myorg/myimage",
+		"nested/path/img@sha256:" + strings.Repeat("b", 64): "nested/path/img",
+	}
+	for in, want := range cases {
+		if got := repoFromBaseRef(in); got != want {
+			t.Errorf("repoFromBaseRef(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestDestRef_DigestOnly_Parses is a regression test for #667: destination refs
+// derived for artifacts of a digest-only image must be parseable by the real
+// RewriteRefToRegistry.
+func TestDestRef_DigestOnly_Parses(t *testing.T) {
+	imgDigest := "sha256:" + strings.Repeat("a", 64)
+	refDigestHex := strings.Repeat("c", 64)
+	base := "myorg/myimage@" + imgDigest // tag@digest ingests to digest-only
+
+	repo := repoFromBaseRef(base)
+
+	// sig/att/sbom cosign tag
+	sigDest := repo + ":" + strings.ReplaceAll(imgDigest, ":", "-") + ".sig"
+	if _, err := content.RewriteRefToRegistry(sigDest, "target.example.com"); err != nil {
+		t.Errorf("sig destRef %q failed to rewrite: %v", sigDest, err)
+	}
+
+	// referrer by manifest digest
+	refDest := repo + "@sha256:" + refDigestHex
+	if _, err := content.RewriteRefToRegistry(refDest, "target.example.com"); err != nil {
+		t.Errorf("referrer destRef %q failed to rewrite: %v", refDest, err)
 	}
 }
 
@@ -230,6 +276,59 @@ func TestCopyCmd_Registry_IgnoreErrors(t *testing.T) {
 	if err := CopyCmd(ctx, o, s, "registry://localhost:1", roIgnore); err != nil {
 		t.Errorf("expected no error with IgnoreErrors=true, got: %v", err)
 	}
+}
+
+// TestCopy_UndeliverableArtifact_RespectsIgnoreErrors verifies that when
+// CopyCmd's registry branch derives an unparseable destination ref for an
+// artifact (RewriteRefToRegistry failure), the walk fails by default and
+// only swallows the error when --ignore-errors is set (#667).
+//
+// AnnotationRefName is validated on the way into the store's index (AddIndex
+// parses it), so a malformed ref name can never reach CopyCmd's walk. The
+// referrer destRef, however, is derived from the descriptor's raw Digest
+// field ("<repo>@<digest>"), which is never validated as a reference. Seeding
+// a referrer descriptor with a Digest containing a space reproduces the
+// derivation failure without needing an actually malformed AnnotationRefName.
+func TestCopy_UndeliverableArtifact_RespectsIgnoreErrors(t *testing.T) {
+	ctx := newTestContext(t)
+
+	buildStore := func(t *testing.T) *store.Layout {
+		s := newTestStore(t)
+		desc := ocispec.Descriptor{
+			MediaType: ocispec.MediaTypeImageManifest,
+			Digest:    digest.Digest("sha256:not a valid digest"),
+			Size:      1,
+			Annotations: map[string]string{
+				ocispec.AnnotationRefName:     "myorg/myimage",
+				consts.ContainerdImageNameKey: "myorg/myimage",
+				consts.KindAnnotationName:     consts.KindAnnotationReferrers + "/" + strings.Repeat("a", 64),
+			},
+		}
+		if err := s.OCI.AddIndex(desc); err != nil {
+			t.Fatalf("AddIndex: %v", err)
+		}
+		return s
+	}
+
+	dstHost, _ := newTestRegistry(t)
+
+	t.Run("default returns error", func(t *testing.T) {
+		s := buildStore(t)
+		o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), PlainHTTP: true}
+		if err := CopyCmd(ctx, o, s, "registry://"+dstHost, defaultCliOpts()); err == nil {
+			t.Fatal("expected error for undeliverable artifact, got nil")
+		}
+	})
+
+	t.Run("ignore errors returns nil", func(t *testing.T) {
+		s := buildStore(t)
+		o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), PlainHTTP: true}
+		ro := defaultCliOpts()
+		ro.IgnoreErrors = true
+		if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+			t.Errorf("expected no error with IgnoreErrors=true, got: %v", err)
+		}
+	})
 }
 
 // TestCopyCmd_Registry_InvalidFilenameSkipTest verifies that CopyCmd emits a
