@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
@@ -45,6 +46,10 @@ func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 			l := log.FromContext(ctx)
 			l.SetLevel(ro.LogLevel)
 			l.Debugf("running cli command [%s]", cmd.CommandPath())
+
+			if dir, set := content.SetDefaultDockerConfig(); set {
+				l.Debugf("defaulted $DOCKER_CONFIG to [%s] for registry credential resolution", dir)
+			}
 
 			if ro.LogLevel == "debug" {
 				logrus.SetLevel(logrus.DebugLevel)
