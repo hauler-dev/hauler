@@ -251,6 +251,36 @@ func TestApplyDefaultRegistry(t *testing.T) {
 	}
 }
 
+func TestEncodeOriginalChartRef(t *testing.T) {
+	tests := []struct {
+		name    string
+		repoURL string
+		total   string
+		want    string
+	}{
+		{
+			name:    "repoURL and ref joined with pipe",
+			repoURL: "https://charts.example.com",
+			total:   "mychart:1.0.0",
+			want:    "https://charts.example.com|mychart:1.0.0",
+		},
+		{
+			name:    "empty repoURL still joined with pipe",
+			repoURL: "",
+			total:   "mychart:1.0.0",
+			want:    "|mychart:1.0.0",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := encodeOriginalChartRef(tc.repoURL, tc.total)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRewriteReference(t *testing.T) {
 	ctx := newTestContext(t)
 
@@ -499,6 +529,8 @@ func TestStoreFile(t *testing.T) {
 			t.Fatalf("storeFile: %v", err)
 		}
 		assertArtifactInStore(t, s, filepath.Base(tmp.Name()))
+		// OriginalRefAnnotation must capture the resolved absolute local path.
+		assertOriginalRefInStore(t, s, filepath.Base(tmp.Name()), tmp.Name())
 	})
 
 	t.Run("HTTP URL stored under basename", func(t *testing.T) {
@@ -508,6 +540,8 @@ func TestStoreFile(t *testing.T) {
 			t.Fatalf("storeFile: %v", err)
 		}
 		assertArtifactInStore(t, s, "script.sh")
+		// OriginalRefAnnotation must capture the original URL, not the local basename.
+		assertOriginalRefInStore(t, s, "script.sh", url)
 	})
 
 	t.Run("name override changes stored ref", func(t *testing.T) {
@@ -638,6 +672,9 @@ func TestStoreImage_Rewrite(t *testing.T) {
 			t.Fatalf("storeImage with rewrite: %v", err)
 		}
 		assertArtifactInStore(t, s, "newrepo/img:v2")
+		// OriginalRefAnnotation must retain the pre-rewrite source reference,
+		// even though AnnotationRefName/ContainerdImageNameKey were rewritten.
+		assertOriginalRefInStore(t, s, "newrepo/img:v2", host+"/src/repo:v1")
 	})
 
 	t.Run("rewrite without tag inherits source tag", func(t *testing.T) {
@@ -920,6 +957,29 @@ func TestStoreChart_Rewrite(t *testing.T) {
 		t.Fatalf("AddChartCmd with rewrite: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/custom-chart")
+
+	// OriginalRefAnnotation must retain the pre-rewrite "repoURL|repo:tag" encoding
+	// (see encodeOriginalChartRef) regardless of the --rewrite applied above.
+	wantPrefix := chartTestdataDir + "|"
+	found := false
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.Contains(desc.Annotations[ocispec.AnnotationRefName], "myorg/custom-chart") {
+			original := desc.Annotations[consts.OriginalRefAnnotation]
+			if !strings.HasPrefix(original, wantPrefix) {
+				t.Errorf("OriginalRefAnnotation = %q, want prefix %q", original, wantPrefix)
+			}
+			if strings.Contains(original, "myorg/custom-chart") {
+				t.Errorf("OriginalRefAnnotation = %q must not contain the rewritten ref", original)
+			}
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if !found {
+		t.Fatal("expected to find rewritten chart artifact in store")
+	}
 }
 
 // seedChartWithImages builds a minimal Helm chart whose helm.sh/images
