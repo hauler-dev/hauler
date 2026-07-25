@@ -128,6 +128,15 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 			resolvedPath = abs
 		}
 	}
+
+	// Preserve the original source (a URL for remote files, an absolute path for
+	// local ones) so `store create manifest` can recover it later; nothing else in
+	// the store retains it.
+	desc.Annotations[consts.OriginalRefAnnotation] = resolvedPath
+	if err := s.OCI.AddIndex(desc); err != nil {
+		return err
+	}
+
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			StoreID:           s.StoreID,
@@ -1177,6 +1186,15 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 		}
 	}
 
+	// Charts have no registry-qualified annotation the way images do (via
+	// ContainerdImageNameKey), and RepoURL is otherwise never persisted anywhere in
+	// the store, so capture both here to maintain provenance regardless of whether
+	// --rewrite is ever applied.
+	chartDesc.Annotations[consts.OriginalRefAnnotation] = encodeOriginalChartRef(j.cfg.RepoURL, ref.Name())
+	if err := s.OCI.AddIndex(chartDesc); err != nil {
+		return nil, nil, err
+	}
+
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			StoreID:   s.StoreID,
@@ -1515,4 +1533,13 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Refere
 	}
 
 	return nil
+}
+
+// encodeOriginalChartRef combines a chart's source repoURL with its pre-rewrite
+// store "repo:tag" into a single string suitable for consts.OriginalRefAnnotation.
+// Charts have no registry-qualified annotation the way images do (via
+// ContainerdImageNameKey), so the repoURL has to be carried alongside the ref
+// itself for `store create manifest` to recover a fully pullable chart reference.
+func encodeOriginalChartRef(repoURL, total string) string {
+	return repoURL + "|" + total
 }

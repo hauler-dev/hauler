@@ -464,6 +464,9 @@ func (l *Layout) writeImage(ctx context.Context, annotationRef gname.Reference, 
 			consts.KindAnnotationName:     kind,
 			ocispec.AnnotationRefName:     strings.TrimPrefix(annotationRef.Name(), annotationRef.Context().RegistryStr()+"/"),
 			consts.ContainerdImageNameKey: containerdName,
+			// Captured once at the initial add so the original, pullable reference
+			// survives even if a later --rewrite overwrites the annotations above.
+			consts.OriginalRefAnnotation: containerdName,
 		},
 	}
 	return l.OCI.AddIndex(desc)
@@ -539,6 +542,9 @@ func (l *Layout) writeIndex(ctx context.Context, annotationRef gname.Reference, 
 			consts.KindAnnotationName:     kind,
 			ocispec.AnnotationRefName:     strings.TrimPrefix(annotationRef.Name(), annotationRef.Context().RegistryStr()+"/"),
 			consts.ContainerdImageNameKey: annotationRef.Name(),
+			// Captured once at the initial add so the original, pullable reference
+			// survives even if a later --rewrite overwrites the annotations above.
+			consts.OriginalRefAnnotation: annotationRef.Name(),
 		},
 	}
 	return l.OCI.AddIndex(desc)
