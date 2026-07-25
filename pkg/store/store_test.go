@@ -787,3 +787,112 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 	}
 	t.Logf("captured %d OCI referrer(s) for %s", referrerCount, baseTag.Name())
 }
+
+// TestAddImage_OriginalRefAnnotation verifies that AddImage captures the original,
+// fully pullable containerd-style reference (registry/repo:tag) under
+// consts.OriginalRefAnnotation, for both single-platform images (writeImage) and
+// multi-platform indices (writeIndex), so that provenance survives even if the
+// ref/containerd-name annotations are later overwritten by a rewrite.
+func TestAddImage_OriginalRefAnnotation(t *testing.T) {
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+
+	remoteOpts := []remote.Option{
+		remote.WithTransport(srv.Client().Transport),
+	}
+
+	t.Run("single-platform image", func(t *testing.T) {
+		tag, err := gname.NewTag(host+"/test/image:v1", gname.Insecure)
+		if err != nil {
+			t.Fatalf("new tag: %v", err)
+		}
+		img, err := random.Image(512, 2)
+		if err != nil {
+			t.Fatalf("random image: %v", err)
+		}
+		if err := remote.Write(tag, img, remoteOpts...); err != nil {
+			t.Fatalf("push image: %v", err)
+		}
+
+		s, err := store.NewLayout(t.TempDir())
+		if err != nil {
+			t.Fatalf("new layout: %v", err)
+		}
+		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, remoteOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+
+		wantOriginalRef := tag.Name()
+		found := false
+		if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+			if desc.Annotations[consts.OriginalRefAnnotation] == wantOriginalRef {
+				found = true
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		if !found {
+			t.Errorf("expected an artifact with OriginalRefAnnotation=%q, none found", wantOriginalRef)
+		}
+	})
+
+	t.Run("multi-platform index", func(t *testing.T) {
+		amd64Img, err := random.Image(512, 2)
+		if err != nil {
+			t.Fatalf("random image amd64: %v", err)
+		}
+		arm64Img, err := random.Image(512, 2)
+		if err != nil {
+			t.Fatalf("random image arm64: %v", err)
+		}
+		idx := mutate.AppendManifests(
+			empty.Index,
+			mutate.IndexAddendum{
+				Add: amd64Img,
+				Descriptor: v1.Descriptor{
+					MediaType: types.OCIManifestSchema1,
+					Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+				},
+			},
+			mutate.IndexAddendum{
+				Add: arm64Img,
+				Descriptor: v1.Descriptor{
+					MediaType: types.OCIManifestSchema1,
+					Platform:  &v1.Platform{OS: "linux", Architecture: "arm64"},
+				},
+			},
+		)
+		tag, err := gname.NewTag(host+"/test/multiarch:v1", gname.Insecure)
+		if err != nil {
+			t.Fatalf("new tag: %v", err)
+		}
+		if err := remote.WriteIndex(tag, idx, remoteOpts...); err != nil {
+			t.Fatalf("push index: %v", err)
+		}
+
+		s, err := store.NewLayout(t.TempDir())
+		if err != nil {
+			t.Fatalf("new layout: %v", err)
+		}
+		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, remoteOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+
+		wantOriginalRef := tag.Name()
+		found := false
+		if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+			if desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationIndex &&
+				desc.Annotations[consts.OriginalRefAnnotation] == wantOriginalRef {
+				found = true
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		if !found {
+			t.Errorf("expected the index artifact to have OriginalRefAnnotation=%q, none found", wantOriginalRef)
+		}
+	})
+}
