@@ -182,7 +182,7 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		return fmt.Errorf("store contains no content to build a manifest from")
 	}
 
-	base := sanitizeName(filepath.Base(s.Root))
+	base := filepath.Base(s.Root)
 
 	output := o.Output
 	if output == "" {
@@ -286,24 +286,4 @@ func decodeOriginalChartRef(v string) (repoURL string, total string) {
 		return "", v
 	}
 	return repoURL, total
-}
-
-// sanitizeName lowercases s and replaces any character outside [a-z0-9-] with '-' so
-// the result is safe to use as a Kubernetes-style object name.
-func sanitizeName(s string) string {
-	s = strings.ToLower(s)
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
-			b.WriteRune(r)
-		default:
-			b.WriteRune('-')
-		}
-	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		return "store"
-	}
-	return out
 }

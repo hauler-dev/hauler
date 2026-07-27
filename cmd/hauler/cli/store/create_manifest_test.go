@@ -327,28 +327,6 @@ func TestCreateManifestCmd_MixedContent(t *testing.T) {
 	}
 }
 
-func TestSanitizeName(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "already valid", in: "my-store", want: "my-store"},
-		{name: "uppercase lowered", in: "MyStore", want: "mystore"},
-		{name: "spaces and dots replaced", in: "my store.v1", want: "my-store-v1"},
-		{name: "leading and trailing separators trimmed", in: "--store--", want: "store"},
-		{name: "empty string falls back to store", in: "", want: "store"},
-		{name: "entirely invalid falls back to store", in: "***", want: "store"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := sanitizeName(tc.in); got != tc.want {
-				t.Errorf("sanitizeName(%q) = %q, want %q", tc.in, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestDecodeOriginalChartRef(t *testing.T) {
 	tests := []struct {
 		name        string
