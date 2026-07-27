@@ -45,6 +45,12 @@ homebrew_casks:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     description: "Hauler: Airgap Swiss Army Knife"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hauler"]
+          end
 
 dockers_v2:
   - id: hauler
