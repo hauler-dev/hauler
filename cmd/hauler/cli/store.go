@@ -517,8 +517,11 @@ func addStoreCreateManifest(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 	cmd := &cobra.Command{
 		Use:   "manifest",
 		Short: "Create a hauler content manifest from the store's metadata",
-		Example: `  # generate a manifest for the default store into ./hauler-manifest.yaml
+		Example: `  # generate a manifest for the default store into ./store-manifest.yaml
 	hauler store create manifest
+
+	# generate a manifest for a specific store into ./my-store-manifest.yaml
+	hauler store create manifest --store /path/to/my-store
 
 	# generate a manifest for a specific store into a custom path
 	hauler store create manifest --store /path/to/store --output my-manifest.yaml`,
