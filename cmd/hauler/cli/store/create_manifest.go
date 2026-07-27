@@ -184,6 +184,11 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 
 	base := sanitizeName(filepath.Base(s.Root))
 
+	output := o.Output
+	if output == "" {
+		output = base + "-manifest.yaml"
+	}
+
 	var out strings.Builder
 	if len(images) > 0 {
 		if err := writeDoc(&out, "", consts.ImagesContentKind, base+"-images", struct {
@@ -211,12 +216,12 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		}
 	}
 
-	if err := os.WriteFile(o.Output, []byte(out.String()), 0o644); err != nil {
-		return fmt.Errorf("writing manifest to [%s]: %w", o.Output, err)
+	if err := os.WriteFile(output, []byte(out.String()), 0o644); err != nil {
+		return fmt.Errorf("writing manifest to [%s]: %w", output, err)
 	}
 
-	outPath := o.Output
-	if abs, err := filepath.Abs(o.Output); err == nil {
+	outPath := output
+	if abs, err := filepath.Abs(output); err == nil {
 		outPath = abs
 	}
 	l.Infof("wrote manifest with [%d] image(s), [%d] chart(s), [%d] file(s) to [%s]", len(images), len(charts), len(files), outPath)
