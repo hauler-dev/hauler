@@ -25,6 +25,7 @@ import (
 	zlog "github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
+	"hauler.dev/go/hauler/v2/internal/version"
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
@@ -83,7 +84,8 @@ func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
 }
 
 type storeMetadata struct {
-	StoreID string `json:"store-id"`
+	StoreID       string `json:"store-id"`
+	HaulerVersion string `json:"hauler-version"`
 }
 
 // loadOrCreateStoreID returns the persistent store identity from <rootdir>/store.json,
@@ -100,7 +102,10 @@ func loadOrCreateStoreID(rootdir string) string {
 			zlog.Warn().Str("path", metaPath).Msg("store metadata missing store-id... generating new store id")
 		}
 	}
-	m := storeMetadata{StoreID: uuid.New().String()}
+	m := storeMetadata{
+		StoreID:       uuid.New().String(),
+		HaulerVersion: version.GetVersionInfo().GitVersion,
+	}
 	data, err := json.Marshal(m)
 	if err != nil {
 		zlog.Warn().Err(err).Msg("failed to marshal store metadata... store id will not persist across runs")
