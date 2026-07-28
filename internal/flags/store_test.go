@@ -25,12 +25,12 @@ func TestBlobOptions_Defaults(t *testing.T) {
 }
 
 func TestBlobOptions_FlagsWin(t *testing.T) {
-	t.Setenv(consts.HaulerBlobConnections, "9")
-	t.Setenv(consts.HaulerBlobChunkThreshold, "999MiB")
+	t.Setenv(consts.HaulerBlobRangeConcurrency, "9")
+	t.Setenv(consts.HaulerBlobRangeThreshold, "999MiB")
 	o := &StoreRootOpts{
-		Concurrency:    8,       // flag beats env 9
-		ChunkThreshold: "50MiB", // flag beats env 999MiB
-		ChunkSize:      "16MiB",
+		RangeConcurrency: 8,       // flag beats env 9
+		RangeThreshold:   "50MiB", // flag beats env 999MiB
+		RangeSize:        "16MiB",
 	}
 	got, err := o.BlobOptions()
 	if err != nil {
@@ -48,9 +48,9 @@ func TestBlobOptions_FlagsWin(t *testing.T) {
 }
 
 func TestBlobOptions_EnvWhenNoFlag(t *testing.T) {
-	t.Setenv(consts.HaulerBlobConnections, "6")
-	t.Setenv(consts.HaulerBlobChunkThreshold, "200MiB")
-	t.Setenv(consts.HaulerBlobChunkSize, "8MiB")
+	t.Setenv(consts.HaulerBlobRangeConcurrency, "6")
+	t.Setenv(consts.HaulerBlobRangeThreshold, "200MiB")
+	t.Setenv(consts.HaulerBlobRangeSize, "8MiB")
 	o := &StoreRootOpts{} // no flags set
 	got, err := o.BlobOptions()
 	if err != nil {
@@ -68,8 +68,8 @@ func TestBlobOptions_EnvWhenNoFlag(t *testing.T) {
 }
 
 func TestBlobOptions_BadValueErrors(t *testing.T) {
-	o := &StoreRootOpts{ChunkThreshold: "not-a-size"}
+	o := &StoreRootOpts{RangeThreshold: "not-a-size"}
 	if _, err := o.BlobOptions(); err == nil {
-		t.Fatal("expected error for unparseable --chunk-threshold, got nil")
+		t.Fatal("expected error for unparseable --range-threshold, got nil")
 	}
 }

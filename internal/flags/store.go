@@ -27,9 +27,9 @@ type StoreRootOpts struct {
 	TempOverride string
 
 	// Large-blob parallel retrieval knobs. Empty/zero → env var → built-in default.
-	Concurrency    int    // --concurrency
-	ChunkThreshold string // --chunk-threshold (human size, e.g. "100MiB")
-	ChunkSize      string // --chunk-size (human size, e.g. "32MiB")
+	RangeConcurrency int    // --range-concurrency
+	RangeThreshold   string // --range-threshold (human size, e.g. "100MiB")
+	RangeSize        string // --range-size (human size, e.g. "32MiB")
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
@@ -37,12 +37,12 @@ func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
 	pf.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
-	pf.IntVar(&o.Concurrency, "concurrency", 0,
+	pf.IntVar(&o.RangeConcurrency, "range-concurrency", 0,
 		"(Optional) Parallel connections per blob for large-blob retrieval (0 = default 10; 1 disables chunking)")
-	pf.StringVar(&o.ChunkThreshold, "chunk-threshold", "",
+	pf.StringVar(&o.RangeThreshold, "range-threshold", "",
 		"(Optional) Minimum blob size to trigger parallel ranged retrieval, e.g. 100MiB (default 100MiB)")
-	pf.StringVar(&o.ChunkSize, "chunk-size", "",
-		"(Optional) Range window per parallel request, e.g. 8MiB (default 8MiB)")
+	pf.StringVar(&o.RangeSize, "range-size", "",
+		"(Optional) Byte-range window per parallel request, e.g. 8MiB (default 8MiB)")
 }
 
 // BlobOptions resolves large-blob retrieval settings with precedence
@@ -52,30 +52,30 @@ func (o *StoreRootOpts) BlobOptions() (blob.Options, error) {
 	opts := blob.DefaultOptions()
 
 	// connections
-	if o.Concurrency > 0 {
-		opts.Connections = o.Concurrency
-	} else if v := os.Getenv(consts.HaulerBlobConnections); v != "" {
+	if o.RangeConcurrency > 0 {
+		opts.Connections = o.RangeConcurrency
+	} else if v := os.Getenv(consts.HaulerBlobRangeConcurrency); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			return opts, fmt.Errorf("invalid %s=%q: %w", consts.HaulerBlobConnections, v, err)
+			return opts, fmt.Errorf("invalid %s=%q: %w", consts.HaulerBlobRangeConcurrency, v, err)
 		}
 		opts.Connections = n
 	}
 
-	// chunk threshold
-	if v := firstNonEmpty(o.ChunkThreshold, os.Getenv(consts.HaulerBlobChunkThreshold)); v != "" {
+	// range threshold
+	if v := firstNonEmpty(o.RangeThreshold, os.Getenv(consts.HaulerBlobRangeThreshold)); v != "" {
 		n, err := units.RAMInBytes(v)
 		if err != nil {
-			return opts, fmt.Errorf("invalid chunk-threshold %q: %w", v, err)
+			return opts, fmt.Errorf("invalid range-threshold %q: %w", v, err)
 		}
 		opts.ChunkThreshold = n
 	}
 
-	// chunk size
-	if v := firstNonEmpty(o.ChunkSize, os.Getenv(consts.HaulerBlobChunkSize)); v != "" {
+	// range size
+	if v := firstNonEmpty(o.RangeSize, os.Getenv(consts.HaulerBlobRangeSize)); v != "" {
 		n, err := units.RAMInBytes(v)
 		if err != nil {
-			return opts, fmt.Errorf("invalid chunk-size %q: %w", v, err)
+			return opts, fmt.Errorf("invalid range-size %q: %w", v, err)
 		}
 		opts.ChunkSize = n
 	}
