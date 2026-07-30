@@ -501,6 +501,14 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 						valuesFiles = append(valuesFiles, filepath.Join(filepath.Dir(fi.Name()), path))
 					}
 
+					platform := o.Platform
+					if annotation != nil && annotation[consts.ImageAnnotationPlatform] != "" {
+						platform = annotation[consts.ImageAnnotationPlatform]
+					}
+					if ch.Platform != "" {
+						platform = ch.Platform
+					}
+
 					if err := storeChart(ctx, s, ch,
 						&flags.AddChartOpts{
 							ChartOpts: &action.ChartPathOptions{
@@ -511,7 +519,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 							AddDependencies: ch.AddDependencies,
 							ExcludeExtras:   excludeExtras,
 							Registry:        registry,
-							Platform:        o.Platform,
+							Platform:        platform,
 							ValuesFiles:     valuesFiles,
 						},
 						rso, ro,
