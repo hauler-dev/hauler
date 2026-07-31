@@ -325,7 +325,7 @@ func TestSaveCmd_ChunkSize(t *testing.T) {
 	}
 
 	// at least one chunk must exist
-	matches, err := filepath.Glob(filepath.Join(archiveDir, "haul-chunked_*.tar.zst"))
+	matches, err := filepath.Glob(filepath.Join(archiveDir, "haul-chunked.tar.zst.*"))
 	if err != nil {
 		t.Fatalf("glob chunks: %v", err)
 	}

@@ -174,32 +174,35 @@ func TestChunkInfo(t *testing.T) {
 		name      string
 		path      string
 		wantBase  string
-		wantExt   string
 		wantIndex int
 		wantOk    bool
 	}{
 		{
 			name:      "compound extension",
-			path:      "/tmp/haul_3.tar.zst",
-			wantBase:  "/tmp/haul",
-			wantExt:   ".tar.zst",
+			path:      "/tmp/haul.tar.zst.003",
+			wantBase:  "/tmp/haul.tar.zst",
 			wantIndex: 3,
 			wantOk:    true,
 		},
 		{
 			name:      "single extension",
-			path:      "/tmp/archive_0.zst",
-			wantBase:  "/tmp/archive",
-			wantExt:   ".zst",
-			wantIndex: 0,
+			path:      "/tmp/archive.zst.001",
+			wantBase:  "/tmp/archive.zst",
+			wantIndex: 1,
 			wantOk:    true,
 		},
 		{
 			name:      "large index",
-			path:      "/tmp/haul_42.tar.zst",
-			wantBase:  "/tmp/haul",
-			wantExt:   ".tar.zst",
+			path:      "/tmp/haul.tar.zst.042",
+			wantBase:  "/tmp/haul.tar.zst",
 			wantIndex: 42,
+			wantOk:    true,
+		},
+		{
+			name:      "beyond 3-digit padding",
+			path:      "/tmp/haul.tar.zst.1000",
+			wantBase:  "/tmp/haul.tar.zst",
+			wantIndex: 1000,
 			wantOk:    true,
 		},
 		{
@@ -209,13 +212,18 @@ func TestChunkInfo(t *testing.T) {
 		},
 		{
 			name:   "alphabetic suffix",
-			path:   "/tmp/haul_abc.tar.zst",
+			path:   "/tmp/haul.tar.zst.abc",
+			wantOk: false,
+		},
+		{
+			name:   "short numeric suffix rejected",
+			path:   "/tmp/report.v1.2",
 			wantOk: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base, ext, index, ok := chunkInfo(tt.path)
+			base, index, ok := chunkInfo(tt.path)
 			if ok != tt.wantOk {
 				t.Fatalf("chunkInfo() ok = %v, want %v", ok, tt.wantOk)
 			}
@@ -224,9 +232,6 @@ func TestChunkInfo(t *testing.T) {
 			}
 			if base != tt.wantBase {
 				t.Errorf("chunkInfo() base = %q, want %q", base, tt.wantBase)
-			}
-			if ext != tt.wantExt {
-				t.Errorf("chunkInfo() ext = %q, want %q", ext, tt.wantExt)
 			}
 			if index != tt.wantIndex {
 				t.Errorf("chunkInfo() index = %d, want %d", index, tt.wantIndex)
@@ -275,9 +280,9 @@ func TestSplitArchive(t *testing.T) {
 				t.Error("original archive should be removed after splitting")
 			}
 
-			// chunks must follow <base>_N<ext> naming
+			// chunks must follow <archivePath>.NNN naming (3-digit, 1-based)
 			for i, chunk := range chunks {
-				expected := filepath.Join(dir, fmt.Sprintf("haul_%d.tar.zst", i))
+				expected := filepath.Join(dir, fmt.Sprintf("haul.tar.zst.%03d", i+1))
 				if chunk != expected {
 					t.Errorf("chunk[%d] = %s, want %s", i, chunk, expected)
 				}
@@ -319,12 +324,12 @@ func TestJoinChunks(t *testing.T) {
 		dir := t.TempDir()
 		tempDir := t.TempDir()
 		for i, content := range []string{"chunk0-data", "chunk1-data", "chunk2-data"} {
-			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("haul_%d.tar.zst", i)), []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("haul.tar.zst.%03d", i+1)), []byte(content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
 
-		got, err := JoinChunks(ctx, filepath.Join(dir, "haul_0.tar.zst"), tempDir)
+		got, err := JoinChunks(ctx, filepath.Join(dir, "haul.tar.zst.001"), tempDir)
 		if err != nil {
 			t.Fatalf("JoinChunks() error = %v", err)
 		}
@@ -341,13 +346,13 @@ func TestJoinChunks(t *testing.T) {
 		dir := t.TempDir()
 		tempDir := t.TempDir()
 		for i, content := range []string{"aaa", "bbb"} {
-			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("data_%d.tar.zst", i)), []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("data.tar.zst.%03d", i+1)), []byte(content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
 
-		// pass chunk_1, not chunk_0 — should still assemble from chunk_0
-		got, err := JoinChunks(ctx, filepath.Join(dir, "data_1.tar.zst"), tempDir)
+		// pass chunk .002, not .001... should still assemble from .001
+		got, err := JoinChunks(ctx, filepath.Join(dir, "data.tar.zst.002"), tempDir)
 		if err != nil {
 			t.Fatalf("JoinChunks() error = %v", err)
 		}
@@ -378,15 +383,15 @@ func TestJoinChunks(t *testing.T) {
 	t.Run("non-numeric suffix files excluded", func(t *testing.T) {
 		dir := t.TempDir()
 		tempDir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, "haul_0.tar.zst"), []byte("valid"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "haul.tar.zst.001"), []byte("valid"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		// glob matches this but chunkInfo rejects it
-		if err := os.WriteFile(filepath.Join(dir, "haul_foo.tar.zst"), []byte("invalid"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "haul.tar.zst.foo"), []byte("invalid"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
-		got, err := JoinChunks(ctx, filepath.Join(dir, "haul_0.tar.zst"), tempDir)
+		got, err := JoinChunks(ctx, filepath.Join(dir, "haul.tar.zst.001"), tempDir)
 		if err != nil {
 			t.Fatalf("JoinChunks() error = %v", err)
 		}

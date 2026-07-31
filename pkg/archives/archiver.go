@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/mholt/archives"
 	"hauler.dev/go/hauler/v2/pkg/log"
@@ -105,20 +104,10 @@ func Archive(ctx context.Context, dir, outfile string, compression archives.Comp
 	return nil
 }
 
-// SplitArchive splits an existing archive into chunks of at most maxBytes each.
-// Chunks are named <base>_0<ext>, <base>_1<ext>, ... where base is the archive
-// path with all extensions stripped, and ext is the compound extension (e.g. .tar.zst).
-// The original archive is removed after successful splitting.
+// splits an existing archive into chunks of at most maxBytes each, named
+// <archivePath>.001, .002, ... and removes the original archive afterward.
 func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]string, error) {
 	l := log.FromContext(ctx)
-
-	// derive base path and compound extension by stripping all extensions
-	base := archivePath
-	ext := ""
-	for filepath.Ext(base) != "" {
-		ext = filepath.Ext(base) + ext
-		base = strings.TrimSuffix(base, filepath.Ext(base))
-	}
 
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -127,13 +116,13 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 
 	var chunks []string
 	buf := make([]byte, 32*1024)
-	chunkIdx := 0
+	chunkIdx := 1
 	var written int64
 	var outf *os.File
 
 	for {
 		if outf == nil {
-			chunkPath := fmt.Sprintf("%s_%d%s", base, chunkIdx, ext)
+			chunkPath := fmt.Sprintf("%s.%03d", archivePath, chunkIdx)
 			outf, err = os.Create(chunkPath)
 			if err != nil {
 				f.Close()

@@ -160,29 +160,20 @@ func Unarchive(ctx context.Context, tarball, dst string) error {
 	return nil
 }
 
-var chunkSuffixRe = regexp.MustCompile(`^(.+)_(\d+)$`)
+var chunkSuffixRe = regexp.MustCompile(`^(.+)\.(\d{3,})$`)
 
-// chunkInfo checks whether archivePath matches the chunk naming pattern (<base>_N<ext>).
-// Returns the base path (without index), compound extension, numeric index, and whether it matched.
-func chunkInfo(archivePath string) (base, ext string, index int, ok bool) {
+// checks whether archivePath matches the <name>.NNN chunk naming pattern
+func chunkInfo(archivePath string) (base string, index int, ok bool) {
 	dir := filepath.Dir(archivePath)
 	name := filepath.Base(archivePath)
 
-	// strip compound extension (e.g. .tar.zst)
-	nameBase := name
-	nameExt := ""
-	for filepath.Ext(nameBase) != "" {
-		nameExt = filepath.Ext(nameBase) + nameExt
-		nameBase = strings.TrimSuffix(nameBase, filepath.Ext(nameBase))
-	}
-
-	m := chunkSuffixRe.FindStringSubmatch(nameBase)
+	m := chunkSuffixRe.FindStringSubmatch(name)
 	if m == nil {
-		return "", "", 0, false
+		return "", 0, false
 	}
 
 	idx, _ := strconv.Atoi(m[2])
-	return filepath.Join(dir, m[1]), nameExt, idx, true
+	return filepath.Join(dir, m[1]), idx, true
 }
 
 // JoinChunks detects whether archivePath is a chunk file and, if so, finds all
@@ -192,18 +183,18 @@ func chunkInfo(archivePath string) (base, ext string, index int, ok bool) {
 func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error) {
 	l := log.FromContext(ctx)
 
-	base, ext, _, ok := chunkInfo(archivePath)
+	base, _, ok := chunkInfo(archivePath)
 	if !ok {
 		return archivePath, nil
 	}
 
-	all, err := filepath.Glob(base + "_*" + ext)
+	all, err := filepath.Glob(base + ".*")
 	if err != nil {
 		return archivePath, nil
 	}
 	var matches []string
 	for _, m := range all {
-		if _, _, _, ok := chunkInfo(m); ok {
+		if _, _, ok := chunkInfo(m); ok {
 			matches = append(matches, m)
 		}
 	}
@@ -212,14 +203,14 @@ func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error
 	}
 
 	sort.Slice(matches, func(i, j int) bool {
-		_, _, idxI, _ := chunkInfo(matches[i])
-		_, _, idxJ, _ := chunkInfo(matches[j])
+		_, idxI, _ := chunkInfo(matches[i])
+		_, idxJ, _ := chunkInfo(matches[j])
 		return idxI < idxJ
 	})
 
 	l.Debugf("joining %d chunk(s) for [%s]", len(matches), base)
 
-	joinedPath := filepath.Join(tempDir, filepath.Base(base)+ext)
+	joinedPath := filepath.Join(tempDir, filepath.Base(base))
 	outf, err := os.Create(joinedPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create joined archive: %w", err)

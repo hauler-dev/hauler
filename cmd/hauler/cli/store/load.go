@@ -150,9 +150,8 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	return err
 }
 
-// resolveHaulPath returns path as-is if it exists or is a URL. If the file is
-// not found, it globs for chunk files matching <base>_*<ext> in the same
-// directory and returns the first match so JoinChunks can reassemble them.
+// resolveHaulPath returns path as-is if it exists or is a URL, otherwise
+// globs for chunk files matching <path>.NNN so JoinChunks can reassemble them.
 func resolveHaulPath(path string) string {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
@@ -160,13 +159,7 @@ func resolveHaulPath(path string) string {
 	if _, err := os.Stat(path); err == nil {
 		return path
 	}
-	base := path
-	ext := ""
-	for filepath.Ext(base) != "" {
-		ext = filepath.Ext(base) + ext
-		base = strings.TrimSuffix(base, filepath.Ext(base))
-	}
-	matches, err := filepath.Glob(base + "_*" + ext)
+	matches, err := filepath.Glob(path + ".*")
 	if err != nil || len(matches) == 0 {
 		return path
 	}
