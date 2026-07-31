@@ -16,6 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/mitchellh/go-homedir"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/errgroup"
 	"helm.sh/helm/v4/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
@@ -319,7 +320,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				jobs = verifyImageJobs(ctx, jobs, rso, ro)
-				if err := runImageJobs(ctx, s, jobs, rso, ro); err != nil {
+				if err := runImageJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
 				}
 				if _, err := s.CopyAll(ctx, s.OCI, nil); err != nil {
@@ -443,7 +444,7 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		l.Infof("adding image [%s] to the store [%s]", line, o.StoreDir)
+		l.Debugf("adding image [%s] to the store [%s]", line, o.StoreDir)
 		jobs = append(jobs, imageJob{
 			img:           v1.Image{Name: line},
 			platform:      o.Platform,
@@ -453,7 +454,21 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	return runImageJobs(ctx, s, jobs, rso, ro)
+	return runImageJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro))
+}
+
+// newSyncProgress returns a live progress Renderer over os.Stdout when
+// eligible (see log.ShouldShowProgress), or nil otherwise. runImageJobs
+// treats a nil progress as a no-op, reproducing today's plain-log behavior.
+// Because verifyImageJobs always runs fully, serially, before runImageJobs
+// is invoked, constructing the Renderer here also satisfies "don't start
+// the renderer until the verify pass is done" for free -- no additional
+// sequencing is needed.
+func newSyncProgress(o *flags.SyncOpts, ro *flags.CliRootOpts) *log.Renderer {
+	if !log.ShouldShowProgress(o.NoProgress, ro.LogLevel) {
+		return nil
+	}
+	return log.NewRenderer(os.Stdout)
 }
 
 // imageJob is the fully-resolved set of inputs needed to verify (if
@@ -685,11 +700,24 @@ func verifyImageJobs(ctx context.Context, jobs []imageJob, rso *flags.StoreRootO
 }
 
 // runImageJobs stores every job, local Docker daemon images first (serially),
-// then remote registry images (serially). The local-before-remote
-// partitioning is deliberate: a later refactor stage parallelizes only the
-// remote loop, so this grouping must stay in place even though this step
-// itself introduces no concurrency.
-func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+// then remote registry images concurrently (bounded by concurrency). The
+// local-before-remote partitioning is deliberate: local jobs go through
+// storeLocalImage, whose ensureDockerHost call does os.Setenv against the
+// process-wide environment, and they all contend on a single Docker daemon
+// anyway, so there is nothing to gain -- and a global-mutation race to lose
+// -- by running them concurrently with each other or with the remote pass.
+//
+// The remote pass uses errgroup.WithContext with SetLimit(concurrency):
+// fail-fast and --ignore-errors semantics come for free from that
+// combination plus storeImage already returning nil (after logging a
+// warning) when ignoreErrors is set, so g.Wait() never observes an error to
+// propagate in that mode. When a job does fail without --ignore-errors, the
+// group's derived context is cancelled, which every other in-flight job's
+// storeImage call observes via content.OCI.WriteBlob's context-aware writes;
+// g.Wait() returns that one real error, not an aggregate.
+func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
+	l := log.FromContext(ctx)
+
 	var localJobs, remoteJobs []imageJob
 	for _, j := range jobs {
 		if j.local {
@@ -705,11 +733,57 @@ func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, rso *fl
 		}
 	}
 
-	for _, j := range remoteJobs {
-		if err := storeImage(ctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite); err != nil {
-			return err
-		}
+	if concurrency < 1 {
+		concurrency = 1
 	}
 
-	return nil
+	// baseLogger is the logger every job's per-image logger is derived from.
+	// When progress is active, route it through a logger built over the
+	// Renderer so every log line emitted during a job (including its
+	// "✓ added ..." completion line and any error lines) flows through the
+	// Renderer's erase/write/redraw path instead of writing straight to the
+	// ambient logger's destination.
+	baseLogger := l
+	if progress != nil && len(remoteJobs) > 0 {
+		baseLogger = log.NewLogger(progress)
+		progress.Start()
+		defer progress.Stop()
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+	for _, j := range remoteJobs {
+		j := j
+		g.Go(func() error {
+			// Began must be called from inside the goroutine, after
+			// g.Go's semaphore acquisition, not from this outer loop.
+			// g.Go blocks the calling (outer loop) goroutine until a
+			// concurrency slot is free before it ever runs this closure,
+			// so this is the earliest point at which the job has
+			// actually started -- calling Began any earlier (e.g. right
+			// before g.Go, in the outer loop) would mark a job "in
+			// flight" while it's still queued behind other jobs waiting
+			// for a slot.
+			if progress != nil {
+				progress.Began(j.img.Name)
+			}
+			jl := baseLogger.With(log.Fields{"image": j.img.Name})
+			jctx := jl.WithContext(gctx)
+			// storeImage's lines that already name their own ref inline
+			// (e.g. its "✓ added <ref> ..." completion line) fetch this
+			// unadorned base logger via log.BaseFromContext instead of
+			// log.FromContext, so they don't also carry the "image=..."
+			// field above and duplicate the ref. Lines that don't name the
+			// ref (retry.Operation's attempt warnings, store-layer debug
+			// output) keep calling log.FromContext(ctx) untouched and keep
+			// the field for attribution under concurrency.
+			jctx = log.WithBaseLogger(jctx, baseLogger)
+			err := storeImage(jctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite)
+			if progress != nil {
+				progress.Finished(j.img.Name)
+			}
+			return err
+		})
+	}
+	return g.Wait()
 }

@@ -94,6 +94,14 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 					o.FileName = []string{}
 				}
 			}
+
+			n, err := flags.ResolveConcurrency(cmd.Flags().Changed("concurrency"), o.Concurrency)
+			if err != nil {
+				return err
+			}
+			o.Concurrency = n
+			rso.BlobConcurrency = flags.BlobConcurrencyFor(n)
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

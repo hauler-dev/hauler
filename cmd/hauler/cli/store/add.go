@@ -3,13 +3,16 @@ package store
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"helm.sh/helm/v4/pkg/chart/common"
@@ -154,12 +157,32 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
 }
 
+// formatAddedLine formats the completion line logged after an image is
+// successfully added to the store. When stats is non-nil and has at least
+// one layer recorded, it includes layer count (correctly pluralized) and
+// human-readable total blob size; otherwise it falls back to an
+// elapsed-only line and must never print "0 layers" (stats == nil covers
+// storeLocalImage, whose s.AddLocalImage path never populates ImageStats).
+func formatAddedLine(ref string, stats *store.ImageStats, elapsed time.Duration) string {
+	if stats != nil {
+		if layers := stats.Layers.Load(); layers > 0 {
+			unit := "layer"
+			if layers != 1 {
+				unit = "layers"
+			}
+			return fmt.Sprintf("✓ added %s (%d %s, %s, %.1fs)", ref, layers, unit, humanize.Bytes(uint64(stats.Bytes.Load())), elapsed.Seconds())
+		}
+	}
+	return fmt.Sprintf("✓ added %s (%.1fs)", ref, elapsed.Seconds())
+}
+
 func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
+	start := time.Now()
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
-	l.Infof("adding image [%s] from local Docker daemon to the store", i.Name)
+	l.Debugf("adding image [%s] from local Docker daemon to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
@@ -229,41 +252,68 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		l.Debugf("generated audit id of [none]")
 	}
 
-	l.Infof("successfully added image [%s] from local Docker daemon", r.Name())
+	l.Infof("%s", formatAddedLine(r.Name()+" from local Docker daemon", nil, time.Since(start)))
 	return nil
 }
 
 func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
+	start := time.Now()
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
-	l.Infof("adding image [%s] to the store", i.Name)
+	if err := ctx.Err(); err != nil {
+		log.BaseFromContext(ctx).Debugf("skipping image [%s]: %v", i.Name, err)
+		return err
+	}
+
+	log.BaseFromContext(ctx).Debugf("adding image [%s] to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
 		if ignoreErrors {
-			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
+			log.BaseFromContext(ctx).Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
 			return nil
 		} else {
-			l.Errorf("unable to parse image [%s]: %v", i.Name, err)
+			log.BaseFromContext(ctx).Errorf("unable to parse image [%s]: %v", i.Name, err)
 			return err
 		}
 	}
 
-	// fetch image along with any associated signatures and attestations
+	// fetch image along with any associated signatures and attestations.
+	// A fresh store.ImageStats is built inside the closure on every attempt
+	// (rather than once outside it) so a failed attempt's partial layer/byte
+	// counts -- writeImageBlobs records them before it even starts writing,
+	// let alone before it fails -- aren't left in place for a subsequent
+	// retry attempt to accumulate on top of. Only a successful attempt
+	// publishes its stats pointer to the outer variable, so formatAddedLine
+	// below always reports the stats belonging to the attempt that actually
+	// succeeded.
 	var imageDigest string
+	var stats *store.ImageStats
 	err = retry.Operation(ctx, rso, ro, func() error {
+		attemptStats := &store.ImageStats{}
 		var addErr error
-		imageDigest, addErr = s.AddImage(ctx, r.Name(), platform, excludeExtras)
+		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), r.Name(), platform, excludeExtras)
+		if addErr == nil {
+			stats = attemptStats
+		}
 		return addErr
 	})
 	if err != nil {
 		if ignoreErrors {
-			l.Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
+			log.BaseFromContext(ctx).Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
 			return nil
+		} else if errors.Is(err, context.Canceled) {
+			// Under errgroup.WithContext fail-fast (runImageJobs), one real
+			// failure cancels every other in-flight image's context. Logging
+			// this at ERROR would produce N-1 alarming lines for something
+			// that isn't the actual failure -- the real error is reported by
+			// whichever job's storeImage call hit it first.
+			log.BaseFromContext(ctx).Debugf("unable to add image [%s] to store: %v", r.Name(), err)
+			return err
 		} else {
-			l.Errorf("unable to add image [%s] to store: %v", r.Name(), err)
+			log.BaseFromContext(ctx).Errorf("unable to add image [%s] to store: %v", r.Name(), err)
 			return err
 		}
 	}
@@ -326,13 +376,11 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		l.Debugf("generated audit id of [none]")
 	}
 
-	l.Infof("successfully added image [%s]", r.Name())
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(r.Name(), stats, time.Since(start)))
 	return nil
 }
 
 func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
-	l := log.FromContext(ctx)
-
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()
 	newRefContext := newRef.Context()
@@ -364,7 +412,7 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	oldTotalReg := oldRegistry + "/" + oldTotal
 	newTotalReg := newRegistry + "/" + newTotal
 
-	l.Infof("rewriting [%s] to [%s]", oldTotalReg, newTotalReg)
+	log.BaseFromContext(ctx).Infof("rewriting [%s] to [%s]", oldTotalReg, newTotalReg)
 
 	//find and update reference
 	matched, err := s.OCI.UpdateAnnotations(

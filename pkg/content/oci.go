@@ -89,11 +89,28 @@ type OCI struct {
 	mu sync.Mutex
 }
 
-func NewOCI(root string) (*OCI, error) {
+// OCIOption configures an OCI store at construction time.
+type OCIOption func(*OCI)
+
+// WithBlobConcurrency overrides consts.DefaultBlobConcurrency for this OCI's
+// blobSem. n <= 0 is a no-op (keeps the default) rather than an error, so
+// callers can pass a possibly-zero value unconditionally.
+func WithBlobConcurrency(n int) OCIOption {
+	return func(o *OCI) {
+		if n > 0 {
+			o.blobSem = semaphore.NewWeighted(int64(n))
+		}
+	}
+}
+
+func NewOCI(root string, opts ...OCIOption) (*OCI, error) {
 	o := &OCI{
 		root:    root,
 		nameMap: &sync.Map{},
 		blobSem: semaphore.NewWeighted(consts.DefaultBlobConcurrency),
+	}
+	for _, opt := range opts {
+		opt(o)
 	}
 	return o, nil
 }
@@ -544,6 +561,13 @@ func (o *OCI) ensureBlob(alg string, hex string) (string, error) {
 //     removed and the final blob path is left untouched. This is the
 //     critical invariant that makes retries and concurrent writers safe:
 //     a failing writer can never delete or corrupt a peer's completed blob.
+//   - singleflight.Group.Do hands the flight *winner's* error to every
+//     waiter, including waiters whose own ctx is a distinct, still-live
+//     context. If the shared error is context.Canceled but this caller's own
+//     ctx is not done, that cancellation belonged to the winner, not to this
+//     caller -- WriteBlob retries once on the caller's own ctx rather than
+//     propagating a cancellation the caller never asked for. See
+//     writeBlobShared's doc comment for the mechanics.
 func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -571,6 +595,25 @@ func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64,
 		}
 	}
 
+	err := o.writeBlobShared(ctx, dir, blobPath, expected, size, open)
+	if err != nil && errors.Is(err, context.Canceled) && ctx.Err() == nil {
+		// singleflight.Do hands the flight winner's error to every waiter,
+		// including waiters on a distinct, still-live context. If the winner
+		// observed *its own* context's cancellation, that's not evidence this
+		// caller's request should fail -- retry once on our own ctx. By the
+		// time Do() returned, the flight has already been forgotten by
+		// singleflight.Group, so this retry either hits the fast path (if the
+		// original winner actually finished writing before its cancellation
+		// was observed) or this goroutine becomes the new flight leader.
+		err = o.writeBlobShared(ctx, dir, blobPath, expected, size, open)
+	}
+	return err
+}
+
+// writeBlobShared runs open()/writeBlobOnce for expected under this OCI's
+// singleflight.Group, deduplicating concurrent writers of the same digest so
+// only one of them actually streams content.
+func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) error {
 	_, err, _ := o.sf.Do(expected.String(), func() (interface{}, error) {
 		// Acquired inside the singleflight function, not around the sf.Do
 		// call: goroutines that lose the flight and are merely waiting on

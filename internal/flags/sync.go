@@ -2,6 +2,8 @@ package flags
 
 import (
 	"github.com/spf13/cobra"
+
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 type SyncOpts struct {
@@ -21,6 +23,8 @@ type SyncOpts struct {
 	Tlog                         bool
 	ExcludeExtras                bool
 	DryRun                       bool
+	Concurrency                  int
+	NoProgress                   bool
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -41,4 +45,6 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images")
 	f.BoolVar(&o.DryRun, "dry-run", false, "(Optional) Output product manifest content to stdout instead of processing it (requires --products)")
+	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of images to pull and store concurrently during sync (--concurrency 1 pulls one image at a time, matching pre-parallelism serial behavior; also configurable via HAULER_CONCURRENCY, explicit flag wins)")
+	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display during the parallel image-pull phase of sync")
 }

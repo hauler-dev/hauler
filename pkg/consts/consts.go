@@ -91,6 +91,7 @@ const (
 	HaulerTempDir      = "HAULER_TEMP_DIR"
 	HaulerStoreDir     = "HAULER_STORE_DIR"
 	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
+	HaulerConcurrency  = "HAULER_CONCURRENCY"
 	HaulerLogLevel     = "HAULER_LOG_LEVEL"
 	HaulerAuditLevel   = "HAULER_AUDIT_LEVEL"
 
@@ -116,6 +117,11 @@ const (
 	DefaultStoreInventoryName = "stores.json"
 	DefaultRetries            = 3
 	RetriesInterval           = 5
+	// DefaultConcurrency bounds the number of images that `store sync` pulls
+	// and stores concurrently. See flags.ResolveConcurrency and
+	// flags.BlobConcurrencyFor for how this feeds into the per-store blob
+	// write ceiling (DefaultBlobConcurrency below).
+	DefaultConcurrency = 4
 	// DefaultBlobConcurrency bounds the number of blob writes (layer
 	// downloads, config/manifest writes) that may be in flight at once across
 	// the whole process, regardless of how many images or errgroups are

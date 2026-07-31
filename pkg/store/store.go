@@ -37,6 +37,12 @@ type Layout struct {
 	StoreID   string
 	haulerDir string
 	cache     layer.Cache
+
+	// blobConcurrency overrides the OCI layout's default blob-write
+	// concurrency ceiling (content.OCI.blobSem) when > 0. Set via
+	// WithBlobConcurrency; must be known before content.NewOCI is called, so
+	// NewLayout applies opts before constructing the OCI store.
+	blobConcurrency int
 }
 
 type Options func(*Layout)
@@ -55,25 +61,37 @@ func WithHaulerDir(dir string) Options {
 	}
 }
 
+// WithBlobConcurrency overrides the OCI layout's default blob-write
+// concurrency ceiling. See content.WithBlobConcurrency for the mechanics and
+// why the floor in flags.BlobConcurrencyFor matters.
+func WithBlobConcurrency(n int) Options {
+	return func(l *Layout) {
+		l.blobConcurrency = n
+	}
+}
+
 func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
-	ociStore, err := content.NewOCI(rootdir)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ociStore.LoadIndex(); err != nil {
-		return nil, err
-	}
-
 	l := &Layout{
 		Root:    rootdir,
-		OCI:     ociStore,
 		StoreID: loadOrCreateStoreID(rootdir),
 	}
 
 	for _, opt := range opts {
 		opt(l)
 	}
+
+	var ociOpts []content.OCIOption
+	if l.blobConcurrency > 0 {
+		ociOpts = append(ociOpts, content.WithBlobConcurrency(l.blobConcurrency))
+	}
+	ociStore, err := content.NewOCI(rootdir, ociOpts...)
+	if err != nil {
+		return nil, err
+	}
+	if err := ociStore.LoadIndex(); err != nil {
+		return nil, err
+	}
+	l.OCI = ociStore
 
 	if l.haulerDir != "" {
 		updateStoreInventory(l.haulerDir, l.StoreID, rootdir)
@@ -337,6 +355,20 @@ func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 	if err != nil {
 		return fmt.Errorf("getting layers: %w", err)
 	}
+
+	if stats := imageStatsFromContext(ctx); stats != nil {
+		var totalBytes int64
+		for _, lyr := range layers {
+			size, err := lyr.Size()
+			if err != nil {
+				return fmt.Errorf("getting layer size: %w", err)
+			}
+			totalBytes += size
+		}
+		stats.Layers.Add(int64(len(layers)))
+		stats.Bytes.Add(totalBytes)
+	}
+
 	// See AddArtifact's identical errgroup.WithContext conversion for why this
 	// can't stay a zero-value errgroup.Group.
 	g, gctx := errgroup.WithContext(ctx)

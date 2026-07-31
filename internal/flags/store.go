@@ -22,6 +22,12 @@ type StoreRootOpts struct {
 	StoreDir     string
 	Retries      int
 	TempOverride string
+
+	// BlobConcurrency overrides the store's default blob-write concurrency
+	// ceiling (content.OCI.blobSem) when > 0. Populated by `store sync`'s
+	// PreRunE from ResolveConcurrency/BlobConcurrencyFor before RunE calls
+	// Store(); zero and unused by every other store subcommand.
+	BlobConcurrency int
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
@@ -79,7 +85,11 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 		return nil, err
 	}
 
-	s, err := store.NewLayout(abs, store.WithHaulerDir(haulerDir))
+	opts := []store.Options{store.WithHaulerDir(haulerDir)}
+	if o.BlobConcurrency > 0 {
+		opts = append(opts, store.WithBlobConcurrency(o.BlobConcurrency))
+	}
+	s, err := store.NewLayout(abs, opts...)
 	if err != nil {
 		return nil, err
 	}
