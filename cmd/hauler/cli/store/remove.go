@@ -50,7 +50,12 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	var matches []match
 
 	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
-		if !strings.Contains(reference, ref) {
+		registryRef := desc.Annotations[consts.ContainerdImageNameKey]
+		if registryRef == "" {
+			registryRef = desc.Annotations[ocispec.AnnotationRefName]
+		}
+
+		if !strings.Contains(reference, ref) && !strings.Contains(registryRef, ref) {
 			return nil
 		}
 
