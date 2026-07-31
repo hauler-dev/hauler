@@ -477,6 +477,22 @@ func TestStoreImage(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("nonexistent image with HAULER_IGNORE_ERRORS env var returns nil and does not mutate ro", func(t *testing.T) {
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		t.Setenv(consts.HaulerIgnoreErrors, "true")
+
+		err := storeImage(ctx, s, v1.Image{Name: host + "/nonexistent/image:missing"}, "", false, rso, ro, "")
+		if err != nil {
+			t.Fatalf("expected nil with HAULER_IGNORE_ERRORS=true, got: %v", err)
+		}
+		if ro.IgnoreErrors {
+			t.Fatal("expected ro.IgnoreErrors to remain false: storeImage must not mutate ro")
+		}
+	})
 }
 
 func TestStoreImage_Rewrite(t *testing.T) {
@@ -860,6 +876,68 @@ func TestStoreChart_AddImages_IncludeExtras(t *testing.T) {
 // --local flag validation tests
 // --------------------------------------------------------------------------
 
+// TestStoreChart_AddImages_IgnoreErrors_EnvVar verifies that a chart-discovered
+// image failure inside storeChart's images loop is swallowed via
+// HAULER_IGNORE_ERRORS alone, without --ignore-errors, and that storeChart
+// continues on to store the chart itself. Regression test: retry.Operation and
+// storeImage used to mutate the shared ro.IgnoreErrors from the env var as a
+// side effect, so ro.IgnoreErrors reads later in the images loop always saw the
+// env var. Now that storeImage/retry.Operation are pure reads via
+// flags.ShouldIgnoreErrors, the remaining ro.IgnoreErrors reads in the loop must
+// still honor the env var on their own.
+func TestStoreChart_AddImages_IgnoreErrors_EnvVar(t *testing.T) {
+	ctx := newTestContext(t)
+
+	t.Run("applyDefaultRegistry failure via env var", func(t *testing.T) {
+		chartDir := t.TempDir()
+		// Uppercase letters and spaces are rejected by reference.Parse, so this
+		// only fails once opts.Registry is non-empty and applyDefaultRegistry
+		// actually parses the ref.
+		tgzPath := seedChartWithImages(t, chartDir, []string{"INVALID IMAGE REF !! ##"})
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+		t.Setenv(consts.HaulerIgnoreErrors, "true")
+
+		o := &flags.AddChartOpts{
+			ChartOpts: newAddChartOpts("", "").ChartOpts,
+			AddImages: true,
+			Registry:  "registry.example.com",
+		}
+		if err := storeChart(ctx, s, v1.Chart{Name: tgzPath}, o, rso, ro, ""); err != nil {
+			t.Fatalf("expected nil with HAULER_IGNORE_ERRORS=true, got: %v", err)
+		}
+		if ro.IgnoreErrors {
+			t.Fatal("expected ro.IgnoreErrors to remain false: storeChart must not mutate ro")
+		}
+		assertArtifactInStore(t, s, "test-chart")
+	})
+
+	t.Run("storeImage failure via env var", func(t *testing.T) {
+		chartDir := t.TempDir()
+		// localhost:1 is a port that is never listening.
+		tgzPath := seedChartWithImages(t, chartDir, []string{"localhost:1/nonexistent/image:missing"})
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+		t.Setenv(consts.HaulerIgnoreErrors, "true")
+
+		o := &flags.AddChartOpts{
+			ChartOpts: newAddChartOpts("", "").ChartOpts,
+			AddImages: true,
+		}
+		if err := storeChart(ctx, s, v1.Chart{Name: tgzPath}, o, rso, ro, ""); err != nil {
+			t.Fatalf("expected nil with HAULER_IGNORE_ERRORS=true, got: %v", err)
+		}
+		if ro.IgnoreErrors {
+			t.Fatal("expected ro.IgnoreErrors to remain false: storeChart must not mutate ro")
+		}
+		assertArtifactInStore(t, s, "test-chart")
+	})
+}
+
 func TestAddImageCmd_LocalFlagValidation(t *testing.T) {
 	ctx := newTestContext(t)
 
@@ -934,6 +1012,22 @@ func TestStoreLocalImage_InvalidReference(t *testing.T) {
 		err := storeLocalImage(ctx, s, v1.Image{Name: "INVALID:::ref"}, rso, ro, "")
 		if err != nil {
 			t.Fatalf("expected nil with IgnoreErrors=true, got: %v", err)
+		}
+	})
+
+	t.Run("malformed reference with HAULER_IGNORE_ERRORS env var returns nil and does not mutate ro", func(t *testing.T) {
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		t.Setenv(consts.HaulerIgnoreErrors, "true")
+
+		err := storeLocalImage(ctx, s, v1.Image{Name: "INVALID:::ref"}, rso, ro, "")
+		if err != nil {
+			t.Fatalf("expected nil with HAULER_IGNORE_ERRORS=true, got: %v", err)
+		}
+		if ro.IgnoreErrors {
+			t.Fatal("expected ro.IgnoreErrors to remain false: storeLocalImage must not mutate ro")
 		}
 	})
 }

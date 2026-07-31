@@ -157,18 +157,13 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
-	if !ro.IgnoreErrors {
-		envVar := os.Getenv(consts.HaulerIgnoreErrors)
-		if envVar == "true" {
-			ro.IgnoreErrors = true
-		}
-	}
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
 	l.Infof("adding image [%s] from local Docker daemon to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
-		if ro.IgnoreErrors {
+		if ignoreErrors {
 			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
 			return nil
 		}
@@ -178,7 +173,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 
 	localDigest, err := s.AddLocalImage(ctx, r.Name())
 	if err != nil {
-		if ro.IgnoreErrors {
+		if ignoreErrors {
 			l.Warnf("unable to add image [%s] from Docker daemon to store: %v... skipping...", r.Name(), err)
 			return nil
 		}
@@ -241,18 +236,13 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
 
-	if !ro.IgnoreErrors {
-		envVar := os.Getenv(consts.HaulerIgnoreErrors)
-		if envVar == "true" {
-			ro.IgnoreErrors = true
-		}
-	}
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
 	l.Infof("adding image [%s] to the store", i.Name)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
-		if ro.IgnoreErrors {
+		if ignoreErrors {
 			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
 			return nil
 		} else {
@@ -269,7 +259,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		return addErr
 	})
 	if err != nil {
-		if ro.IgnoreErrors {
+		if ignoreErrors {
 			l.Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
 			return nil
 		} else {
@@ -343,10 +333,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
 	l := log.FromContext(ctx)
 
-	if err := s.OCI.LoadIndex(); err != nil {
-		return fmt.Errorf("failed to load index: %w", err)
-	}
-
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()
 	newRefContext := newRef.Context()
@@ -381,24 +367,24 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	l.Infof("rewriting [%s] to [%s]", oldTotalReg, newTotalReg)
 
 	//find and update reference
-	found := false
-	if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
-		if d.Annotations[ocispec.AnnotationRefName] == oldTotal && d.Annotations[consts.ContainerdImageNameKey] == oldTotalReg {
-			d.Annotations[ocispec.AnnotationRefName] = newTotal
-			d.Annotations[consts.ContainerdImageNameKey] = newTotalReg
-			found = true
-		}
-		return nil
-	}); err != nil {
+	matched, err := s.OCI.UpdateAnnotations(
+		func(d ocispec.Descriptor) bool {
+			return d.Annotations[ocispec.AnnotationRefName] == oldTotal && d.Annotations[consts.ContainerdImageNameKey] == oldTotalReg
+		},
+		func(a map[string]string) {
+			a[ocispec.AnnotationRefName] = newTotal
+			a[consts.ContainerdImageNameKey] = newTotalReg
+		},
+	)
+	if err != nil {
 		return err
 	}
 
-	if !found {
+	if matched == 0 {
 		return fmt.Errorf("could not find image [%s] in store", oldRef.Name())
 	}
 
-	return s.OCI.SaveIndex()
-
+	return nil
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
@@ -528,6 +514,8 @@ func applyDefaultRegistry(img string, defaultRegistry string) (string, error) {
 
 func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
 	l := log.FromContext(ctx)
+
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
 	// subchart logging prefix
 	isSubchart := ctx.Value(isSubchartKey{}) == true
@@ -768,7 +756,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		for _, image := range images {
 			image, err := applyDefaultRegistry(image, opts.Registry)
 			if err != nil {
-				if ro.IgnoreErrors {
+				if ignoreErrors {
 					l.Warnf("%s  ↳ unable to apply registry to image [%s]: %v... skipping...", prefix, image, err)
 					continue
 				}
@@ -777,7 +765,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 			imgCfg := v1.Image{Name: image}
 			if err := storeImage(ctx, s, imgCfg, opts.Platform, opts.ExcludeExtras, rso, ro, ""); err != nil {
-				if ro.IgnoreErrors {
+				if ignoreErrors {
 					l.Warnf("%s  ↳ failed to store image [%s]: %v... skipping...", prefix, image, err)
 					continue
 				}
@@ -825,7 +813,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 
 			if err != nil {
-				if ro.IgnoreErrors {
+				if ignoreErrors {
 					l.Warnf("%s  ↳ failed to add dependent chart [%s]: %v... skipping...", prefix, dep.Name, err)
 				} else {
 					l.Errorf("%s  ↳ failed to add dependent chart [%s]: %v", prefix, dep.Name, err)
@@ -858,10 +846,6 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		}
 
 		// rename chart name in store
-		if err := s.OCI.LoadIndex(); err != nil {
-			return err
-		}
-
 		oldRefContext := ref.Context()
 		newRefContext := newRef.Context()
 
@@ -875,23 +859,20 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		oldTotal := oldRepo + ":" + oldTag
 		newTotal := newRepo + ":" + newTag
 
-		found := false
-		if err := s.OCI.Walk(func(k string, d ocispec.Descriptor) error {
-			if d.Annotations[ocispec.AnnotationRefName] == oldTotal {
-				d.Annotations[ocispec.AnnotationRefName] = newTotal
-				found = true
-			}
-			return nil
-		}); err != nil {
+		matched, err := s.OCI.UpdateAnnotations(
+			func(d ocispec.Descriptor) bool {
+				return d.Annotations[ocispec.AnnotationRefName] == oldTotal
+			},
+			func(a map[string]string) {
+				a[ocispec.AnnotationRefName] = newTotal
+			},
+		)
+		if err != nil {
 			return err
 		}
 
-		if !found {
+		if matched == 0 {
 			return fmt.Errorf("could not find chart [%s] in store", ref.Name())
-		}
-
-		if err := s.OCI.SaveIndex(); err != nil {
-			return err
 		}
 	}
 

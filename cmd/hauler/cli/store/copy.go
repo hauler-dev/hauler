@@ -33,6 +33,8 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 		return fmt.Errorf("store index not found: run 'hauler store add/sync/load' first")
 	}
 
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
 	case "directory", "dir":
@@ -243,7 +245,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 
 			toRef, err := content.RewriteRefToRegistry(destRef, components[1])
 			if err != nil {
-				if !ro.IgnoreErrors {
+				if !ignoreErrors {
 					fatalErr = fmt.Errorf("rewriting ref [%s]: %w", baseRef, err)
 					return nil
 				}
@@ -263,7 +265,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				pushed, copyErr = s.Copy(ctx, reference, target, toRef)
 				return copyErr
 			}); err != nil {
-				if !ro.IgnoreErrors {
+				if !ignoreErrors {
 					fatalErr = err
 				}
 				return nil

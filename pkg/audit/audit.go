@@ -133,7 +133,7 @@ func BuildGlobal(ro *flags.CliRootOpts, rso *flags.StoreRootOpts) GlobalEntry {
 	g := GlobalEntry{}
 	if ro != nil {
 		g.HaulerDir = resolveDir(ro.HaulerDir)
-		g.IgnoreErrors = ro.IgnoreErrors
+		g.IgnoreErrors = flags.ShouldIgnoreErrors(ro)
 		g.LogLevel = ro.LogLevel
 		g.AuditLevel = ro.AuditLevel
 	}

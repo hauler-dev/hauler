@@ -3,7 +3,6 @@ package retry
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -16,25 +15,28 @@ import (
 func Operation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, operation func() error) error {
 	l := log.FromContext(ctx)
 
-	if !ro.IgnoreErrors {
-		if os.Getenv(consts.HaulerIgnoreErrors) == "true" {
-			ro.IgnoreErrors = true
-		}
-	}
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
 	retries := rso.Retries
 	if retries <= 0 {
 		retries = consts.DefaultRetries
 	}
 
+	var lastErr error
+
 	for attempt := 1; attempt <= retries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		err := operation()
 		if err == nil {
 			return nil
 		}
+		lastErr = err
 
 		isTlogErr := strings.HasPrefix(err.Error(), "function execution failed: no matching signatures: rekor client not provided for online verification")
-		if ro.IgnoreErrors {
+		if ignoreErrors {
 			if isTlogErr {
 				l.Warnf("warning (attempt %d/%d)... failed tlog verification", attempt, retries)
 			} else {
@@ -49,9 +51,15 @@ func Operation(ctx context.Context, rso *flags.StoreRootOpts, ro *flags.CliRootO
 		}
 
 		if attempt < retries {
-			time.Sleep(time.Second * consts.RetriesInterval)
+			timer := time.NewTimer(time.Second * consts.RetriesInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 
-	return fmt.Errorf("operation unsuccessful after %d attempts", retries)
+	return fmt.Errorf("operation unsuccessful after %d attempts: %w", retries, lastErr)
 }
