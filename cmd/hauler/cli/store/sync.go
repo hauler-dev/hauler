@@ -314,158 +314,17 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 
 				a := cfg.GetAnnotations()
-				for _, i := range cfg.Spec.Images {
-
-					if !i.Local && (a[consts.ImageAnnotationRegistry] != "" || o.Registry != "") {
-						newRef, _ := reference.Parse(i.Name)
-						newReg := o.Registry
-						if o.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
-							newReg = a[consts.ImageAnnotationRegistry]
-						}
-						if newRef.Context().RegistryStr() == "" {
-							newRef, err = reference.Relocate(i.Name, newReg)
-							if err != nil {
-								return err
-							}
-						}
-						i.Name = newRef.Name()
-					}
-
-					if i.Local {
-						needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
-						needsKeylessVerification := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != "" ||
-							o.CertIdentityRegexp != "" || o.CertIdentity != "" ||
-							i.CertIdentityRegexp != "" || i.CertIdentity != ""
-						if needsPubKeyVerification || needsKeylessVerification {
-							return fmt.Errorf("image [%s]: --local cannot be combined with cosign verification options", i.Name)
-						}
-
-						rewrite := ""
-						if i.Rewrite != "" {
-							rewrite = i.Rewrite
-						}
-						if err := storeLocalImage(ctx, s, i, rso, ro, rewrite); err != nil {
-							return err
-						}
-						continue
-					}
-
-					hasAnnotationIdentityOptions := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != ""
-					hasCliIdentityOptions := o.CertIdentityRegexp != "" || o.CertIdentity != ""
-					hasImageIdentityOptions := i.CertIdentityRegexp != "" || i.CertIdentity != ""
-
-					needsKeylessVerificaton := hasAnnotationIdentityOptions || hasCliIdentityOptions || hasImageIdentityOptions
-					needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
-					if needsPubKeyVerification {
-						key := o.Key
-						if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
-							key, err = homedir.Expand(a[consts.ImageAnnotationKey])
-							if err != nil {
-								return err
-							}
-						}
-						if i.Key != "" {
-							key, err = homedir.Expand(i.Key)
-							if err != nil {
-								return err
-							}
-						}
-						l.Debugf("key for image [%s]", key)
-
-						tlog := o.Tlog
-						if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
-							tlog = true
-						}
-						if i.Tlog {
-							tlog = i.Tlog
-						}
-						l.Debugf("transparency log for verification [%t]", tlog)
-
-						if err := cosign.VerifySignature(ctx, key, tlog, i.Name, rso, ro); err != nil {
-							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
-							continue
-						}
-						l.Infof("signature verified for image [%s]", i.Name)
-					} else if needsKeylessVerificaton { //Keyless signature verification
-						certIdentityRegexp := o.CertIdentityRegexp
-						if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
-							certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
-						}
-						if i.CertIdentityRegexp != "" {
-							certIdentityRegexp = i.CertIdentityRegexp
-						}
-						l.Debugf("certIdentityRegexp for image [%s]", certIdentityRegexp)
-
-						certIdentity := o.CertIdentity
-						if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
-							certIdentity = a[consts.ImageAnnotationCertIdentity]
-						}
-						if i.CertIdentity != "" {
-							certIdentity = i.CertIdentity
-						}
-						l.Debugf("certIdentity for image [%s]", certIdentity)
-
-						certOidcIssuer := o.CertOidcIssuer
-						if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
-							certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
-						}
-						if i.CertOidcIssuer != "" {
-							certOidcIssuer = i.CertOidcIssuer
-						}
-						l.Debugf("certOidcIssuer for image [%s]", certOidcIssuer)
-
-						certOidcIssuerRegexp := o.CertOidcIssuerRegexp
-						if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
-							certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
-						}
-						if i.CertOidcIssuerRegexp != "" {
-							certOidcIssuerRegexp = i.CertOidcIssuerRegexp
-						}
-						l.Debugf("certOidcIssuerRegexp for image [%s]", certOidcIssuerRegexp)
-
-						certGithubWorkflowRepository := o.CertGithubWorkflowRepository
-						if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
-							certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
-						}
-						if i.CertGithubWorkflowRepository != "" {
-							certGithubWorkflowRepository = i.CertGithubWorkflowRepository
-						}
-						l.Debugf("certGithubWorkflowRepository for image [%s]", certGithubWorkflowRepository)
-
-						// Keyless (Fulcio) certs expire after ~10 min; tlog is always
-						// required to prove the cert was valid at signing time.
-						if err := cosign.VerifyKeylessSignature(ctx, certIdentity, certIdentityRegexp, certOidcIssuer, certOidcIssuerRegexp, certGithubWorkflowRepository, i.Name, rso, ro); err != nil {
-							l.Errorf("signature verification failed for image [%s]... skipping...\n%v", i.Name, err)
-							continue
-						}
-						l.Infof("keyless signature verified for image [%s]", i.Name)
-					}
-					platform := o.Platform
-					if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
-						platform = a[consts.ImageAnnotationPlatform]
-					}
-					if i.Platform != "" {
-						platform = i.Platform
-					}
-
-					rewrite := ""
-					if i.Rewrite != "" {
-						rewrite = i.Rewrite
-					}
-
-					excludeExtras := o.ExcludeExtras
-					if !o.ExcludeExtras && a[consts.ImageAnnotationExcludeExtras] == "true" {
-						excludeExtras = true
-					}
-					if i.ExcludeExtras {
-						excludeExtras = i.ExcludeExtras
-					}
-
-					if err := storeImage(ctx, s, i, platform, excludeExtras, rso, ro, rewrite); err != nil {
-						return err
-					}
+				jobs, err := resolveImageJobs(o, a, cfg.Spec.Images)
+				if err != nil {
+					return err
 				}
-				s.CopyAll(ctx, s.OCI, nil)
+				jobs = verifyImageJobs(ctx, jobs, rso, ro)
+				if err := runImageJobs(ctx, s, jobs, rso, ro); err != nil {
+					return err
+				}
+				if _, err := s.CopyAll(ctx, s.OCI, nil); err != nil {
+					l.Warnf("failed to copy all content to registries/directories: %v", err)
+				}
 
 			default:
 				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
@@ -577,17 +436,280 @@ func resolveChartCreds(ch v1.Chart) (username, password string, err error) {
 func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	l.Infof("syncing images from [%s] to store", filepath.Base(fi.Name()))
+	var jobs []imageJob
 	scanner := bufio.NewScanner(fi)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		img := v1.Image{Name: line}
 		l.Infof("adding image [%s] to the store [%s]", line, o.StoreDir)
-		if err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, ""); err != nil {
+		jobs = append(jobs, imageJob{
+			img:           v1.Image{Name: line},
+			platform:      o.Platform,
+			excludeExtras: o.ExcludeExtras,
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return runImageJobs(ctx, s, jobs, rso, ro)
+}
+
+// imageJob is the fully-resolved set of inputs needed to verify (if
+// applicable) and store a single image from a Images v1 manifest or an
+// image.txt file. resolveImageJobs produces these from raw v1.Image entries
+// plus manifest annotations and CLI flags, applying the per-image >
+// annotation > CLI precedence rules; verifyImageJobs consumes the
+// verification fields; runImageJobs consumes the rest.
+type imageJob struct {
+	img           v1.Image // Name already relocated to the target registry if applicable
+	platform      string
+	excludeExtras bool
+	rewrite       string
+	local         bool
+
+	// resolved verification inputs, consumed by the verify pass
+	needsPubKey, needsKeyless            bool
+	key                                  string
+	tlog                                 bool
+	certIdentity, certIdentityRegexp     string
+	certOidcIssuer, certOidcIssuerRegexp string
+	certGithubWorkflowRepository         string
+}
+
+// resolveImageJobs applies the precedence rules (per-image > annotation >
+// CLI, except registry relocation which is CLI > annotation) to every image
+// in images, producing one imageJob per image. It is pure: no I/O, no
+// logging, no network calls — cosign verification happens later in
+// verifyImageJobs.
+func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image) ([]imageJob, error) {
+	var jobs []imageJob
+
+	for _, i := range images {
+		if !i.Local && (a[consts.ImageAnnotationRegistry] != "" || o.Registry != "") {
+			newRef, _ := reference.Parse(i.Name)
+			newReg := o.Registry
+			if o.Registry == "" && a[consts.ImageAnnotationRegistry] != "" {
+				newReg = a[consts.ImageAnnotationRegistry]
+			}
+			if newRef.Context().RegistryStr() == "" {
+				var relErr error
+				newRef, relErr = reference.Relocate(i.Name, newReg)
+				if relErr != nil {
+					return nil, relErr
+				}
+			}
+			i.Name = newRef.Name()
+		}
+
+		if i.Local {
+			needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
+			needsKeylessVerification := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != "" ||
+				o.CertIdentityRegexp != "" || o.CertIdentity != "" ||
+				i.CertIdentityRegexp != "" || i.CertIdentity != ""
+			if needsPubKeyVerification || needsKeylessVerification {
+				return nil, fmt.Errorf("image [%s]: --local cannot be combined with cosign verification options", i.Name)
+			}
+
+			rewrite := ""
+			if i.Rewrite != "" {
+				rewrite = i.Rewrite
+			}
+			jobs = append(jobs, imageJob{img: i, local: true, rewrite: rewrite})
+			continue
+		}
+
+		hasAnnotationIdentityOptions := a[consts.ImageAnnotationCertIdentityRegexp] != "" || a[consts.ImageAnnotationCertIdentity] != ""
+		hasCliIdentityOptions := o.CertIdentityRegexp != "" || o.CertIdentity != ""
+		hasImageIdentityOptions := i.CertIdentityRegexp != "" || i.CertIdentity != ""
+
+		needsKeylessVerificaton := hasAnnotationIdentityOptions || hasCliIdentityOptions || hasImageIdentityOptions
+		needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
+
+		job := imageJob{img: i}
+
+		if needsPubKeyVerification {
+			key := o.Key
+			if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
+				expanded, err := homedir.Expand(a[consts.ImageAnnotationKey])
+				if err != nil {
+					return nil, err
+				}
+				key = expanded
+			}
+			if i.Key != "" {
+				expanded, err := homedir.Expand(i.Key)
+				if err != nil {
+					return nil, err
+				}
+				key = expanded
+			}
+
+			tlog := o.Tlog
+			if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
+				tlog = true
+			}
+			if i.Tlog {
+				tlog = i.Tlog
+			}
+
+			job.needsPubKey = true
+			job.key = key
+			job.tlog = tlog
+		} else if needsKeylessVerificaton { //Keyless signature verification
+			certIdentityRegexp := o.CertIdentityRegexp
+			if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
+				certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
+			}
+			if i.CertIdentityRegexp != "" {
+				certIdentityRegexp = i.CertIdentityRegexp
+			}
+
+			certIdentity := o.CertIdentity
+			if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
+				certIdentity = a[consts.ImageAnnotationCertIdentity]
+			}
+			if i.CertIdentity != "" {
+				certIdentity = i.CertIdentity
+			}
+
+			certOidcIssuer := o.CertOidcIssuer
+			if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
+				certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
+			}
+			if i.CertOidcIssuer != "" {
+				certOidcIssuer = i.CertOidcIssuer
+			}
+
+			certOidcIssuerRegexp := o.CertOidcIssuerRegexp
+			if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
+				certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
+			}
+			if i.CertOidcIssuerRegexp != "" {
+				certOidcIssuerRegexp = i.CertOidcIssuerRegexp
+			}
+
+			certGithubWorkflowRepository := o.CertGithubWorkflowRepository
+			if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
+				certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
+			}
+			if i.CertGithubWorkflowRepository != "" {
+				certGithubWorkflowRepository = i.CertGithubWorkflowRepository
+			}
+
+			job.needsKeyless = true
+			job.certIdentity = certIdentity
+			job.certIdentityRegexp = certIdentityRegexp
+			job.certOidcIssuer = certOidcIssuer
+			job.certOidcIssuerRegexp = certOidcIssuerRegexp
+			job.certGithubWorkflowRepository = certGithubWorkflowRepository
+		}
+
+		platform := o.Platform
+		if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
+			platform = a[consts.ImageAnnotationPlatform]
+		}
+		if i.Platform != "" {
+			platform = i.Platform
+		}
+
+		rewrite := ""
+		if i.Rewrite != "" {
+			rewrite = i.Rewrite
+		}
+
+		excludeExtras := o.ExcludeExtras
+		if !o.ExcludeExtras && a[consts.ImageAnnotationExcludeExtras] == "true" {
+			excludeExtras = true
+		}
+		if i.ExcludeExtras {
+			excludeExtras = i.ExcludeExtras
+		}
+
+		job.platform = platform
+		job.rewrite = rewrite
+		job.excludeExtras = excludeExtras
+
+		jobs = append(jobs, job)
+	}
+
+	return jobs, nil
+}
+
+// verifyImageJobs runs cosign verification (network I/O) for every job that
+// needs it and returns only the jobs that passed verification, plus any
+// jobs that didn't need verification in the first place. A verification
+// failure logs an error and drops the job silently, matching the pre-refactor
+// behavior: SyncCmd does not fail the whole run over a single bad signature,
+// regardless of --ignore-errors.
+func verifyImageJobs(ctx context.Context, jobs []imageJob, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) []imageJob {
+	l := log.FromContext(ctx)
+
+	var out []imageJob
+	for _, j := range jobs {
+		if j.local {
+			out = append(out, j)
+			continue
+		}
+
+		if j.needsPubKey {
+			l.Debugf("key for image [%s]", j.key)
+			l.Debugf("transparency log for verification [%t]", j.tlog)
+
+			if err := cosign.VerifySignature(ctx, j.key, j.tlog, j.img.Name, rso, ro); err != nil {
+				l.Errorf("signature verification failed for image [%s]... skipping...\n%v", j.img.Name, err)
+				continue
+			}
+			l.Infof("signature verified for image [%s]", j.img.Name)
+		} else if j.needsKeyless {
+			l.Debugf("certIdentityRegexp for image [%s]", j.certIdentityRegexp)
+			l.Debugf("certIdentity for image [%s]", j.certIdentity)
+			l.Debugf("certOidcIssuer for image [%s]", j.certOidcIssuer)
+			l.Debugf("certOidcIssuerRegexp for image [%s]", j.certOidcIssuerRegexp)
+			l.Debugf("certGithubWorkflowRepository for image [%s]", j.certGithubWorkflowRepository)
+
+			// Keyless (Fulcio) certs expire after ~10 min; tlog is always
+			// required to prove the cert was valid at signing time.
+			if err := cosign.VerifyKeylessSignature(ctx, j.certIdentity, j.certIdentityRegexp, j.certOidcIssuer, j.certOidcIssuerRegexp, j.certGithubWorkflowRepository, j.img.Name, rso, ro); err != nil {
+				l.Errorf("signature verification failed for image [%s]... skipping...\n%v", j.img.Name, err)
+				continue
+			}
+			l.Infof("keyless signature verified for image [%s]", j.img.Name)
+		}
+
+		out = append(out, j)
+	}
+
+	return out
+}
+
+// runImageJobs stores every job, local Docker daemon images first (serially),
+// then remote registry images (serially). The local-before-remote
+// partitioning is deliberate: a later refactor stage parallelizes only the
+// remote loop, so this grouping must stay in place even though this step
+// itself introduces no concurrency.
+func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+	var localJobs, remoteJobs []imageJob
+	for _, j := range jobs {
+		if j.local {
+			localJobs = append(localJobs, j)
+		} else {
+			remoteJobs = append(remoteJobs, j)
+		}
+	}
+
+	for _, j := range localJobs {
+		if err := storeLocalImage(ctx, s, j.img, rso, ro, j.rewrite); err != nil {
 			return err
 		}
 	}
-	return scanner.Err()
+
+	for _, j := range remoteJobs {
+		if err := storeImage(ctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
