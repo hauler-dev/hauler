@@ -139,7 +139,7 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
-	if err := l.writeBlobData(mdata); err != nil {
+	if err := l.writeBlobData(ctx, mdata); err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
@@ -149,7 +149,7 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
-	if err := l.writeBlobData(cdata); err != nil {
+	if err := l.writeBlobData(ctx, cdata); err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
@@ -159,11 +159,18 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
-	var g errgroup.Group
+	// errgroup.WithContext, not a zero-value errgroup.Group: Wait() on a
+	// zero-value group returns the first error but never cancels its
+	// siblings, so a failure partway through a many-layer image would let
+	// every other layer's download run to completion anyway. gctx is derived
+	// from ctx and is cancelled the moment any writeLayer call returns an
+	// error, which content.OCI.WriteBlob observes (via ctx.Err() and the
+	// wrapped reader) and uses to abort in-flight writes promptly.
+	g, gctx := errgroup.WithContext(ctx)
 	for _, lyr := range layers {
 		lyr := lyr
 		g.Go(func() error {
-			return l.writeLayer(lyr)
+			return l.writeLayer(gctx, lyr)
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -233,7 +240,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting index digest for %q: %w", ref, err)
 		}
-		if err := l.writeIndex(parsedRef, idx, consts.KindAnnotationIndex); err != nil {
+		if err := l.writeIndex(ctx, parsedRef, idx, consts.KindAnnotationIndex); err != nil {
 			return "", err
 		}
 	} else {
@@ -254,7 +261,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 		}
-		if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+		if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
 			return "", err
 		}
 	}
@@ -291,7 +298,7 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 	}
 
-	if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+	if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
 		return "", err
 	}
 	return d.String(), nil
@@ -325,15 +332,17 @@ func ensureDockerHost() error {
 
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's
 // blob directory. It does not add an entry to the OCI index.
-func (l *Layout) writeImageBlobs(img v1.Image) error {
+func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 	layers, err := img.Layers()
 	if err != nil {
 		return fmt.Errorf("getting layers: %w", err)
 	}
-	var g errgroup.Group
+	// See AddArtifact's identical errgroup.WithContext conversion for why this
+	// can't stay a zero-value errgroup.Group.
+	g, gctx := errgroup.WithContext(ctx)
 	for _, lyr := range layers {
 		lyr := lyr
-		g.Go(func() error { return l.writeLayer(lyr) })
+		g.Go(func() error { return l.writeLayer(gctx, lyr) })
 	}
 	if err := g.Wait(); err != nil {
 		return err
@@ -343,7 +352,7 @@ func (l *Layout) writeImageBlobs(img v1.Image) error {
 	if err != nil {
 		return fmt.Errorf("getting config: %w", err)
 	}
-	if err := l.writeBlobData(cfgData); err != nil {
+	if err := l.writeBlobData(ctx, cfgData); err != nil {
 		return fmt.Errorf("writing config blob: %w", err)
 	}
 
@@ -351,14 +360,14 @@ func (l *Layout) writeImageBlobs(img v1.Image) error {
 	if err != nil {
 		return fmt.Errorf("getting manifest: %w", err)
 	}
-	return l.writeBlobData(manifestData)
+	return l.writeBlobData(ctx, manifestData)
 }
 
 // writeImage writes all blobs for img and adds a descriptor entry to the OCI index with the
 // given annotationRef and kind. containerdName overrides the io.containerd.image.name annotation;
 // if empty it defaults to annotationRef.Name().
-func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
-	if err := l.writeImageBlobs(img); err != nil {
+func (l *Layout) writeImage(ctx context.Context, annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
+	if err := l.writeImageBlobs(ctx, img); err != nil {
 		return err
 	}
 
@@ -397,7 +406,7 @@ func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind st
 
 // writeIndexBlobs recursively writes all child image blobs for an image index to the store's blob
 // directory. It does not write the top-level index manifest or add index entries.
-func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
+func (l *Layout) writeIndexBlobs(ctx context.Context, idx v1.ImageIndex) error {
 	manifest, err := idx.IndexManifest()
 	if err != nil {
 		return fmt.Errorf("getting index manifest: %w", err)
@@ -406,14 +415,14 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 	for _, childDesc := range manifest.Manifests {
 		// Try as a nested index first, then fall back to a regular image.
 		if childIdx, err := idx.ImageIndex(childDesc.Digest); err == nil {
-			if err := l.writeIndexBlobs(childIdx); err != nil {
+			if err := l.writeIndexBlobs(ctx, childIdx); err != nil {
 				return err
 			}
 			raw, err := childIdx.RawManifest()
 			if err != nil {
 				return fmt.Errorf("getting nested index manifest: %w", err)
 			}
-			if err := l.writeBlobData(raw); err != nil {
+			if err := l.writeBlobData(ctx, raw); err != nil {
 				return err
 			}
 		} else {
@@ -421,7 +430,7 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 			if err != nil {
 				return fmt.Errorf("getting child image %v: %w", childDesc.Digest, err)
 			}
-			if err := l.writeImageBlobs(childImg); err != nil {
+			if err := l.writeImageBlobs(ctx, childImg); err != nil {
 				return err
 			}
 		}
@@ -431,8 +440,8 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 
 // writeIndex writes all blobs for an image index (including all child platform images) and adds
 // a descriptor entry to the OCI index with the given annotationRef and kind.
-func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
-	if err := l.writeIndexBlobs(idx); err != nil {
+func (l *Layout) writeIndex(ctx context.Context, annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
+	if err := l.writeIndexBlobs(ctx, idx); err != nil {
 		return err
 	}
 
@@ -440,7 +449,7 @@ func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, ki
 	if err != nil {
 		return fmt.Errorf("getting index manifest: %w", err)
 	}
-	if err := l.writeBlobData(raw); err != nil {
+	if err := l.writeBlobData(ctx, raw); err != nil {
 		return fmt.Errorf("writing index manifest blob: %w", err)
 	}
 
@@ -521,7 +530,7 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 		// Embed the referrer manifest digest in the kind annotation so that multiple
 		// referrers for the same base image each get a unique entry in the OCI index.
 		kind := consts.KindAnnotationReferrers + "/" + referrerDesc.Digest.Hex
-		if err := l.writeImage(ref, img, kind, ""); err != nil {
+		if err := l.writeImage(ctx, ref, img, kind, ""); err != nil {
 			return fmt.Errorf("saving OCI referrer %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
 		}
 		log.Debug().Msgf("saved OCI referrer %s (%s) for %s", referrerDesc.Digest, string(referrerDesc.ArtifactType), ref.Name())
@@ -558,7 +567,7 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, 
 			// Artifact doesn't exist at this registry; skip silently.
 			continue
 		}
-		if err := l.writeImage(ref, img, r.kind, ""); err != nil {
+		if err := l.writeImage(ctx, ref, img, r.kind, ""); err != nil {
 			return saved, fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
 		}
 		if d, err := img.Digest(); err == nil {
@@ -855,51 +864,32 @@ func (l *Layout) Identify(ctx context.Context, desc ocispec.Descriptor) string {
 	return m.Config.MediaType
 }
 
-func (l *Layout) writeBlobData(data []byte) error {
+func (l *Layout) writeBlobData(ctx context.Context, data []byte) error {
 	blob := static.NewLayer(data, "") // NOTE: MediaType isn't actually used in the writing
-	return l.writeLayer(blob)
+	return l.writeLayer(ctx, blob)
 }
 
-func (l *Layout) writeLayer(layer v1.Layer) error {
+// writeLayer writes a single layer's content to the store's blob directory.
+// Writes are atomic (temp file + rename), digest-verified, and deduplicated
+// across concurrent callers writing the same digest -- see
+// content.OCI.WriteBlob for the implementation.
+func (l *Layout) writeLayer(ctx context.Context, layer v1.Layer) error {
 	d, err := layer.Digest()
 	if err != nil {
 		return err
 	}
-
-	dir := filepath.Join(l.Root, ocispec.ImageBlobsDir, d.Algorithm)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
-		return err
-	}
-
-	blobPath := filepath.Join(dir, d.Hex)
-	// Skip entirely if something exists, assume layer is present already
-	if _, err := os.Stat(blobPath); err == nil {
-		return nil
-	}
-
-	r, err := layer.Compressed()
+	expected, err := digest.Parse(d.String())
 	if err != nil {
 		return err
 	}
-	defer r.Close()
-
-	w, err := os.Create(blobPath)
+	size, err := layer.Size()
 	if err != nil {
 		return err
 	}
 
-	_, copyErr := io.Copy(w, r)
-	if closeErr := w.Close(); closeErr != nil && copyErr == nil {
-		copyErr = closeErr
-	}
-
-	// Remove a partially-written or corrupt blob on any failure so retries
-	// can attempt a fresh download rather than skipping the file.
-	if copyErr != nil {
-		os.Remove(blobPath)
-	}
-
-	return copyErr
+	return l.OCI.WriteBlob(ctx, expected, size, func() (io.ReadCloser, error) {
+		return layer.Compressed()
+	})
 }
 
 // Remove artifact reference from the store

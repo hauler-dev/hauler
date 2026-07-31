@@ -116,7 +116,13 @@ const (
 	DefaultStoreInventoryName = "stores.json"
 	DefaultRetries            = 3
 	RetriesInterval           = 5
-	CustomTimeFormat          = "2006-01-02 15:04:05"
+	// DefaultBlobConcurrency bounds the number of blob writes (layer
+	// downloads, config/manifest writes) that may be in flight at once across
+	// the whole process, regardless of how many images or errgroups are
+	// fanning out concurrently. See content.OCI.WriteBlob and
+	// content.ociPusher.Push, the two call sites that acquire against it.
+	DefaultBlobConcurrency = 16
+	CustomTimeFormat       = "2006-01-02 15:04:05"
 )
 
 var FileExcludePattern = fmt.Sprintf(`^%s/[.\-_]`, DefaultNamespace)
