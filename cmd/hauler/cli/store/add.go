@@ -674,7 +674,21 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			}
 		}
 
-		values, err := commonutil.ToRenderValues(c, userValues, common.ReleaseOptions{Namespace: "hauler"}, caps)
+		// Reload a fresh chart for rendering so ProcessDependencies can safely
+		// rename aliased deps / drop disabled ones without mutating the chart
+		// used later by --add-dependencies.
+		renderChart, err := loader.Load(chrt.Path())
+		if err != nil {
+			return fmt.Errorf("failed to reload chart for image discovery: %w", err)
+		}
+
+		// Match helm install/template: coalesce parent values into subcharts
+		// (including dependency aliases) and honor conditions before rendering.
+		if err := util.ProcessDependencies(renderChart, userValues); err != nil {
+			return fmt.Errorf("failed to process chart dependencies for image discovery: %w", err)
+		}
+
+		values, err := commonutil.ToRenderValues(renderChart, userValues, common.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {
 			return err
 		}
@@ -699,7 +713,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		)
 
 		// parse helm chart templates and values for images
-		rendered, err := engine.Render(c, values)
+		rendered, err := engine.Render(renderChart, values)
 		if err != nil {
 			// charts may fail due to values so still try helm chart annotations and lock
 			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
@@ -785,7 +799,10 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 
 			depOpts := *opts
 			depOpts.AddDependencies = true
-			depOpts.AddImages = true
+			// Do not rediscover images on dependency charts in isolation.
+			// Parent --add-images already renders the full tree (with alias
+			// overrides and conditions) after ProcessDependencies.
+			depOpts.AddImages = false
 			subCtx := context.WithValue(ctx, isSubchartKey{}, true)
 
 			var depCfg v1.Chart
