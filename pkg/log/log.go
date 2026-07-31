@@ -3,7 +3,6 @@ package log
 import (
 	"context"
 	"io"
-	"os"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -33,7 +32,26 @@ type Fields map[string]string
 // NewLogger returns a new Logger
 func NewLogger(out io.Writer) Logger {
 	zerolog.TimeFieldFormat = consts.CustomTimeFormat
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: consts.CustomTimeFormat}
+	// out is bound once, here, and captured in the ConsoleWriter's closure --
+	// this logger writes to whatever out pointed to at construction time, not
+	// to whatever os.Stdout/os.Stderr currently point to. That's deliberate:
+	// it's why log.CaptureOutput (which swaps the process-global os.Stdout/
+	// os.Stderr during cosign verification) never captures hauler's own log
+	// lines -- a logger built earlier keeps writing to its original writer.
+	// Do not "fix" this into a re-resolving writer.
+	// NoColor is decided from the real os.Stdout, not from out -- this
+	// intentionally matches how ShouldShowProgress already works: when
+	// runImageJobs builds log.NewLogger(progress) for the live-region path,
+	// progress wraps the real os.Stdout, and ShouldShowProgress has already
+	// confirmed that's a real, non-dumb terminal before that path is ever
+	// reached. Do not "fix" this into checking out instead of os.Stdout --
+	// out is frequently a *bytes.Buffer (tests) or a Renderer wrapper, and
+	// neither is itself a terminal, so isatty on out would always say no.
+	output := zerolog.ConsoleWriter{
+		Out:        zerolog.SyncWriter(out),
+		TimeFormat: consts.CustomTimeFormat,
+		NoColor:    !ShouldUseColor(),
+	}
 	l := log.Output(output)
 	return &logger{
 		zl: l.With().Timestamp().Logger(),
