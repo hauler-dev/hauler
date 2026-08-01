@@ -65,6 +65,47 @@ func (b *safeBuffer) String() string {
 	return b.buf.String()
 }
 
+// TestAlignmentPrefix_DottedGuidePattern verifies that the alignment prefix
+// uses a subtle alternating dot-space pattern, has the correct width, is
+// ASCII-only, and is precomputed (not dynamically allocated per frame).
+func TestAlignmentPrefix_DottedGuidePattern(t *testing.T) {
+	// Verify correct width
+	if got, want := len(alignmentPrefix), wantAlignmentWidth(); got != want {
+		t.Errorf("alignmentPrefix width = %d, want %d", got, want)
+	}
+
+	// Verify alternating dot-space pattern
+	for i := 0; i < len(alignmentPrefix); i++ {
+		want := byte('.')
+		if i%2 == 1 {
+			want = byte(' ')
+		}
+		if got := alignmentPrefix[i]; got != want {
+			t.Errorf("alignmentPrefix[%d] = %q, want %q", i, got, want)
+		}
+	}
+
+	// Verify ASCII-only (all bytes < 128)
+	for i := 0; i < len(alignmentPrefix); i++ {
+		if alignmentPrefix[i] >= 128 {
+			t.Errorf("alignmentPrefix[%d] = %d (non-ASCII), want < 128", i, alignmentPrefix[i])
+		}
+	}
+
+	// Verify the pattern is visually distinct from blank spaces
+	if alignmentPrefix == strings.Repeat(" ", len(alignmentPrefix)) {
+		t.Errorf("alignmentPrefix should not be all spaces (defeats visual guide purpose)")
+	}
+
+	// Document the expected pattern for 24-character width (current default)
+	if wantAlignmentWidth() == 24 {
+		const want = ". . . . . . . . . . . . "
+		if alignmentPrefix != want {
+			t.Errorf("alignmentPrefix = %q, want %q", alignmentPrefix, want)
+		}
+	}
+}
+
 // TestRenderer_MultipleBegan_ProducesDistinctRows proves that each
 // concurrent in-flight job gets its own row, in insertion order.
 func TestRenderer_MultipleBegan_ProducesDistinctRows(t *testing.T) {
@@ -257,8 +298,11 @@ func TestRenderer_TruncatesLongRefToWidth(t *testing.T) {
 	if !strings.HasSuffix(row, "…") {
 		t.Errorf("expected truncated row to end with an ellipsis, got %q", row)
 	}
-	if got, want := len(row)-len(strings.TrimLeft(row, " ")), wantAlignmentWidth(); got != want {
-		t.Errorf("row has %d leading alignment spaces, want %d (matching the log line prefix width): %q", got, want, row)
+	if !strings.HasPrefix(row, alignmentPrefix) {
+		t.Errorf("row doesn't start with alignment guide of width %d, got %q", wantAlignmentWidth(), row)
+	}
+	if len(alignmentPrefix) != wantAlignmentWidth() {
+		t.Errorf("alignment guide has width %d, want %d", len(alignmentPrefix), wantAlignmentWidth())
 	}
 
 	const prefix = " adding "
@@ -306,8 +350,11 @@ func TestRenderer_TruncatesRealWorldLongRefAtDefaultWidth(t *testing.T) {
 	if strings.Contains(row, "\x1b[") {
 		t.Errorf("expected the row itself to carry no escape codes, got %q", row)
 	}
-	if got, want := len(row)-len(strings.TrimLeft(row, " ")), wantAlignmentWidth(); got != want {
-		t.Errorf("row has %d leading alignment spaces, want %d (matching the log line prefix width): %q", got, want, row)
+	if !strings.HasPrefix(row, alignmentPrefix) {
+		t.Errorf("row doesn't start with alignment guide of width %d, got %q", wantAlignmentWidth(), row)
+	}
+	if len(alignmentPrefix) != wantAlignmentWidth() {
+		t.Errorf("alignment guide has width %d, want %d", len(alignmentPrefix), wantAlignmentWidth())
 	}
 
 	truncated := strings.HasSuffix(row, "…")

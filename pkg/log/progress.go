@@ -264,8 +264,24 @@ const levelWidth = 3
 // if CustomTimeFormat's layout ever changes width, this must move with it.
 var alignmentWidth = len(consts.CustomTimeFormat) + 1 + levelWidth + 1
 
-// alignmentPrefix is alignmentWidth worth of spaces, precomputed once.
-var alignmentPrefix = strings.Repeat(" ", alignmentWidth)
+// alignmentPrefix is alignmentWidth worth of a subtle dotted guide pattern
+// (alternating dot-space: ". . . . . ."), precomputed once at package init.
+// The pattern provides a visual alignment guide while preserving exact width
+// and introducing zero per-frame allocation cost.
+var alignmentPrefix = buildAlignmentPrefix()
+
+func buildAlignmentPrefix() string {
+	var b strings.Builder
+	b.Grow(alignmentWidth)
+	for i := 0; i < alignmentWidth; i++ {
+		if i%2 == 0 {
+			b.WriteByte('.')
+		} else {
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
+}
 
 // formatRowLocked renders "<alignmentPrefix><frame> adding <ref>",
 // truncating ref (never the fixed prefix) with a trailing ellipsis so the
