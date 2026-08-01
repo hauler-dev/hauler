@@ -253,7 +253,7 @@ const ellipsis = "…"
 // fixed "<frame> adding " prefix) with a trailing ellipsis so the row fits
 // within r.width. Callers must hold mu.
 func (r *Renderer) formatRowLocked(frame, ref string) string {
-	prefix := frame + " adding "
+	prefix := "........................" + frame + " adding "
 
 	budget := r.width - len(prefix)
 	if budget < 1 {
