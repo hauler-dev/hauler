@@ -40,6 +40,20 @@ import (
 func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
+	// content.OCI's per-artifact index.json write only fsyncs once per
+	// indexCheckpointInterval (30s); the rest land in page cache. A single
+	// `store add file` invocation can therefore return success without its
+	// index entry actually being durable -- e.g. if a previous add against
+	// this same store checkpointed recently enough that this run's write
+	// falls inside the window. Force one full fsync at the end so every
+	// `store add` subcommand leaves the store durable regardless of
+	// internal timing, matching SyncCmd's identical trailing SaveIndex().
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding file: %v", err)
+		}
+	}()
+
 	cfg := v1.File{
 		Path: reference,
 	}
@@ -154,6 +168,22 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 
 func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, reference string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
+
+	// AddImage's per-artifact AddIndex calls (base image, then one per
+	// discovered cosign signature/attestation/SBOM/referrer) all funnel
+	// through content.OCI's 30-second durable checkpoint: only the very
+	// first call of a fresh store gets fsync'd "for free" (lastDurableSave
+	// starts at its zero value), every call after that -- including the
+	// final one reflecting the complete set of discovered artifacts -- may
+	// land only in page cache. Force one full fsync at the end so `store
+	// add image` always ends durable, matching SyncCmd's identical
+	// trailing SaveIndex(). Blobs are unaffected by this gap:
+	// writeBlobOnce always fsyncs; only index.json entries are at risk.
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding image: %v", err)
+		}
+	}()
 
 	cfg := v1.Image{
 		Name:                         reference,
@@ -487,6 +517,21 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
+	// storeChart already calls SaveIndex() durably at every point it adds a
+	// chart descriptor (including for add-images/add-dependencies), so this
+	// is redundant on the happy path today. It is added anyway to make the
+	// invariant uniform across every `store add` subcommand -- always ends
+	// durable -- regardless of which internal path a future change to
+	// storeChart takes. Cheap: SaveIndex() on an unmodified index is a
+	// no-op-sized write.
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding chart: %v", err)
+		}
+	}()
+
 	cfg := v1.Chart{
 		Name:    chartName,
 		RepoURL: o.ChartOpts.RepoURL,

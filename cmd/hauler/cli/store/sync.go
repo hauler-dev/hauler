@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/google/go-containerregistry/pkg/authn"
 	gname "github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
@@ -100,6 +102,23 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		}
 		return nil
 	}
+
+	// Everything below runs with a real store; the dry-run branch above
+	// returned with s == nil.
+	//
+	// One durable checkpoint at the end of the run, because the
+	// per-artifact path only fsyncs on indexCheckpointInterval. Deferred so
+	// it also runs on error paths, where a partially-populated index is
+	// still worth persisting. This does NOT run on Ctrl-C -- the CLI
+	// installs no signal handler, so deferred functions are skipped -- which
+	// is acceptable: process death does not lose page cache, so the index
+	// still reaches disk.
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index at end of sync: %v", err)
+		}
+		l.Debugf("%s", formatIOStats(s.OCI.Stats().Snapshot(), s.OCI.BlobConcurrency()))
+	}()
 
 	tempOverride := rso.TempOverride
 
@@ -469,6 +488,48 @@ func newSyncProgress(o *flags.SyncOpts, ro *flags.CliRootOpts) *log.Renderer {
 		return nil
 	}
 	return log.NewRenderer(os.Stdout)
+}
+
+// formatIOStats renders one line summarizing a sync's disk contention.
+// ceiling is the store's configured blob-write limit, so peak-inflight
+// reads as a fraction of what was permitted rather than a bare number.
+//
+// It is a standalone function rather than inline formatting so the output
+// is unit-testable from a literal snapshot -- the same reason
+// formatAddedLine exists in add.go.
+//
+// Two things about these numbers are easy to misread:
+//
+//  1. blobs/written/cached/bytes only cover the WriteBlob path (the path
+//     store.AddImage and friends use to populate this store from a
+//     source). A registry push through ociPusher.Push -- e.g.
+//     `store copy registry://` -- contends on the same blob semaphore and
+//     so contributes to peak-inflight (and blobsem-wait), but never calls
+//     WriteBlob, so it never increments blobs/written/cached/bytes. On a
+//     store-to-store copy this line can legitimately read
+//     `blobs=0 written=0 cached=0 bytes=0B peak-inflight=5/20`, which
+//     looks self-contradictory but isn't: the semaphore fields cover both
+//     paths, the blob-count/byte fields cover WriteBlob only.
+//  2. blobsem-wait sums wait time across every goroutine that touched the
+//     semaphore, not wall-clock time. On a run with real concurrency it can
+//     legitimately exceed the command's total runtime -- e.g.
+//     `blobsem-wait=42s` on a 10s run is 4-5 goroutines each queued for
+//     several seconds, added together, not a bug.
+func formatIOStats(st content.IOStatsSnapshot, ceiling int) string {
+	return fmt.Sprintf(
+		"io stats: blobs=%d written=%d cached=%d bytes=%s peak-inflight=%d/%d blobsem-wait=%s index-writes=%d durable=%d index-bytes=%s index-lock-wait=%s",
+		st.BlobsWritten+st.BlobsCached,
+		st.BlobsWritten,
+		st.BlobsCached,
+		humanize.Bytes(uint64(st.BlobBytesWritten)),
+		st.BlobPeakInFlight,
+		ceiling,
+		st.BlobSemWait.Round(time.Millisecond),
+		st.IndexWrites,
+		st.IndexDurableWrites,
+		humanize.Bytes(uint64(st.IndexBytesWritten)),
+		st.IndexLockWait.Round(time.Millisecond),
+	)
 }
 
 // imageJob is the fully-resolved set of inputs needed to verify (if
