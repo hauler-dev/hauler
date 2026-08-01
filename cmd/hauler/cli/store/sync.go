@@ -342,9 +342,6 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := runImageJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
 				}
-				if _, err := s.CopyAll(ctx, s.OCI, nil); err != nil {
-					l.Warnf("failed to copy all content to registries/directories: %v", err)
-				}
 
 			default:
 				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
