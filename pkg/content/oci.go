@@ -10,10 +10,13 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"golang.org/x/sync/semaphore"
@@ -30,6 +33,33 @@ import (
 )
 
 var _ Target = (*OCI)(nil)
+
+// indexCheckpointInterval is the minimum wall-clock gap between fsync'd
+// index.json saves on the per-artifact path. index.json is rewritten in
+// full on every AddIndex, so fsyncing each one forces 403*N^2/2 bytes to
+// disk (~5 GB for a 5,000-artifact sync) with every barrier held under
+// o.mu, blocking all sync workers.
+//
+// Without the fsync those rewrites largely never reach disk at all: each
+// save renames a fresh temp inode over index.json, and the unlinked
+// predecessor's dirty pages are discarded if writeback has not run yet.
+//
+// The interval exists rather than dropping fsync outright so worst-case
+// exposure is a known wall-clock window independent of filesystem and
+// mount options, instead of depending on kernel writeback tuning. What is
+// given up is protection against power loss or kernel panic mid-sync --
+// not process death, which leaves page cache intact. A sync interrupted
+// that way must be re-run regardless, and a re-run rebuilds the index
+// completely, since sync never consults index.json to skip work.
+//
+// Residual risk: on ext4 mounted data=writeback, or an exotic filesystem
+// with delayed allocation and no rename heuristic, a power loss could leave
+// index.json zero-filled rather than reverted to its last durable state. It
+// fails loudly -- loadIndexLocked JSON-decodes it and errors out -- but
+// recovery is ugly, since NewLayout won't start until an operator deletes
+// the file and re-syncs the store. The interval bounds how often this can
+// happen, not whether it can happen at all.
+const indexCheckpointInterval = 30 * time.Second
 
 // ErrDigestMismatch is returned by WriteBlob (and wrapped with details) when
 // the content actually streamed from open() does not hash to the expected
@@ -75,6 +105,15 @@ type OCI struct {
 	// promptly on context cancellation instead of leaving a goroutine parked.
 	blobSem *semaphore.Weighted
 
+	// blobConcurrency is the ceiling blobSem was built with, retained purely
+	// so reporting can render "peak-inflight=N/ceiling". semaphore.Weighted
+	// does not expose its own capacity.
+	blobConcurrency int
+
+	// stats accumulates disk-contention counters for this store. See
+	// stats.go.
+	stats IOStats
+
 	// mu guards index, index.json on disk, and the annotation maps of
 	// descriptors reachable from nameMap. It is a plain sync.Mutex, not an
 	// RWMutex: LoadIndex always writes both o.index and o.nameMap, so there is
@@ -87,6 +126,25 @@ type OCI struct {
 	// calling Lock() twice, which would deadlock even without Walk's
 	// self-referential-callback hazard (see Walk's doc comment).
 	mu sync.Mutex
+
+	// lastDurableSave is when the index was last fsync'd, guarded by mu.
+	// The zero value makes the first save of a run durable, which gives an
+	// early checkpoint for free.
+	lastDurableSave time.Time
+
+	// now is time.Now, replaced in tests so checkpoint-interval behavior
+	// can be exercised without sleeping.
+	now func() time.Time
+}
+
+// lock acquires o.mu, recording time spent blocked into IOStats. Every
+// caller that would otherwise write o.mu.Lock() uses this instead, so
+// index-serialization cost is measured in exactly one place rather than at
+// ten call sites. Unlock is not wrapped -- it never blocks.
+func (o *OCI) lock() {
+	start := time.Now()
+	o.mu.Lock()
+	o.stats.IndexLockWaitNanos.Add(int64(time.Since(start)))
 }
 
 // OCIOption configures an OCI store at construction time.
@@ -99,20 +157,35 @@ func WithBlobConcurrency(n int) OCIOption {
 	return func(o *OCI) {
 		if n > 0 {
 			o.blobSem = semaphore.NewWeighted(int64(n))
+			o.blobConcurrency = n
 		}
 	}
 }
 
 func NewOCI(root string, opts ...OCIOption) (*OCI, error) {
 	o := &OCI{
-		root:    root,
-		nameMap: &sync.Map{},
-		blobSem: semaphore.NewWeighted(consts.DefaultBlobConcurrency),
+		root:            root,
+		nameMap:         &sync.Map{},
+		blobSem:         semaphore.NewWeighted(consts.DefaultBlobConcurrency),
+		blobConcurrency: consts.DefaultBlobConcurrency,
+		now:             time.Now,
 	}
 	for _, opt := range opts {
 		opt(o)
 	}
 	return o, nil
+}
+
+// Stats returns this store's I/O contention counters. The returned pointer
+// is live -- counters keep incrementing as work proceeds. Call Snapshot on
+// it to take a stable reading.
+func (o *OCI) Stats() *IOStats {
+	return &o.stats
+}
+
+// BlobConcurrency returns the ceiling blobSem was constructed with.
+func (o *OCI) BlobConcurrency() int {
+	return o.blobConcurrency
 }
 
 // AddIndex adds a descriptor to the index and updates it
@@ -144,16 +217,18 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 		return nil
 	}
 
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
 
 	// Cheap win: skip the nameMap.Store + saveIndexLocked write entirely when
 	// the stored descriptor is already byte-identical to desc. Per-artifact
-	// SaveIndex writes are intentionally not batched/coalesced across an
+	// index.json rewrites are intentionally not batched/coalesced across an
 	// entire sync (O(N^2) total bytes written as the index grows -- this
-	// starts to matter around ~10k artifacts) because per-artifact writes
-	// preserve crash resumability on slow air-gap links: a coalescing writer
-	// is future work, not part of this change.
+	// starts to matter around ~10k artifacts): the write itself still happens
+	// on every AddIndex, only the fsync is now coalesced by
+	// saveIndexCheckpointLocked (see indexCheckpointInterval). A coalescing
+	// writer that batches the writes themselves is future work, not part of
+	// this change.
 	if existing, ok := o.nameMap.Load(mapKey); ok {
 		if descriptorsEqual(existing.(ocispec.Descriptor), desc) {
 			return nil
@@ -161,7 +236,7 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 	}
 
 	o.nameMap.Store(mapKey, desc)
-	return o.saveIndexLocked()
+	return o.saveIndexCheckpointLocked()
 }
 
 // descriptorsEqual reports whether two descriptors are equal in every field
@@ -199,7 +274,7 @@ func descriptorsEqual(a, b ocispec.Descriptor) bool {
 
 // LoadIndex will load the index from disk.
 func (o *OCI) LoadIndex() error {
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
 	return o.loadIndexLocked()
 }
@@ -263,9 +338,9 @@ func (o *OCI) loadIndexLocked() error {
 
 // SaveIndex will update the index on disk.
 func (o *OCI) SaveIndex() error {
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
-	return o.saveIndexLocked()
+	return o.saveIndexLocked(true)
 }
 
 // saveIndexLocked is SaveIndex's implementation. Callers must hold o.mu.
@@ -278,7 +353,13 @@ func (o *OCI) SaveIndex() error {
 // against the same store share no in-process mutex and must never collide
 // on the same temp path. This mirrors the pattern already used by
 // writeBlobOnce in this file.
-func (o *OCI) saveIndexLocked() error {
+//
+// durable controls both the temp file's fsync and, after the rename, a
+// fsync of the containing directory (see syncDir). When durable is false,
+// the write is still atomic (rename-based) but may not survive power loss
+// or a kernel panic until a later durable save catches up -- see
+// indexCheckpointInterval for the tradeoff this exists to make.
+func (o *OCI) saveIndexLocked(durable bool) error {
 	var descs []ocispec.Descriptor
 	o.nameMap.Range(func(name, desc interface{}) bool {
 		n := desc.(ocispec.Descriptor).Annotations[ocispec.AnnotationRefName]
@@ -336,14 +417,77 @@ func (o *OCI) saveIndexLocked() error {
 		tmp.Close()
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
+	if durable {
+		if err := tmp.Sync(); err != nil {
+			tmp.Close()
+			return err
+		}
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, indexPath)
+	if err := os.Rename(tmpPath, indexPath); err != nil {
+		return err
+	}
+	// Track the rename unconditionally: it succeeded, so the new index is on
+	// disk regardless of whether the durable branch below (which can still
+	// fail on syncDir) completes. IndexDurableWrites stays inside the
+	// durable branch deliberately -- it must count only fsyncs that actually
+	// completed.
+	o.stats.IndexWrites.Add(1)
+	o.stats.IndexBytesWritten.Add(int64(len(data)))
+	if durable {
+		if err := syncDir(dir); err != nil {
+			return err
+		}
+		o.lastDurableSave = o.now()
+		o.stats.IndexDurableWrites.Add(1)
+	}
+	return nil
+}
+
+// saveIndexCheckpointLocked saves the index, fsync'ing only when at least
+// indexCheckpointInterval has elapsed since the last durable save. Used by
+// the per-artifact callers (AddIndex, ociPusher.Push); callers that are
+// explicit checkpoints call saveIndexLocked(true) directly. Callers must
+// hold o.mu.
+func (o *OCI) saveIndexCheckpointLocked() error {
+	return o.saveIndexLocked(o.now().Sub(o.lastDurableSave) >= indexCheckpointInterval)
+}
+
+// syncDir fsyncs a directory so that a rename into it survives power loss.
+// Fsyncing the renamed file alone guarantees its contents but not the
+// directory entry pointing at them -- containerd's local content store does
+// the same thing via syncDir after its own blob rename.
+//
+// Windows cannot open a directory as a file, and has no equivalent
+// operation, so this is a no-op there.
+//
+// EINVAL and ENOTSUP from Sync are tolerated rather than returned: some NFS
+// and SMB mounts (a store's root frequently lives on network storage in an
+// air-gap deployment) don't support directory fsync at all and return one of
+// these two errnos for it. No directory fsync existed before this task, so
+// treating either as fatal would turn a previously working `store add`/
+// `store sync` on those mounts into a hard failure over a guarantee they
+// never had to begin with. Every other error (e.g. the directory having been
+// removed, or a real I/O error) is still fatal -- those indicate an actual
+// problem, not just an absent capability.
+func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	if err := d.Sync(); err != nil {
+		d.Close()
+		if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTSUP) {
+			return nil
+		}
+		return err
+	}
+	return d.Close()
 }
 
 // Resolve attempts to resolve the reference into a name and descriptor.
@@ -358,7 +502,7 @@ func (o *OCI) saveIndexLocked() error {
 //
 // If the resolution fails, an error will be returned.
 func (o *OCI) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error) {
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
 
 	if err := o.loadIndexLocked(); err != nil {
@@ -376,7 +520,7 @@ func (o *OCI) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, erro
 // All content fetched from the returned fetcher will be
 // from the namespace referred to by ref.
 func (o *OCI) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
 
 	if err := o.loadIndexLocked(); err != nil {
@@ -414,7 +558,7 @@ func (o *OCI) FetchManifest(ctx context.Context, manifest ocispec.Manifest) (io.
 // The returned Pusher should satisfy content.Ingester and concurrent attempts
 // to push the same blob using the Ingester API should result in ErrUnavailable.
 func (o *OCI) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
 
 	if err := o.loadIndexLocked(); err != nil {
@@ -459,7 +603,7 @@ func (o *OCI) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 // corrupting -- the map object shared with nameMap. Callers that need to
 // persist an annotation change must use UpdateAnnotations instead.
 func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) error {
-	o.mu.Lock()
+	o.lock()
 	if err := o.loadIndexLocked(); err != nil {
 		o.mu.Unlock()
 		return err
@@ -588,9 +732,11 @@ func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64,
 	if info, err := os.Stat(blobPath); err == nil {
 		if size > 0 {
 			if info.Size() == size {
+				o.stats.BlobsCached.Add(1)
 				return nil
 			}
 		} else if info.Size() > 0 {
+			o.stats.BlobsCached.Add(1)
 			return nil
 		}
 	}
@@ -620,10 +766,16 @@ func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expecte
 		// Do() to return must not hold a permit for the duration of someone
 		// else's write -- only the one goroutine actually about to stream
 		// bytes should count against the bound.
+		start := time.Now()
 		if err := o.blobSem.Acquire(ctx, 1); err != nil {
 			return nil, err
 		}
-		defer o.blobSem.Release(1)
+		o.stats.addSemWait(time.Since(start))
+		o.stats.enterBlob()
+		defer func() {
+			o.stats.exitBlob()
+			o.blobSem.Release(1)
+		}()
 		return nil, o.writeBlobOnce(ctx, dir, blobPath, expected, size, open)
 	})
 	return err
@@ -638,9 +790,11 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 	// completed) may have written this blob while we were waiting to start.
 	if info, statErr := os.Stat(blobPath); statErr == nil {
 		if size > 0 && info.Size() == size {
+			o.stats.BlobsCached.Add(1)
 			return nil
 		}
 		if size <= 0 && info.Size() > 0 {
+			o.stats.BlobsCached.Add(1)
 			return nil
 		}
 	}
@@ -710,7 +864,12 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 	// os.Rename silently replaces an existing target, which is correct here:
 	// the content is digest-identical to whatever else could already be at
 	// blobPath.
-	return os.Rename(tmpPath, blobPath)
+	if err := os.Rename(tmpPath, blobPath); err != nil {
+		return err
+	}
+	o.stats.BlobsWritten.Add(1)
+	o.stats.BlobBytesWritten.Add(n)
+	return nil
 }
 
 // path and IndexExists are intentionally lock-free -- see Fetch's doc
@@ -747,7 +906,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 			// discarding it. Call the Locked variants directly: calling the
 			// exported LoadIndex/SaveIndex here would deadlock on this same
 			// lock.
-			p.oci.mu.Lock()
+			p.oci.lock()
 			if err := p.oci.loadIndexLocked(); err != nil {
 				p.oci.mu.Unlock()
 				return nil, err
@@ -766,7 +925,7 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 			d.Annotations = normalizedAnnotations
 			key := fmt.Sprintf("%s-%s", p.ref, kind)
 			p.oci.nameMap.Store(key, d)
-			err := p.oci.saveIndexLocked()
+			err := p.oci.saveIndexCheckpointLocked()
 			p.oci.mu.Unlock()
 			if err != nil {
 				return nil, err
@@ -793,16 +952,23 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 	// into the returned writer over an arbitrary number of separate Write
 	// calls. Acquire is ctx-aware, so a caller that gives up while queued
 	// behind the bound gets ctx.Err() back instead of blocking forever.
+	start := time.Now()
 	if err := p.oci.blobSem.Acquire(ctx, 1); err != nil {
 		return nil, err
 	}
+	p.oci.stats.addSemWait(time.Since(start))
+	p.oci.stats.enterBlob()
 
 	w, err := newOCIBlobWriter(filepath.Dir(blobPath), blobPath, d.Digest.String())
 	if err != nil {
+		p.oci.stats.exitBlob()
 		p.oci.blobSem.Release(1)
 		return nil, err
 	}
-	w.releaseSem = func() { p.oci.blobSem.Release(1) }
+	w.releaseSem = func() {
+		p.oci.stats.exitBlob()
+		p.oci.blobSem.Release(1)
+	}
 	return w, nil
 }
 
@@ -911,7 +1077,7 @@ func (w *ociBlobWriter) Truncate(size int64) error {
 // to disk. Matches the pre-existing behavior: callers (e.g.
 // store.Layout.RemoveArtifact) call SaveIndex separately afterward.
 func (o *OCI) RemoveFromIndex(ref string) {
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
 	o.nameMap.Delete(ref)
 }
@@ -928,7 +1094,7 @@ func (o *OCI) RemoveFromIndex(ref string) {
 // call's load and its save. When nothing matches, the index is not
 // re-saved: a no-op UpdateAnnotations call must not touch index.json.
 func (o *OCI) UpdateAnnotations(match func(ocispec.Descriptor) bool, apply func(map[string]string)) (int, error) {
-	o.mu.Lock()
+	o.lock()
 	defer o.mu.Unlock()
 
 	if err := o.loadIndexLocked(); err != nil {
@@ -953,7 +1119,7 @@ func (o *OCI) UpdateAnnotations(match func(ocispec.Descriptor) bool, apply func(
 	if matched == 0 {
 		return 0, nil
 	}
-	return matched, o.saveIndexLocked()
+	return matched, o.saveIndexLocked(true)
 }
 
 // ResolvePath returns the absolute path for a given relative path within the OCI root
