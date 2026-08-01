@@ -38,12 +38,17 @@ import (
 )
 
 func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, reference string, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
 	cfg := v1.File{
 		Path: reference,
 	}
 	if len(o.Name) > 0 {
 		cfg.Name = o.Name
 	}
+
+	l.Infof("adding file [%s] to the store", reference)
+
 	return storeFile(ctx, s, cfg, ro, o.StoreRootOpts)
 }
 
@@ -172,6 +177,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		if o.Platform != "" {
 			l.Warnf("--platform is ignored when --local is set: the Docker daemon stores only the host platform image")
 		}
+		l.Infof("adding image [%s] from local Docker daemon to the store", cfg.Name)
 		return storeLocalImage(ctx, s, cfg, rso, ro, o.Rewrite)
 	}
 
@@ -195,6 +201,8 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		}
 		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
+
+	l.Infof("adding image [%s] to the store", cfg.Name)
 
 	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
 }
