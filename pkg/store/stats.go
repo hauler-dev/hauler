@@ -8,17 +8,12 @@ import (
 // ImageStats accumulates layer count and total blob bytes written while
 // adding a single image, for cosmetic completion-line reporting in the CLI.
 //
-// Fields are accumulated with sync/atomic, not plain +=, even though
-// today's call graph gives exactly one writer per ImageStats pointer:
-// writeImageBlobs computes layer count/size before spawning its per-layer
-// errgroup, and writeIndexBlobs iterates an index's child images
-// sequentially. That single-writer property is an artifact of
-// writeIndexBlobs's loop being sequential today, NOT a structural
-// guarantee -- parallelizing that child loop is already a planned next
-// step (documented as "trivially safe" once a global semaphore exists,
-// which it now does). It is only trivially safe for the blob-writing path;
-// it is NOT safe for this pointer under plain arithmetic. Do not simplify
-// these back to plain +=/int fields.
+// Fields use sync/atomic rather than plain +=: today's call graph gives
+// exactly one writer per pointer (writeImageBlobs computes size before its
+// per-layer errgroup; writeIndexBlobs iterates children sequentially), but
+// that single-writer property is an artifact of writeIndexBlobs's loop
+// being sequential today, not a structural guarantee -- parallelizing it is
+// a planned next step now that a global blob-write semaphore exists.
 type ImageStats struct {
 	Layers atomic.Int64
 	Bytes  atomic.Int64

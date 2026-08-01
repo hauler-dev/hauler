@@ -34,31 +34,11 @@ import (
 
 var _ Target = (*OCI)(nil)
 
-// indexCheckpointInterval is the minimum wall-clock gap between fsync'd
-// index.json saves on the per-artifact path. index.json is rewritten in
-// full on every AddIndex, so fsyncing each one forces 403*N^2/2 bytes to
-// disk (~5 GB for a 5,000-artifact sync) with every barrier held under
-// o.mu, blocking all sync workers.
-//
-// Without the fsync those rewrites largely never reach disk at all: each
-// save renames a fresh temp inode over index.json, and the unlinked
-// predecessor's dirty pages are discarded if writeback has not run yet.
-//
-// The interval exists rather than dropping fsync outright so worst-case
-// exposure is a known wall-clock window independent of filesystem and
-// mount options, instead of depending on kernel writeback tuning. What is
-// given up is protection against power loss or kernel panic mid-sync --
-// not process death, which leaves page cache intact. A sync interrupted
-// that way must be re-run regardless, and a re-run rebuilds the index
-// completely, since sync never consults index.json to skip work.
-//
-// Residual risk: on ext4 mounted data=writeback, or an exotic filesystem
-// with delayed allocation and no rename heuristic, a power loss could leave
-// index.json zero-filled rather than reverted to its last durable state. It
-// fails loudly -- loadIndexLocked JSON-decodes it and errors out -- but
-// recovery is ugly, since NewLayout won't start until an operator deletes
-// the file and re-syncs the store. The interval bounds how often this can
-// happen, not whether it can happen at all.
+// indexCheckpointInterval bounds fsync frequency on the per-artifact save
+// path: index.json is rewritten in full on every AddIndex, so fsyncing each
+// one costs O(N^2) bytes across a sync (~5 GB for 5,000 artifacts) while
+// holding o.mu. Coalescing trades a bounded power-loss/panic exposure window
+// for that cost -- an interrupted sync is simply re-run.
 const indexCheckpointInterval = 30 * time.Second
 
 // ErrDigestMismatch is returned by WriteBlob (and wrapped with details) when
@@ -67,14 +47,10 @@ const indexCheckpointInterval = 30 * time.Second
 // error, so a fresh WriteBlob call will re-download cleanly.
 var ErrDigestMismatch = errors.New("content: digest mismatch")
 
-// ctxReader wraps an io.Reader so that Read starts returning ctx.Err() once
-// ctx is done, instead of delegating to the underlying reader. This is what
-// makes an in-flight WriteBlob copy (io.Copy driven, chunk by chunk) actually
-// stop when its context is cancelled, rather than running to completion and
-// only then being noticed. Checking before each delegated Read -- not via a
-// second goroutine racing the real Read -- keeps this allocation-free and
-// correct for readers with no cancellation hook of their own (v1.Layer's
-// Compressed(), which this package doesn't control).
+// ctxReader wraps an io.Reader so Read returns ctx.Err() once ctx is done,
+// instead of delegating. This makes an in-flight WriteBlob copy abort on
+// cancellation, since the underlying reader (v1.Layer's Compressed(), which
+// this package doesn't control) has no cancellation hook of its own.
 type ctxReader struct {
 	ctx context.Context
 	r   io.Reader
@@ -93,38 +69,26 @@ type OCI struct {
 	nameMap *sync.Map // map[string]ocispec.Descriptor
 	sf      singleflight.Group
 
-	// blobSem bounds the number of blob writes in flight at once across this
-	// OCI's two write paths, WriteBlob and ociPusher.Push -- a hard, process
-	// -wide ceiling regardless of how many images or errgroups are fanning
-	// out concurrently above it. It lives here (rather than on store.Layout,
-	// which embeds *OCI) so both write paths share it without either one
-	// having to reach into the other's state, and so it is naturally scoped
-	// per-store the same way sf already is: two Layouts in one process (every
-	// test file) never share permits across roots. Acquired with
-	// sem.Acquire(ctx, 1), which -- unlike errgroup.SetLimit -- returns
-	// promptly on context cancellation instead of leaving a goroutine parked.
+	// blobSem bounds blob writes in flight across this OCI's two write
+	// paths (WriteBlob, ociPusher.Push), scoped per-store. Acquire is
+	// ctx-aware, unlike errgroup.SetLimit, so it returns promptly on
+	// cancellation instead of leaving a goroutine parked.
 	blobSem *semaphore.Weighted
 
-	// blobConcurrency is the ceiling blobSem was built with, retained purely
-	// so reporting can render "peak-inflight=N/ceiling". semaphore.Weighted
-	// does not expose its own capacity.
+	// blobConcurrency is the ceiling blobSem was built with, retained so
+	// reporting can render "peak-inflight=N/ceiling" (semaphore.Weighted
+	// doesn't expose its own capacity).
 	blobConcurrency int
 
 	// stats accumulates disk-contention counters for this store. See
 	// stats.go.
 	stats IOStats
 
-	// mu guards index, index.json on disk, and the annotation maps of
-	// descriptors reachable from nameMap. It is a plain sync.Mutex, not an
-	// RWMutex: LoadIndex always writes both o.index and o.nameMap, so there is
-	// no pure-reader path that would benefit from a reader/writer split.
-	//
-	// Every exported method that touches index/nameMap/disk is a thin
-	// lock-then-call-Locked-variant wrapper. The unexported *Locked methods
-	// assume the caller already holds mu; this is what lets internal call
-	// chains (e.g. ociPusher.Push's load-modify-save) re-enter safely without
-	// calling Lock() twice, which would deadlock even without Walk's
-	// self-referential-callback hazard (see Walk's doc comment).
+	// mu guards index, index.json on disk, and nameMap descriptors'
+	// annotation maps. Exported methods are thin lock-then-Locked-variant
+	// wrappers; the *Locked methods assume the caller holds mu, letting
+	// internal chains (e.g. ociPusher.Push's load-modify-save) re-enter
+	// without double-locking (see Walk's doc comment for the related hazard).
 	mu sync.Mutex
 
 	// lastDurableSave is when the index was last fsync'd, guarded by mu.
@@ -137,10 +101,9 @@ type OCI struct {
 	now func() time.Time
 }
 
-// lock acquires o.mu, recording time spent blocked into IOStats. Every
-// caller that would otherwise write o.mu.Lock() uses this instead, so
-// index-serialization cost is measured in exactly one place rather than at
-// ten call sites. Unlock is not wrapped -- it never blocks.
+// lock acquires o.mu, recording time spent blocked into IOStats, so every
+// caller measures index-serialization cost in one place. Unlock isn't
+// wrapped since it never blocks.
 func (o *OCI) lock() {
 	start := time.Now()
 	o.mu.Lock()
@@ -220,15 +183,9 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 	o.lock()
 	defer o.mu.Unlock()
 
-	// Cheap win: skip the nameMap.Store + saveIndexLocked write entirely when
-	// the stored descriptor is already byte-identical to desc. Per-artifact
-	// index.json rewrites are intentionally not batched/coalesced across an
-	// entire sync (O(N^2) total bytes written as the index grows -- this
-	// starts to matter around ~10k artifacts): the write itself still happens
-	// on every AddIndex, only the fsync is now coalesced by
-	// saveIndexCheckpointLocked (see indexCheckpointInterval). A coalescing
-	// writer that batches the writes themselves is future work, not part of
-	// this change.
+	// Skip the write when the stored descriptor is already byte-identical:
+	// index.json rewrites aren't otherwise batched (O(N^2) bytes as the
+	// index grows), only their fsync is (see indexCheckpointInterval).
 	if existing, ok := o.nameMap.Load(mapKey); ok {
 		if descriptorsEqual(existing.(ocispec.Descriptor), desc) {
 			return nil
@@ -240,10 +197,9 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 }
 
 // descriptorsEqual reports whether two descriptors are equal in every field
-// that AddIndex's callers in this codebase populate: MediaType, Digest,
-// Size, URLs, ArtifactType, Platform, Data, and Annotations (compared by
-// contents, not map identity). It is deliberately conservative -- any field
-// that could plausibly differ between calls is compared, not assumed equal.
+// AddIndex's callers in this codebase populate: MediaType, Digest, Size,
+// URLs, ArtifactType, Platform, Data, and Annotations (compared by
+// contents, not map identity).
 func descriptorsEqual(a, b ocispec.Descriptor) bool {
 	if a.MediaType != b.MediaType || a.Digest != b.Digest || a.Size != b.Size || a.ArtifactType != b.ArtifactType {
 		return false
@@ -315,9 +271,8 @@ func (o *OCI) loadIndexLocked() error {
 			kind = consts.KindAnnotationImage
 		}
 
-		// Write the normalized kind back into a copy of the annotations map so
-		// that Walk() callers receive descriptors with dev.hauler/... values.
-		// We copy the map to avoid mutating the slice element's shared map.
+		// Write normalized kind into a copy of Annotations so Walk() callers
+		// see it, without mutating the slice element's shared map.
 		normalized := make(map[string]string, len(desc.Annotations)+1)
 		maps.Copy(normalized, desc.Annotations)
 		normalized[consts.KindAnnotationName] = kind
@@ -345,20 +300,14 @@ func (o *OCI) SaveIndex() error {
 
 // saveIndexLocked is SaveIndex's implementation. Callers must hold o.mu.
 //
-// The write to disk is atomic: the marshaled index is written to a uniquely
-// named temp file in the same directory as index.json (guaranteeing a
-// same-filesystem rename) and then renamed into place. A unique random
-// suffix (via os.CreateTemp) rather than a fixed ".tmp" name is required
-// here specifically because two concurrently-running hauler processes
-// against the same store share no in-process mutex and must never collide
-// on the same temp path. This mirrors the pattern already used by
-// writeBlobOnce in this file.
+// The write is atomic: temp file (uniquely named via os.CreateTemp, since
+// two hauler processes share no in-process mutex) in the same directory,
+// then renamed into place.
 //
-// durable controls both the temp file's fsync and, after the rename, a
-// fsync of the containing directory (see syncDir). When durable is false,
-// the write is still atomic (rename-based) but may not survive power loss
-// or a kernel panic until a later durable save catches up -- see
-// indexCheckpointInterval for the tradeoff this exists to make.
+// durable controls both the temp file's fsync and, after rename, an fsync of
+// the containing directory (see syncDir); when false the write is still
+// atomic but may not survive power loss until a later save catches up --
+// see indexCheckpointInterval.
 func (o *OCI) saveIndexLocked(durable bool) error {
 	var descs []ocispec.Descriptor
 	o.nameMap.Range(func(name, desc interface{}) bool {
@@ -410,9 +359,8 @@ func (o *OCI) saveIndexLocked(durable bool) error {
 		tmp.Close()
 		return err
 	}
-	// CreateTemp creates files 0600; index.json must be readable by whatever
-	// else reads the store (e.g. `hauler store serve` running as another
-	// user), so chmod before rename.
+	// chmod before rename: CreateTemp files are 0600, but index.json must be
+	// readable by other consumers (e.g. `hauler store serve` as another user).
 	if err := tmp.Chmod(0644); err != nil {
 		tmp.Close()
 		return err
@@ -429,11 +377,10 @@ func (o *OCI) saveIndexLocked(durable bool) error {
 	if err := os.Rename(tmpPath, indexPath); err != nil {
 		return err
 	}
-	// Track the rename unconditionally: it succeeded, so the new index is on
-	// disk regardless of whether the durable branch below (which can still
-	// fail on syncDir) completes. IndexDurableWrites stays inside the
-	// durable branch deliberately -- it must count only fsyncs that actually
-	// completed.
+	// Track the rename unconditionally -- it succeeded regardless of whether
+	// the durable branch below (which can still fail on syncDir) completes.
+	// IndexDurableWrites stays inside that branch since it must count only
+	// fsyncs that actually completed.
 	o.stats.IndexWrites.Add(1)
 	o.stats.IndexBytesWritten.Add(int64(len(data)))
 	if durable {
@@ -455,23 +402,13 @@ func (o *OCI) saveIndexCheckpointLocked() error {
 	return o.saveIndexLocked(o.now().Sub(o.lastDurableSave) >= indexCheckpointInterval)
 }
 
-// syncDir fsyncs a directory so that a rename into it survives power loss.
-// Fsyncing the renamed file alone guarantees its contents but not the
-// directory entry pointing at them -- containerd's local content store does
-// the same thing via syncDir after its own blob rename.
-//
-// Windows cannot open a directory as a file, and has no equivalent
-// operation, so this is a no-op there.
-//
-// EINVAL and ENOTSUP from Sync are tolerated rather than returned: some NFS
-// and SMB mounts (a store's root frequently lives on network storage in an
-// air-gap deployment) don't support directory fsync at all and return one of
-// these two errnos for it. No directory fsync existed before this task, so
-// treating either as fatal would turn a previously working `store add`/
-// `store sync` on those mounts into a hard failure over a guarantee they
-// never had to begin with. Every other error (e.g. the directory having been
-// removed, or a real I/O error) is still fatal -- those indicate an actual
-// problem, not just an absent capability.
+// syncDir fsyncs a directory so a rename into it survives power loss;
+// fsyncing the file alone doesn't guarantee the directory entry pointing at
+// it (containerd's local content store does the same after a blob rename).
+// A no-op on Windows, which has no equivalent. EINVAL/ENOTSUP are tolerated
+// (some NFS/SMB mounts, common for an air-gapped store root, don't support
+// directory fsync) rather than turning a previously working command into a
+// hard failure; every other error is still fatal.
 func syncDir(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
@@ -532,11 +469,10 @@ func (o *OCI) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) 
 	return o, nil
 }
 
-// Fetch is intentionally lock-free: it only touches the filesystem (via
-// blobReaderAt/ensureBlob) and the immutable root field, never
-// index/nameMap. Adding a lock here would deadlock store.Layout.CleanUp,
-// which calls Fetch from inside an OCI.Walk callback (see Walk's doc
-// comment for the general hazard this would reintroduce).
+// Fetch is intentionally lock-free: it only touches the filesystem and the
+// immutable root field, never index/nameMap. A lock here would deadlock
+// store.Layout.CleanUp, which calls Fetch from inside an OCI.Walk callback
+// (see Walk's doc comment for the general hazard).
 func (o *OCI) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
 	readerAt, err := o.blobReaderAt(desc)
 	if err != nil {
@@ -580,28 +516,16 @@ func (o *OCI) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
 	}, nil
 }
 
-// Walk loads the index, takes a full snapshot of nameMap under o.mu -- with
-// each descriptor's annotations deep-copied so no caller can mutate a map
-// object shared with nameMap -- and only then releases the lock before
-// invoking fn once per entry.
+// Walk loads the index, snapshots nameMap under o.mu -- deep-copying each
+// descriptor's annotations -- then releases the lock before invoking fn per
+// entry. This is load-bearing: store.Layout.CopyAll's self-sync path
+// re-enters Copy/Resolve/Fetcher/Pusher on this same OCI from inside a Walk
+// callback (CleanUp does the same via Fetch), and a plain mutex held across
+// fn would deadlock on that re-entrant Lock() from the same goroutine.
 //
-// This snapshot-then-release shape is load-bearing, not a style choice.
-// store.Layout.CopyAll's self-sync path (cmd/hauler/cli/store/sync.go:468
-// calls s.CopyAll(ctx, s.OCI, nil)) walks s.OCI and, from inside this Walk's
-// callback, calls l.Copy(ctx, reference, to, toRef) with to == l.OCI: the
-// very same OCI instance. Copy in turn calls Resolve, Fetcher, and Pusher on
-// that instance. store.Layout.CleanUp has the same shape via Fetch. A plain
-// sync.Mutex held across the whole Walk call -- including the fn
-// invocations -- would deadlock on the very first self-sync, since those
-// calls re-enter Lock() on the same OCI from the same goroutine. Releasing
-// the lock before calling fn is what makes that re-entrance safe.
-//
-// The annotation deep-copy matters for a different reason: it means
-// in-place mutation of a descriptor's Annotations map inside a Walk
-// callback (the pattern the old rewriteReference/chart-rewrite code used)
-// silently no-ops on a throwaway copy instead of racing with -- or
-// corrupting -- the map object shared with nameMap. Callers that need to
-// persist an annotation change must use UpdateAnnotations instead.
+// The deep copy means in-place mutation of a callback's descriptor silently
+// no-ops instead of corrupting nameMap's shared map; use UpdateAnnotations
+// to persist changes.
 func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) error {
 	o.lock()
 	if err := o.loadIndexLocked(); err != nil {
@@ -636,11 +560,8 @@ func (o *OCI) Walk(fn func(reference string, desc ocispec.Descriptor) error) err
 	return nil
 }
 
-// blobReaderAt, manifestBlobReaderAt, blobWriterAt, and ensureBlob are all
-// intentionally lock-free: they only touch the filesystem (blob paths
-// derived from the immutable root field) and never index/nameMap. See
-// Fetch's doc comment for why adding a lock here would be a regression, not
-// an improvement.
+// blobReaderAt, manifestBlobReaderAt, blobWriterAt, and ensureBlob are
+// lock-free too -- see Fetch's doc comment.
 func (o *OCI) blobReaderAt(desc ocispec.Descriptor) (*os.File, error) {
 	blobPath, err := o.ensureBlob(desc.Digest.Algorithm().String(), desc.Digest.Hex())
 	if err != nil {
@@ -674,44 +595,23 @@ func (o *OCI) ensureBlob(alg string, hex string) (string, error) {
 }
 
 // WriteBlob atomically and verifiably writes a blob to the store's blob
-// directory, deduplicating concurrent writers of the same digest.
+// directory, deduplicating concurrent writers of the same digest. It is
+// lock-free with respect to o.mu -- see Fetch's doc comment. open is a
+// thunk, not a reader, since singleflight must not start the download until
+// it wins the flight, and a retry needs a fresh reader.
 //
-// WriteBlob and writeBlobOnce are intentionally lock-free with respect to
-// o.mu: they only touch the filesystem (blob paths derived from the
-// immutable root field) and the package-private singleflight.Group, never
-// index/nameMap. This is unchanged by and unrelated to the index
-// thread-safety work elsewhere in this file -- do not add o.mu locking here.
+// A file already at the final path with a matching size short-circuits
+// WriteBlob without re-hashing, so re-syncs don't become O(store size) in
+// disk reads. Otherwise content streams, deduplicated via singleflight, into
+// a temp file hashed inline, then chmod'd, fsync'd, and renamed into place.
+// On any error the temp file is removed and the final path untouched, so a
+// failing writer can't corrupt a peer's completed blob and a retry
+// re-downloads cleanly.
 //
-// open is a thunk, not a reader: singleflight must not start the download
-// until it wins the flight, and a retry (after a digest mismatch or write
-// failure) needs a fresh reader rather than a partially-consumed one.
-//
-// Behavior:
-//   - Fast path: if a file already exists at the final blob path and its
-//     size matches (when size > 0) or is simply non-empty (when size <= 0),
-//     WriteBlob returns immediately without re-hashing or calling open. This
-//     keeps re-syncs from becoming O(store size) in disk reads, at the cost
-//     of trusting existing content by size alone.
-//   - Concurrent callers writing the same digest are deduplicated via a
-//     per-OCI singleflight.Group so only one of them actually opens and
-//     streams content.
-//   - Content is streamed into a temp file in the same directory as the
-//     final blob path (guaranteeing same-filesystem atomic rename) while
-//     being hashed inline. On success the temp file is chmod'd 0644 (temp
-//     files are created 0600, which would make the blob unreadable to e.g.
-//     `hauler store serve` running as another user), fsync'd, and renamed
-//     into place.
-//   - On any error -- including a digest mismatch -- the temp file is
-//     removed and the final blob path is left untouched. This is the
-//     critical invariant that makes retries and concurrent writers safe:
-//     a failing writer can never delete or corrupt a peer's completed blob.
-//   - singleflight.Group.Do hands the flight *winner's* error to every
-//     waiter, including waiters whose own ctx is a distinct, still-live
-//     context. If the shared error is context.Canceled but this caller's own
-//     ctx is not done, that cancellation belonged to the winner, not to this
-//     caller -- WriteBlob retries once on the caller's own ctx rather than
-//     propagating a cancellation the caller never asked for. See
-//     writeBlobShared's doc comment for the mechanics.
+// singleflight.Do hands the flight winner's error to every waiter, even ones
+// on a distinct, still-live ctx -- if that error is context.Canceled but
+// this caller's ctx isn't done, WriteBlob retries once on the caller's own
+// ctx rather than propagate a cancellation that wasn't its own.
 func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -723,12 +623,9 @@ func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64,
 	}
 	blobPath := filepath.Join(dir, expected.Hex())
 
-	// Fast path: trust existing content by size alone. Re-hashing every
-	// existing blob on every sync would make re-syncs O(store size) in disk
-	// reads; the size check alone is enough to catch a truncated/partial
-	// blob left behind by a crash. Deliberately checked, and returns,
-	// *before* touching blobSem: a cache hit must be free regardless of how
-	// saturated the semaphore is.
+	// Fast path: trust existing content by size alone, checked and returned
+	// before touching blobSem so a cache hit stays free regardless of
+	// semaphore saturation.
 	if info, err := os.Stat(blobPath); err == nil {
 		if size > 0 {
 			if info.Size() == size {
@@ -743,29 +640,20 @@ func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64,
 
 	err := o.writeBlobShared(ctx, dir, blobPath, expected, size, open)
 	if err != nil && errors.Is(err, context.Canceled) && ctx.Err() == nil {
-		// singleflight.Do hands the flight winner's error to every waiter,
-		// including waiters on a distinct, still-live context. If the winner
-		// observed *its own* context's cancellation, that's not evidence this
-		// caller's request should fail -- retry once on our own ctx. By the
-		// time Do() returned, the flight has already been forgotten by
-		// singleflight.Group, so this retry either hits the fast path (if the
-		// original winner actually finished writing before its cancellation
-		// was observed) or this goroutine becomes the new flight leader.
+		// See WriteBlob's doc comment: retrying either hits the fast path or
+		// this goroutine becomes the new flight leader.
 		err = o.writeBlobShared(ctx, dir, blobPath, expected, size, open)
 	}
 	return err
 }
 
-// writeBlobShared runs open()/writeBlobOnce for expected under this OCI's
-// singleflight.Group, deduplicating concurrent writers of the same digest so
-// only one of them actually streams content.
+// writeBlobShared dedupes concurrent writers of expected via this OCI's
+// singleflight.Group so only one actually streams content.
 func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) error {
 	_, err, _ := o.sf.Do(expected.String(), func() (interface{}, error) {
-		// Acquired inside the singleflight function, not around the sf.Do
-		// call: goroutines that lose the flight and are merely waiting on
-		// Do() to return must not hold a permit for the duration of someone
-		// else's write -- only the one goroutine actually about to stream
-		// bytes should count against the bound.
+		// Acquired inside the singleflight func, not around sf.Do: losers
+		// merely waiting on Do() must not hold a permit for someone else's
+		// write.
 		start := time.Now()
 		if err := o.blobSem.Acquire(ctx, 1); err != nil {
 			return nil, err
@@ -781,13 +669,11 @@ func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expecte
 	return err
 }
 
-// writeBlobOnce performs the actual temp-file-then-rename write for a single
-// digest. It is only ever invoked by the singleflight winner in WriteBlob,
-// which already holds a blobSem permit for the duration of this call.
+// writeBlobOnce performs the temp-file-then-rename write. Only ever invoked
+// by the singleflight winner, which already holds a blobSem permit.
 func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) (err error) {
-	// Re-check under the flight: another WriteBlob call (from a different
-	// singleflight key generation, i.e. a prior flight that already
-	// completed) may have written this blob while we were waiting to start.
+	// Re-check under the flight: a prior, already-completed flight may have
+	// written this blob while we were waiting to start.
 	if info, statErr := os.Stat(blobPath); statErr == nil {
 		if size > 0 && info.Size() == size {
 			o.stats.BlobsCached.Add(1)
@@ -818,11 +704,8 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 		return err
 	}
 
-	// Wrap the reader rather than plumbing ctx into open()'s underlying
-	// implementation (v1.Layer.Compressed() and friends, which this package
-	// doesn't control): once ctx is done, Read starts returning ctx.Err()
-	// instead of delegating, so io.Copy below aborts between chunks rather
-	// than running an already-cancelled download to completion.
+	// See ctxReader's doc comment: this makes io.Copy below abort between
+	// chunks instead of running an already-cancelled download to completion.
 	cr := &ctxReader{ctx: ctx, r: rc}
 
 	dg := digest.Canonical.Digester()
@@ -848,8 +731,7 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 		return fmt.Errorf("content: digest mismatch for blob: expected %s, got %s (%d bytes): %w", expected, got, n, ErrDigestMismatch)
 	}
 
-	// Commit: chmod before rename (temp files are created 0600), fsync
-	// before close, then atomically rename into place.
+	// Commit: chmod 0600->0644 (see saveIndexLocked), fsync, then rename.
 	if err := tmp.Chmod(0644); err != nil {
 		tmp.Close()
 		return err
@@ -861,9 +743,8 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	// os.Rename silently replaces an existing target, which is correct here:
-	// the content is digest-identical to whatever else could already be at
-	// blobPath.
+	// os.Rename silently replaces an existing target, which is correct: the
+	// content is digest-identical to whatever's already at blobPath.
 	if err := os.Rename(tmpPath, blobPath); err != nil {
 		return err
 	}
@@ -872,9 +753,7 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 	return nil
 }
 
-// path and IndexExists are intentionally lock-free -- see Fetch's doc
-// comment. They only touch the immutable root field and, for IndexExists,
-// the filesystem.
+// path and IndexExists are lock-free too -- see Fetch's doc comment.
 func (o *OCI) path(elem ...string) string {
 	complete := []string{string(o.root)}
 	return filepath.Join(append(complete, elem...)...)
@@ -899,13 +778,8 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 	case ocispec.MediaTypeImageManifest, ocispec.MediaTypeImageIndex, consts.DockerManifestSchema2, consts.DockerManifestListSchema2:
 		// if the hash of the content matches that which was provided as the hash for the root, mark it
 		if p.digest != "" && p.digest == d.Digest.String() {
-			// This load-modify-save is one logical read-modify-write unit and
-			// must be a single critical section, not three separate lock
-			// acquire/release cycles -- otherwise another goroutine's index
-			// save could land between this Push's load and its save, silently
-			// discarding it. Call the Locked variants directly: calling the
-			// exported LoadIndex/SaveIndex here would deadlock on this same
-			// lock.
+			// Single critical section (Locked variants, to avoid deadlocking
+			// on this same lock) so no other save can land in between.
 			p.oci.lock()
 			if err := p.oci.loadIndexLocked(); err != nil {
 				p.oci.mu.Unlock()
@@ -939,19 +813,14 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 	}
 
 	if _, err := os.Stat(blobPath); err == nil {
-		// file already exists, discard (but validate digest). Deliberately
-		// returned before touching blobSem -- same reasoning as WriteBlob's
-		// fast path: a cache hit must be free regardless of how saturated the
-		// semaphore is.
+		// Already exists: discard but validate digest. Returned before
+		// touching blobSem -- same reasoning as WriteBlob's fast path.
 		return NewIoContentWriter(nopCloser{io.Discard}, WithOutputHash(d.Digest.String())), nil
 	}
 
-	// Share the same bound as WriteBlob: a permit is held for the writer's
-	// entire lifetime (Push through Close), since unlike WriteBlob -- which
-	// owns the whole read-and-write loop itself -- the caller streams bytes
-	// into the returned writer over an arbitrary number of separate Write
-	// calls. Acquire is ctx-aware, so a caller that gives up while queued
-	// behind the bound gets ctx.Err() back instead of blocking forever.
+	// Shares WriteBlob's bound, but held for the writer's whole lifetime
+	// (Push through Close) since the caller streams via separate Write
+	// calls rather than one owned loop.
 	start := time.Now()
 	if err := p.oci.blobSem.Acquire(ctx, 1); err != nil {
 		return nil, err
@@ -972,13 +841,9 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 	return w, nil
 }
 
-// ociBlobWriter streams pushed content into a temp file in the same
-// directory as the final blob path and, on successful digest verification at
-// Close, atomically renames it into place. On any error -- write failure,
-// digest mismatch, or a close/sync failure -- the temp file is discarded and
-// the final blob path is left untouched, matching the invariant upheld by
-// content.OCI.WriteBlob: a failed writer can never delete or corrupt content
-// a peer already committed.
+// ociBlobWriter streams pushed content into a temp file and, on successful
+// digest verification at Close, renames it into place -- same on-error
+// invariant as content.OCI.WriteBlob (see its doc comment).
 type ociBlobWriter struct {
 	tmp        *os.File
 	tmpPath    string
@@ -987,10 +852,8 @@ type ociBlobWriter struct {
 	status     ccontent.Status
 	outputHash string
 
-	// releaseSem releases the blobSem permit acquired by ociPusher.Push for
-	// this writer's lifetime. nil when Push served this writer from a path
-	// that never acquired one (there currently is none, but nil-checking
-	// keeps this type constructible in tests without going through Push).
+	// releaseSem releases the blobSem permit acquired by ociPusher.Push. nil
+	// when constructed outside Push (e.g. in tests).
 	releaseSem func()
 }
 
@@ -1010,7 +873,6 @@ func newOCIBlobWriter(dir, finalPath, outputHash string) (*ociBlobWriter, error)
 	}, nil
 }
 
-// Write writes data to the temp file and updates the running digest.
 func (w *ociBlobWriter) Write(p []byte) (int, error) {
 	n, err := w.tmp.Write(p)
 	if n > 0 {
@@ -1020,9 +882,8 @@ func (w *ociBlobWriter) Write(p []byte) (int, error) {
 }
 
 // Close verifies the digest and, only on success, chmods, syncs, closes, and
-// atomically renames the temp file into the final blob path. On any failure
-// the temp file is closed (if not already) and left for the deferred
-// os.Remove; the final blob path is never touched.
+// renames the temp file into place; on failure the temp file is left for
+// the deferred os.Remove and the final path is untouched.
 func (w *ociBlobWriter) Close() (err error) {
 	if w.releaseSem != nil {
 		defer w.releaseSem() // released on every path below, success or failure
@@ -1053,28 +914,23 @@ func (w *ociBlobWriter) Close() (err error) {
 	return os.Rename(w.tmpPath, w.finalPath)
 }
 
-// Digest returns the current digest of written data.
 func (w *ociBlobWriter) Digest() digest.Digest {
 	return w.digester.Digest()
 }
 
-// Commit is a no-op for this implementation, matching IoContentWriter.
 func (w *ociBlobWriter) Commit(ctx context.Context, size int64, expected digest.Digest, opts ...ccontent.Opt) error {
 	return nil
 }
 
-// Status returns the current status.
 func (w *ociBlobWriter) Status() (ccontent.Status, error) {
 	return w.status, nil
 }
 
-// Truncate is not supported.
 func (w *ociBlobWriter) Truncate(size int64) error {
 	return fmt.Errorf("truncate not supported")
 }
 
-// RemoveFromIndex removes ref from nameMap only; it does not save the index
-// to disk. Matches the pre-existing behavior: callers (e.g.
+// RemoveFromIndex removes ref from nameMap only; callers (e.g.
 // store.Layout.RemoveArtifact) call SaveIndex separately afterward.
 func (o *OCI) RemoveFromIndex(ref string) {
 	o.lock()
@@ -1082,17 +938,12 @@ func (o *OCI) RemoveFromIndex(ref string) {
 	o.nameMap.Delete(ref)
 }
 
-// UpdateAnnotations locates every descriptor for which match returns true and
-// replaces its annotations with a fresh copy that has had apply run over it,
-// then persists the index. It returns the number of descriptors matched, so
-// callers can distinguish "found and updated" from "not found" the same way
-// they did when mutating Walk callback descriptors in place -- before that
-// pattern became unsafe under concurrent access (see Walk's doc comment).
-//
-// The whole match/apply/store pass runs as a single critical section so a
-// concurrent UpdateAnnotations or Push can't interleave a save between this
-// call's load and its save. When nothing matches, the index is not
-// re-saved: a no-op UpdateAnnotations call must not touch index.json.
+// UpdateAnnotations locates every descriptor for which match returns true,
+// replaces its annotations with a copy that has had apply run over it, and
+// persists the index, returning the number matched. The whole pass runs as
+// a single critical section so a concurrent UpdateAnnotations or Push can't
+// interleave a save in between; when nothing matches, index.json is not
+// re-saved.
 func (o *OCI) UpdateAnnotations(match func(ocispec.Descriptor) bool, apply func(map[string]string)) (int, error) {
 	o.lock()
 	defer o.mu.Unlock()

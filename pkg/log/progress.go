@@ -24,46 +24,27 @@ const spinnerInterval = 120 * time.Millisecond
 const fallbackWidth = 80
 
 // heightMargin is reserved off the raw detected terminal height before it is
-// used as a row cap anywhere in the Renderer. Writing to a terminal's
-// literal last row triggers that terminal's automatic scroll, and a scroll
-// silently invalidates the "move cursor up N-1 rows" erase math in
-// eraseLocked -- the live region no longer starts where the Renderer thinks
-// it does, and the next erase corrupts unrelated scrollback. Reserving one
-// row of headroom keeps the region away from the last line so ordinary
-// per-frame redraws don't trigger that scroll. Do not remove this margin as
-// an "optimization" -- it is load-bearing correctness, not slack.
-//
-// This does not fully eliminate scroll risk: if the cursor was already near
-// the bottom of the terminal before hauler started, there is no way to know
-// that from here (no cursor-position query round-trip is performed), and
-// this margin does not protect against it. That is a real, acknowledged,
-// out-of-scope residual limitation.
+// used as a row cap. Writing to a terminal's last row triggers auto-scroll,
+// which invalidates eraseLocked's "move cursor up N-1 rows" math and
+// corrupts scrollback -- load-bearing, not a tunable optimization. It does
+// not help if the cursor was already near the bottom when hauler started.
 const heightMargin = 1
 
 // Renderer renders one live row per in-flight job to a terminal, erasing and
-// redrawing the whole live region in place as jobs begin, finish, and log
-// lines are emitted through it. A job's row is removed from the region the
-// moment it finishes; whatever that job already logged (e.g. its "✓ added
-// ..." completion line) stays behind in permanent scrollback, so completed
-// jobs "graduate" out of the live region one row at a time while the
-// remaining jobs' spinners keep animating below.
+// redrawing the whole live region as jobs begin, finish, and log lines are
+// emitted through it. A job's row disappears the moment it finishes, but
+// whatever it already logged (e.g. a "✓ added ..." line) stays behind in
+// permanent scrollback.
 //
-// Locking: mu is the single, true lock guarding both the terminal (out) and
-// all status state (in-flight names, spinner frame, cached terminal
-// width/height, drawn row count). The intended composition is to pass the
-// Renderer itself as the out argument to log.NewLogger, i.e.
-// log.NewLogger(renderer), so NewLogger's own zerolog.SyncWriter wraps the
-// Renderer, not the other way around. That gives two lock acquisitions in
-// strict nesting order on the log-write path (SyncWriter.mu -> Renderer.mu,
-// always in that order, never inverted) -- safe, not a deadlock risk. This
-// matters because a second, independent path -- the spinner's ticker
-// goroutine -- writes to the terminal via Renderer.mu directly and never
-// goes through SyncWriter at all, so Renderer.mu is the only thing actually
-// preventing a tick-driven redraw from interleaving with an in-progress
-// log-line write. Do NOT restructure this so the Renderer wraps its own
-// internal SyncWriter around the real os.Stdout -- that would create a
-// second independent lock guarding the same fd with no ordering
-// relationship to the first, which is the actual hazard.
+// Locking: mu guards both the terminal (out) and all status state
+// (in-flight names, spinner frame, cached width/height, drawn row count).
+// Compose as log.NewLogger(renderer) so NewLogger's zerolog.SyncWriter wraps
+// the Renderer, giving strict nesting SyncWriter.mu -> Renderer.mu on the
+// log-write path. The spinner ticker writes to the terminal via Renderer.mu
+// directly, bypassing SyncWriter entirely, so Renderer.mu is what actually
+// prevents a tick-driven redraw from interleaving with an in-progress
+// log-line write. Wrapping a second SyncWriter around the real os.Stdout
+// inside the Renderer would create an unordered second lock on the same fd.
 type Renderer struct {
 	out io.Writer
 
@@ -163,8 +144,8 @@ func (r *Renderer) Stop() {
 	r.mu.Unlock()
 }
 
-// run is the spinner ticker goroutine: it advances the spinner frame and
-// redraws roughly every spinnerInterval until Stop closes done.
+// run advances the spinner frame and redraws roughly every spinnerInterval
+// until Stop closes done.
 func (r *Renderer) run() {
 	defer r.wg.Done()
 
@@ -184,9 +165,7 @@ func (r *Renderer) run() {
 	}
 }
 
-// eraseLocked erases the currently-drawn N-row region (if any) by moving the
-// cursor up drawnRows-1 rows, returning to column 0, and clearing from the
-// cursor to the end of the screen. Callers must hold mu.
+// eraseLocked erases the currently-drawn live region. Callers must hold mu.
 func (r *Renderer) eraseLocked() {
 	if r.drawnRows == 0 {
 		return
@@ -198,9 +177,8 @@ func (r *Renderer) eraseLocked() {
 	r.drawnRows = 0
 }
 
-// drawRowsLocked writes the current set of rows (see buildRowsLocked),
-// joined by "\n" with no trailing newline -- cursor ends at the end of the
-// last row's content, ready for the next erase. Callers must hold mu.
+// drawRowsLocked writes the current set of rows (see buildRowsLocked).
+// Callers must hold mu.
 func (r *Renderer) drawRowsLocked() {
 	lines := r.buildRowsLocked()
 	if len(lines) == 0 {
@@ -211,16 +189,15 @@ func (r *Renderer) drawRowsLocked() {
 }
 
 // redrawLocked is eraseLocked + drawRowsLocked, used by Began/Finished/the
-// spinner tick. Write uses the two halves separately so the log payload can
-// be written in between. Callers must hold mu.
+// spinner tick; Write uses the two halves separately. Callers must hold mu.
 func (r *Renderer) redrawLocked() {
 	r.eraseLocked()
 	r.drawRowsLocked()
 }
 
-// buildRowsLocked returns the text of every row to draw this frame, already
-// truncated to width and capped to height (with a "+K more" summary row
-// when capped). Callers must hold mu.
+// buildRowsLocked returns this frame's rows, truncated to width and capped
+// to height (with a "+K more" summary row when capped). Callers must hold
+// mu.
 func (r *Renderer) buildRowsLocked() []string {
 	if len(r.inFlight) == 0 {
 		return nil
@@ -246,28 +223,23 @@ func (r *Renderer) buildRowsLocked() []string {
 	return rows
 }
 
-// ellipsis marks a truncated ref. It is a 3-byte UTF-8 character, not a
-// single byte, so truncation math below sizes against len(ellipsis) rather
-// than assuming it costs one unit of budget.
+// ellipsis marks a truncated ref. It is a 3-byte UTF-8 character, so
+// truncation math below sizes against len(ellipsis) rather than assuming
+// one byte of budget.
 const ellipsis = "…"
 
 // levelWidth is the fixed width of zerolog.ConsoleWriter's rendered level
 // field ("DBG", "INF", "WRN", "ERR", ...) -- always 3 characters.
 const levelWidth = 3
 
-// alignmentWidth is the number of leading spaces a progress row is padded
-// with so it lines up under the log *message* column rather than under the
-// timestamp. It is derived from the same pieces that make up one rendered
-// log line prefix: consts.CustomTimeFormat, a separating space, the 3-char
-// level field, and a second separating space -- i.e.
-// "2026-08-01 11:53:30 DBG ". Do not replace this with a hardcoded number;
-// if CustomTimeFormat's layout ever changes width, this must move with it.
+// alignmentWidth pads a progress row to line up under the log *message*
+// column rather than the timestamp; it mirrors one rendered log prefix
+// (CustomTimeFormat + space + 3-char level + space) and must move if
+// CustomTimeFormat's width changes.
 var alignmentWidth = len(consts.CustomTimeFormat) + 1 + levelWidth + 1
 
-// alignmentPrefix is alignmentWidth worth of a subtle dotted guide pattern
-// (alternating dot-space: ". . . . . ."), precomputed once at package init.
-// The pattern provides a visual alignment guide while preserving exact width
-// and introducing zero per-frame allocation cost.
+// alignmentPrefix is alignmentWidth worth of an alternating dot-space guide
+// pattern, precomputed once at package init to avoid per-frame allocation.
 var alignmentPrefix = buildAlignmentPrefix()
 
 func buildAlignmentPrefix() string {
@@ -304,14 +276,12 @@ func (r *Renderer) formatRowLocked(frame, ref string) string {
 	return prefix + ref
 }
 
-// detectSize queries the terminal width and height once via
-// golang.org/x/term when out is an *os.File (covers real os.Stdout); it
-// falls back to fallbackWidth/0 when out isn't an *os.File (covers
-// *bytes.Buffer in tests) or when GetSize errors. Height's fallback is
-// deliberately 0 (no cap), not some arbitrary guessed height: an unknown
-// height should mean "don't artificially limit rows," not "assume a
-// terminal size." See heightMargin for why the detected height is reduced
-// by one row before being used as a cap.
+// detectSize queries width/height via golang.org/x/term when out is an
+// *os.File, else falls back to fallbackWidth/0 (e.g. *bytes.Buffer in
+// tests, or a GetSize error). Height's fallback is deliberately 0 (no cap)
+// rather than a guessed size, so an unknown height never artificially
+// limits rows; see heightMargin for the one-row reduction applied to a
+// detected height.
 func (r *Renderer) detectSize() (width, height int) {
 	width = fallbackWidth
 	height = 0
@@ -332,9 +302,8 @@ func (r *Renderer) detectSize() (width, height int) {
 		if effective := h - heightMargin; effective >= 1 {
 			height = effective
 		}
-		// else: terminal too small to usefully cap after reserving the
-		// margin; leave height at 0 (no cap) rather than a degenerate
-		// zero/negative-row region.
+		// else: terminal too small after the margin; leave height at 0 (no
+		// cap) rather than a degenerate zero/negative-row region.
 	}
 
 	return width, height

@@ -5,18 +5,14 @@ import (
 	"time"
 )
 
-// IOStats accumulates disk-contention counters for a single OCI store. It
-// exists so that one pasted log line explains a field performance report --
-// the previous parallel-blob work was abandoned partly because regression
-// reports were unreproducible with the reporter's contention invisible.
-//
-// Counters live on OCI rather than being context-attached (the
-// store.WithImageStats idiom) because what they measure -- semaphore and
-// mutex contention -- is a property of the store, not of an image.
-// ImageStats is per-image because layers belong to an image; these do not.
-//
-// All fields are atomic because every increment happens on a path that
-// runs concurrently by design.
+// IOStats accumulates disk-contention counters for a single OCI store, so
+// one pasted log line explains a field performance report -- the previous
+// parallel-blob work was abandoned partly because regression reports were
+// unreproducible with the reporter's contention invisible. Counters live on
+// OCI rather than being context-attached (the store.WithImageStats idiom)
+// because they measure store-level semaphore/mutex contention, not
+// per-image state like ImageStats. All fields are atomic since every
+// increment runs concurrently by design.
 type IOStats struct {
 	BlobsWritten       atomic.Int64
 	BlobsCached        atomic.Int64

@@ -177,13 +177,11 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
-	// errgroup.WithContext, not a zero-value errgroup.Group: Wait() on a
-	// zero-value group returns the first error but never cancels its
-	// siblings, so a failure partway through a many-layer image would let
-	// every other layer's download run to completion anyway. gctx is derived
-	// from ctx and is cancelled the moment any writeLayer call returns an
-	// error, which content.OCI.WriteBlob observes (via ctx.Err() and the
-	// wrapped reader) and uses to abort in-flight writes promptly.
+	// errgroup.WithContext, not a zero-value Group: Wait() on a zero-value
+	// group never cancels siblings on failure, so other layers would keep
+	// downloading after one fails. gctx is cancelled the moment any
+	// writeLayer errors, which content.OCI.WriteBlob observes (via ctx.Err()
+	// and the wrapped reader) to abort in-flight writes promptly.
 	g, gctx := errgroup.WithContext(ctx)
 	for _, lyr := range layers {
 		lyr := lyr
@@ -511,11 +509,10 @@ func (l *Layout) writeIndex(ctx context.Context, annotationRef gname.Reference, 
 	return l.OCI.AddIndex(desc)
 }
 
-// saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/hash.
-// This captures cosign v3 new-bundle-format signatures/attestations stored as OCI referrers
-// (via the subject field) rather than the legacy sha256-<hex>.sig/.att/.sbom tag convention.
-// go-containerregistry handles both the native referrers API and the tag-based fallback.
-// Missing referrers and fetch errors are logged at debug level and silently skipped.
+// saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/hash --
+// cosign v3 new-bundle-format sigs/attestations stored via the subject field, as opposed to the
+// legacy sha256-<hex>.sig/.att/.sbom tag convention. Missing referrers and fetch errors are
+// logged at debug level and silently skipped.
 func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
 	log := zerolog.Ctx(ctx)
 
@@ -571,9 +568,8 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 }
 
 // saveRelatedArtifacts discovers and saves cosign-compatible signature, attestation, and SBOM
-// artifacts for the image identified by ref/hash. Missing artifacts are silently skipped.
-// Returns the set of manifest digest strings (e.g. "sha256:abc...") that were saved, so that
-// saveReferrers can skip duplicates when a registry exposes the same manifest via both paths.
+// artifacts for the image identified by ref/hash, skipping missing ones silently. Returns the
+// set of saved manifest digest strings so saveReferrers can skip duplicates exposed via both paths.
 func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, hash v1.Hash, opts ...remote.Option) (map[string]bool, error) {
 	saved := make(map[string]bool)
 
@@ -850,11 +846,9 @@ func (l *Layout) CopyAll(ctx context.Context, to content.Target, toMapper func(s
 			toRef = tr
 		}
 
-		// Append the digest to help the target pusher identify the root descriptor.
-		// AnnotationRefName for digest-only images already ends in "@sha256:...".
-		// Strip any existing digest before appending the authoritative descriptor
-		// digest so the destination pusher can match the root manifest. A double "@"
-		// yields a digest the pusher never matches, leaving the image unindexed (#642).
+		// Append the digest so the target pusher can identify the root descriptor.
+		// AnnotationRefName for digest-only images already ends in "@sha256:...", so
+		// strip any existing digest first -- a double "@" leaves the image unindexed (#642).
 		if desc.Digest.Validate() == nil {
 			if at := strings.Index(toRef, "@"); at != -1 {
 				toRef = toRef[:at]

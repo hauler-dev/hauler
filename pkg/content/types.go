@@ -49,11 +49,10 @@ func (w *IoContentWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-// Close closes the writer and verifies the digest if configured. The
-// underlying writer is always closed, even when digest verification fails,
-// to avoid leaking file descriptors. If both a digest mismatch and a close
-// error occur, the digest mismatch is reported (it's the more informative,
-// actionable error) with the close error appended for visibility.
+// Close closes the writer and verifies the digest if configured, always
+// closing the underlying writer (even on mismatch) to avoid leaking file
+// descriptors. If both a digest mismatch and a close error occur, the more
+// informative mismatch is reported, with the close error appended.
 func (w *IoContentWriter) Close() error {
 	var mismatchErr error
 	if w.outputHash != "" {

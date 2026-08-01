@@ -15,10 +15,9 @@ func WithClient(c *getter.Client) Option {
 	}
 }
 
-// WithContext sets the context used by compute() when fetching the file's
-// content, so that cancelling ctx aborts an in-flight fetch. See the ctx
-// field's doc comment on File for why this is an option rather than a
-// parameter threaded through the artifacts.OCI interface.
+// WithContext sets the context used by compute() when fetching content, so
+// cancelling ctx aborts an in-flight fetch. See File.ctx for why this is an
+// option rather than a parameter on the artifacts.OCI interface.
 func WithContext(ctx context.Context) Option {
 	return func(f *File) {
 		f.ctx = ctx

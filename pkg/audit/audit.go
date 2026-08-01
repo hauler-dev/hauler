@@ -200,10 +200,9 @@ func Append(haulerDir string, e Entry) error {
 	return globalErr
 }
 
-// appendMu serializes appendLine calls across goroutines: os.OpenFile with
-// O_APPEND is only atomic for a single write() syscall on POSIX systems, and
-// concurrent `store sync` image jobs (runImageJobs) can each call this at
-// once without it.
+// appendMu serializes appendLine calls: os.OpenFile with O_APPEND is only
+// atomic for a single write() syscall on POSIX, and concurrent `store sync`
+// image jobs (runImageJobs) can each call this at once without it.
 var appendMu sync.Mutex
 
 func appendLine(dir string, v any) error {

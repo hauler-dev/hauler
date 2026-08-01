@@ -28,14 +28,11 @@ type File struct {
 	manifest    *gv1.Manifest
 	annotations map[string]string
 
-	// ctx is used by compute() when fetching the file's content. The
-	// artifacts.OCI interface (Layers/Manifest/RawConfig) takes no context
-	// parameter and is fixed -- changing it would ripple through every OCI
-	// implementation (chart, image collections, etc.) for a change that only
-	// File actually needs -- so a context stored on the struct is the only
-	// way to thread real cancellation through to the getter. Defaults to
-	// context.Background() so every caller that never sets it via
-	// WithContext keeps working exactly as before.
+	// ctx is used by compute() when fetching content. artifacts.OCI
+	// (Layers/Manifest/RawConfig) takes no context parameter, so a
+	// struct-stored ctx is the only way to thread real cancellation through
+	// to the getter. Defaults to context.Background() when unset via
+	// WithContext.
 	ctx context.Context
 }
 
@@ -88,9 +85,8 @@ func (f *File) Manifest() (*gv1.Manifest, error) {
 
 // Size returns the total compressed byte size across every layer this file
 // produces (always exactly one today, see Layers), computing the content if
-// it hasn't been already. Callers that already hold a successfully-added
-// File (compute() already ran during the store.Layout.AddArtifact call) pay
-// no additional fetch cost -- compute() is memoized.
+// needed. compute() is memoized, so an already-added File pays no extra
+// fetch cost.
 func (f *File) Size() (int64, error) {
 	layers, err := f.Layers()
 	if err != nil {
@@ -132,18 +128,12 @@ func (f *File) compute() error {
 		return err
 	}
 
-	// Manually preserve the Title annotation from the layer
-	// The layer was created with this annotation in getter.LayerFrom
-	//
-	// Copy rather than mutate in place: when blob implements partial's
-	// withDescriptor (pkg/layer's layer type does), Descriptor() returns the
-	// layer's own internal annotations map by reference, not a copy. blob
-	// may be shared across multiple File instances that fetch the same
-	// source Path via a LayerCache (see cache.go) but have different name
-	// overrides -- mutating layer.Annotations in place would let whichever
-	// File.compute() runs last silently overwrite every other sharer's
-	// Title. Each File must end up with its own independently-correct Title
-	// regardless of which instance (if any) actually performed the fetch.
+	// Manually preserve the Title annotation from the layer (set by
+	// getter.LayerFrom). Copy rather than mutate in place: Descriptor()
+	// returns the layer's own annotations map by reference, and blob may be
+	// shared across File instances with different name overrides via a
+	// LayerCache (cache.go) -- mutating in place would let whichever
+	// compute() runs last overwrite every other sharer's Title.
 	annotations := make(map[string]string, len(layer.Annotations)+1)
 	for k, v := range layer.Annotations {
 		annotations[k] = v

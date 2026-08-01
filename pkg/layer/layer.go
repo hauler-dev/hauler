@@ -19,14 +19,10 @@ func FromOpener(opener Opener, opts ...Option) (v1.Layer, error) {
 		annotations: make(map[string]string, 1),
 	}
 
-	// This package never actually compresses anything: Compressed() and
-	// Uncompressed() both read from the same opener. That means digest
-	// (uncompressed hash) and diffID (compressed hash) are always equal by
-	// construction, so a single opener field and a single hash computation
-	// serve both. If a future Option ever introduces genuine compression,
-	// this equality breaks and Compressed()/Uncompressed() must go back to
-	// wrapping distinct openers, with diffID computed independently via
-	// compute() on the compressed one.
+	// This package never compresses: Compressed() and Uncompressed() both
+	// read from the same opener, so digest and diffID are always equal by
+	// construction and share one hash computation. A future Option adding
+	// real compression would break that equality and need distinct openers.
 	layer.opener = opener
 
 	for _, opt := range opts {

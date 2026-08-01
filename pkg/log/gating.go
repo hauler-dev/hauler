@@ -26,10 +26,10 @@ func isDumbSink(isTerminal bool) bool {
 }
 
 // shouldShowProgress decides whether the live progress Renderer should be
-// used, given the resolved terminal-ness of stdout. It is pure with respect
-// to its parameters (isTerminal bypasses the real isatty syscall for tests)
-// but still reads NO_COLOR/TERM from the environment via isDumbSink, since
-// those aren't plumbed through as CLI inputs.
+// used, given the resolved terminal-ness of stdout. It is pure in its
+// parameters (isTerminal bypasses the real isatty syscall for tests) but
+// still reads NO_COLOR/TERM from the environment via isDumbSink, since those
+// aren't plumbed through as CLI inputs.
 //
 // Rules, in order, first match wins:
 //  1. noProgress -> false

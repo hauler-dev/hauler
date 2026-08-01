@@ -42,10 +42,10 @@ func logStream(reader io.Reader, customWriter *CustomWriter, wg *sync.WaitGroup)
 	}
 }
 
-// captureMu serializes the entire body of CaptureOutput. The risk isn't limited to
-// the os.Stdout/os.Stderr fd swap: cosign v3's verify path also touches sigstore
-// package-level TUF/Fulcio state that isn't documented as concurrency-safe. Do not
-// narrow this to just the redirect/restore lines.
+// captureMu serializes the entire body of CaptureOutput -- not just the
+// os.Stdout/os.Stderr fd swap, since cosign v3's verify path also touches
+// sigstore's package-level TUF/Fulcio state, which isn't documented as
+// concurrency-safe.
 var captureMu sync.Mutex
 
 // CaptureOutput redirects stdout and stderr to custom loggers and executes the provided function

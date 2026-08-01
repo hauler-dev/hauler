@@ -103,16 +103,13 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		return nil
 	}
 
-	// Everything below runs with a real store; the dry-run branch above
-	// returned with s == nil.
-	//
-	// One durable checkpoint at the end of the run, because the
-	// per-artifact path only fsyncs on indexCheckpointInterval. Deferred so
-	// it also runs on error paths, where a partially-populated index is
-	// still worth persisting. This does NOT run on Ctrl-C -- the CLI
-	// installs no signal handler, so deferred functions are skipped -- which
-	// is acceptable: process death does not lose page cache, so the index
-	// still reaches disk.
+	// Everything below runs with a real store (s != nil; the dry-run branch
+	// above already returned). Force one durable index checkpoint at the end
+	// of the run since the per-artifact path only fsyncs on
+	// indexCheckpointInterval -- deferred so it still runs on error paths,
+	// where a partially-populated index is worth persisting. This does NOT
+	// run on Ctrl-C (no signal handler is installed), which is fine: process
+	// death doesn't lose page cache, so the index still reaches disk.
 	defer func() {
 		if err := s.OCI.SaveIndex(); err != nil {
 			l.Warnf("failed to save index at end of sync: %v", err)
@@ -474,12 +471,10 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 }
 
 // newSyncProgress returns a live progress Renderer over os.Stdout when
-// eligible (see log.ShouldShowProgress), or nil otherwise. runImageJobs
-// treats a nil progress as a no-op, reproducing today's plain-log behavior.
-// Because verifyImageJobs always runs fully, serially, before runImageJobs
-// is invoked, constructing the Renderer here also satisfies "don't start
-// the renderer until the verify pass is done" for free -- no additional
-// sequencing is needed.
+// eligible (see log.ShouldShowProgress), or nil otherwise; runImageJobs
+// treats a nil progress as a no-op. Constructing the Renderer here, after
+// verifyImageJobs has already run fully and serially, satisfies "don't
+// start the renderer until the verify pass is done" for free.
 func newSyncProgress(o *flags.SyncOpts, ro *flags.CliRootOpts) *log.Renderer {
 	if !log.ShouldShowProgress(o.NoProgress, ro.LogLevel) {
 		return nil
@@ -491,27 +486,11 @@ func newSyncProgress(o *flags.SyncOpts, ro *flags.CliRootOpts) *log.Renderer {
 // ceiling is the store's configured blob-write limit, so peak-inflight
 // reads as a fraction of what was permitted rather than a bare number.
 //
-// It is a standalone function rather than inline formatting so the output
-// is unit-testable from a literal snapshot -- the same reason
-// formatAddedLine exists in add.go.
-//
-// Two things about these numbers are easy to misread:
-//
-//  1. blobs/written/cached/bytes only cover the WriteBlob path (the path
-//     store.AddImage and friends use to populate this store from a
-//     source). A registry push through ociPusher.Push -- e.g.
-//     `store copy registry://` -- contends on the same blob semaphore and
-//     so contributes to peak-inflight (and blobsem-wait), but never calls
-//     WriteBlob, so it never increments blobs/written/cached/bytes. On a
-//     store-to-store copy this line can legitimately read
-//     `blobs=0 written=0 cached=0 bytes=0B peak-inflight=5/20`, which
-//     looks self-contradictory but isn't: the semaphore fields cover both
-//     paths, the blob-count/byte fields cover WriteBlob only.
-//  2. blobsem-wait sums wait time across every goroutine that touched the
-//     semaphore, not wall-clock time. On a run with real concurrency it can
-//     legitimately exceed the command's total runtime -- e.g.
-//     `blobsem-wait=42s` on a 10s run is 4-5 goroutines each queued for
-//     several seconds, added together, not a bug.
+// blobs/written/cached/bytes cover only the WriteBlob path (store.AddImage
+// and friends); a registry push shares the same blob semaphore without
+// calling WriteBlob, so those counters can read zero on a store-to-store
+// copy. blobsem-wait sums wait time across every goroutine that touched the
+// semaphore, not wall-clock, so it can exceed the run's total duration.
 func formatIOStats(st content.IOStatsSnapshot, ceiling int) string {
 	return fmt.Sprintf(
 		"io stats: blobs=%d written=%d cached=%d bytes=%s peak-inflight=%d/%d blobsem-wait=%s index-writes=%d durable=%d index-bytes=%s index-lock-wait=%s",
@@ -530,11 +509,7 @@ func formatIOStats(st content.IOStatsSnapshot, ceiling int) string {
 }
 
 // imageJob is the fully-resolved set of inputs needed to verify (if
-// applicable) and store a single image from a Images v1 manifest or an
-// image.txt file. resolveImageJobs produces these from raw v1.Image entries
-// plus manifest annotations and CLI flags, applying the per-image >
-// annotation > CLI precedence rules; verifyImageJobs consumes the
-// verification fields; runImageJobs consumes the rest.
+// applicable) and store a single image; see resolveImageJobs.
 type imageJob struct {
 	img           v1.Image // Name already relocated to the target registry if applicable
 	platform      string
@@ -553,9 +528,8 @@ type imageJob struct {
 
 // resolveImageJobs applies the precedence rules (per-image > annotation >
 // CLI, except registry relocation which is CLI > annotation) to every image
-// in images, producing one imageJob per image. It is pure: no I/O, no
-// logging, no network calls — cosign verification happens later in
-// verifyImageJobs.
+// in images, producing one imageJob per image. It is pure -- cosign
+// verification happens later, in verifyImageJobs.
 func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image) ([]imageJob, error) {
 	var jobs []imageJob
 
@@ -711,11 +685,10 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 }
 
 // verifyImageJobs runs cosign verification (network I/O) for every job that
-// needs it and returns only the jobs that passed verification, plus any
-// jobs that didn't need verification in the first place. A verification
-// failure logs an error and drops the job silently, matching the pre-refactor
-// behavior: SyncCmd does not fail the whole run over a single bad signature,
-// regardless of --ignore-errors.
+// needs it, returning the jobs that passed plus any that didn't need
+// verification. A failure logs an error and drops the job silently --
+// SyncCmd never fails the whole run over one bad signature, regardless of
+// --ignore-errors.
 func verifyImageJobs(ctx context.Context, jobs []imageJob, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) []imageJob {
 	l := log.FromContext(ctx)
 
@@ -757,22 +730,20 @@ func verifyImageJobs(ctx context.Context, jobs []imageJob, rso *flags.StoreRootO
 	return out
 }
 
-// runImageJobs stores every job, local Docker daemon images first (serially),
-// then remote registry images concurrently (bounded by concurrency). The
-// local-before-remote partitioning is deliberate: local jobs go through
-// storeLocalImage, whose ensureDockerHost call does os.Setenv against the
-// process-wide environment, and they all contend on a single Docker daemon
-// anyway, so there is nothing to gain -- and a global-mutation race to lose
-// -- by running them concurrently with each other or with the remote pass.
+// runImageJobs stores every job, local Docker daemon images first
+// (serially), then remote images concurrently (bounded by concurrency).
+// Local jobs run through storeLocalImage, whose ensureDockerHost mutates
+// the process-wide environment via os.Setenv, and all contend on one
+// Docker daemon anyway -- nothing to gain, and a mutation race to lose,
+// from running them concurrently.
 //
-// The remote pass uses errgroup.WithContext with SetLimit(concurrency):
-// fail-fast and --ignore-errors semantics come for free from that
-// combination plus storeImage already returning nil (after logging a
-// warning) when ignoreErrors is set, so g.Wait() never observes an error to
-// propagate in that mode. When a job does fail without --ignore-errors, the
-// group's derived context is cancelled, which every other in-flight job's
-// storeImage call observes via content.OCI.WriteBlob's context-aware writes;
-// g.Wait() returns that one real error, not an aggregate.
+// The remote pass uses errgroup.WithContext + SetLimit(concurrency):
+// fail-fast and --ignore-errors semantics fall out of that plus storeImage
+// returning nil (after warning) when ignoreErrors is set, so g.Wait() never
+// observes an error in that mode. Otherwise a failing job cancels the
+// group's derived context, which every other in-flight storeImage call
+// observes via content.OCI.WriteBlob's context-aware writes; g.Wait()
+// returns that one real error, not an aggregate.
 func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
 	l := log.FromContext(ctx)
 
@@ -796,11 +767,10 @@ func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurr
 	}
 
 	// baseLogger is the logger every job's per-image logger is derived from.
-	// When progress is active, route it through a logger built over the
-	// Renderer so every log line emitted during a job (including its
-	// "✓ added ..." completion line and any error lines) flows through the
-	// Renderer's erase/write/redraw path instead of writing straight to the
-	// ambient logger's destination.
+	// When progress is active, it's built over the Renderer instead, so
+	// every log line for a job -- including its "✓ added ..." line and any
+	// errors -- flows through the Renderer's erase/write/redraw path rather
+	// than writing straight to the ambient logger's destination.
 	baseLogger := l
 	if progress != nil && len(remoteJobs) > 0 {
 		baseLogger = log.NewLogger(progress)
@@ -814,27 +784,23 @@ func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurr
 		j := j
 		g.Go(func() error {
 			// Began must be called from inside the goroutine, after
-			// g.Go's semaphore acquisition, not from this outer loop.
-			// g.Go blocks the calling (outer loop) goroutine until a
-			// concurrency slot is free before it ever runs this closure,
-			// so this is the earliest point at which the job has
-			// actually started -- calling Began any earlier (e.g. right
-			// before g.Go, in the outer loop) would mark a job "in
-			// flight" while it's still queued behind other jobs waiting
-			// for a slot.
+			// g.Go's semaphore acquisition, not from the outer loop:
+			// g.Go blocks the outer loop until a concurrency slot is
+			// free, so this is the earliest point the job has actually
+			// started. Calling Began any earlier would mark a queued
+			// job "in flight" while it's still waiting for a slot.
 			if progress != nil {
 				progress.Began(j.img.Name)
 			}
 			jl := baseLogger.With(log.Fields{"image": j.img.Name})
 			jctx := jl.WithContext(gctx)
-			// storeImage's lines that already name their own ref inline
-			// (e.g. its "✓ added <ref> ..." completion line) fetch this
-			// unadorned base logger via log.BaseFromContext instead of
-			// log.FromContext, so they don't also carry the "image=..."
-			// field above and duplicate the ref. Lines that don't name the
-			// ref (retry.Operation's attempt warnings, store-layer debug
-			// output) keep calling log.FromContext(ctx) untouched and keep
-			// the field for attribution under concurrency.
+			// storeImage lines that already name their ref inline (e.g.
+			// its "✓ added <ref> ..." line) fetch this unadorned base
+			// logger via log.BaseFromContext instead of log.FromContext,
+			// so they don't duplicate the ref with the "image=..." field
+			// below. Lines that don't name the ref (retry.Operation's
+			// warnings, store-layer debug output) keep calling
+			// log.FromContext(ctx) and keep the field for attribution.
 			jctx = log.WithBaseLogger(jctx, baseLogger)
 			err := storeImage(jctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite)
 			if progress != nil {
@@ -846,20 +812,14 @@ func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurr
 	return g.Wait()
 }
 
-// fileJob is the fully-resolved set of inputs needed to store a single file
-// from a Files v1 manifest. resolveFileJobs produces these from raw v1.File
-// entries; runFileJobs consumes them. Unlike imageJob, there is no
-// verification pass and no per-entry precedence resolution (registry
-// relocation, cosign options, etc. don't apply to files) -- the two-phase
-// resolve/execute shape is kept anyway for consistency with the images path
-// and because it keeps resolveFileJobs trivially unit-testable without any
-// I/O.
+// fileJob is the fully-resolved set of inputs needed to store a single
+// file; see resolveFileJobs. Unlike imageJob, there's no verification pass.
 type fileJob struct {
 	file v1.File
 }
 
 // resolveFileJobs converts every v1.File in files into a fileJob. It is
-// pure: no I/O, no logging, no network calls.
+// pure.
 func resolveFileJobs(files []v1.File) []fileJob {
 	jobs := make([]fileJob, 0, len(files))
 	for _, f := range files {
@@ -879,27 +839,22 @@ func fileJobName(f v1.File) string {
 	return f.Path
 }
 
-// runFileJobs stores every job concurrently, bounded by concurrency, with no
-// local/remote partitioning by scheme -- unlike images, no file source
+// runFileJobs stores every job concurrently, bounded by concurrency, with
+// no local/remote partitioning by scheme: unlike images, no file source
 // contends on a shared process-wide resource the way storeLocalImage's
-// Docker-daemon path does (see runImageJobs's doc comment), so file:// and
-// directory:// sources run through the same errgroup as http(s):// sources.
-// The blob semaphore inside pkg/content's OCI store already bounds total
-// in-flight blob writes regardless of scheme, so mixing schemes here doesn't
-// risk unbounded IOPS.
+// Docker-daemon path does (see runImageJobs), so file://, directory://, and
+// http(s):// sources all run through the same errgroup. pkg/content's OCI
+// store blob semaphore already bounds total in-flight blob writes
+// regardless of scheme.
 //
-// Every job shares one *file.LayerCache (see pkg/artifacts/file/cache.go),
-// attached to each job's context, so that two Files entries pointing at the
-// identical source Path -- e.g. the same URL listed twice, once plain and
-// once with a name override, as testdata/hauler-manifest-pipeline.yaml
-// does -- fetch the underlying content exactly once regardless of
-// concurrency, rather than once per manifest entry.
+// Every job shares one *file.LayerCache (pkg/artifacts/file/cache.go),
+// attached to each job's context, so two Files entries with the identical
+// source Path -- e.g. the same URL listed twice, once plain and once with a
+// name override, as testdata/hauler-manifest-pipeline.yaml does -- fetch
+// the content exactly once regardless of concurrency, rather than once per
+// manifest entry.
 //
-// Fail-fast and --ignore-errors semantics mirror runImageJobs exactly: they
-// come for free from errgroup.WithContext + SetLimit(concurrency) plus
-// storeFile already returning nil (after logging a warning) when
-// ignoreErrors is set, so g.Wait() never observes an error to propagate in
-// that mode.
+// Fail-fast and --ignore-errors semantics mirror runImageJobs exactly.
 func runFileJobs(ctx context.Context, s *store.Layout, jobs []fileJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
 	l := log.FromContext(ctx)
 
@@ -924,9 +879,8 @@ func runFileJobs(ctx context.Context, s *store.Layout, jobs []fileJob, concurren
 		j := j
 		g.Go(func() error {
 			name := fileJobName(j.file)
-			// Began must be called from inside the goroutine, after g.Go's
-			// semaphore acquisition -- see runImageJobs's identical comment
-			// for why.
+			// Began must be called after g.Go's semaphore acquisition;
+			// see runImageJobs.
 			if progress != nil {
 				progress.Began(name)
 			}

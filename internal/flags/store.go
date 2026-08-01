@@ -24,12 +24,12 @@ type StoreRootOpts struct {
 	TempOverride string
 
 	// BlobConcurrency overrides the store's default blob-write concurrency
-	// ceiling (content.OCI.blobSem) when > 0. Bound directly to the
-	// --blob-concurrency persistent flag, where 0 means "auto". It is
-	// populated by one of two paths, both idempotent: `store sync`'s PreRunE
-	// (which derives a value from --concurrency when none was given), or
-	// Store() itself (which consults HAULER_BLOB_CONCURRENCY, so
-	// subcommands with no PreRunE still honor the env var).
+	// ceiling (content.OCI.blobSem) when > 0, bound to the
+	// --blob-concurrency persistent flag (0 means "auto"). Populated by one
+	// of two idempotent paths: `store sync`'s PreRunE (derives a value from
+	// --concurrency when none was given) or Store() itself (consults
+	// HAULER_BLOB_CONCURRENCY, so subcommands with no PreRunE still honor
+	// the env var).
 	BlobConcurrency int
 }
 
@@ -89,17 +89,14 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 		return nil, err
 	}
 
-	// Always resolve, never just "when unset": this both picks up
+	// Always resolve, never just "when unset": this picks up
 	// HAULER_BLOB_CONCURRENCY for subcommands with no PreRunE of their own
 	// (add, load, copy, serve, extract...) and validates whatever value is
-	// already present. A guard of `o.BlobConcurrency == 0` would let a
-	// negative value (e.g. a typo'd --blob-concurrency -5) skip validation
-	// here entirely, then fail a later `> 0` check silently -- dropped, no
-	// error -- which contradicts ResolveBlobConcurrency's own rule that a
-	// typo must surface rather than silently appear to work. This stays
-	// idempotent for `store sync`, whose PreRunE has already resolved a
-	// non-zero value by the time it reaches here: ResolveBlobConcurrency
-	// returns a positive input unchanged.
+	// already present -- a `o.BlobConcurrency == 0` guard would let a
+	// typo'd negative value skip validation and fail a later `> 0` check
+	// silently. This stays idempotent for `store sync`, whose PreRunE has
+	// already resolved a non-zero value: ResolveBlobConcurrency returns a
+	// positive input unchanged.
 	bc, err := ResolveBlobConcurrency(o.BlobConcurrency)
 	if err != nil {
 		return nil, err
