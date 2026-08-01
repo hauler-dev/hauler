@@ -7,7 +7,21 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
+
+// wantAlignmentWidth independently recomputes the expected leading-space
+// padding on a progress row from the same pieces that make up a rendered log
+// line prefix -- consts.CustomTimeFormat, a separating space, the 3-char
+// level field, and a second separating space. It deliberately does not
+// reference the package's own alignmentWidth var: the point is to catch a
+// regression in that var's derivation, not merely to confirm formatRowLocked
+// is internally consistent with whatever alignmentWidth happens to hold.
+func wantAlignmentWidth() int {
+	const wantLevelWidth = 3
+	return len(consts.CustomTimeFormat) + 1 + wantLevelWidth + 1
+}
 
 // eraseMarker is the tail of every erase sequence eraseLocked writes
 // ("\r\x1b[0J", optionally preceded by a "\x1b[NA" cursor-up when more than
@@ -225,7 +239,7 @@ func TestRenderer_TruncatesLongRefToWidth(t *testing.T) {
 	defer r.Stop()
 
 	r.mu.Lock()
-	r.width = 40
+	r.width = 60
 	r.mu.Unlock()
 
 	longRef := "registry.example.com/some/very/long/path/to/an/image/name:v1.2.3-extra-long-tag"
@@ -237,11 +251,14 @@ func TestRenderer_TruncatesLongRefToWidth(t *testing.T) {
 	}
 	row := rows[0]
 
-	if len(row) > 40 {
-		t.Errorf("row length %d exceeds width 40: %q", len(row), row)
+	if len(row) > 60 {
+		t.Errorf("row length %d exceeds width 60: %q", len(row), row)
 	}
 	if !strings.HasSuffix(row, "…") {
 		t.Errorf("expected truncated row to end with an ellipsis, got %q", row)
+	}
+	if got, want := len(row)-len(strings.TrimLeft(row, " ")), wantAlignmentWidth(); got != want {
+		t.Errorf("row has %d leading alignment spaces, want %d (matching the log line prefix width): %q", got, want, row)
 	}
 
 	const prefix = " adding "
@@ -289,12 +306,15 @@ func TestRenderer_TruncatesRealWorldLongRefAtDefaultWidth(t *testing.T) {
 	if strings.Contains(row, "\x1b[") {
 		t.Errorf("expected the row itself to carry no escape codes, got %q", row)
 	}
+	if got, want := len(row)-len(strings.TrimLeft(row, " ")), wantAlignmentWidth(); got != want {
+		t.Errorf("row has %d leading alignment spaces, want %d (matching the log line prefix width): %q", got, want, row)
+	}
 
 	truncated := strings.HasSuffix(row, "…")
 	t.Logf("real-world ref %q (%d chars) at default width %d: row = %q (truncated = %v)", longRef, len(longRef), fallbackWidth, row, truncated)
 
 	if truncated {
-		if !strings.HasPrefix(row, "⠋ adding "+longRef[:10]) {
+		if !strings.HasPrefix(row, alignmentPrefix+"⠋ adding "+longRef[:10]) {
 			t.Errorf("expected truncation to preserve the start of the ref, got %q", row)
 		}
 	} else {

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"golang.org/x/term"
+
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // spinnerFrames is the braille-dot spinner animation, advanced roughly every
@@ -249,11 +251,27 @@ func (r *Renderer) buildRowsLocked() []string {
 // than assuming it costs one unit of budget.
 const ellipsis = "…"
 
-// formatRowLocked renders "<frame> adding <ref>", truncating ref (never the
-// fixed "<frame> adding " prefix) with a trailing ellipsis so the row fits
-// within r.width. Callers must hold mu.
+// levelWidth is the fixed width of zerolog.ConsoleWriter's rendered level
+// field ("DBG", "INF", "WRN", "ERR", ...) -- always 3 characters.
+const levelWidth = 3
+
+// alignmentWidth is the number of leading spaces a progress row is padded
+// with so it lines up under the log *message* column rather than under the
+// timestamp. It is derived from the same pieces that make up one rendered
+// log line prefix: consts.CustomTimeFormat, a separating space, the 3-char
+// level field, and a second separating space -- i.e.
+// "2026-08-01 11:53:30 DBG ". Do not replace this with a hardcoded number;
+// if CustomTimeFormat's layout ever changes width, this must move with it.
+var alignmentWidth = len(consts.CustomTimeFormat) + 1 + levelWidth + 1
+
+// alignmentPrefix is alignmentWidth worth of spaces, precomputed once.
+var alignmentPrefix = strings.Repeat(" ", alignmentWidth)
+
+// formatRowLocked renders "<alignmentPrefix><frame> adding <ref>",
+// truncating ref (never the fixed prefix) with a trailing ellipsis so the
+// row fits within r.width. Callers must hold mu.
 func (r *Renderer) formatRowLocked(frame, ref string) string {
-	prefix := "........................" + frame + " adding "
+	prefix := alignmentPrefix + frame + " adding "
 
 	budget := r.width - len(prefix)
 	if budget < 1 {
