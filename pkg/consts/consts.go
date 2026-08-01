@@ -121,7 +121,7 @@ const (
 	// and stores concurrently. See flags.ResolveConcurrency and
 	// flags.BlobConcurrencyFor for how this feeds into the per-store blob
 	// write ceiling (DefaultBlobConcurrency below).
-	DefaultConcurrency = 4
+	DefaultConcurrency = 5
 	// DefaultBlobConcurrency bounds the number of blob writes (layer
 	// downloads, config/manifest writes) that may be in flight at once across
 	// the whole process, regardless of how many images or errgroups are
