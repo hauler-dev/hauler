@@ -50,20 +50,51 @@ func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, refe
 func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
 	l := log.FromContext(ctx)
 
+	start := time.Now()
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+
+	if err := ctx.Err(); err != nil {
+		log.BaseFromContext(ctx).Debugf("skipping file [%s]: %v", fi.Path, err)
+		return err
+	}
+
 	copts := getter.ClientOptions{
 		NameOverride: fi.Name,
 	}
 
-	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)))
+	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)), file.WithContext(ctx))
 	ref, err := reference.NewTagged(f.Name(fi.Path), consts.DefaultTag)
 	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to derive a store reference for file [%s]: %v... skipping...", fi.Path, err)
+			return nil
+		}
+		log.BaseFromContext(ctx).Errorf("unable to derive a store reference for file [%s]: %v", fi.Path, err)
 		return err
 	}
 
-	l.Infof("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
-	desc, err := s.AddArtifact(ctx, f, ref.Name())
+	log.BaseFromContext(ctx).Debugf("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
+
+	var desc ocispec.Descriptor
+	err = retry.Operation(ctx, rso, ro, func() error {
+		var addErr error
+		desc, addErr = s.AddArtifact(ctx, f, ref.Name())
+		return addErr
+	})
 	if err != nil {
-		return err
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to add file [%s] to store: %v... skipping...", fi.Path, err)
+			return nil
+		} else if errors.Is(err, context.Canceled) {
+			// Under errgroup.WithContext fail-fast (runFileJobs), one real
+			// failure cancels every other in-flight file's context -- see
+			// storeImage's identical branch for the full rationale.
+			log.BaseFromContext(ctx).Debugf("unable to add file [%s] to store: %v", fi.Path, err)
+			return err
+		} else {
+			log.BaseFromContext(ctx).Errorf("unable to add file [%s] to store: %v", fi.Path, err)
+			return err
+		}
 	}
 
 	resolvedPath := fi.Path
@@ -100,7 +131,18 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 		l.Debugf("generated audit id of [none]")
 	}
 
-	l.Infof("successfully added file [%s]", ref.Name())
+	// stats.Layers is always 1 here: File.Layers() always returns exactly
+	// one layer (pkg/artifacts/file/file.go). f.Size() costs nothing extra
+	// on the success path -- compute() already ran (and memoized its result)
+	// inside the AddArtifact call above.
+	var stats *store.ImageStats
+	if size, sizeErr := f.Size(); sizeErr == nil {
+		stats = &store.ImageStats{}
+		stats.Layers.Store(1)
+		stats.Bytes.Store(size)
+	}
+
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
 
 	return nil
 }
@@ -157,12 +199,13 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
 }
 
-// formatAddedLine formats the completion line logged after an image is
-// successfully added to the store. When stats is non-nil and has at least
-// one layer recorded, it includes layer count (correctly pluralized) and
-// human-readable total blob size; otherwise it falls back to an
-// elapsed-only line and must never print "0 layers" (stats == nil covers
-// storeLocalImage, whose s.AddLocalImage path never populates ImageStats).
+// formatAddedLine formats the completion line logged after an artifact
+// (image or file) is successfully added to the store. When stats is
+// non-nil and has at least one layer recorded, it includes layer count
+// (correctly pluralized) and human-readable total blob size; otherwise it
+// falls back to an elapsed-only line and must never print "0 layers"
+// (stats == nil covers storeLocalImage, whose s.AddLocalImage path never
+// populates ImageStats).
 func formatAddedLine(ref string, stats *store.ImageStats, elapsed time.Duration) string {
 	if stats != nil {
 		if layers := stats.Layers.Load(); layers > 0 {

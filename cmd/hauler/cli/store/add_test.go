@@ -420,7 +420,11 @@ func TestAddFileCmd(t *testing.T) {
 	tmp.WriteString("raw content") //nolint:errcheck
 	tmp.Close()
 
-	o := &flags.AddFileOpts{Name: "renamed.txt"}
+	// StoreRootOpts must be non-nil: storeFile now wraps its store write in
+	// retry.Operation, which dereferences rso.Retries. In production this is
+	// always set (see addStoreAddFile in cmd/hauler/cli/store.go); this test
+	// previously left it nil since storeFile never touched rso before.
+	o := &flags.AddFileOpts{Name: "renamed.txt", StoreRootOpts: defaultRootOpts(s.Root)}
 	if err := AddFileCmd(ctx, o, s, tmp.Name(), defaultCliOpts()); err != nil {
 		t.Fatalf("AddFileCmd: %v", err)
 	}

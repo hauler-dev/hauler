@@ -19,27 +19,24 @@ func FromOpener(opener Opener, opts ...Option) (v1.Layer, error) {
 		annotations: make(map[string]string, 1),
 	}
 
-	layer.uncompressedOpener = opener
-	layer.compressedOpener = func() (io.ReadCloser, error) {
-		rc, err := opener()
-		if err != nil {
-			return nil, err
-		}
-
-		return rc, nil
-	}
+	// This package never actually compresses anything: Compressed() and
+	// Uncompressed() both read from the same opener. That means digest
+	// (uncompressed hash) and diffID (compressed hash) are always equal by
+	// construction, so a single opener field and a single hash computation
+	// serve both. If a future Option ever introduces genuine compression,
+	// this equality breaks and Compressed()/Uncompressed() must go back to
+	// wrapping distinct openers, with diffID computed independently via
+	// compute() on the compressed one.
+	layer.opener = opener
 
 	for _, opt := range opts {
 		opt(layer)
 	}
 
-	if layer.digest, layer.size, err = compute(layer.uncompressedOpener); err != nil {
+	if layer.digest, layer.size, err = compute(layer.opener); err != nil {
 		return nil, err
 	}
-
-	if layer.diffID, _, err = compute(layer.compressedOpener); err != nil {
-		return nil, err
-	}
+	layer.diffID = layer.digest
 
 	return layer, nil
 }
@@ -71,14 +68,13 @@ func WithAnnotations(annotations map[string]string) Option {
 }
 
 type layer struct {
-	digest             v1.Hash
-	diffID             v1.Hash
-	size               int64
-	compressedOpener   Opener
-	uncompressedOpener Opener
-	mediaType          string
-	annotations        map[string]string
-	urls               []string
+	digest      v1.Hash
+	diffID      v1.Hash
+	size        int64
+	opener      Opener
+	mediaType   string
+	annotations map[string]string
+	urls        []string
 }
 
 func (l layer) Descriptor() (*v1.Descriptor, error) {
@@ -111,11 +107,11 @@ func (l layer) DiffID() (v1.Hash, error) {
 }
 
 func (l layer) Compressed() (io.ReadCloser, error) {
-	return l.compressedOpener()
+	return l.opener()
 }
 
 func (l layer) Uncompressed() (io.ReadCloser, error) {
-	return l.uncompressedOpener()
+	return l.opener()
 }
 
 func (l layer) Size() (int64, error) {

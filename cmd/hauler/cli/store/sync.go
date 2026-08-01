@@ -22,6 +22,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
@@ -296,10 +297,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
-				for _, f := range cfg.Spec.Files {
-					if err := storeFile(ctx, s, f, ro, rso); err != nil {
-						return err
-					}
+				jobs := resolveFileJobs(cfg.Spec.Files)
+				if err := runFileJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro)); err != nil {
+					return err
 				}
 
 			default:
@@ -781,6 +781,104 @@ func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurr
 			err := storeImage(jctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite)
 			if progress != nil {
 				progress.Finished(j.img.Name)
+			}
+			return err
+		})
+	}
+	return g.Wait()
+}
+
+// fileJob is the fully-resolved set of inputs needed to store a single file
+// from a Files v1 manifest. resolveFileJobs produces these from raw v1.File
+// entries; runFileJobs consumes them. Unlike imageJob, there is no
+// verification pass and no per-entry precedence resolution (registry
+// relocation, cosign options, etc. don't apply to files) -- the two-phase
+// resolve/execute shape is kept anyway for consistency with the images path
+// and because it keeps resolveFileJobs trivially unit-testable without any
+// I/O.
+type fileJob struct {
+	file v1.File
+}
+
+// resolveFileJobs converts every v1.File in files into a fileJob. It is
+// pure: no I/O, no logging, no network calls.
+func resolveFileJobs(files []v1.File) []fileJob {
+	jobs := make([]fileJob, 0, len(files))
+	for _, f := range files {
+		jobs = append(jobs, fileJob{file: f})
+	}
+	return jobs
+}
+
+// fileJobName returns the identifier used for a file job's progress row and
+// per-job log field: the name override when set (matching the ref
+// storeFile/reference.NewTagged will actually derive), otherwise the raw
+// source path.
+func fileJobName(f v1.File) string {
+	if f.Name != "" {
+		return f.Name
+	}
+	return f.Path
+}
+
+// runFileJobs stores every job concurrently, bounded by concurrency, with no
+// local/remote partitioning by scheme -- unlike images, no file source
+// contends on a shared process-wide resource the way storeLocalImage's
+// Docker-daemon path does (see runImageJobs's doc comment), so file:// and
+// directory:// sources run through the same errgroup as http(s):// sources.
+// The blob semaphore inside pkg/content's OCI store already bounds total
+// in-flight blob writes regardless of scheme, so mixing schemes here doesn't
+// risk unbounded IOPS.
+//
+// Every job shares one *file.LayerCache (see pkg/artifacts/file/cache.go),
+// attached to each job's context, so that two Files entries pointing at the
+// identical source Path -- e.g. the same URL listed twice, once plain and
+// once with a name override, as testdata/hauler-manifest-pipeline.yaml
+// does -- fetch the underlying content exactly once regardless of
+// concurrency, rather than once per manifest entry.
+//
+// Fail-fast and --ignore-errors semantics mirror runImageJobs exactly: they
+// come for free from errgroup.WithContext + SetLimit(concurrency) plus
+// storeFile already returning nil (after logging a warning) when
+// ignoreErrors is set, so g.Wait() never observes an error to propagate in
+// that mode.
+func runFileJobs(ctx context.Context, s *store.Layout, jobs []fileJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
+	l := log.FromContext(ctx)
+
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	// baseLogger is the logger every job's per-file logger is derived from --
+	// see runImageJobs's identical baseLogger for the full rationale.
+	baseLogger := l
+	if progress != nil && len(jobs) > 0 {
+		baseLogger = log.NewLogger(progress)
+		progress.Start()
+		defer progress.Stop()
+	}
+
+	cache := file.NewLayerCache()
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+	for _, j := range jobs {
+		j := j
+		g.Go(func() error {
+			name := fileJobName(j.file)
+			// Began must be called from inside the goroutine, after g.Go's
+			// semaphore acquisition -- see runImageJobs's identical comment
+			// for why.
+			if progress != nil {
+				progress.Began(name)
+			}
+			jl := baseLogger.With(log.Fields{"file": name})
+			jctx := jl.WithContext(gctx)
+			jctx = log.WithBaseLogger(jctx, baseLogger)
+			jctx = file.WithLayerCacheContext(jctx, cache)
+			err := storeFile(jctx, s, j.file, ro, rso)
+			if progress != nil {
+				progress.Finished(name)
 			}
 			return err
 		})

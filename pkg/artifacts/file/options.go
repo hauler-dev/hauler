@@ -1,6 +1,8 @@
 package file
 
 import (
+	"context"
+
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
 	"hauler.dev/go/hauler/v2/pkg/getter"
 )
@@ -10,6 +12,16 @@ type Option func(*File)
 func WithClient(c *getter.Client) Option {
 	return func(f *File) {
 		f.client = c
+	}
+}
+
+// WithContext sets the context used by compute() when fetching the file's
+// content, so that cancelling ctx aborts an in-flight fetch. See the ctx
+// field's doc comment on File for why this is an option rather than a
+// parameter threaded through the artifacts.OCI interface.
+func WithContext(ctx context.Context) Option {
+	return func(f *File) {
+		f.ctx = ctx
 	}
 }
 
