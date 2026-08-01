@@ -100,7 +100,15 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return err
 			}
 			o.Concurrency = n
-			rso.BlobConcurrency = flags.BlobConcurrencyFor(n)
+
+			// Must not be an unconditional assignment: rso.BlobConcurrency
+			// may already hold an explicit --blob-concurrency value, which
+			// has to win over anything derived from --concurrency.
+			bc, err := flags.SyncBlobConcurrency(rso.BlobConcurrency, n)
+			if err != nil {
+				return err
+			}
+			rso.BlobConcurrency = bc
 
 			return nil
 		},

@@ -126,3 +126,143 @@ func TestBlobConcurrencyFor(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveBlobConcurrency(t *testing.T) {
+	tests := []struct {
+		name        string
+		flagValue   int
+		env         string // empty means unset
+		want        int
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:      "explicit flag wins",
+			flagValue: 4,
+			env:       "9",
+			want:      4,
+		},
+		{
+			name:      "explicit flag below the floor is honored",
+			flagValue: 1,
+			want:      1,
+		},
+		{
+			name:      "explicit flag above the cap is honored",
+			flagValue: 64,
+			want:      64,
+		},
+		{
+			name:      "zero with no env means not specified",
+			flagValue: 0,
+			want:      0,
+		},
+		{
+			name:      "zero falls back to env",
+			flagValue: 0,
+			env:       "6",
+			want:      6,
+		},
+		{
+			name:        "negative flag is rejected",
+			flagValue:   -2,
+			wantErr:     true,
+			errContains: "--blob-concurrency must be >= 0",
+		},
+		{
+			name:        "invalid env is rejected",
+			flagValue:   0,
+			env:         "not-a-number",
+			wantErr:     true,
+			errContains: "invalid HAULER_BLOB_CONCURRENCY",
+		},
+		{
+			name:        "env below one is rejected",
+			flagValue:   0,
+			env:         "0",
+			wantErr:     true,
+			errContains: "HAULER_BLOB_CONCURRENCY must be >= 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.env != "" {
+				t.Setenv(consts.HaulerBlobConcurrency, tt.env)
+			}
+			got, err := ResolveBlobConcurrency(tt.flagValue)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tt.errContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSyncBlobConcurrency(t *testing.T) {
+	tests := []struct {
+		name        string
+		blobFlag    int
+		concurrency int
+		env         string
+		want        int
+	}{
+		{
+			name:        "explicit flag overrides the derived floor",
+			blobFlag:    1,
+			concurrency: 1,
+			want:        1,
+		},
+		{
+			name:        "unset derives from concurrency, floored at 16",
+			blobFlag:    0,
+			concurrency: 1,
+			want:        16,
+		},
+		{
+			name:        "unset derives 4x concurrency",
+			blobFlag:    0,
+			concurrency: 5,
+			want:        20,
+		},
+		{
+			name:        "unset derivation is capped at 32",
+			blobFlag:    0,
+			concurrency: 100,
+			want:        32,
+		},
+		{
+			name:        "env overrides the derivation",
+			blobFlag:    0,
+			concurrency: 5,
+			env:         "2",
+			want:        2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.env != "" {
+				t.Setenv(consts.HaulerBlobConcurrency, tt.env)
+			}
+			got, err := SyncBlobConcurrency(tt.blobFlag, tt.concurrency)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

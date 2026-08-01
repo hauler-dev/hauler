@@ -87,13 +87,14 @@ const (
 	CollectionGroup = "collection.hauler.cattle.io"
 
 	// environment variables
-	HaulerDir          = "HAULER_DIR"
-	HaulerTempDir      = "HAULER_TEMP_DIR"
-	HaulerStoreDir     = "HAULER_STORE_DIR"
-	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
-	HaulerConcurrency  = "HAULER_CONCURRENCY"
-	HaulerLogLevel     = "HAULER_LOG_LEVEL"
-	HaulerAuditLevel   = "HAULER_AUDIT_LEVEL"
+	HaulerDir             = "HAULER_DIR"
+	HaulerTempDir         = "HAULER_TEMP_DIR"
+	HaulerStoreDir        = "HAULER_STORE_DIR"
+	HaulerIgnoreErrors    = "HAULER_IGNORE_ERRORS"
+	HaulerConcurrency     = "HAULER_CONCURRENCY"
+	HaulerBlobConcurrency = "HAULER_BLOB_CONCURRENCY"
+	HaulerLogLevel        = "HAULER_LOG_LEVEL"
+	HaulerAuditLevel      = "HAULER_AUDIT_LEVEL"
 
 	// container files and directories
 	ImageManifestFile = "manifest.json"

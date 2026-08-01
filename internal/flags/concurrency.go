@@ -56,3 +56,61 @@ func BlobConcurrencyFor(concurrency int) int {
 	}
 	return n
 }
+
+// ResolveBlobConcurrency returns an explicitly-requested blob-write
+// concurrency ceiling, honoring flag > HAULER_BLOB_CONCURRENCY precedence.
+// It returns 0 when neither was supplied, meaning "not specified" -- the
+// caller picks the fallback (SyncBlobConcurrency derives one; every other
+// store subcommand leaves it to consts.DefaultBlobConcurrency).
+//
+// Unlike ResolveConcurrency, a flagValue of 0 is not an error: 0 is this
+// flag's documented "auto" sentinel, because the flag exists to override a
+// value that is otherwise derived. Negative values and unparseable env
+// values are rejected outright rather than clamped, matching
+// ResolveConcurrency's rule that a typo must surface rather than appear to
+// work.
+//
+// An explicit value deliberately bypasses both the floor and the cap in
+// BlobConcurrencyFor. That is the entire point: the floor of 16 makes
+// --concurrency 1 still permit 16 concurrent blob writes, so without this
+// escape hatch there is no way to measure whether disk fan-out is the
+// bottleneck on a low-IOPS volume.
+func ResolveBlobConcurrency(flagValue int) (int, error) {
+	if flagValue < 0 {
+		return 0, fmt.Errorf("--blob-concurrency must be >= 0, got %d", flagValue)
+	}
+	if flagValue > 0 {
+		return flagValue, nil
+	}
+
+	v := os.Getenv(consts.HaulerBlobConcurrency)
+	if v == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s value %q: %w", consts.HaulerBlobConcurrency, v, err)
+	}
+	if n < 1 {
+		return 0, fmt.Errorf("%s must be >= 1, got %d", consts.HaulerBlobConcurrency, n)
+	}
+	return n, nil
+}
+
+// SyncBlobConcurrency resolves the effective blob-write ceiling for `store
+// sync`: an explicit --blob-concurrency (or HAULER_BLOB_CONCURRENCY) value
+// wins outright, otherwise the value is derived from the already-resolved
+// --concurrency via BlobConcurrencyFor. It never returns 0.
+//
+// This exists as its own function purely so the precedence is unit-testable
+// without constructing a cobra command.
+func SyncBlobConcurrency(blobFlagValue, concurrency int) (int, error) {
+	bc, err := ResolveBlobConcurrency(blobFlagValue)
+	if err != nil {
+		return 0, err
+	}
+	if bc == 0 {
+		bc = BlobConcurrencyFor(concurrency)
+	}
+	return bc, nil
+}
