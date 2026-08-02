@@ -1,8 +1,12 @@
 package flags
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"helm.sh/helm/v4/pkg/action"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
@@ -103,6 +107,32 @@ func TestResolveConcurrency(t *testing.T) {
 				t.Errorf("ResolveConcurrency() = %d, want %d", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestAddChartOpts_ConcurrencyFlag proves `store add chart` registers
+// --concurrency/-j with the same shorthand and default as `store sync`.
+func TestAddChartOpts_ConcurrencyFlag(t *testing.T) {
+	o := &AddChartOpts{StoreRootOpts: &StoreRootOpts{}, ChartOpts: &action.ChartPathOptions{}}
+	cmd := &cobra.Command{Use: "chart"}
+	o.AddFlags(cmd)
+
+	f := cmd.Flags().Lookup("concurrency")
+	if f == nil {
+		t.Fatal("expected --concurrency to be registered")
+	}
+	if f.Shorthand != "j" {
+		t.Errorf("shorthand = %q, want %q", f.Shorthand, "j")
+	}
+	if f.DefValue != fmt.Sprintf("%d", consts.DefaultConcurrency) {
+		t.Errorf("default = %q, want %d", f.DefValue, consts.DefaultConcurrency)
+	}
+
+	if err := cmd.ParseFlags([]string{"-j", "9"}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	if o.Concurrency != 9 {
+		t.Errorf("o.Concurrency = %d, want 9", o.Concurrency)
 	}
 }
 

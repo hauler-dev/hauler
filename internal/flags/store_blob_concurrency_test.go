@@ -72,3 +72,62 @@ func TestStoreRejectsNegativeBlobConcurrency(t *testing.T) {
 		t.Fatal("expected an error for negative --blob-concurrency, got nil")
 	}
 }
+
+// TestAddChartConcurrencyDerivesBlobConcurrency mirrors the two-step
+// composition `store add chart`'s PreRunE performs -- ResolveConcurrency
+// then SyncBlobConcurrency, the same pairing `store sync`'s PreRunE already
+// uses -- and pins that an explicit --blob-concurrency still wins over
+// whatever --concurrency would otherwise derive.
+func TestAddChartConcurrencyDerivesBlobConcurrency(t *testing.T) {
+	tests := []struct {
+		name            string
+		flagChanged     bool
+		concurrency     int
+		blobConcurrency int
+		wantConcurrency int
+		wantBlob        int
+	}{
+		{
+			name:            "default concurrency derives 4x, above the floor",
+			flagChanged:     false,
+			concurrency:     consts.DefaultConcurrency,
+			wantConcurrency: consts.DefaultConcurrency,
+			wantBlob:        consts.DefaultConcurrency * 4,
+		},
+		{
+			name:            "explicit --concurrency derives above the floor",
+			flagChanged:     true,
+			concurrency:     8,
+			wantConcurrency: 8,
+			wantBlob:        32,
+		},
+		{
+			name:            "explicit --blob-concurrency wins over the derived value",
+			flagChanged:     true,
+			concurrency:     8,
+			blobConcurrency: 2,
+			wantConcurrency: 8,
+			wantBlob:        2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := ResolveConcurrency(tt.flagChanged, tt.concurrency)
+			if err != nil {
+				t.Fatalf("ResolveConcurrency: %v", err)
+			}
+			if n != tt.wantConcurrency {
+				t.Errorf("ResolveConcurrency() = %d, want %d", n, tt.wantConcurrency)
+			}
+
+			bc, err := SyncBlobConcurrency(tt.blobConcurrency, n)
+			if err != nil {
+				t.Fatalf("SyncBlobConcurrency: %v", err)
+			}
+			if bc != tt.wantBlob {
+				t.Errorf("SyncBlobConcurrency() = %d, want %d", bc, tt.wantBlob)
+			}
+		})
+	}
+}
