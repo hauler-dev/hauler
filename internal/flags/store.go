@@ -38,7 +38,7 @@ func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
 	pf.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
-	pf.IntVar(&o.BlobConcurrency, "blob-concurrency", 0, "(Optional) Override the maximum number of concurrent blob writes (0 derives one from --concurrency)")
+	pf.IntVar(&o.BlobConcurrency, "blob-concurrency", 0, fmt.Sprintf("(Optional) Override the maximum number of concurrent blob writes (0 auto-derives from --concurrency where set, otherwise defaults to %d)", consts.DefaultBlobConcurrency))
 }
 
 func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layout, error) {

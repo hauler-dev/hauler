@@ -45,6 +45,6 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images")
 	f.BoolVar(&o.DryRun, "dry-run", false, "(Optional) Output product manifest content to stdout instead of processing it (requires --products)")
-	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of images to pull and store concurrently during sync (--concurrency 1 pulls one image at a time, matching pre-parallelism serial behavior; also configurable via HAULER_CONCURRENCY, explicit flag wins)")
-	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display during the parallel image-pull phase of sync")
+	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of artifacts to fetch and store concurrently (1 = serial; also via HAULER_CONCURRENCY, explicit flag wins)")
+	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
 }
