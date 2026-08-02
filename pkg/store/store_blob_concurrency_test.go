@@ -44,7 +44,6 @@ func TestWithBlobConcurrency_BoundsConcurrentWrites(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make([]error, n)
 	for i := 0; i < n; i++ {
-		i := i
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

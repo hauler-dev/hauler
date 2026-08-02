@@ -744,7 +744,6 @@ func runRemoteImageJobsWith(ctx context.Context, s *store.Layout, jobs []imageJo
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(concurrency)
 	for _, j := range jobs {
-		j := j
 		g.Go(func() error {
 			// Began must be called from inside the goroutine, after
 			// g.Go's semaphore acquisition, not from the outer loop:
@@ -850,11 +849,10 @@ func runFileJobsWith(ctx context.Context, s *store.Layout, jobs []fileJob, concu
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(concurrency)
 	for _, j := range jobs {
-		j := j
 		g.Go(func() error {
 			name := fileJobName(j.file)
 			// Began must be called after g.Go's semaphore acquisition;
-			// see runImageJobs.
+			// see runRemoteImageJobsWith.
 			if progress != nil {
 				progress.Began(name)
 			}

@@ -434,3 +434,40 @@ func TestRenderer_StopJoinsSpinnerGoroutine(t *testing.T) {
 		t.Errorf("goroutine count grew from %d to %d after 20 Start/Stop cycles; spinner goroutines appear leaked", before, after)
 	}
 }
+
+// TestRenderer_DoubleStartIsIdempotent proves a second Start without an
+// intervening Stop is a no-op: it must not replace r.done and must not
+// launch a second spinner goroutine. Either would strand the first
+// goroutine on the channel it already holds -- Stop only ever closes the
+// current r.done, so the orphaned goroutine would never see a close and
+// Stop's r.wg.Wait() would hang forever. A following Stop must still join
+// cleanly.
+func TestRenderer_DoubleStartIsIdempotent(t *testing.T) {
+	before := runtime.NumGoroutine()
+
+	var buf bytes.Buffer
+	r := NewRenderer(&buf)
+	r.Start()
+	firstDone := r.done
+
+	r.Start()
+	if r.done != firstDone {
+		t.Errorf("second Start replaced r.done; Start is not idempotent")
+	}
+
+	r.Began("x")
+	r.Stop()
+
+	deadline := time.Now().Add(2 * time.Second)
+	var after int
+	for {
+		after = runtime.NumGoroutine()
+		if after <= before || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if after > before {
+		t.Errorf("goroutine count grew from %d to %d after double Start + Stop; second Start leaked a spinner goroutine", before, after)
+	}
+}

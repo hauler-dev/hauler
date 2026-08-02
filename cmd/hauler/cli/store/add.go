@@ -840,7 +840,6 @@ func traverseChartLevels(ctx context.Context, jobs []chartJob, concurrency int, 
 		g, gctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, j := range level {
-			j := j
 			g.Go(func() error {
 				gotImages, gotDeps, err := fetch(gctx, j)
 				if err != nil {
@@ -941,7 +940,7 @@ func runChartJobs(ctx context.Context, s *store.Layout, jobs []chartJob, concurr
 	fetch := func(fctx context.Context, j chartJob) ([]imageJob, []chartJob, error) {
 		name := chartDisplayName(j.cfg.Name)
 		// Invoked from inside traverseChartLevels' errgroup goroutine, so
-		// Began lands after semaphore acquisition -- see runImageJobs.
+		// Began lands after semaphore acquisition -- see runRemoteImageJobsWith.
 		if progress != nil {
 			progress.Began(name)
 		}

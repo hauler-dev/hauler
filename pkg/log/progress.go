@@ -68,20 +68,30 @@ func NewRenderer(out io.Writer) *Renderer {
 
 // Start begins a new progress session and launches the spinner ticker
 // goroutine. It caches the terminal width and height for the lifetime of the
-// session (mid-run resize is out of scope).
+// session (mid-run resize is out of scope). A call while a session is
+// already live (started and not yet stopped) is a no-op: reassigning r.done
+// here would orphan the still-running spinner goroutine on the old channel,
+// which it holds in its own stack frame. Stop closes only the newest r.done,
+// so that goroutine would never observe a close and r.wg.Wait() in Stop
+// would block forever.
 func (r *Renderer) Start() {
 	r.mu.Lock()
+	if r.started && !r.stopped {
+		r.mu.Unlock()
+		return
+	}
 	r.inFlight = nil
 	r.spinnerFrame = 0
 	r.width, r.height = r.detectSize()
 	r.drawnRows = 0
 	r.started = true
 	r.stopped = false
-	r.done = make(chan struct{})
+	done := make(chan struct{})
+	r.done = done
 	r.mu.Unlock()
 
 	r.wg.Add(1)
-	go r.run()
+	go r.run(done)
 }
 
 // Began records name as in-flight and redraws the live region.
@@ -145,8 +155,10 @@ func (r *Renderer) Stop() {
 }
 
 // run advances the spinner frame and redraws roughly every spinnerInterval
-// until Stop closes done.
-func (r *Renderer) run() {
+// until done closes. done is passed in rather than read from r.done because
+// r.done is only ever written under r.mu (by Start), and this goroutine
+// otherwise has no synchronized way to observe it.
+func (r *Renderer) run(done chan struct{}) {
 	defer r.wg.Done()
 
 	ticker := time.NewTicker(spinnerInterval)
@@ -154,7 +166,7 @@ func (r *Renderer) run() {
 
 	for {
 		select {
-		case <-r.done:
+		case <-done:
 			return
 		case <-ticker.C:
 			r.mu.Lock()
