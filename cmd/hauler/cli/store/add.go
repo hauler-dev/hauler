@@ -10,11 +10,14 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/errgroup"
+	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/common"
 	commonutil "helm.sh/helm/v4/pkg/chart/common/util"
 	helmchart "helm.sh/helm/v4/pkg/chart/v2"
@@ -232,6 +235,42 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	l.Infof("adding image [%s] to the store", cfg.Name)
 
 	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
+}
+
+func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
+	// Nothing in the chart path forces an fsync: every descriptor it adds --
+	// the chart, its dependencies, and each discovered image -- lands through
+	// content.OCI's 30-second durable checkpoint, so a whole run can return
+	// success with index.json still only in page cache. This trailing
+	// SaveIndex is what makes the run durable, matching SyncCmd's.
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding chart: %v", err)
+		}
+	}()
+
+	l.Infof("adding chart [%s] to the store", chartName)
+
+	// The job owns its *action.ChartPathOptions rather than the caller's, so
+	// the invariant every chartJob holds -- no two jobs share a pointee --
+	// is true of dependency-derived jobs and this one alike.
+	chartOpts := *o.ChartOpts
+	opts := *o
+	opts.ChartOpts = &chartOpts
+
+	job := chartJob{
+		cfg: v1.Chart{
+			Name:    chartName,
+			RepoURL: o.ChartOpts.RepoURL,
+			Version: o.ChartOpts.Version,
+		},
+		opts:    opts,
+		rewrite: o.Rewrite,
+	}
+
+	return runChartJobs(ctx, s, []chartJob{job}, o.Concurrency, rso, ro, newProgressRenderer(o.NoProgress, ro.LogLevel))
 }
 
 // formatAddedLine formats the completion line logged after an artifact
@@ -509,36 +548,6 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	return nil
 }
 
-func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
-	l := log.FromContext(ctx)
-
-	// storeChart already calls SaveIndex() durably at every point it adds a
-	// chart descriptor, so this is redundant on the happy path today. It's
-	// added anyway to keep the invariant uniform across every `store add`
-	// subcommand regardless of future changes to storeChart's internals --
-	// SaveIndex() on an unmodified index is a cheap no-op-sized write.
-	defer func() {
-		if err := s.OCI.SaveIndex(); err != nil {
-			l.Warnf("failed to save index durably after adding chart: %v", err)
-		}
-	}()
-
-	cfg := v1.Chart{
-		Name:    chartName,
-		RepoURL: o.ChartOpts.RepoURL,
-		Version: o.ChartOpts.Version,
-	}
-
-	rewrite := ""
-	if o.Rewrite != "" {
-		rewrite = o.Rewrite
-	}
-	return storeChart(ctx, s, cfg, o, rso, ro, rewrite)
-}
-
-// unexported type for the context key to avoid collisions
-type isSubchartKey struct{}
-
 // imageregex parses image references starting with "image:" and with optional spaces or optional quotes
 var imageRegex = regexp.MustCompile(`(?m)^[ \t-]*image:[ \t]*['"]?([^\s'"#]+)`)
 
@@ -647,49 +656,413 @@ func applyDefaultRegistry(img string, defaultRegistry string) (string, error) {
 	return newRef.Name(), nil
 }
 
-func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.AddChartOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+// chartJob is the fully-resolved set of inputs needed to fetch and store a
+// single chart; see resolveChartJobs.
+type chartJob struct {
+	cfg     v1.Chart
+	opts    flags.AddChartOpts // held by value; ChartOpts is allocated per job
+	rewrite string
+	parent  string // "" for a top-level chart, else the parent chart's ref
+	depth   int
+}
+
+// resolveChartJobs produces one top-level chartJob per entry in charts,
+// applying the Charts precedence rules against the manifest's annotations and
+// the sync flags. manifestDir is the directory holding the manifest, which
+// each chart's relative valuesFiles paths resolve against. It reads chart
+// credentials from the environment via resolveChartCreds, so it can fail
+// before any chart is fetched if a chart's usernameEnv/passwordEnv pair is
+// misconfigured.
+//
+// The three precedence rules are not uniform. registry is CLI > annotation.
+// excludeExtras is a one-way switch that any of the three sources can flip on
+// and none can flip off. platform is per-chart > CLI > annotation: an explicit
+// --platform is run-time intent and outranks manifest metadata. That last rule
+// must stay identical to resolveImageJobs's, or a single `hauler store sync`
+// run would pull a chart's discovered images for a different platform than the
+// manifest's own Images section.
+//
+// Every job allocates its own *action.ChartPathOptions. flags.AddChartOpts
+// holds that as a pointer, so copying the struct alone would leave sibling
+// jobs sharing one pointee, and a per-chart RepoURL/Version write would land
+// in every other chart's options.
+func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifestDir string, charts []v1.Chart) ([]chartJob, error) {
+	registry := o.Registry
+	if registry == "" {
+		registry = annotations[consts.ImageAnnotationRegistry]
+	}
+
+	jobs := make([]chartJob, 0, len(charts))
+	for _, ch := range charts {
+		excludeExtras := o.ExcludeExtras
+		if !o.ExcludeExtras && annotations[consts.ImageAnnotationExcludeExtras] == "true" {
+			excludeExtras = true
+		}
+		if ch.ExcludeExtras {
+			excludeExtras = ch.ExcludeExtras
+		}
+
+		platform := o.Platform
+		if o.Platform == "" && annotations[consts.ImageAnnotationPlatform] != "" {
+			platform = annotations[consts.ImageAnnotationPlatform]
+		}
+		if ch.Platform != "" {
+			platform = ch.Platform
+		}
+
+		var valuesFiles []string
+		for _, path := range ch.ValuesFiles {
+			valuesFiles = append(valuesFiles, filepath.Join(manifestDir, path))
+		}
+
+		chartUsername, chartPassword, err := resolveChartCreds(ch)
+		if err != nil {
+			return nil, err
+		}
+
+		jobs = append(jobs, chartJob{
+			cfg: ch,
+			opts: flags.AddChartOpts{
+				ChartOpts: &action.ChartPathOptions{
+					RepoURL:               ch.RepoURL,
+					Version:               ch.Version,
+					Verify:                ch.Verify,
+					Keyring:               ch.Keyring,
+					Username:              chartUsername,
+					Password:              chartPassword,
+					PassCredentialsAll:    ch.PassCredentialsAll,
+					CertFile:              ch.CertFile,
+					KeyFile:               ch.KeyFile,
+					CaFile:                ch.CaFile,
+					InsecureSkipTLSVerify: ch.InsecureSkipTLSVerify,
+					PlainHTTP:             ch.PlainHTTP,
+				},
+				AddImages:       ch.AddImages,
+				AddDependencies: ch.AddDependencies,
+				ExcludeExtras:   excludeExtras,
+				Registry:        registry,
+				Platform:        platform,
+				ValuesFiles:     valuesFiles,
+			},
+			rewrite: ch.Rewrite,
+		})
+	}
+
+	return jobs, nil
+}
+
+// dedupeImageJobs collapses repeat pulls out of a chart tree's discovered
+// images, keeping each (name, platform, excludeExtras) triple's first
+// occurrence and the order it was first seen in. Platform and excludeExtras
+// belong in the key because they change what storeImage actually fetches, not
+// just how it is recorded.
+//
+// Precondition: every job is chart-discovered -- local is false and no
+// verification field (needsPubKey, key, needsKeyless, certIdentity*, tlog) is
+// set. Those fields are outside the key, so passing manifest-derived jobs here
+// would silently drop a local Docker-daemon pull in favor of a same-named
+// remote one, or let an unverified job displace one that would have had its
+// signature checked. Chart image discovery has no syntax for either, which is
+// why the key stays narrow.
+func dedupeImageJobs(jobs []imageJob) []imageJob {
+	type key struct {
+		name          string
+		platform      string
+		excludeExtras bool
+	}
+
+	seen := make(map[key]struct{}, len(jobs))
+	out := make([]imageJob, 0, len(jobs))
+	for _, j := range jobs {
+		k := key{name: j.img.Name, platform: j.platform, excludeExtras: j.excludeExtras}
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, j)
+	}
+
+	return out
+}
+
+// maxChartDepth bounds how many dependency levels a chart tree is walked.
+// The seen set already terminates repo-based cycles; this cap is what stops
+// a graph whose every node is a *distinct* name|repo|version -- which the
+// seen set cannot detect -- from walking forever. 10 is far past anything
+// real: helm's own dependency trees bottom out within two or three levels.
+const maxChartDepth = 10
+
+// chartFetcher fetches one chart, returning the images and dependency charts
+// it discovered. traverseChartLevels calls it concurrently.
+type chartFetcher func(ctx context.Context, j chartJob) ([]imageJob, []chartJob, error)
+
+// traverseChartLevels walks a chart dependency graph breadth-first, fetching
+// each level concurrently (bounded by concurrency) before deriving the next,
+// and returns every image discovered along the way plus the number of charts
+// fetched.
+//
+// Level-by-level rather than depth-first because a level is the widest set of
+// charts provably independent of each other: a dependency's inputs are not
+// known until its parent has been fetched and expanded. It is also what makes
+// runChartJobs' single shared temp root a requirement rather than a
+// convenience -- see its doc comment.
+//
+// Cycles are cut by a seen set keyed on name|repoURL|version. A chart already
+// scheduled is never scheduled again, which also collapses the common case of
+// several siblings depending on the same subchart.
+//
+// Error semantics match runRemoteImageJobsWith: each level is one
+// errgroup.WithContext with SetLimit(concurrency), so under --ignore-errors
+// fetch returns nil and the walk continues, and otherwise the first failure
+// cancels its level's derived context and surfaces verbatim.
+func traverseChartLevels(ctx context.Context, jobs []chartJob, concurrency int, fetch chartFetcher) ([]imageJob, int, error) {
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	var (
+		mu      sync.Mutex
+		images  []imageJob
+		deps    []chartJob
+		fetched int
+		level   = jobs
+		seen    = make(map[string]bool, len(jobs))
+		depth   int
+	)
+
+	for _, j := range level {
+		seen[chartJobKey(j)] = true
+	}
+
+	for ; len(level) > 0 && depth < maxChartDepth; depth++ {
+		deps = nil
+
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(concurrency)
+		for _, j := range level {
+			j := j
+			g.Go(func() error {
+				gotImages, gotDeps, err := fetch(gctx, j)
+				if err != nil {
+					return err
+				}
+				mu.Lock()
+				images = append(images, gotImages...)
+				deps = append(deps, gotDeps...)
+				fetched++
+				mu.Unlock()
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return nil, 0, err
+		}
+
+		next := make([]chartJob, 0, len(deps))
+		for _, d := range deps {
+			k := chartJobKey(d)
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			next = append(next, d)
+		}
+		level = next
+	}
+
+	// Truncation is silent otherwise: the charts still queued in level are
+	// simply dropped, and nothing downstream would show them missing.
+	if depth == maxChartDepth && len(level) > 0 {
+		log.FromContext(ctx).Warnf("stopping chart dependency traversal at depth [%d]... [%d] dependent chart(s) not fetched", maxChartDepth, len(level))
+	}
+
+	return images, fetched, nil
+}
+
+// chartJobKey identifies a chart for the traversal's seen set. Name alone is
+// not enough: the same chart name at two versions, or from two repositories,
+// is two genuinely different pulls.
+func chartJobKey(j chartJob) string {
+	return j.cfg.Name + "|" + j.cfg.RepoURL + "|" + j.cfg.Version
+}
+
+// runChartJobs stores every chart in jobs and everything the tree below them
+// references: dependency charts are walked breadth-first and concurrently by
+// traverseChartLevels, then every image discovered along the way is pulled in
+// one deduplicated pass by the same runner `store sync`'s Images documents
+// use. Bounded by concurrency in both phases.
+//
+// One temp root serves the whole call, and its lifetime is a hard constraint
+// rather than a convenience. A file:// dependency is named by a path *inside*
+// its parent's expanded directory, and BFS fetches it only after the parent's
+// entire level has returned -- so a per-chart temp dir removed when fetchChart
+// returns would delete that path out from under the child. Charts are capped
+// at ~1MB, so holding every expansion until the call ends is cheap.
+//
+// Only the chart phase runs inside log.CaptureOutput. Helm's downloader can
+// still print to stdout from a transitive dependency, and debug=true routes
+// that to DEBUG -- silent at the default level, which is what the per-call
+// os.Stdout swap deleted from pkg/content/chart achieved. The image phase must
+// stay outside it: pkg/cosign calls CaptureOutput too, and log.captureMu is a
+// plain non-reentrant mutex, so nesting the two would self-deadlock.
+func runChartJobs(ctx context.Context, s *store.Layout, jobs []chartJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
 	l := log.FromContext(ctx)
 
-	ignoreErrors := flags.ShouldIgnoreErrors(ro)
-
-	// subchart logging prefix
-	isSubchart := ctx.Value(isSubchartKey{}) == true
-	prefix := ""
-	if isSubchart {
-		prefix = "  ↳ "
+	tempOverride := rso.TempOverride
+	if tempOverride == "" {
+		tempOverride = os.Getenv(consts.HaulerTempDir)
 	}
-
-	// normalize chart name for logging
-	displayName := cfg.Name
-	if strings.Contains(cfg.Name, string(os.PathSeparator)) {
-		displayName = filepath.Base(cfg.Name)
-	}
-	l.Infof("%sadding chart [%s] to the store", prefix, displayName)
-
-	opts.ChartOpts.RepoURL = cfg.RepoURL
-	opts.ChartOpts.Version = cfg.Version
-
-	chrt, err := chart.NewChart(cfg.Name, opts.ChartOpts)
+	tempRoot, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempRoot)
+
+	// baseLogger is the logger every job's per-chart logger is derived from --
+	// see runImageJobs's identical baseLogger for the full rationale. It is
+	// built before CaptureOutput swaps os.Stdout so NewLogger's color decision
+	// still sees the real terminal, and the Renderer holds the real *os.File
+	// either way, so progress rows keep reaching the terminal rather than the
+	// capture pipe.
+	baseLogger := l
+	if progress != nil {
+		baseLogger = log.NewLogger(progress)
+		progress.Start()
+		defer progress.Stop()
+	}
+
+	fetch := func(fctx context.Context, j chartJob) ([]imageJob, []chartJob, error) {
+		name := chartDisplayName(j.cfg.Name)
+		// Invoked from inside traverseChartLevels' errgroup goroutine, so
+		// Began lands after semaphore acquisition -- see runImageJobs.
+		if progress != nil {
+			progress.Began(name)
+		}
+		fields := log.Fields{"chart": name}
+		if j.parent != "" {
+			fields["parent"] = j.parent
+		}
+		jctx := baseLogger.With(fields).WithContext(fctx)
+		jctx = log.WithBaseLogger(jctx, baseLogger)
+		images, deps, err := fetchChart(jctx, s, j, tempRoot, rso, ro)
+		if progress != nil {
+			progress.Finished(name)
+		}
+		return images, deps, err
+	}
+
+	// CaptureOutput wraps a non-nil fn error as "function execution failed:
+	// %w". Carrying the walk's error out in a variable keeps the one real
+	// failure reaching the caller verbatim, as runImageJobs' does.
+	var (
+		discovered []imageJob
+		charts     int
+		walkErr    error
+	)
+	if err := log.CaptureOutput(baseLogger, true, func() error {
+		discovered, charts, walkErr = traverseChartLevels(baseLogger.WithContext(ctx), jobs, concurrency, fetch)
+		return nil
+	}); err != nil {
 		return err
+	}
+	if walkErr != nil {
+		return walkErr
+	}
+
+	images := dedupeImageJobs(discovered)
+	if len(images) == 0 {
+		return nil
+	}
+
+	baseLogger.Infof("identified %d unique image(s) across %d chart(s)", len(images), charts)
+
+	// Chart-discovered images are always remote and never carry verification
+	// inputs, so they go straight to the remote runner -- no local Docker pass
+	// and no verify pass to run first.
+	return runRemoteImageJobsWith(ctx, s, images, concurrency, rso, ro, progress, baseLogger)
+}
+
+// chartDisplayName is the short name used for a chart's progress row and
+// "chart=" log field. A file:// dependency's job is named by a filesystem
+// path into its parent's expansion, which is neither short nor stable across
+// runs, so those collapse to the basename.
+func chartDisplayName(name string) string {
+	if strings.Contains(name, string(os.PathSeparator)) {
+		return filepath.Base(name)
+	}
+	return name
+}
+
+// fetchChart stores one chart and reports what it references: the images
+// discovered inside it when --add-images, and the dependency charts to walk
+// next when --add-dependencies. It does not recurse -- traverseChartLevels
+// owns the walk -- and it never writes through j.opts.ChartOpts, which is what
+// lets sibling jobs run concurrently.
+//
+// tempRoot is runChartJobs' shared root. The chart expands into a fresh
+// subdirectory of it, and both dependency branches resolve against that
+// subdirectory, so it must outlive this call; see runChartJobs.
+func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) ([]imageJob, []chartJob, error) {
+	l := log.FromContext(ctx)
+
+	start := time.Now()
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+	displayName := chartDisplayName(j.cfg.Name)
+
+	if err := ctx.Err(); err != nil {
+		log.BaseFromContext(ctx).Debugf("skipping chart [%s]: %v", displayName, err)
+		return nil, nil, err
+	}
+
+	log.BaseFromContext(ctx).Debugf("adding chart [%s] to the store", displayName)
+
+	chrt, err := chart.NewChart(j.cfg.Name, j.opts.ChartOpts)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	c, err := chrt.Load()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	ref, err := reference.NewTagged(c.Name(), c.Metadata.Version)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	chartDesc, err := s.AddArtifact(ctx, chrt, ref.Name())
+	var chartDesc ocispec.Descriptor
+	err = retry.Operation(ctx, rso, ro, func() error {
+		var addErr error
+		chartDesc, addErr = s.AddArtifact(ctx, chrt, ref.Name())
+		return addErr
+	})
 	if err != nil {
-		return err
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to add chart [%s] to store: %v... skipping...", ref.Name(), err)
+			return nil, nil, nil
+		} else if errors.Is(err, context.Canceled) {
+			// Under traverseChartLevels' fail-fast errgroup, one real failure
+			// cancels every other in-flight chart's context -- see
+			// storeImage's identical branch for the full rationale.
+			log.BaseFromContext(ctx).Debugf("unable to add chart [%s] to store: %v", ref.Name(), err)
+			return nil, nil, err
+		}
+		log.BaseFromContext(ctx).Errorf("unable to add chart [%s] to store: %v", ref.Name(), err)
+		return nil, nil, err
 	}
-	if err := s.OCI.SaveIndex(); err != nil {
-		return err
+
+	if j.rewrite != "" {
+		if err := rewriteChartReference(ctx, s, ref, j.rewrite); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if auditLevel(ro) != "none" {
@@ -708,21 +1081,21 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
-				"repo":                     audit.SanitizeURL(cfg.RepoURL),
+				"repo":                     audit.SanitizeURL(j.cfg.RepoURL),
 				"version":                  c.Metadata.Version,
-				"rewrite":                  rewrite,
-				"add-images":               opts.AddImages,
-				"add-dependencies":         opts.AddDependencies,
-				"exclude-extras":           opts.ExcludeExtras,
-				"values":                   opts.ValuesFiles,
-				"platform":                 opts.Platform,
-				"registry":                 opts.Registry,
-				"kube-version":             opts.KubeVersion,
-				"verify":                   opts.ChartOpts.Verify,
-				"insecure-skip-tls-verify": opts.ChartOpts.InsecureSkipTLSVerify,
-				"ca-file":                  opts.ChartOpts.CaFile,
-				"cert-file":                opts.ChartOpts.CertFile,
-				"key-file":                 opts.ChartOpts.KeyFile,
+				"rewrite":                  j.rewrite,
+				"add-images":               j.opts.AddImages,
+				"add-dependencies":         j.opts.AddDependencies,
+				"exclude-extras":           j.opts.ExcludeExtras,
+				"values":                   j.opts.ValuesFiles,
+				"platform":                 j.opts.Platform,
+				"registry":                 j.opts.Registry,
+				"kube-version":             j.opts.KubeVersion,
+				"verify":                   j.opts.ChartOpts.Verify,
+				"insecure-skip-tls-verify": j.opts.ChartOpts.InsecureSkipTLSVerify,
+				"ca-file":                  j.opts.ChartOpts.CaFile,
+				"cert-file":                j.opts.ChartOpts.CertFile,
+				"key-file":                 j.opts.ChartOpts.KeyFile,
 			}
 		}
 		if err := audit.Append(ro.HaulerDir, e); err != nil {
@@ -733,52 +1106,47 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		l.Debugf("generated audit id of [none]")
 	}
 
-	l.Infof("%ssuccessfully added chart [%s:%s]", prefix, c.Name(), c.Metadata.Version)
-
-	tempOverride := rso.TempOverride
-	if tempOverride == "" {
-		tempOverride = os.Getenv(consts.HaulerTempDir)
-	}
-	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
-	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
 	chartPath := chrt.Path()
 	chartPathInfo, err := os.Stat(chartPath)
 	if err != nil {
-		return fmt.Errorf("failed to stat chart path '%s': %w", chartPath, err)
+		return nil, nil, fmt.Errorf("failed to stat chart path '%s': %w", chartPath, err)
 	}
 	if !chartPathInfo.IsDir() {
-		l.Debugf("%sextracting chart archive [%s]", prefix, filepath.Base(chartPath))
-		if err := util.ExpandFile(tempDir, chartPath); err != nil {
-			return fmt.Errorf("failed to extract chart: %w", err)
+		// A subdirectory per job, not <tempRoot>/<chart name>: two concurrent
+		// jobs can be the same chart at different versions, and both expand
+		// into a directory named for the chart.
+		expandDir, err := os.MkdirTemp(tempRoot, "chart-")
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create temp dir: %w", err)
+		}
+		l.Debugf("extracting chart archive [%s]", filepath.Base(chartPath))
+		if err := util.ExpandFile(expandDir, chartPath); err != nil {
+			return nil, nil, fmt.Errorf("failed to extract chart: %w", err)
 		}
 
 		// expanded chart should be in a directory matching the chart name
-		expectedChartDir := filepath.Join(tempDir, c.Name())
+		expectedChartDir := filepath.Join(expandDir, c.Name())
 		if _, err := os.Stat(expectedChartDir); err != nil {
-			return fmt.Errorf("chart archive did not expand into expected directory '%s': %w", c.Name(), err)
+			return nil, nil, fmt.Errorf("chart archive did not expand into expected directory '%s': %w", c.Name(), err)
 		}
 		chartPath = expectedChartDir
 	}
 
-	// add-images
-	if opts.AddImages {
+	var imageJobs []imageJob
+	if j.opts.AddImages {
 		userValues := map[string]any{}
 
-		for _, valuesFile := range opts.ValuesFiles {
+		for _, valuesFile := range j.opts.ValuesFiles {
 			l.Debugf("loading values for chart [%s]", valuesFile)
 
 			valuesContent, err := os.ReadFile(valuesFile)
 			if err != nil {
-				return fmt.Errorf("failed to read values file [%s]: %w", valuesFile, err)
+				return nil, nil, fmt.Errorf("failed to read values file [%s]: %w", valuesFile, err)
 			}
 
 			vals, err := loader.LoadValues(bytes.NewReader(valuesContent))
 			if err != nil {
-				return fmt.Errorf("failed to read helm values file [%s]: %w", valuesFile, err)
+				return nil, nil, fmt.Errorf("failed to read helm values file [%s]: %w", valuesFile, err)
 			}
 
 			userValues = loader.MergeMaps(userValues, vals)
@@ -788,10 +1156,10 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		caps := common.DefaultCapabilities.Copy()
 
 		// only parse and override if provided kube version
-		if opts.KubeVersion != "" {
-			kubeVersion, err := common.ParseKubeVersion(opts.KubeVersion)
+		if j.opts.KubeVersion != "" {
+			kubeVersion, err := common.ParseKubeVersion(j.opts.KubeVersion)
 			if err != nil {
-				l.Warnf("%sinvalid kube-version [%s], using default kubernetes version", prefix, opts.KubeVersion)
+				l.Warnf("invalid kube-version [%s], using default kubernetes version", j.opts.KubeVersion)
 			} else {
 				caps.KubeVersion = *kubeVersion
 			}
@@ -802,18 +1170,18 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		// used later by --add-dependencies.
 		renderChart, err := loader.Load(chrt.Path())
 		if err != nil {
-			return fmt.Errorf("failed to reload chart for image discovery: %w", err)
+			return nil, nil, fmt.Errorf("failed to reload chart for image discovery: %w", err)
 		}
 
 		// Match helm install/template: coalesce parent values into subcharts
 		// (including dependency aliases) and honor conditions before rendering.
 		if err := util.ProcessDependencies(renderChart, userValues); err != nil {
-			return fmt.Errorf("failed to process chart dependencies for image discovery: %w", err)
+			return nil, nil, fmt.Errorf("failed to process chart dependencies for image discovery: %w", err)
 		}
 
 		values, err := commonutil.ToRenderValues(renderChart, userValues, common.ReleaseOptions{Namespace: "hauler"}, caps)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 
 		// helper for normalization and deduping slices
@@ -839,7 +1207,7 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		rendered, err := engine.Render(renderChart, values)
 		if err != nil {
 			// charts may fail due to values so still try helm chart annotations and lock
-			l.Warnf("%sfailed to render chart [%s]: %v", prefix, c.Name(), err)
+			l.Warnf("failed to render chart [%s]: %v", c.Name(), err)
 			rendered = map[string]string{}
 		}
 
@@ -855,14 +1223,14 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		// parse helm chart annotations for images
 		annotationImages, err = imagesFromChartAnnotations(c)
 		if err != nil {
-			l.Warnf("%sfailed to parse helm chart annotation for [%s:%s]: %v", prefix, c.Name(), c.Metadata.Version, err)
+			l.Warnf("failed to parse helm chart annotation for [%s:%s]: %v", c.Name(), c.Metadata.Version, err)
 			annotationImages = nil
 		}
 
 		// parse images lock files for images
 		lockImages, err = imagesFromImagesLock(chartPath)
 		if err != nil {
-			l.Warnf("%sfailed to parse images lock: %v", prefix, err)
+			l.Warnf("failed to parse images lock: %v", err)
 			lockImages = nil
 		}
 
@@ -875,140 +1243,147 @@ func storeChart(ctx context.Context, s *store.Layout, cfg v1.Chart, opts *flags.
 		images := append(append(templateImages, annotationImages...), lockImages...)
 		images = normalizeUniq(images)
 
-		l.Debugf("%simage references identified for helm template: [%d] image(s)", prefix, len(templateImages))
-
-		l.Debugf("%simage references identified for helm chart annotations: [%d] image(s)", prefix, len(annotationImages))
-
-		l.Debugf("%simage references identified for helm image lock file: [%d] image(s)", prefix, len(lockImages))
-		l.Debugf("%ssuccessfully parsed and deduped image references: [%d] image(s)", prefix, len(images))
-
-		l.Debugf("%ssuccessfully parsed image references %v", prefix, images)
+		l.Debugf("image references identified for helm template: [%d] image(s)", len(templateImages))
+		l.Debugf("image references identified for helm chart annotations: [%d] image(s)", len(annotationImages))
+		l.Debugf("image references identified for helm image lock file: [%d] image(s)", len(lockImages))
+		l.Debugf("successfully parsed and deduped image references: [%d] image(s)", len(images))
+		l.Debugf("successfully parsed image references %v", images)
 
 		if len(images) > 0 {
-			l.Infof("%s  ↳ identified [%d] image(s) in [%s:%s]", prefix, len(images), c.Name(), c.Metadata.Version)
+			log.BaseFromContext(ctx).Infof("identified [%d] image(s) in [%s:%s]", len(images), c.Name(), c.Metadata.Version)
 		}
 
 		for _, image := range images {
-			image, err := applyDefaultRegistry(image, opts.Registry)
+			relocated, err := applyDefaultRegistry(image, j.opts.Registry)
 			if err != nil {
 				if ignoreErrors {
-					l.Warnf("%s  ↳ unable to apply registry to image [%s]: %v... skipping...", prefix, image, err)
+					l.Warnf("unable to apply registry to image [%s]: %v... skipping...", image, err)
 					continue
 				}
-				return fmt.Errorf("unable to apply registry to image [%s]: %w", image, err)
+				return nil, nil, fmt.Errorf("unable to apply registry to image [%s]: %w", image, err)
 			}
 
-			imgCfg := v1.Image{Name: image}
-			if err := storeImage(ctx, s, imgCfg, opts.Platform, opts.ExcludeExtras, rso, ro, ""); err != nil {
-				if ignoreErrors {
-					l.Warnf("%s  ↳ failed to store image [%s]: %v... skipping...", prefix, image, err)
-					continue
-				}
-				return fmt.Errorf("failed to store image [%s]: %w", image, err)
-			}
-			if err := s.OCI.LoadIndex(); err != nil {
-				return err
-			}
-			if err := s.OCI.SaveIndex(); err != nil {
-				return err
-			}
+			imageJobs = append(imageJobs, imageJob{
+				img:           v1.Image{Name: relocated},
+				platform:      j.opts.Platform,
+				excludeExtras: j.opts.ExcludeExtras,
+			})
 		}
 	}
 
-	// add-dependencies
-	if opts.AddDependencies && len(c.Metadata.Dependencies) > 0 {
+	var deps []chartJob
+	if j.opts.AddDependencies {
 		for _, dep := range c.Metadata.Dependencies {
-			l.Infof("%sadding dependent chart [%s:%s]", prefix, dep.Name, dep.Version)
+			l.Infof("adding dependent chart [%s:%s]", dep.Name, dep.Version)
 
-			depOpts := *opts
+			depOpts := j.opts
 			depOpts.AddDependencies = true
 			// Do not rediscover images on dependency charts in isolation.
 			// Parent --add-images already renders the full tree (with alias
 			// overrides and conditions) after ProcessDependencies.
 			depOpts.AddImages = false
-			subCtx := context.WithValue(ctx, isSubchartKey{}, true)
+
+			// depOpts is a struct copy, so it still points at the parent's
+			// *action.ChartPathOptions; the RepoURL/Version writes below would
+			// otherwise land in the parent's options -- a data race against
+			// whatever sibling job is reading them. Copying the value carries
+			// the parent's auth/TLS settings over without the aliasing.
+			depChartOpts := *j.opts.ChartOpts
+			depOpts.ChartOpts = &depChartOpts
 
 			var depCfg v1.Chart
-			var err error
-
 			if strings.HasPrefix(dep.Repository, "file://") || dep.Repository == "" {
+				// A file:// subchart is already unpacked inside the parent's
+				// expansion, so it is addressed by path with nothing left to
+				// resolve from a repository.
 				subchartPath := filepath.Join(chartPath, "charts", dep.Name)
 
-				depCfg = v1.Chart{Name: subchartPath, RepoURL: "", Version: ""}
-				depOpts.ChartOpts.RepoURL = ""
-				depOpts.ChartOpts.Version = ""
-
-				err = storeChart(subCtx, s, depCfg, &depOpts, rso, ro, "")
+				depCfg = v1.Chart{Name: subchartPath}
+				depChartOpts.RepoURL = ""
+				depChartOpts.Version = ""
 			} else {
 				depCfg = v1.Chart{Name: dep.Name, RepoURL: dep.Repository, Version: dep.Version}
-				depOpts.ChartOpts.RepoURL = dep.Repository
-				depOpts.ChartOpts.Version = dep.Version
-
-				err = storeChart(subCtx, s, depCfg, &depOpts, rso, ro, "")
+				depChartOpts.RepoURL = dep.Repository
+				depChartOpts.Version = dep.Version
 			}
 
-			if err != nil {
-				if ignoreErrors {
-					l.Warnf("%s  ↳ failed to add dependent chart [%s]: %v... skipping...", prefix, dep.Name, err)
-				} else {
-					l.Errorf("%s  ↳ failed to add dependent chart [%s]: %v", prefix, dep.Name, err)
-					return err
-				}
-			}
+			deps = append(deps, chartJob{
+				cfg:    depCfg,
+				opts:   depOpts,
+				parent: ref.Name(),
+				depth:  j.depth + 1,
+			})
 		}
 	}
 
-	// chart rewrite functionality
-	if rewrite != "" {
-		rewrite = strings.TrimPrefix(rewrite, "/")
-		newRef, err := name.ParseReference(rewrite)
+	// Chart.Layers() always returns exactly one layer, the chart archive
+	// itself. Re-deriving it costs a re-read (and, for an already-expanded
+	// directory chart, a re-tar) of at most ~1MB; anything unexpected falls
+	// back to nil stats and formatAddedLine's elapsed-only form.
+	var stats *store.ImageStats
+	if layers, layersErr := chrt.Layers(); layersErr == nil && len(layers) == 1 {
+		if size, sizeErr := layers[0].Size(); sizeErr == nil {
+			stats = &store.ImageStats{}
+			stats.Layers.Store(1)
+			stats.Bytes.Store(size)
+		}
+	}
+
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
+
+	return imageJobs, deps, nil
+}
+
+// rewriteChartReference retags a stored chart's index entry from ref to
+// rewrite. A rewrite that omits a tag inherits ref's.
+func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Reference, rewrite string) error {
+	rewrite = strings.TrimPrefix(rewrite, "/")
+	newRef, err := name.ParseReference(rewrite)
+	if err != nil {
+		// error... don't continue with a bad reference
+		return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
+	}
+
+	// if rewrite omits a tag... keep the existing tag
+	oldTag := ref.Identifier()
+	if tag, ok := ref.(name.Tag); ok {
+		oldTag = tag.TagStr()
+	}
+	if !strings.Contains(rewrite, ":") {
+		rewrite = strings.Join([]string{rewrite, oldTag}, ":")
+		newRef, err = name.ParseReference(rewrite)
 		if err != nil {
-			// error... don't continue with a bad reference
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
+	}
 
-		// if rewrite omits a tag... keep the existing tag
-		oldTag := ref.Identifier()
-		if tag, ok := ref.(name.Tag); ok {
-			oldTag = tag.TagStr()
-		}
-		if !strings.Contains(rewrite, ":") {
-			rewrite = strings.Join([]string{rewrite, oldTag}, ":")
-			newRef, err = name.ParseReference(rewrite)
-			if err != nil {
-				return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
-			}
-		}
+	// rename chart name in store
+	oldRepo := ref.Context().RepositoryStr()
+	newRepo := newRef.Context().RepositoryStr()
+	newTag := newRef.Identifier()
+	if tag, ok := newRef.(name.Tag); ok {
+		newTag = tag.TagStr()
+	}
 
-		// rename chart name in store
-		oldRefContext := ref.Context()
-		newRefContext := newRef.Context()
+	oldTotal := oldRepo + ":" + oldTag
+	newTotal := newRepo + ":" + newTag
 
-		oldRepo := oldRefContext.RepositoryStr()
-		newRepo := newRefContext.RepositoryStr()
-		newTag := newRef.Identifier()
-		if tag, ok := newRef.(name.Tag); ok {
-			newTag = tag.TagStr()
-		}
+	log.BaseFromContext(ctx).Debugf("rewriting [%s] to [%s]", oldTotal, newTotal)
 
-		oldTotal := oldRepo + ":" + oldTag
-		newTotal := newRepo + ":" + newTag
+	matched, err := s.OCI.UpdateAnnotations(
+		func(d ocispec.Descriptor) bool {
+			return d.Annotations[ocispec.AnnotationRefName] == oldTotal
+		},
+		func(a map[string]string) {
+			a[ocispec.AnnotationRefName] = newTotal
+		},
+	)
+	if err != nil {
+		return err
+	}
 
-		matched, err := s.OCI.UpdateAnnotations(
-			func(d ocispec.Descriptor) bool {
-				return d.Annotations[ocispec.AnnotationRefName] == oldTotal
-			},
-			func(a map[string]string) {
-				a[ocispec.AnnotationRefName] = newTotal
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		if matched == 0 {
-			return fmt.Errorf("could not find chart [%s] in store", ref.Name())
-		}
+	if matched == 0 {
+		return fmt.Errorf("could not find chart [%s] in store", ref.Name())
 	}
 
 	return nil

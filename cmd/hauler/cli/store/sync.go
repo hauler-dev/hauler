@@ -19,7 +19,6 @@ import (
 	"github.com/mitchellh/go-homedir"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/errgroup"
-	"helm.sh/helm/v4/pkg/action"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -351,70 +350,12 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
-				registry := o.Registry
-				annotation := cfg.GetAnnotations()
-				if registry == "" {
-					if annotation != nil {
-						registry = annotation[consts.ImageAnnotationRegistry]
-					}
+				jobs, err := resolveChartJobs(o, cfg.GetAnnotations(), filepath.Dir(fi.Name()), cfg.Spec.Charts)
+				if err != nil {
+					return err
 				}
-
-				for i, ch := range cfg.Spec.Charts {
-					// Resolve excludeExtras: per-chart field > chart manifest annotation > CLI flag.
-					excludeExtras := o.ExcludeExtras
-					if !o.ExcludeExtras && annotation != nil && annotation[consts.ImageAnnotationExcludeExtras] == "true" {
-						excludeExtras = true
-					}
-					if ch.ExcludeExtras {
-						excludeExtras = ch.ExcludeExtras
-					}
-
-					var valuesFiles []string
-					for _, path := range ch.ValuesFiles {
-						valuesFiles = append(valuesFiles, filepath.Join(filepath.Dir(fi.Name()), path))
-					}
-
-					platform := o.Platform
-					if annotation != nil && annotation[consts.ImageAnnotationPlatform] != "" {
-						platform = annotation[consts.ImageAnnotationPlatform]
-					}
-					if ch.Platform != "" {
-						platform = ch.Platform
-					}
-
-					chartUsername, chartPassword, err := resolveChartCreds(ch)
-					if err != nil {
-						return err
-					}
-
-					if err := storeChart(ctx, s, ch,
-						&flags.AddChartOpts{
-							ChartOpts: &action.ChartPathOptions{
-								RepoURL:               ch.RepoURL,
-								Version:               ch.Version,
-								Verify:                ch.Verify,
-								Keyring:               ch.Keyring,
-								Username:              chartUsername,
-								Password:              chartPassword,
-								PassCredentialsAll:    ch.PassCredentialsAll,
-								CertFile:              ch.CertFile,
-								KeyFile:               ch.KeyFile,
-								CaFile:                ch.CaFile,
-								InsecureSkipTLSVerify: ch.InsecureSkipTLSVerify,
-								PlainHTTP:             ch.PlainHTTP,
-							},
-							AddImages:       ch.AddImages,
-							AddDependencies: ch.AddDependencies,
-							ExcludeExtras:   excludeExtras,
-							Registry:        registry,
-							Platform:        platform,
-							ValuesFiles:     valuesFiles,
-						},
-						rso, ro,
-						cfg.Spec.Charts[i].Rewrite,
-					); err != nil {
-						return err
-					}
+				if err := runChartJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro)); err != nil {
+					return err
 				}
 
 			default:
@@ -476,7 +417,14 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 // verifyImageJobs has already run fully and serially, satisfies "don't
 // start the renderer until the verify pass is done" for free.
 func newSyncProgress(o *flags.SyncOpts, ro *flags.CliRootOpts) *log.Renderer {
-	if !log.ShouldShowProgress(o.NoProgress, ro.LogLevel) {
+	return newProgressRenderer(o.NoProgress, ro.LogLevel)
+}
+
+// newProgressRenderer returns a live progress Renderer when the run is
+// eligible (see log.ShouldShowProgress), or nil otherwise; the run* helpers
+// treat nil as "no progress display".
+func newProgressRenderer(noProgress bool, logLevel string) *log.Renderer {
+	if !log.ShouldShowProgress(noProgress, logLevel) {
 		return nil
 	}
 	return log.NewRenderer(os.Stdout)
@@ -737,13 +685,11 @@ func verifyImageJobs(ctx context.Context, jobs []imageJob, rso *flags.StoreRootO
 // Docker daemon anyway -- nothing to gain, and a mutation race to lose,
 // from running them concurrently.
 //
-// The remote pass uses errgroup.WithContext + SetLimit(concurrency):
-// fail-fast and --ignore-errors semantics fall out of that plus storeImage
-// returning nil (after warning) when ignoreErrors is set, so g.Wait() never
-// observes an error in that mode. Otherwise a failing job cancels the
-// group's derived context, which every other in-flight storeImage call
-// observes via content.OCI.WriteBlob's context-aware writes; g.Wait()
-// returns that one real error, not an aggregate.
+// This is the progress-session-owning wrapper around
+// runRemoteImageJobsWith. The local pass deliberately runs before
+// progress.Start(): storeLocalImage logs through the ambient logger, not
+// the Renderer, so running it inside a live session would interleave its
+// output with the Renderer's erase/redraw cycle and corrupt the display.
 func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
 	l := log.FromContext(ctx)
 
@@ -762,10 +708,6 @@ func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurr
 		}
 	}
 
-	if concurrency < 1 {
-		concurrency = 1
-	}
-
 	// baseLogger is the logger every job's per-image logger is derived from.
 	// When progress is active, it's built over the Renderer instead, so
 	// every log line for a job -- including its "✓ added ..." line and any
@@ -778,9 +720,30 @@ func runImageJobs(ctx context.Context, s *store.Layout, jobs []imageJob, concurr
 		defer progress.Stop()
 	}
 
+	return runRemoteImageJobsWith(ctx, s, remoteJobs, concurrency, rso, ro, progress, baseLogger)
+}
+
+// runRemoteImageJobsWith stores remote image jobs concurrently, bounded by
+// concurrency, inside a progress session the caller already started (or nil)
+// and against a baseLogger the caller already derived. It never calls
+// Start/Stop, so one caller can span a single session across several phases.
+// jobs must be remote-only -- runImageJobs runs the local Docker pass itself,
+// before the session opens.
+//
+// errgroup.WithContext + SetLimit(concurrency) gives both fail-fast and
+// --ignore-errors semantics: with --ignore-errors storeImage warns and
+// returns nil, so g.Wait() never observes an error; otherwise a failing job
+// cancels the group's derived context, which every other in-flight storeImage
+// call observes via content.OCI.WriteBlob's context-aware writes, and g.Wait()
+// returns that one real error, not an aggregate.
+func runRemoteImageJobsWith(ctx context.Context, s *store.Layout, jobs []imageJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer, baseLogger log.Logger) error {
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(concurrency)
-	for _, j := range remoteJobs {
+	for _, j := range jobs {
 		j := j
 		g.Go(func() error {
 			// Began must be called from inside the goroutine, after
@@ -855,12 +818,11 @@ func fileJobName(f v1.File) string {
 // manifest entry.
 //
 // Fail-fast and --ignore-errors semantics mirror runImageJobs exactly.
+//
+// Like runImageJobs, this is only the progress-session-owning wrapper; the
+// work lives in runFileJobsWith.
 func runFileJobs(ctx context.Context, s *store.Layout, jobs []fileJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
 	l := log.FromContext(ctx)
-
-	if concurrency < 1 {
-		concurrency = 1
-	}
 
 	// baseLogger is the logger every job's per-file logger is derived from --
 	// see runImageJobs's identical baseLogger for the full rationale.
@@ -869,6 +831,18 @@ func runFileJobs(ctx context.Context, s *store.Layout, jobs []fileJob, concurren
 		baseLogger = log.NewLogger(progress)
 		progress.Start()
 		defer progress.Stop()
+	}
+
+	return runFileJobsWith(ctx, s, jobs, concurrency, rso, ro, progress, baseLogger)
+}
+
+// runFileJobsWith stores file jobs concurrently, bounded by concurrency,
+// inside a progress session the caller already started (or nil) and against a
+// baseLogger the caller already derived. It never calls Start/Stop -- see
+// runRemoteImageJobsWith, its image-side counterpart.
+func runFileJobsWith(ctx context.Context, s *store.Layout, jobs []fileJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer, baseLogger log.Logger) error {
+	if concurrency < 1 {
+		concurrency = 1
 	}
 
 	cache := file.NewLayerCache()
