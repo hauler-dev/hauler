@@ -148,7 +148,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		img := v1.Image{
 			Name: manifestLoc,
 		}
-		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "")
+		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "", "")
 		if err != nil {
 			return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
 		}
@@ -764,7 +764,7 @@ func runRemoteImageJobsWith(ctx context.Context, s *store.Layout, jobs []imageJo
 			// warnings, store-layer debug output) keep calling
 			// log.FromContext(ctx) and keep the field for attribution.
 			jctx = log.WithBaseLogger(jctx, baseLogger)
-			err := storeImage(jctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite)
+			err := storeImage(jctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite, "")
 			if progress != nil {
 				progress.Finished(j.img.Name)
 			}

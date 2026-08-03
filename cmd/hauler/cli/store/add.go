@@ -234,7 +234,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 
 	l.Infof("adding image [%s] to the store", cfg.Name)
 
-	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite)
+	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite, "")
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
@@ -372,7 +372,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 	return nil
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string, pinnedDigest string) error {
 	l := log.FromContext(ctx)
 
 	start := time.Now()
@@ -407,7 +407,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	err = retry.Operation(ctx, rso, ro, func() error {
 		attemptStats := &store.ImageStats{}
 		var addErr error
-		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), r.Name(), platform, excludeExtras)
+		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), r.Name(), platform, excludeExtras, pinnedDigest)
 		if addErr == nil {
 			stats = attemptStats
 		}

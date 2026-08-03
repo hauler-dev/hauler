@@ -232,7 +232,13 @@ func (l *Layout) AddArtifactCollection(ctx context.Context, collection artifacts
 // discovered via cosign's tag convention (<digest>.sig, <digest>.att, <digest>.sbom).
 // When platform is non-empty and the ref is a multi-arch index, only that platform is fetched.
 // When excludeExtras is true, cosign signatures, attestations, SBOMs, and OCI referrers are skipped.
-func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, opts ...remote.Option) (string, error) {
+//
+// pinnedDigest, when non-empty, is the digest actually fetched -- ref supplies
+// only the name recorded in the index annotations. Callers that verified a
+// signature pass the digest they verified, so the bytes stored are provably
+// the bytes checked even if the tag moves mid-run. An empty pinnedDigest
+// resolves ref normally.
+func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, pinnedDigest string, opts ...remote.Option) (string, error) {
 	allOpts := append([]remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		remote.WithContext(ctx),
@@ -243,9 +249,23 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
 
-	desc, err := remote.Get(parsedRef, allOpts...)
+	// fetchRef drives the network; parsedRef stays the annotation ref so the
+	// store keeps recording the tag a user asked for rather than a digest.
+	fetchRef := parsedRef
+	if pinnedDigest != "" {
+		fetchRef = parsedRef.Context().Digest(pinnedDigest)
+	}
+
+	desc, err := remote.Get(fetchRef, allOpts...)
 	if err != nil {
 		return "", fmt.Errorf("fetching descriptor for %q: %w", ref, err)
+	}
+
+	// go-containerregistry already validates content against a digest ref;
+	// this restates the invariant locally so a future refactor that switches
+	// fetchRef back to a tag fails loudly instead of silently unpinning.
+	if pinnedDigest != "" && desc.Digest.String() != pinnedDigest {
+		return "", fmt.Errorf("digest mismatch for %q: fetched %s, pinned %s", ref, desc.Digest, pinnedDigest)
 	}
 
 	var imageDigest v1.Hash
@@ -261,6 +281,10 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		}
 	} else {
 		// Single-platform image, or the caller requested a specific platform.
+		//
+		// Under a platform filter the pinned digest is the index's while the stored
+		// digest is the selected child's. The child is content-addressed within the
+		// verified index, so the chain of trust holds.
 		imgOpts := append([]remote.Option{}, allOpts...)
 		if platform != "" {
 			p, err := parsePlatform(platform)
@@ -269,7 +293,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 			}
 			imgOpts = append(imgOpts, remote.WithPlatform(p))
 		}
-		img, err := remote.Image(parsedRef, imgOpts...)
+		img, err := remote.Image(fetchRef, imgOpts...)
 		if err != nil {
 			return "", fmt.Errorf("fetching image %q: %w", ref, err)
 		}
