@@ -125,6 +125,40 @@ func TestRemoveCmd_NotFound(t *testing.T) {
 	}
 }
 
+// TestRemoveCmd_ContainerdImageName confirms that a
+// registry-prefixed ref (which only appears in the io.containerd.image.name
+// annotation, not the registry-stripped org.opencontainers.image.ref.name
+// used to key the store's nameMap) still matches for removal.
+func TestRemoveCmd_ContainerdImageName(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	host, rOpts := newLocalhostRegistry(t)
+	seedImage(t, host, "test/repo", "v1", rOpts...)
+
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, ""); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	if n := countArtifactsInStore(t, s); n == 0 {
+		t.Fatal("expected at least 1 artifact after storeImage, got 0")
+	}
+
+	// The registry-qualified ref only lives in io.containerd.image.name;
+	// org.opencontainers.image.ref.name (and the nameMap key derived from it)
+	// only holds the registry-stripped short form "test/repo:v1".
+	fullRef := host + "/test/repo:v1"
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, fullRef); err != nil {
+		t.Fatalf("RemoveCmd with fully-qualified ref: %v", err)
+	}
+
+	if n := countArtifactsInStore(t, s); n != 0 {
+		t.Errorf("expected 0 artifacts after removal by containerd image name, got %d", n)
+	}
+}
+
 func TestRemoveCmd_Force_MultipleMatches(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
