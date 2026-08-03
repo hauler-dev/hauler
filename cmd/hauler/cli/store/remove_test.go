@@ -150,7 +150,7 @@ func TestRemoveCmd_ContainerdImageName(t *testing.T) {
 	// org.opencontainers.image.ref.name (and the nameMap key derived from it)
 	// only holds the registry-stripped short form "test/repo:v1".
 	fullRef := host + "/test/repo:v1"
-	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, fullRef, ro, rso); err != nil {
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, fullRef); err != nil {
 		t.Fatalf("RemoveCmd with fully-qualified ref: %v", err)
 	}
 
