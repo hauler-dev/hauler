@@ -34,8 +34,8 @@ func NewLogger(out io.Writer) Logger {
 	zerolog.TimeFieldFormat = consts.CustomTimeFormat
 	// out is bound once here, captured in the ConsoleWriter's closure, so
 	// this logger keeps writing to its original writer even after
-	// CaptureOutput swaps the process-global os.Stdout/os.Stderr during
-	// cosign verification -- why CaptureOutput never captures hauler's own
+	// CaptureOutput swaps the process-global os.Stdout/os.Stderr during a
+	// Helm chart traversal -- why CaptureOutput never captures hauler's own
 	// log lines.
 	//
 	// NoColor is decided from the real os.Stdout, not out, matching

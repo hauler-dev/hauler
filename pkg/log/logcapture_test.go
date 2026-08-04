@@ -17,14 +17,10 @@ func discardLogger() Logger {
 	return FromContext(ctx)
 }
 
-// TestCaptureOutput_Concurrent documents why captureMu exists in CaptureOutput:
-// concurrent calls swap the process-global os.Stdout/os.Stderr, and cosign v3's
-// verify path also touches sigstore package-level TUF/Fulcio state that isn't
-// documented as concurrency-safe. Without serializing the whole function body,
-// concurrent CaptureOutput calls can race on those globals and leave
-// os.Stdout/os.Stderr pointing at a closed pipe instead of the original files.
-// Do not "simplify" this test away, and do not narrow captureMu's critical
-// section to just the redirect/restore lines.
+// TestCaptureOutput_Concurrent covers why captureMu spans the whole function
+// body rather than just the redirect/restore lines: os.Stdout/os.Stderr are
+// process-global, so two overlapping captures can interleave their swaps and
+// leave the globals pointing at a closed pipe instead of the original files.
 func TestCaptureOutput_Concurrent(t *testing.T) {
 	origStdout := os.Stdout
 	origStderr := os.Stderr

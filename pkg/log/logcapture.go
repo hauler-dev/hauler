@@ -42,10 +42,16 @@ func logStream(reader io.Reader, customWriter *CustomWriter, wg *sync.WaitGroup)
 	}
 }
 
-// captureMu serializes the entire body of CaptureOutput -- not just the
-// os.Stdout/os.Stderr fd swap, since cosign v3's verify path also touches
-// sigstore's package-level TUF/Fulcio state, which isn't documented as
-// concurrency-safe.
+// captureMu serializes the entire body of CaptureOutput, not just the fd swap:
+// os.Stdout/os.Stderr are process-global, so overlapping captures would route
+// each other's output to the wrong logger and restore the wrong originals.
+//
+// Its scope is that swap and whatever prints beneath it. The only non-test
+// caller left is the Helm chart traversal in runChartJobs
+// (cmd/hauler/cli/store/add.go), whose downloader prints from transitive
+// dependencies. Signature verification reaches sigstore through
+// cosign.Verifier, which returns its result rather than printing the report
+// cosign's CLI prints, so it needs no capture -- see Verifier.verifyBundle.
 var captureMu sync.Mutex
 
 // CaptureOutput redirects stdout and stderr to custom loggers and executes the provided function
