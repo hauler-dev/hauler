@@ -3,6 +3,7 @@ package cosign
 import (
 	"context"
 	"crypto"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -10,6 +11,9 @@ import (
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
 	cosignpkg "github.com/sigstore/cosign/v3/pkg/cosign"
+
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/retry"
 )
 
 // defaultMaxWorkers bounds cosign's own per-image signature fan-out. Hauler
@@ -69,14 +73,20 @@ func (c Config) validate() error {
 	return nil
 }
 
-// Verifier verifies images against one Config. Its CheckOpts is built once and
-// then treated as read-only, which is what makes concurrent Verify calls safe:
-// sigstore's package-level TUF and Fulcio state is touched only by the setup
-// helpers below, all of which run before the Verifier is published.
+// Verifier verifies images against one Config. Both CheckOpts are built once
+// and then treated as read-only, which is what makes concurrent Verify calls
+// safe: sigstore's package-level TUF and Fulcio state is touched only by the
+// setup helpers below, all of which run before the Verifier is published.
 type Verifier struct {
-	cfg     Config
-	co      *cosignpkg.CheckOpts
-	closeSV func()
+	// co drives classic tag-based verification; coBundle is its shallow copy
+	// with NewBundleFormat set -- see NewVerifier for why they cannot be one.
+	co       *cosignpkg.CheckOpts
+	coBundle *cosignpkg.CheckOpts
+	closeSV  func()
+
+	// Retry settings, applied once per verification path by withRetry.
+	rso *flags.StoreRootOpts
+	ro  *flags.CliRootOpts
 }
 
 // NewVerifier builds the CheckOpts for cfg. It replicates the setup sequence in
@@ -89,7 +99,7 @@ type Verifier struct {
 // governs all registry I/O for the returned Verifier's whole lifetime. Pass a
 // run-scoped ctx. A per-image or per-timeout ctx here cancels registry reads for
 // every image sharing this Verifier the moment that one image's deadline fires.
-func NewVerifier(ctx context.Context, cfg Config) (*Verifier, error) {
+func NewVerifier(ctx context.Context, cfg Config, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) (*Verifier, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -160,18 +170,141 @@ func NewVerifier(ctx context.Context, cfg Config) (*Verifier, error) {
 	}
 	co.SigVerifier = sv
 
-	return &Verifier{cfg: cfg, co: co, closeSV: closeSV}, nil
+	// VerifyImageAttestations reads co.NewBundleFormat directly, and co's copy
+	// must stay false, so the bundle path needs a CheckOpts of its own. A
+	// shallow copy rather than a second setup run: repeating the sequence above
+	// would re-read the key file and, wherever offlineWithKey is false, refetch
+	// TUF metadata, for a path most runs never take. Sharing RegistryClientOpts,
+	// SigVerifier and TrustedMaterial by pointer is safe for the same reason one
+	// CheckOpts can serve concurrent Verify calls -- cosign's verification paths
+	// only read the CheckOpts they are handed; the one write on the bundle side
+	// lands on a copy VerifyNewBundle makes first (pkg/cosign/verify_bundle.go:30).
+	coBundle := *co
+	coBundle.NewBundleFormat = true
+
+	return &Verifier{co: co, coBundle: &coBundle, closeSV: closeSV, rso: rso, ro: ro}, nil
 }
 
 // Verify checks ref against v's config. ref should be a digest reference so the
 // bytes verified are the bytes the caller goes on to store.
+//
+// The classic path handles tag-based signatures, which is every image in the
+// workloads hauler targets. An image signed with the new sigstore bundle format
+// has no .sig tag and so fails there with a not-found error; only that specific
+// failure falls back to the bundle path.
 func (v *Verifier) Verify(ctx context.Context, ref string) error {
 	r, err := gname.ParseReference(ref)
 	if err != nil {
 		return fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
-	_, _, err = cosignpkg.VerifyImageSignatures(ctx, r, v.co)
-	return err
+
+	if err = v.verifyImage(ctx, r); err == nil {
+		return nil
+	}
+	if !fallbackEligible(err) {
+		return err
+	}
+	return v.verifyBundle(ctx, r)
+}
+
+// verifyImage checks ref for a classic tag-based signature.
+func (v *Verifier) verifyImage(ctx context.Context, r gname.Reference) error {
+	return v.withRetry(ctx, func() error {
+		_, _, err := cosignpkg.VerifyImageSignatures(ctx, r, v.co)
+		return err
+	})
+}
+
+// verifyBundle checks ref for a new-format sigstore bundle. In that format the
+// signature is carried as an attestation, so VerifyImageAttestations is the
+// entry point -- VerifyImageSignatures rejects NewBundleFormat outright
+// (pkg/cosign/verify.go:645), and cosign's own Exec dispatches bundles the same
+// way (cmd/cosign/cli/verify/verify.go:234). It returns its result rather than
+// printing the verification report Exec prints, so unlike the CLI this path
+// needs no log.CaptureOutput and does not serialize on its process-global
+// mutex. The registry path it actually reaches --
+// verifyImageAttestationsSigstoreBundle -> GetBundles + VerifyNewBundle
+// (verify.go:1905, 1713; verify_bundle.go:25) -- has cosign write no
+// diagnostics of its own: the ui.Warnf calls near this code (verify.go:1795-
+// 1806) belong to GetLocalBundles, the local-OCI-layout sibling this function
+// never calls.
+//
+// Reached only for images with no classic signature, so it stays off the hot
+// path for the workloads hauler actually syncs.
+func (v *Verifier) verifyBundle(ctx context.Context, r gname.Reference) error {
+	return v.withRetry(ctx, func() error {
+		_, _, err := cosignpkg.VerifyImageAttestations(ctx, r, v.coBundle)
+		return err
+	})
+}
+
+// withRetry runs one verification call under the caller's --retries budget.
+//
+// The budget is applied per path rather than around Verify as a whole: a loop
+// outside Verify would re-run the classic attempt on its way back to the bundle
+// path, costing retries*retries attempts for every bundle-signed image.
+//
+// Only errors another attempt could plausibly clear consume a retry --
+// retryableVerifyErr decides. A terminal error leaves the loop by returning nil
+// from the operation and travelling out through the captured variable, because
+// retry.Operation has no other way to be told "stop, and this is not an
+// exhausted budget".
+func (v *Verifier) withRetry(ctx context.Context, call func() error) error {
+	var terminal error
+	exhausted := retry.Operation(ctx, v.rso, v.ro, func() error {
+		err := call()
+		if err != nil && !retryableVerifyErr(err) {
+			terminal = err
+			return nil
+		}
+		return err
+	})
+	if terminal != nil {
+		return terminal
+	}
+	return exhausted
+}
+
+// retryableVerifyErr reports whether a further attempt at err could succeed for
+// some reason other than luck.
+//
+// ErrNoMatchingSignatures is excluded for exactly the reason fallbackEligible
+// excludes it: signatures were found and none validated, so every extra attempt
+// is another chance for a bad signature to pass. Leaving it retryable would
+// reintroduce that hazard by way of --retries.
+//
+// ErrNoMatchingAttestations is the bundle path's terminal answer, and cosign
+// spells two conditions with it: every bundle found failed verification
+// (verify.go:1986), which carries the same hazard as ErrNoMatchingSignatures,
+// and no bundle was found at all (verify.go:1756). The type does not
+// distinguish them, and GetBundles reaches the second by skipping past
+// per-referrer fetch failures (verify.go:1746-1751), so a transient blip can
+// arrive here spelled as absence. Excluding it reads that ambiguity the failing
+// way: the cost is an image a further attempt might have verified, against a
+// failed bundle drawing --retries more chances to pass.
+//
+// The fallbackEligible errors are excluded because the classic signature is
+// absent and will stay absent; Verify hands them to verifyBundle, which draws
+// its own full budget from withRetry.
+func retryableVerifyErr(err error) bool {
+	var noMatching *cosignpkg.ErrNoMatchingSignatures
+	var noAtts *cosignpkg.ErrNoMatchingAttestations
+	return !errors.As(err, &noMatching) && !errors.As(err, &noAtts) && !fallbackEligible(err)
+}
+
+// fallbackEligible reports whether err means "this image carries no classic
+// tag-based signature" -- the only condition under which retrying down the
+// bundle path is sound.
+//
+// ErrNoMatchingSignatures is deliberately excluded. It means signatures were
+// found and none of them validated; retrying that would give an image with a
+// bad signature a second chance to pass, which is the one outcome this design
+// must never permit. Every other error -- transport failures included -- also
+// fails closed rather than falling back.
+func fallbackEligible(err error) bool {
+	var tagNotFound *cosignpkg.ErrImageTagNotFound
+	var noSigs *cosignpkg.ErrNoSignaturesFound
+	return errors.As(err, &tagNotFound) || errors.As(err, &noSigs)
 }
 
 // Close releases the signature verifier's resources. It must not be called
@@ -183,9 +316,19 @@ func (v *Verifier) Close() {
 }
 
 // Cache hands out one Verifier per distinct Config for the lifetime of a run.
+// The retry options live here rather than in Get's arguments because only
+// Config keys the map: a per-call value would be silently ignored for every
+// image after the first that shares a Config.
+//
+// With several distinct configs, building one Verifier can overlap another
+// Verifier's in-flight Verify calls. That is safe for the reason Verifier's doc
+// gives, plus sigstore v1.10.8's pkg/tuf guarding its own singleton (sync.Once
+// plus initMu, client.go:61-68).
 type Cache struct {
-	mu sync.Mutex
-	m  map[Config]*cacheEntry
+	mu  sync.Mutex
+	m   map[Config]*cacheEntry
+	rso *flags.StoreRootOpts
+	ro  *flags.CliRootOpts
 }
 
 type cacheEntry struct {
@@ -193,9 +336,10 @@ type cacheEntry struct {
 	err error
 }
 
-// NewCache returns an empty Cache.
-func NewCache() *Cache {
-	return &Cache{m: make(map[Config]*cacheEntry)}
+// NewCache returns an empty Cache. rso and ro carry the --retries/--ignore-errors
+// settings every Verifier it builds applies to verification.
+func NewCache(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *Cache {
+	return &Cache{m: make(map[Config]*cacheEntry), rso: rso, ro: ro}
 }
 
 // Get returns the Verifier for cfg, building it on first request. A build
@@ -219,7 +363,7 @@ func (c *Cache) Get(ctx context.Context, cfg Config) (*Verifier, error) {
 	if e, ok := c.m[cfg]; ok {
 		return e.v, e.err
 	}
-	v, err := NewVerifier(ctx, cfg)
+	v, err := NewVerifier(ctx, cfg, c.rso, c.ro)
 	c.m[cfg] = &cacheEntry{v: v, err: err}
 	return v, err
 }
