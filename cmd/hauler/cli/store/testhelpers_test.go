@@ -6,11 +6,24 @@ package store
 // helpers like storeImage, storeFile, rewriteReference, etc.
 
 import (
+	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
 	"io"
+	golog "log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -25,12 +38,107 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
+	ociempty "github.com/sigstore/cosign/v3/pkg/oci/empty"
+	ocimutate "github.com/sigstore/cosign/v3/pkg/oci/mutate"
+	ocistatic "github.com/sigstore/cosign/v3/pkg/oci/static"
+	"github.com/sigstore/sigstore/pkg/signature"
+	"github.com/sigstore/sigstore/pkg/signature/payload"
 	"helm.sh/helm/v4/pkg/action"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
+
+// newTestKeyPair generates a fresh ECDSA P-256 key pair and writes the public
+// half in the PEM form cosign's --key expects, returning the private key and
+// that path. Generated rather than vendored so the tests never depend on a
+// fixture whose algorithm cosign might later stop accepting.
+func newTestKeyPair(t *testing.T) (*ecdsa.PrivateKey, string) {
+	t.Helper()
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating key: %v", err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("marshaling public key: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "cosign.pub")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o600); err != nil {
+		t.Fatalf("writing public key: %v", err)
+	}
+	return priv, path
+}
+
+// writeTestPubKey returns the path to a public key with no signed image behind
+// it -- for tests that only need verification to fail closed.
+func writeTestPubKey(t *testing.T) string {
+	t.Helper()
+	_, path := newTestKeyPair(t)
+	return path
+}
+
+// seedSignedImage pushes a random image and a genuine cosign v2 signature for
+// it, returning the image and the path to the public key that verifies it.
+//
+// The signature is built the way cosign itself builds one -- a simplesigning
+// payload naming the image's digest, signed with ECDSA-P256, carried as the
+// dev.cosignproject.cosign/signature annotation on a layer of the
+// sha256-<hex>.sig manifest -- so cosign.Verifier's library path accepts it
+// with IgnoreTlog set. seedCosignV2Artifacts pushes the same tags with random
+// content and is its fail-closed counterpart.
+func seedSignedImage(t *testing.T, host, repo, tag string, opts ...remote.Option) (gcrv1.Image, string) {
+	t.Helper()
+
+	img := seedImage(t, host, repo, tag, opts...)
+	hash, err := img.Digest()
+	if err != nil {
+		t.Fatalf("seedSignedImage digest: %v", err)
+	}
+
+	priv, keyPath := newTestKeyPair(t)
+	sv, err := signature.LoadECDSASignerVerifier(priv, crypto.SHA256)
+	if err != nil {
+		t.Fatalf("seedSignedImage LoadECDSASignerVerifier: %v", err)
+	}
+
+	digestRef, err := name.NewDigest(host+"/"+repo+"@"+hash.String(), name.Insecure)
+	if err != nil {
+		t.Fatalf("seedSignedImage NewDigest: %v", err)
+	}
+	// The payload binds the signature to this exact digest; cosign rejects a
+	// signature whose payload names a different one, which is what makes the
+	// pinning assertions meaningful.
+	payloadBytes, err := (&payload.Cosign{Image: digestRef}).MarshalJSON()
+	if err != nil {
+		t.Fatalf("seedSignedImage marshaling payload: %v", err)
+	}
+	rawSig, err := sv.SignMessage(bytes.NewReader(payloadBytes))
+	if err != nil {
+		t.Fatalf("seedSignedImage SignMessage: %v", err)
+	}
+
+	ociSig, err := ocistatic.NewSignature(payloadBytes, base64.StdEncoding.EncodeToString(rawSig))
+	if err != nil {
+		t.Fatalf("seedSignedImage ocistatic.NewSignature: %v", err)
+	}
+	sigs, err := ocimutate.AppendSignatures(ociempty.Signatures(), false, ociSig)
+	if err != nil {
+		t.Fatalf("seedSignedImage AppendSignatures: %v", err)
+	}
+
+	sigRef, err := name.NewTag(host+"/"+repo+":"+strings.ReplaceAll(hash.String(), ":", "-")+".sig", name.Insecure)
+	if err != nil {
+		t.Fatalf("seedSignedImage NewTag (sig): %v", err)
+	}
+	if err := remote.Write(sigRef, sigs, opts...); err != nil {
+		t.Fatalf("seedSignedImage writing signature: %v", err)
+	}
+	return img, keyPath
+}
 
 // newTestStore creates a fresh store in a temp directory. Fatal on error.
 func newTestStore(t *testing.T) *store.Layout {
@@ -55,6 +163,56 @@ func newTestRegistry(t *testing.T) (host string, remoteOpts []remote.Option) {
 	host = strings.TrimPrefix(srv.URL, "http://")
 	remoteOpts = []remote.Option{remote.WithTransport(srv.Client().Transport)}
 	return host, remoteOpts
+}
+
+// recordingHandler records the path of every request it serves before
+// delegating. Concurrent handlers append to the same slice, so every method
+// takes mu.
+type recordingHandler struct {
+	next  http.Handler
+	mu    sync.Mutex
+	paths []string
+}
+
+func (h *recordingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mu.Lock()
+	h.paths = append(h.paths, r.Method+" "+r.URL.Path)
+	h.mu.Unlock()
+	h.next.ServeHTTP(w, r)
+}
+
+func (h *recordingHandler) reset() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.paths = nil
+}
+
+func (h *recordingHandler) countContaining(sub string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, p := range h.paths {
+		if strings.Contains(p, sub) {
+			n++
+		}
+	}
+	return n
+}
+
+func (h *recordingHandler) snapshot() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.paths...)
+}
+
+// newRecordingRegistry mirrors newTestRegistry but records request paths, so a
+// test can assert how a tag was reached and not just what was stored.
+func newRecordingRegistry(t *testing.T) (string, []remote.Option, *recordingHandler) {
+	t.Helper()
+	rec := &recordingHandler{next: registry.New(registry.Logger(golog.New(io.Discard, "", 0)))}
+	srv := httptest.NewServer(rec)
+	t.Cleanup(srv.Close)
+	return strings.TrimPrefix(srv.URL, "http://"), []remote.Option{remote.WithTransport(srv.Client().Transport)}, rec
 }
 
 // seedImage pushes a random single-platform image to the test registry.
@@ -203,6 +361,45 @@ func assertArtifactKindInStore(t *testing.T, s *store.Layout, refSubstring, kind
 	if !found {
 		t.Errorf("no artifact with ref containing %q and kind %q found in store", refSubstring, kind)
 	}
+}
+
+// storedDigest returns the digest of the first indexed descriptor whose ref
+// annotation contains refSubstring, or "" if there is none.
+func storedDigest(t *testing.T, s *store.Layout, refSubstring string) string {
+	t.Helper()
+	found := ""
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if found == "" && strings.Contains(desc.Annotations[ocispec.AnnotationRefName], refSubstring) {
+			found = desc.Digest.String()
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("storedDigest walk: %v", err)
+	}
+	return found
+}
+
+// lastAuditEntryFlags reads <haulerDir>/audit.log (see pkg/audit.Append /
+// resolveDir) and returns the "flags" object of its last JSON line -- only
+// populated at audit level "verbose", since audit.Append omits Flags
+// otherwise. Fails the test if the file is missing, empty, or malformed.
+func lastAuditEntryFlags(t *testing.T, haulerDir string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(haulerDir, "audit.log"))
+	if err != nil {
+		t.Fatalf("reading audit.log: %v", err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) == 0 || lines[len(lines)-1] == "" {
+		t.Fatalf("audit.log has no entries")
+	}
+	var entry struct {
+		Flags map[string]any `json:"flags"`
+	}
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &entry); err != nil {
+		t.Fatalf("unmarshaling last audit.log line: %v\nline: %s", err, lines[len(lines)-1])
+	}
+	return entry.Flags
 }
 
 // countArtifactsInStore returns the number of descriptors in the store index.

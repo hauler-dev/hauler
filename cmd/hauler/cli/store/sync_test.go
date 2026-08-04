@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -35,6 +36,7 @@ import (
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/cosign"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
@@ -2177,5 +2179,711 @@ func TestRunImageJobs_BeganFiresOnlyAfterSemaphoreAcquired(t *testing.T) {
 	out := buf.String()
 	if got := strings.Count(out, "✓ added"); got != 2 {
 		t.Errorf("\"✓ added\" appeared %d times, want 2; full output:\n%s", got, out)
+	}
+}
+
+// --------------------------------------------------------------------------
+// verification fused into the pull worker
+// --------------------------------------------------------------------------
+
+func TestImageJobVerifyConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		job  imageJob
+		want cosign.Config
+	}{
+		{
+			name: "no verification requested",
+			job:  imageJob{img: v1.Image{Name: "example.com/nginx:v1"}},
+			want: cosign.Config{},
+		},
+		{
+			name: "keyed",
+			job:  imageJob{needsPubKey: true, key: "/keys/cosign.pub", tlog: true},
+			want: cosign.Config{Key: "/keys/cosign.pub", Tlog: true},
+		},
+		{
+			name: "keyless",
+			job: imageJob{
+				needsKeyless:                 true,
+				certIdentity:                 "me@example.com",
+				certIdentityRegexp:           ".*@example.com",
+				certOidcIssuer:               "https://accounts.example.com",
+				certOidcIssuerRegexp:         "https://.*",
+				certGithubWorkflowRepository: "example/repo",
+			},
+			want: cosign.Config{
+				CertIdentity:                 "me@example.com",
+				CertIdentityRegexp:           ".*@example.com",
+				CertOidcIssuer:               "https://accounts.example.com",
+				CertOidcIssuerRegexp:         "https://.*",
+				CertGithubWorkflowRepository: "example/repo",
+			},
+		},
+		{
+			// cosign.Config.validate rejects a key alongside any Cert* field, so
+			// a Config built from the raw resolved inputs instead of the
+			// branch-selected ones would turn this into a hard error.
+			name: "keyed job drops identity fields rather than combining them",
+			job: imageJob{
+				needsPubKey:          true,
+				key:                  "/keys/cosign.pub",
+				certIdentity:         "me@example.com",
+				certOidcIssuerRegexp: "https://.*",
+			},
+			want: cosign.Config{Key: "/keys/cosign.pub"},
+		},
+		{
+			// tlog belongs to the keyed branch; NewVerifier forces it on for
+			// keyless anyway. Leaking it here would also make the Config
+			// non-Empty and drag an unverified job into the verify path.
+			name: "keyless job drops the key branch's tlog flag",
+			job: imageJob{
+				needsKeyless:   true,
+				tlog:           true,
+				certIdentity:   "me@example.com",
+				certOidcIssuer: "https://accounts.example.com",
+			},
+			want: cosign.Config{CertIdentity: "me@example.com", CertOidcIssuer: "https://accounts.example.com"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.job.verifyConfig(); got != tt.want {
+				t.Fatalf("verifyConfig() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// The gate that decides which jobs verify must not widen: before the verify
+// pass was fused into the worker, a job verified iff resolveImageJobs set
+// needsPubKey or needsKeyless. cosign.Config.Empty is now that gate, so every
+// job resolveImageJobs leaves unverified must map to the zero Config.
+func TestVerifyConfigEmptyMatchesResolvedGate(t *testing.T) {
+	tests := []struct {
+		name       string
+		o          *flags.SyncOpts
+		a          map[string]string
+		image      v1.Image
+		wantVerify bool
+	}{
+		{name: "bare image", o: &flags.SyncOpts{}, image: v1.Image{Name: "example.com/nginx:v1"}},
+		{
+			// The one input that is verification-adjacent but never sufficient
+			// on its own: --tlog alone must still skip verification.
+			name:  "tlog without a key",
+			o:     &flags.SyncOpts{Tlog: true},
+			image: v1.Image{Name: "example.com/nginx:v1"},
+		},
+		{name: "platform annotation only", o: &flags.SyncOpts{}, a: map[string]string{consts.ImageAnnotationPlatform: "linux/amd64"}, image: v1.Image{Name: "example.com/nginx:v1"}},
+		{name: "cli key", o: &flags.SyncOpts{Key: "/keys/cosign.pub"}, image: v1.Image{Name: "example.com/nginx:v1"}, wantVerify: true},
+		{name: "per-image key", o: &flags.SyncOpts{}, image: v1.Image{Name: "example.com/nginx:v1", Key: "/keys/cosign.pub"}, wantVerify: true},
+		{name: "annotation key", o: &flags.SyncOpts{}, a: map[string]string{consts.ImageAnnotationKey: "/keys/cosign.pub"}, image: v1.Image{Name: "example.com/nginx:v1"}, wantVerify: true},
+		{name: "cli identity", o: &flags.SyncOpts{CertIdentity: "me@example.com"}, image: v1.Image{Name: "example.com/nginx:v1"}, wantVerify: true},
+		{name: "cli identity regexp", o: &flags.SyncOpts{CertIdentityRegexp: ".*"}, image: v1.Image{Name: "example.com/nginx:v1"}, wantVerify: true},
+		{
+			// An issuer without a subject never triggered verification before
+			// and must not now: it is not a complete keyless identity.
+			name:  "cli issuer without an identity",
+			o:     &flags.SyncOpts{CertOidcIssuer: "https://accounts.example.com"},
+			image: v1.Image{Name: "example.com/nginx:v1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobs, err := resolveImageJobs(tt.o, tt.a, []v1.Image{tt.image})
+			if err != nil {
+				t.Fatalf("resolveImageJobs: %v", err)
+			}
+			job := jobs[0]
+
+			wantGate := job.needsPubKey || job.needsKeyless
+			if wantGate != tt.wantVerify {
+				t.Fatalf("resolveImageJobs set needsPubKey=%v needsKeyless=%v, want verification=%v", job.needsPubKey, job.needsKeyless, tt.wantVerify)
+			}
+			if got := job.verifyConfig().Empty(); got == tt.wantVerify {
+				t.Fatalf("verifyConfig().Empty() = %v for a job whose resolved gate says verify=%v", got, tt.wantVerify)
+			}
+		})
+	}
+}
+
+// resolveImageJobs' branches are exclusive, so a manifest naming both a key and
+// an identity has always verified against the key alone. cosign.Config rejects
+// that pairing outright, so verifyConfig has to reproduce the precedence rather
+// than forward both -- otherwise a manifest that worked yesterday hard-errors.
+func TestVerifyConfigKeyWinsOverIdentityAndStaysBuildable(t *testing.T) {
+	keyPath := writeTestPubKey(t)
+	o := &flags.SyncOpts{
+		Key:            keyPath,
+		CertIdentity:   "me@example.com",
+		CertOidcIssuer: "https://accounts.example.com",
+	}
+
+	jobs, err := resolveImageJobs(o, nil, []v1.Image{{Name: "example.com/nginx:v1"}})
+	if err != nil {
+		t.Fatalf("resolveImageJobs: %v", err)
+	}
+
+	cfg := jobs[0].verifyConfig()
+	if cfg.Key != keyPath {
+		t.Fatalf("verifyConfig().Key = %q, want the resolved key %q", cfg.Key, keyPath)
+	}
+	if cfg.Keyless() {
+		t.Fatal("verifyConfig produced a keyless Config for a job the key branch claimed")
+	}
+
+	// A keyed Config with no Cert* fields needs no trust root, so this builds
+	// offline (see cosign.NewVerifier's offlineWithKey).
+	rso, ro := defaultRootOpts(t.TempDir()), defaultCliOpts()
+	v, err := cosign.NewVerifier(newTestContext(t), cfg, rso, ro)
+	if err != nil {
+		t.Fatalf("cosign.NewVerifier rejected the Config sync builds for a key+identity manifest: %v", err)
+	}
+	v.Close()
+}
+
+// A job with no verification inputs must not resolve either: the digest pin
+// exists to close the gap between checking a tag and pulling it, and there is
+// no gap when nothing is checked. Pointing at a registry that cannot answer is
+// what proves no request was made -- a resolve attempt here would error.
+func TestResolveAndVerifySkipsUnverifiedJobs(t *testing.T) {
+	j := imageJob{img: v1.Image{Name: "127.0.0.1:1/absent/image:v1"}}
+
+	// A nil Cache would panic if the verify path were entered.
+	pinned, err := resolveAndVerify(newTestContext(t), nil, j, defaultRootOpts(t.TempDir()), defaultCliOpts())
+	if err != nil {
+		t.Fatalf("resolveAndVerify: %v", err)
+	}
+	if pinned != "" {
+		t.Fatalf("resolveAndVerify pinned %q for a job that requested no verification", pinned)
+	}
+}
+
+// Verification must check the digest resolveAndVerify pinned, not the tag it
+// started from -- closing that window is the whole point of fusing the passes
+// into one worker. The tag is therefore resolved exactly once, by
+// resolveAndVerify itself; handing cosign the tag instead would make it resolve
+// a second time, and whatever the tag pointed at by then is what would be
+// checked.
+func TestResolveAndVerifyChecksTheDigestNotTheTag(t *testing.T) {
+	host, remoteOpts, rec := newRecordingRegistry(t)
+	img := seedImage(t, host, "badsig", "v1", remoteOpts...)
+	seedCosignV2Artifacts(t, host, "badsig", img, remoteOpts...)
+	digest, err := img.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+	rec.reset() // seeding itself HEADs the tag
+
+	rso, ro := defaultRootOpts(t.TempDir()), defaultCliOpts()
+	cache := cosign.NewCache(rso, ro)
+	defer cache.Close()
+
+	// The signature manifest exists but carries no usable signature, so
+	// verification fails closed after doing all its registry work.
+	j := imageJob{img: v1.Image{Name: host + "/badsig:v1"}, needsPubKey: true, key: writeTestPubKey(t)}
+	if _, err := resolveAndVerify(newTestContext(t), cache, j, rso, ro); err == nil {
+		t.Fatal("resolveAndVerify accepted an image whose only signature is unusable")
+	}
+
+	sigTag := "manifests/" + strings.ReplaceAll(digest.String(), ":", "-") + ".sig"
+	if rec.countContaining(sigTag) == 0 {
+		t.Fatalf("verification never fetched %s, so it did not run against the pinned digest; requests:\n%v", sigTag, rec.snapshot())
+	}
+	if got := rec.countContaining("manifests/v1"); got != 1 {
+		t.Fatalf("the tag was resolved %d times, want exactly 1 (resolveAndVerify's own pin); verification is re-resolving the tag\nrequests:\n%v", got, rec.snapshot())
+	}
+}
+
+// The feature's core guarantee, end to end: the digest that passed verification
+// is the digest that lands in the store.
+//
+// Both halves are asserted, because either alone is weak. The stored descriptor
+// proves what was written; the request log proves how -- the tag is resolved
+// exactly once, by resolveAndVerify's pin, so storeImage fetched by digest and
+// never re-read the tag it could have found moved.
+func TestRunImageJobs_StoresTheDigestItVerified(t *testing.T) {
+	host, remoteOpts, rec := newRecordingRegistry(t)
+	img, keyPath := seedSignedImage(t, host, "signed", "v1", remoteOpts...)
+	want, err := img.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+	rec.reset() // seeding itself HEADs the tag
+
+	s := newTestStore(t)
+	ref := host + "/signed:v1"
+	jobs := []imageJob{{img: v1.Image{Name: ref}, needsPubKey: true, key: keyPath, excludeExtras: true}}
+
+	if err := runImageJobs(newTestContext(t), s, jobs, 1, defaultRootOpts(s.Root), defaultCliOpts(), nil); err != nil {
+		t.Fatalf("runImageJobs: %v", err)
+	}
+
+	got := storedDigest(t, s, "signed:v1")
+	if got == "" {
+		t.Fatalf("a validly signed image was not stored; requests:\n%v", rec.snapshot())
+	}
+	if got != want.String() {
+		t.Fatalf("stored digest %s, want the verified digest %s", got, want)
+	}
+	if n := rec.countContaining("manifests/v1"); n != 1 {
+		t.Fatalf("the tag was resolved %d times, want exactly 1 (resolveAndVerify's pin); storeImage re-resolved the tag instead of using the pinned digest\nrequests:\n%v", n, rec.snapshot())
+	}
+}
+
+// Without --ignore-errors, a verify failure now fails the whole run instead of
+// being dropped as it used to be: dropping let an unverified/unsigned image go
+// silently missing from an otherwise-exit-0 run, which is exactly the failure
+// mode --ignore-errors exists to opt into deliberately. Nothing is stored --
+// the good job's context is cancelled by the errgroup's fail-fast before it can
+// complete.
+func TestRunImageJobs_VerifyFailureFailsTheRunByDefault(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	bad := seedImage(t, host, "test/badsig", "v1", remoteOpts...)
+	seedCosignV2Artifacts(t, host, "test/badsig", bad, remoteOpts...)
+	seedImage(t, host, "test/good", "v1", remoteOpts...)
+
+	s := newTestStore(t)
+	jobs := []imageJob{
+		{img: v1.Image{Name: host + "/test/badsig:v1"}, needsPubKey: true, key: writeTestPubKey(t), excludeExtras: true},
+		{img: v1.Image{Name: host + "/test/good:v1"}, excludeExtras: true},
+	}
+
+	// concurrency=1 runs the jobs in slice order (errgroup.SetLimit(1)), so the
+	// bad job has already failed -- and cancelled gctx -- before the good job's
+	// goroutine can acquire the semaphore. That makes the good job's
+	// cancellation deterministic instead of a race against how far its own
+	// pull got before the group's context died.
+	if err := runImageJobs(newTestContext(t), s, jobs, 1, defaultRootOpts(s.Root), defaultCliOpts(), nil); err == nil {
+		t.Fatal("runImageJobs succeeded despite a verification failure; the default is now to fail the run, not drop the one image")
+	}
+	if got := countArtifactsInStore(t, s); got != 0 {
+		t.Fatalf("store holds %d artifacts, want 0; a failed run must not have stored anything", got)
+	}
+}
+
+// With --ignore-errors, a verify failure is now a WARN, not a dropped image:
+// the image is stored unverified rather than being left out of the run. This
+// is the deliberate tradeoff --ignore-errors buys -- an unverified image
+// reaching the store (and potentially an airgapped environment) rather than
+// the run failing outright.
+func TestRunImageJobs_VerifyFailureIgnoreErrors_StoresUnverified(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	bad := seedImage(t, host, "test/badsig", "v1", remoteOpts...)
+	seedCosignV2Artifacts(t, host, "test/badsig", bad, remoteOpts...)
+	seedImage(t, host, "test/good", "v1", remoteOpts...)
+
+	s := newTestStore(t)
+	ro := defaultCliOpts()
+	ro.IgnoreErrors = true
+	badRef := host + "/test/badsig:v1"
+	goodRef := host + "/test/good:v1"
+	jobs := []imageJob{
+		{img: v1.Image{Name: badRef}, needsPubKey: true, key: writeTestPubKey(t), excludeExtras: true},
+		{img: v1.Image{Name: goodRef}, excludeExtras: true},
+	}
+
+	var buf bytes.Buffer
+	l := log.NewLogger(&buf)
+	ctx := l.WithContext(t.Context())
+
+	if err := runImageJobs(ctx, s, jobs, 2, defaultRootOpts(s.Root), ro, nil); err != nil {
+		t.Fatalf("run returned an error under --ignore-errors: %v", err)
+	}
+	assertArtifactInStore(t, s, "test/good:v1")
+	// The assertion that matters most: the image that failed verification is
+	// in the store anyway, unverified.
+	assertArtifactInStore(t, s, "test/badsig:v1")
+	if got := countArtifactsInStore(t, s); got != 2 {
+		t.Fatalf("store holds %d artifacts, want 2 (both images, the bad one unverified)", got)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "WRN") || !strings.Contains(out, badRef) {
+		t.Fatalf("expected a WARN line naming %q, got:\n%s", badRef, out)
+	}
+}
+
+// storeImage's audit entry must report whether verification actually
+// succeeded, not merely whether it was requested -- see the "verified" field
+// bug this guards: before this fix storeImage derived "verified" from
+// whether i.Key/i.CertIdentity/i.CertIdentityRegexp were set, which stayed
+// true even when --ignore-errors stored an image that failed its check.
+//
+// Table-tested against runImageJobs, the general path both `store sync` and
+// `store add chart`'s discovered-image pass funnel through.
+func TestRunImageJobs_AuditVerifiedFlag(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+
+	tests := []struct {
+		name         string
+		buildJob     func(t *testing.T) imageJob
+		ignoreErrors bool
+		want         bool
+	}{
+		{
+			name: "not requested",
+			buildJob: func(t *testing.T) imageJob {
+				seedImage(t, host, "test/audit-unrequested", "v1", remoteOpts...)
+				return imageJob{img: v1.Image{Name: host + "/test/audit-unrequested:v1"}, excludeExtras: true}
+			},
+			want: false,
+		},
+		{
+			name: "requested and passed",
+			buildJob: func(t *testing.T) imageJob {
+				_, keyPath := seedSignedImage(t, host, "test/audit-passed", "v1", remoteOpts...)
+				return imageJob{img: v1.Image{Name: host + "/test/audit-passed:v1"}, needsPubKey: true, key: keyPath, excludeExtras: true}
+			},
+			want: true,
+		},
+		{
+			name: "requested and failed, stored anyway under --ignore-errors",
+			buildJob: func(t *testing.T) imageJob {
+				bad := seedImage(t, host, "test/audit-failed", "v1", remoteOpts...)
+				seedCosignV2Artifacts(t, host, "test/audit-failed", bad, remoteOpts...)
+				keyPath := writeTestPubKey(t)
+				// img.Key is set alongside imageJob.key so this subtest also
+				// catches a regression to the old "verified" proxy
+				// (i.Key != "" || ...), which reads img.Key, not job.key.
+				return imageJob{img: v1.Image{Name: host + "/test/audit-failed:v1", Key: keyPath}, needsPubKey: true, key: keyPath, excludeExtras: true}
+			},
+			ignoreErrors: true,
+			want:         false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			job := tc.buildJob(t)
+
+			s := newTestStore(t)
+			ro := defaultCliOpts()
+			ro.AuditLevel = "verbose"
+			ro.IgnoreErrors = tc.ignoreErrors
+			ro.HaulerDir = t.TempDir()
+
+			if err := runImageJobs(newTestContext(t), s, []imageJob{job}, 1, defaultRootOpts(s.Root), ro, nil); err != nil {
+				t.Fatalf("runImageJobs: %v", err)
+			}
+
+			flags := lastAuditEntryFlags(t, ro.HaulerDir)
+			got, ok := flags["verified"].(bool)
+			if !ok {
+				t.Fatalf("audit entry's flags[\"verified\"] is %v (%T), want a bool", flags["verified"], flags["verified"])
+			}
+			if got != tc.want {
+				t.Errorf("flags[\"verified\"] = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The progress row for a job that hit a verify failure has to be cleared like
+// any other, or the live region keeps showing an image that is no longer being
+// worked on for the rest of the run. The default (fail-the-run) case is used
+// here rather than --ignore-errors, since that is the one where the job's
+// goroutine actually returns an error -- matching the "even when its job
+// errors out" case the deferred progress.Finished exists to cover.
+//
+// concurrency=1 makes the ordering deterministic: errgroup.SetLimit(1) runs the
+// jobs in slice order, so every frame naming the good image is drawn after the
+// bad one finished. If Finished were skipped, the bad ref would reappear in
+// each of those frames.
+func TestRunImageJobs_VerifyFailureClearsProgressRow(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	bad := seedImage(t, host, "badsig", "v1", remoteOpts...)
+	seedCosignV2Artifacts(t, host, "badsig", bad, remoteOpts...)
+	seedImage(t, host, "goodimage", "v1", remoteOpts...)
+
+	badRef := host + "/badsig:v1"
+	goodRef := host + "/goodimage:v1"
+	jobs := []imageJob{
+		{img: v1.Image{Name: badRef}, needsPubKey: true, key: writeTestPubKey(t), excludeExtras: true},
+		{img: v1.Image{Name: goodRef}, excludeExtras: true},
+	}
+
+	s := newTestStore(t)
+	var buf bytes.Buffer
+	if err := runImageJobs(newTestContext(t), s, jobs, 1, defaultRootOpts(s.Root), defaultCliOpts(), log.NewRenderer(&buf)); err == nil {
+		t.Fatal("runImageJobs succeeded despite a verification failure; expected the default fail-the-run behavior")
+	}
+
+	out := buf.String()
+	firstGood := strings.Index(out, goodRef)
+	if firstGood == -1 {
+		t.Fatalf("the good image never reached the progress display; full output:\n%s", out)
+	}
+	if last := strings.LastIndex(out, badRef); last > firstGood {
+		t.Errorf("%q is still drawn after the good image started; its progress row was never cleared\nfull output:\n%s", badRef, out)
+	}
+}
+
+// Four different failures must not all read as "your signature is bad". A user
+// whose registry is unreachable, whose reference is malformed, or whose key
+// file is missing has a different problem to fix in each case.
+//
+// It also asserts resolveAndVerify's pinned-digest-on-failure contract: a
+// failure at or before the pin (malformed reference, unresolvable digest) has
+// no digest to hand back, but a failure after a successful pin (verifier
+// setup, signature check) must still return it, so the caller can store
+// exactly the bytes that were checked even when the check failed --
+// wantPinned is "" for the former and the seeded image's digest for the
+// latter.
+func TestResolveAndVerifyNamesTheStageThatFailed(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	badsig := seedImage(t, host, "badsig", "v1", remoteOpts...)
+	seedCosignV2Artifacts(t, host, "badsig", badsig, remoteOpts...)
+	badsigDigest, err := badsig.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+	unreadablekey := seedImage(t, host, "unreadablekey", "v1", remoteOpts...)
+	unreadablekeyDigest, err := unreadablekey.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		job        imageJob
+		want       string
+		wantPinned string // "" means the failure happened at or before the pin
+	}{
+		{
+			name:       "malformed reference",
+			job:        imageJob{img: v1.Image{Name: "NOT A REF"}, needsPubKey: true, key: writeTestPubKey(t)},
+			want:       "unable to parse image reference",
+			wantPinned: "",
+		},
+		{
+			// 127.0.0.1:1 refuses connections, so this never reaches cosign.
+			name:       "unreachable registry",
+			job:        imageJob{img: v1.Image{Name: "127.0.0.1:1/absent/image:v1"}, needsPubKey: true, key: writeTestPubKey(t)},
+			want:       "unable to resolve image digest",
+			wantPinned: "",
+		},
+		{
+			name:       "unreadable key",
+			job:        imageJob{img: v1.Image{Name: host + "/unreadablekey:v1"}, needsPubKey: true, key: filepath.Join(t.TempDir(), "missing.pub")},
+			want:       "unable to configure signature verification",
+			wantPinned: unreadablekeyDigest.String(),
+		},
+		{
+			name:       "signature that does not check out",
+			job:        imageJob{img: v1.Image{Name: host + "/badsig:v1"}, needsPubKey: true, key: writeTestPubKey(t)},
+			want:       "signature verification failed",
+			wantPinned: badsigDigest.String(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rso, ro := defaultRootOpts(t.TempDir()), defaultCliOpts()
+			cache := cosign.NewCache(rso, ro)
+			defer cache.Close()
+
+			pinned, err := resolveAndVerify(newTestContext(t), cache, tt.job, rso, ro)
+			if err == nil {
+				t.Fatal("resolveAndVerify succeeded")
+			}
+			var ve *verifyError
+			if !errors.As(err, &ve) {
+				t.Fatalf("got %T (%v), want a *verifyError naming the failed stage", err, err)
+			}
+			if ve.stage != tt.want {
+				t.Fatalf("stage = %q, want %q (underlying: %v)", ve.stage, tt.want, ve.err)
+			}
+			if pinned != tt.wantPinned {
+				t.Fatalf("pinned digest = %q, want %q", pinned, tt.wantPinned)
+			}
+		})
+	}
+}
+
+// cosign's ErrNoMatchingSignatures joins one failure sentence per
+// signature-verification attempt with "\n ", so the same sentence can appear
+// several times back to back for a single failed image. flattenVerifyError
+// collapses those consecutive repeats so logVerifyFailure prints one line.
+func TestFlattenVerifyError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: "",
+		},
+		{
+			name: "empty message",
+			err:  errors.New(""),
+			want: "",
+		},
+		{
+			name: "single-line error unchanged",
+			err:  errors.New("invalid signature when validating ASN.1 encoded signature"),
+			want: "invalid signature when validating ASN.1 encoded signature",
+		},
+		{
+			name: "three identical consecutive fragments collapse with count",
+			err:  errors.New("invalid signature\n invalid signature\n invalid signature"),
+			want: "invalid signature (x3)",
+		},
+		{
+			name: "distinct fragments joined with semicolons",
+			err:  errors.New("fragment one\nfragment two\nfragment three"),
+			want: "fragment one; fragment two; fragment three",
+		},
+		{
+			name: "leading and trailing whitespace is trimmed before comparing",
+			err:  errors.New("  invalid signature  \n\tinvalid signature\t\n  invalid signature  "),
+			want: "invalid signature (x3)",
+		},
+		{
+			name: "empty fragments between real ones are dropped",
+			err:  errors.New("fragment one\n\nfragment two"),
+			want: "fragment one; fragment two",
+		},
+		{
+			name: "non-consecutive repeats are not merged",
+			err:  errors.New("fragment one\nfragment two\nfragment one"),
+			want: "fragment one; fragment two; fragment one",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := flattenVerifyError(tt.err); got != tt.want {
+				t.Fatalf("flattenVerifyError(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// The digest pin is the one network call on the verified path that can lose a
+// valid, signed image to a transient blip, so it carries the same --retries
+// budget as the verify and store steps. retry.Operation's exhaustion wrapper is
+// the evidence: a bare remote.Head error would not have one.
+func TestResolveAndVerifyRetriesTheDigestPin(t *testing.T) {
+	rso, ro := defaultRootOpts(t.TempDir()), defaultCliOpts() // Retries: 1
+	cache := cosign.NewCache(rso, ro)
+	defer cache.Close()
+
+	j := imageJob{img: v1.Image{Name: "127.0.0.1:1/absent/image:v1"}, needsPubKey: true, key: writeTestPubKey(t)}
+	_, err := resolveAndVerify(newTestContext(t), cache, j, rso, ro)
+	if err == nil {
+		t.Fatal("resolveAndVerify succeeded against a refused connection")
+	}
+	if want := fmt.Sprintf("operation unsuccessful after %d attempts", rso.Retries); !strings.Contains(err.Error(), want) {
+		t.Fatalf("resolve error %q does not carry %q; the digest pin is running outside retry.Operation", err, want)
+	}
+}
+
+// Under fail-fast, one real storeImage failure cancels the group and every
+// other in-flight job's verification collapses with it. Those cancellations
+// must not be reported as signature problems, or a single bad image produces
+// N-1 lines telling the user their signing is broken. storeImage guards the
+// identical case at add.go's context.Canceled branch.
+//
+// This is a default-only (ignoreErrors=false) test: storeImage's ignoreErrors
+// branch swallows every error it sees, including a mid-flight
+// context.Canceled, before ever asking what the error was -- so under
+// --ignore-errors a plain storeImage failure like this one never reaches the
+// point of cancelling gctx at all, and there is nothing left to cascade to the
+// verifying jobs. See TestRunImageJobs_AlreadyCancelledContext for the
+// --ignore-errors-covering case, which cancels the context from outside the
+// run instead of relying on one job's failure to do it.
+//
+// concurrency=1 makes this deterministic: errgroup.SetLimit(1) runs the jobs in
+// slice order, so the verifying jobs are guaranteed to start after the bad
+// image has already failed and cancelled gctx.
+func TestRunImageJobs_CancelledVerifyIsNotReportedAsSignatureFailure(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+
+	jobs := []imageJob{{img: v1.Image{Name: host + "/does-not-exist:latest"}}}
+	var verifyRefs []string
+	for i := 0; i < 3; i++ {
+		repo := fmt.Sprintf("signed%d", i)
+		_, keyPath := seedSignedImage(t, host, repo, "v1", remoteOpts...)
+		ref := host + "/" + repo + ":v1"
+		verifyRefs = append(verifyRefs, ref)
+		jobs = append(jobs, imageJob{img: v1.Image{Name: ref}, needsPubKey: true, key: keyPath, excludeExtras: true})
+	}
+
+	s := newTestStore(t)
+	var buf bytes.Buffer
+	prevGlobalLevel := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(prevGlobalLevel) })
+	ctx := zerolog.New(&buf).Level(zerolog.DebugLevel).WithContext(context.Background())
+
+	err := runImageJobs(ctx, s, jobs, 1, defaultRootOpts(s.Root), defaultCliOpts(), nil)
+	if err == nil {
+		t.Fatal("runImageJobs: expected the real failure to propagate, got nil")
+	}
+	if got := countArtifactsInStore(t, s); got != 0 {
+		t.Fatalf("store holds %d artifacts, want 0; a cancelled run must not store any of the still-verifying images", got)
+	}
+
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if !strings.Contains(line, `"level":"error"`) {
+			continue
+		}
+		for _, ref := range verifyRefs {
+			if strings.Contains(line, ref) {
+				t.Errorf("a cancelled job logged at ERROR, which buries the one real failure:\n%s", line)
+			}
+		}
+	}
+}
+
+// TestRunImageJobs_AlreadyCancelledContext covers requirement 3's
+// both-ignore-errors-settings case directly: an already-cancelled context
+// makes storeImage's own early ctx.Err() check fire (add.go, before any
+// ignoreErrors branching) for the job that needs no verification, and makes
+// resolveAndVerify's pinDigest -> retry.Operation observe ctx.Err() before its
+// first attempt for the job that does. logVerifyFailure treats that
+// context.Canceled as an always-propagate case regardless of ignoreErrors, so
+// both jobs fail and nothing is stored either way.
+//
+// This is deliberately not a job-triggers-cancellation-of-another-job test:
+// per TestRunImageJobs_CancelledVerifyIsNotReportedAsSignatureFailure's doc,
+// that cascade cannot happen under --ignore-errors=true in the current
+// architecture, since storeImage's ignoreErrors branch swallows a job's own
+// failure before it ever reaches gctx's cancel. Cancelling from outside the
+// run (as a Ctrl-C would) is the realistic trigger for this case and needs no
+// blocking handler or timing to be deterministic.
+func TestRunImageJobs_AlreadyCancelledContext(t *testing.T) {
+	for _, ignoreErrors := range []bool{false, true} {
+		t.Run(fmt.Sprintf("ignoreErrors=%v", ignoreErrors), func(t *testing.T) {
+			host, remoteOpts := newTestRegistry(t)
+			_, keyPath := seedSignedImage(t, host, "signed", "v1", remoteOpts...)
+			seedImage(t, host, "plain", "v1", remoteOpts...)
+
+			s := newTestStore(t)
+			ro := defaultCliOpts()
+			ro.IgnoreErrors = ignoreErrors
+			jobs := []imageJob{
+				{img: v1.Image{Name: host + "/signed:v1"}, needsPubKey: true, key: keyPath, excludeExtras: true},
+				{img: v1.Image{Name: host + "/plain:v1"}, excludeExtras: true},
+			}
+
+			zl := zerolog.New(io.Discard)
+			ctx, cancel := context.WithCancel(zl.WithContext(context.Background()))
+			cancel()
+
+			if err := runImageJobs(ctx, s, jobs, 2, defaultRootOpts(s.Root), ro, nil); err == nil {
+				t.Fatal("runImageJobs succeeded against an already-cancelled context")
+			}
+			if got := countArtifactsInStore(t, s); got != 0 {
+				t.Fatalf("store holds %d artifacts, want 0; an already-cancelled run must not store anything", got)
+			}
+		})
 	}
 }

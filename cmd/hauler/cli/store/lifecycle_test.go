@@ -109,7 +109,7 @@ func TestLifecycle_Image_AddSaveLoadCopyRegistry(t *testing.T) {
 	storeA := newTestStore(t)
 	rso := defaultRootOpts(storeA.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, storeA, v1.Image{Name: srcHost + "/lifecycle/app:v1"}, "", false, rso, ro, "", ""); err != nil {
+	if err := storeImage(ctx, storeA, v1.Image{Name: srcHost + "/lifecycle/app:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertArtifactInStore(t, storeA, "lifecycle/app:v1")
@@ -260,7 +260,7 @@ func TestLifecycle_DigestOnlyImage_AddSaveLoad(t *testing.T) {
 	rso := defaultRootOpts(storeA.Root)
 	ro := defaultCliOpts()
 	digestRef := srcHost + "/lifecycle/digestonly@" + hash.String()
-	if err := storeImage(ctx, storeA, v1.Image{Name: digestRef}, "", false, rso, ro, "", ""); err != nil {
+	if err := storeImage(ctx, storeA, v1.Image{Name: digestRef}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage by digest: %v", err)
 	}
 	// The image should be findable by its digest hex

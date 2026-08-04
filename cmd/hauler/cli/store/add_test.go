@@ -32,6 +32,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -486,7 +487,7 @@ func TestStoreImage(t *testing.T) {
 			ro := defaultCliOpts()
 			ro.IgnoreErrors = tc.ignoreErrors
 
-			err := storeImage(ctx, s, v1.Image{Name: tc.imageName}, "", false, rso, ro, "", "")
+			err := storeImage(ctx, s, v1.Image{Name: tc.imageName}, "", false, rso, ro, "", "", false)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -503,7 +504,7 @@ func TestStoreImage(t *testing.T) {
 
 		t.Setenv(consts.HaulerIgnoreErrors, "true")
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/nonexistent/image:missing"}, "", false, rso, ro, "", "")
+		err := storeImage(ctx, s, v1.Image{Name: host + "/nonexistent/image:missing"}, "", false, rso, ro, "", "", false)
 		if err != nil {
 			t.Fatalf("expected nil with HAULER_IGNORE_ERRORS=true, got: %v", err)
 		}
@@ -523,7 +524,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2", "")
+		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2", "", false)
 		if err != nil {
 			t.Fatalf("storeImage with rewrite: %v", err)
 		}
@@ -536,7 +537,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v3"}, "", false, rso, ro, "newrepo/img", "")
+		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v3"}, "", false, rso, ro, "newrepo/img", "", false)
 		if err != nil {
 			t.Fatalf("storeImage with tagless rewrite: %v", err)
 		}
@@ -556,7 +557,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		ro := defaultCliOpts()
 
 		digestRef := host + "/src/repo@" + h.String()
-		err = storeImage(ctx, s, v1.Image{Name: digestRef}, "", false, rso, ro, "newrepo/img", "")
+		err = storeImage(ctx, s, v1.Image{Name: digestRef}, "", false, rso, ro, "newrepo/img", "", false)
 		if err == nil {
 			t.Fatal("expected error for digest ref rewrite without explicit tag, got nil")
 		}
@@ -575,7 +576,7 @@ func TestStoreImage_MultiArch(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, "", ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage multi-arch index: %v", err)
 	}
 	// Full index (both platforms) must be stored as an index, not a single image.
@@ -591,7 +592,7 @@ func TestStoreImage_PlatformFilter(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v2"}, "linux/amd64", false, rso, ro, "", ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v2"}, "linux/amd64", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage with platform filter: %v", err)
 	}
 	// Platform filter resolves a single manifest from the index → stored as a single image.
@@ -609,7 +610,7 @@ func TestStoreImage_CosignV2Artifacts(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", false, rso, ro, "", ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertArtifactKindInStore(t, s, "test/signed:v1", consts.KindAnnotationSigs)
@@ -628,7 +629,7 @@ func TestStoreImage_CosignV3Referrer(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", false, rso, ro, "", ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertReferrerInStore(t, s, "test/image:v1")
@@ -647,7 +648,7 @@ func TestStoreImage_ExcludeExtras(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", true, rso, ro, "", ""); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", true, rso, ro, "", "", false); err != nil {
 			t.Fatalf("storeImage with excludeExtras: %v", err)
 		}
 
@@ -685,7 +686,7 @@ func TestStoreImage_ExcludeExtras(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", true, rso, ro, "", ""); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", true, rso, ro, "", "", false); err != nil {
 			t.Fatalf("storeImage with excludeExtras: %v", err)
 		}
 
@@ -720,7 +721,7 @@ func TestStoreImage_ExcludeExtras(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v2"}, "", false, rso, ro, "", ""); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v2"}, "", false, rso, ro, "", "", false); err != nil {
 			t.Fatalf("storeImage without excludeExtras: %v", err)
 		}
 
@@ -1049,6 +1050,250 @@ func TestAddImageCmd_LocalFlagValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --------------------------------------------------------------------------
+// AddImageCmd verification tests
+// --------------------------------------------------------------------------
+
+// `store add image` must store the digest it verified. Verifying the tag and
+// then letting storeImage resolve it a second time leaves a window in which the
+// tag can move, so the bytes stored are not the bytes checked -- the window
+// `store sync` closes in resolveAndVerify.
+//
+// The request log is what distinguishes the two: pinning first means the tag is
+// resolved exactly once, by the command's own pin. Comparing the stored digest
+// alone would pass either way, since nothing moves the tag mid-test.
+func TestAddImageCmd_StoresTheDigestItVerified(t *testing.T) {
+	host, remoteOpts, rec := newRecordingRegistry(t)
+	img, keyPath := seedSignedImage(t, host, "signed", "v1", remoteOpts...)
+	want, err := img.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+	rec.reset() // seeding itself HEADs the tag
+
+	s := newTestStore(t)
+	o := &flags.AddImageOpts{Key: keyPath, ExcludeExtras: true}
+	if err := AddImageCmd(newTestContext(t), o, s, host+"/signed:v1", defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("AddImageCmd: %v", err)
+	}
+
+	got := storedDigest(t, s, "signed:v1")
+	if got == "" {
+		t.Fatalf("a validly signed image was not stored; requests:\n%v", rec.snapshot())
+	}
+	if got != want.String() {
+		t.Fatalf("stored digest %s, want the verified digest %s", got, want)
+	}
+	if n := rec.countContaining("manifests/v1"); n != 1 {
+		t.Fatalf("the tag was resolved %d times, want exactly 1 (the command's own pin); verification and the pull are each resolving it\nrequests:\n%v", n, rec.snapshot())
+	}
+}
+
+// A signature that does not check out fails the command. `store sync` drops one
+// image and carries on; `store add image` has only the one image, and returning
+// success would leave the user believing an image had been verified when it was
+// not stored at all.
+func TestAddImageCmd_VerificationFailureFailsTheCommand(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	img := seedImage(t, host, "badsig", "v1", remoteOpts...)
+	// The signature manifest exists but carries no usable signature.
+	seedCosignV2Artifacts(t, host, "badsig", img, remoteOpts...)
+
+	s := newTestStore(t)
+	o := &flags.AddImageOpts{Key: writeTestPubKey(t), ExcludeExtras: true}
+	if err := AddImageCmd(newTestContext(t), o, s, host+"/badsig:v1", defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
+		t.Fatal("AddImageCmd returned nil for an image whose only signature is unusable")
+	}
+	if got := countArtifactsInStore(t, s); got != 0 {
+		t.Fatalf("store holds %d artifacts, want 0; the image that failed verification was stored anyway", got)
+	}
+}
+
+// verifyAddImage must hand back the digest it pinned on every failure after
+// the pin itself succeeded (verifier setup, signature check), so the caller
+// can store exactly the bytes that were checked even though the check failed.
+// A failure at or before the pin (malformed reference, unresolvable digest)
+// has no digest to hand back and must return "".
+func TestVerifyAddImage_ReturnsPinnedDigestOnPostPinFailureOnly(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	badsig := seedImage(t, host, "badsig", "v1", remoteOpts...)
+	seedCosignV2Artifacts(t, host, "badsig", badsig, remoteOpts...)
+	badsigDigest, err := badsig.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		ref        string
+		o          *flags.AddImageOpts
+		wantPinned string // "" means the failure happened at or before the pin
+	}{
+		{
+			name:       "malformed reference",
+			ref:        "NOT A REF",
+			o:          &flags.AddImageOpts{Key: writeTestPubKey(t)},
+			wantPinned: "",
+		},
+		{
+			name:       "unreachable registry",
+			ref:        "127.0.0.1:1/absent/image:v1",
+			o:          &flags.AddImageOpts{Key: writeTestPubKey(t)},
+			wantPinned: "",
+		},
+		{
+			name:       "unreadable key",
+			ref:        host + "/badsig:v1",
+			o:          &flags.AddImageOpts{Key: filepath.Join(t.TempDir(), "missing.pub")},
+			wantPinned: badsigDigest.String(),
+		},
+		{
+			name:       "signature that does not check out",
+			ref:        host + "/badsig:v1",
+			o:          &flags.AddImageOpts{Key: writeTestPubKey(t)},
+			wantPinned: badsigDigest.String(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rso, ro := defaultRootOpts(t.TempDir()), defaultCliOpts()
+			pinned, err := verifyAddImage(newTestContext(t), tt.o, tt.ref, rso, ro)
+			if err == nil {
+				t.Fatal("verifyAddImage succeeded")
+			}
+			if pinned != tt.wantPinned {
+				t.Fatalf("pinned digest = %q, want %q", pinned, tt.wantPinned)
+			}
+		})
+	}
+}
+
+// Without --ignore-errors, AddImageCmd's behavior is unchanged by this
+// feature -- see TestAddImageCmd_VerificationFailureFailsTheCommand. With it,
+// the command must log the failure at WARN and store the image anyway,
+// unverified, using whatever digest verifyAddImage already pinned -- the same
+// tradeoff `store sync` makes for one image out of many, now available to the
+// single-image command too.
+func TestAddImageCmd_IgnoreErrors_StoresUnverifiedImage(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	img := seedImage(t, host, "badsig", "v1", remoteOpts...)
+	seedCosignV2Artifacts(t, host, "badsig", img, remoteOpts...)
+	ref := host + "/badsig:v1"
+
+	s := newTestStore(t)
+	o := &flags.AddImageOpts{Key: writeTestPubKey(t), ExcludeExtras: true}
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	ro.IgnoreErrors = true
+
+	var buf bytes.Buffer
+	l := log.NewLogger(&buf)
+	ctx := l.WithContext(context.Background())
+
+	if err := AddImageCmd(ctx, o, s, ref, rso, ro); err != nil {
+		t.Fatalf("AddImageCmd: %v", err)
+	}
+
+	// The assertion that matters most: an image that failed verification is
+	// in the store anyway, unverified.
+	assertArtifactInStore(t, s, "badsig:v1")
+
+	out := buf.String()
+	if !strings.Contains(out, "WRN") || !strings.Contains(out, ref) {
+		t.Fatalf("expected a WARN line naming %q, got:\n%s", ref, out)
+	}
+}
+
+// AddImageCmd's audit entry must report whether verification actually
+// succeeded, not merely whether it was requested -- see
+// TestRunImageJobs_AuditVerifiedFlag for the sync.go counterpart and the bug
+// this guards.
+func TestAddImageCmd_AuditVerifiedFlag(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+
+	tests := []struct {
+		name         string
+		buildOpts    func(t *testing.T) (*flags.AddImageOpts, string)
+		ignoreErrors bool
+		want         bool
+	}{
+		{
+			name: "not requested",
+			buildOpts: func(t *testing.T) (*flags.AddImageOpts, string) {
+				seedImage(t, host, "test/addaudit-unrequested", "v1", remoteOpts...)
+				return &flags.AddImageOpts{ExcludeExtras: true}, host + "/test/addaudit-unrequested:v1"
+			},
+			want: false,
+		},
+		{
+			name: "requested and passed",
+			buildOpts: func(t *testing.T) (*flags.AddImageOpts, string) {
+				_, keyPath := seedSignedImage(t, host, "test/addaudit-passed", "v1", remoteOpts...)
+				return &flags.AddImageOpts{Key: keyPath, ExcludeExtras: true}, host + "/test/addaudit-passed:v1"
+			},
+			want: true,
+		},
+		{
+			name: "requested and failed, stored anyway under --ignore-errors",
+			buildOpts: func(t *testing.T) (*flags.AddImageOpts, string) {
+				bad := seedImage(t, host, "test/addaudit-failed", "v1", remoteOpts...)
+				seedCosignV2Artifacts(t, host, "test/addaudit-failed", bad, remoteOpts...)
+				return &flags.AddImageOpts{Key: writeTestPubKey(t), ExcludeExtras: true}, host + "/test/addaudit-failed:v1"
+			},
+			ignoreErrors: true,
+			want:         false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			o, ref := tc.buildOpts(t)
+
+			s := newTestStore(t)
+			rso := defaultRootOpts(s.Root)
+			ro := defaultCliOpts()
+			ro.AuditLevel = "verbose"
+			ro.IgnoreErrors = tc.ignoreErrors
+			ro.HaulerDir = t.TempDir()
+
+			if err := AddImageCmd(newTestContext(t), o, s, ref, rso, ro); err != nil {
+				t.Fatalf("AddImageCmd: %v", err)
+			}
+
+			flags := lastAuditEntryFlags(t, ro.HaulerDir)
+			got, ok := flags["verified"].(bool)
+			if !ok {
+				t.Fatalf("audit entry's flags[\"verified\"] is %v (%T), want a bool", flags["verified"], flags["verified"])
+			}
+			if got != tc.want {
+				t.Errorf("flags[\"verified\"] = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A key supplied alongside identity flags verifies against the key alone, as it
+// always has. cosign.Config.validate rejects that pairing outright, so building
+// the Config from the raw flags instead of from the branch this command selects
+// would turn a working invocation into a hard error.
+func TestAddImageCmd_KeyOutranksIdentityFlags(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	_, keyPath := seedSignedImage(t, host, "signed", "v1", remoteOpts...)
+
+	s := newTestStore(t)
+	o := &flags.AddImageOpts{
+		Key:                keyPath,
+		CertIdentity:       "someone@example.com",
+		CertIdentityRegexp: ".*",
+		ExcludeExtras:      true,
+	}
+	if err := AddImageCmd(newTestContext(t), o, s, host+"/signed:v1", defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("AddImageCmd rejected a key paired with identity flags: %v", err)
+	}
+	assertArtifactInStore(t, s, "signed:v1")
 }
 
 // --------------------------------------------------------------------------
@@ -1470,7 +1715,7 @@ func TestStoreImage_RetryDoesNotDoubleCountStats(t *testing.T) {
 	ro := defaultCliOpts()
 
 	cfg := v1.Image{Name: host + "/test/retry-stats:v1"}
-	if err := storeImage(ctx, s, cfg, "", true /* excludeExtras: keep this to just the image's own layers */, rso, ro, "", ""); err != nil {
+	if err := storeImage(ctx, s, cfg, "", true /* excludeExtras: keep this to just the image's own layers */, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 

@@ -211,30 +211,112 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		return storeLocalImage(ctx, s, cfg, rso, ro, o.Rewrite)
 	}
 
-	// Check if the user provided a key.
-	if o.Key != "" {
-		// verify signature using the provided key.
-		err := cosign.VerifySignature(ctx, o.Key, o.Tlog, cfg.Name, rso, ro)
-		if err != nil {
+	pinnedDigest, err := verifyAddImage(ctx, o, cfg.Name, rso, ro)
+	if err != nil {
+		// Semantics and log shape mirror store sync's per-job rule; see
+		// logVerifyFailure's doc.
+		if propagate := logVerifyFailure(l, cfg.Name, err, flags.ShouldIgnoreErrors(ro)); propagate {
 			return err
 		}
-		l.Infof("signature verified for image [%s]", cfg.Name)
-	} else if o.CertIdentityRegexp != "" || o.CertIdentity != "" {
-		// verify signature using keyless details.
-		// Keyless (Fulcio) certs expire after ~10 min, so the transparency log
-		// is always required to prove the cert was valid at signing time --
-		// ignore --use-tlog-verify for this path and always check tlog.
-		l.Infof("verifying keyless signature for [%s]", cfg.Name)
-		err := cosign.VerifyKeylessSignature(ctx, o.CertIdentity, o.CertIdentityRegexp, o.CertOidcIssuer, o.CertOidcIssuerRegexp, o.CertGithubWorkflowRepository, cfg.Name, rso, ro)
-		if err != nil {
-			return err
-		}
-		l.Infof("keyless signature verified for image [%s]", cfg.Name)
 	}
 
 	l.Infof("adding image [%s] to the store", cfg.Name)
 
-	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite, "")
+	// verified is true only when verification was both requested and
+	// succeeded: err is nil on success and non-nil on a failure that fell
+	// through to here under --ignore-errors, so err == nil already rules out
+	// the failed-but-stored-anyway case without checking ignoreErrors again.
+	verified := err == nil && !addImageVerifyConfig(o).Empty()
+	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite, pinnedDigest, verified)
+}
+
+// addImageVerifyConfig collapses o's verification flags into a cosign.Config,
+// which is empty exactly when the invocation asked for no verification.
+//
+// The branch mirrors the key-then-keyless precedence `store add image` has
+// always applied rather than forwarding whatever flags happen to be set: a key
+// wins and the identity flags are ignored. cosign.Config.validate rejects that
+// pairing outright, so building the Config from the raw flags would turn an
+// invocation that works today into a hard error. imageJob.verifyConfig makes
+// the same choice for `store sync`.
+func addImageVerifyConfig(o *flags.AddImageOpts) cosign.Config {
+	switch {
+	case o.Key != "":
+		return cosign.Config{Key: o.Key, Tlog: o.Tlog}
+	case o.CertIdentityRegexp != "" || o.CertIdentity != "":
+		return cosign.Config{
+			CertIdentity:                 o.CertIdentity,
+			CertIdentityRegexp:           o.CertIdentityRegexp,
+			CertOidcIssuer:               o.CertOidcIssuer,
+			CertOidcIssuerRegexp:         o.CertOidcIssuerRegexp,
+			CertGithubWorkflowRepository: o.CertGithubWorkflowRepository,
+		}
+	default:
+		return cosign.Config{}
+	}
+}
+
+// verifyAddImage pins ref to a digest and verifies that exact digest, returning
+// the digest for storeImage to fetch. An invocation that asked for no
+// verification returns the empty digest, which leaves storeImage resolving the
+// tag as before -- there is no window to close when nothing is checked, and an
+// unconditional HEAD would add a round trip to the common unsigned case.
+//
+// Verifying the digest rather than the tag is the point: a tag verified and
+// then re-resolved by storeImage can move between the two calls, so the bytes
+// stored need not be the bytes checked. resolveAndVerify closes the same window
+// for `store sync`.
+//
+// The two post-pin failure branches (cosign.NewVerifier, v.Verify) return the
+// pinned digest alongside the error rather than "": under --ignore-errors
+// AddImageCmd stores the image anyway, and it must store the exact bytes that
+// were checked even though the check failed. The pre-pin branches (a bad
+// reference, or the pin itself failing) have no digest to give back.
+//
+// One Verifier per call, built directly rather than through a cosign.Cache:
+// there is exactly one image to check, so there is nothing to share it with.
+//
+// Every error it returns is a *verifyError, with the same stage strings
+// resolveAndVerify uses for its equivalent branches, so logVerifyFailure
+// reports add.go and sync.go failures in an identical shape.
+func verifyAddImage(ctx context.Context, o *flags.AddImageOpts, ref string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) (string, error) {
+	l := log.FromContext(ctx)
+
+	cfg := addImageVerifyConfig(o)
+	if cfg.Empty() {
+		return "", nil
+	}
+
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		return "", &verifyError{stage: "unable to parse image reference", err: err}
+	}
+
+	pinned, err := pinDigest(ctx, r, rso, ro)
+	if err != nil {
+		return "", &verifyError{stage: "unable to resolve image digest", err: err}
+	}
+
+	if cfg.Keyless() {
+		l.Infof("verifying keyless signature for [%s]", ref)
+	}
+
+	v, err := cosign.NewVerifier(ctx, cfg, rso, ro)
+	if err != nil {
+		return pinned, &verifyError{stage: "unable to configure signature verification", err: err}
+	}
+	defer v.Close()
+
+	if err := v.Verify(ctx, r.Context().Digest(pinned).Name()); err != nil {
+		return pinned, &verifyError{stage: "signature verification failed", err: err}
+	}
+
+	if cfg.Keyless() {
+		l.Infof("✓ keyless signature verified for image [%s]", ref)
+	} else {
+		l.Infof("✓ signature verified for image [%s]", ref)
+	}
+	return pinned, nil
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
@@ -372,7 +454,13 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 	return nil
 }
 
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string, pinnedDigest string) error {
+// storeImage fetches and stores image i. verified records whether
+// verification was both requested and actually succeeded for the exact bytes
+// being stored (pinnedDigest) -- callers compute it themselves rather than
+// storeImage re-deriving it from i's verification fields, since under
+// --ignore-errors those fields stay set even after a failed check and i alone
+// can no longer distinguish "verified" from "verification requested."
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string, pinnedDigest string, verified bool) error {
 	l := log.FromContext(ctx)
 
 	start := time.Now()
@@ -451,7 +539,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
-	verified := i.Key != "" || i.CertIdentity != "" || i.CertIdentityRegexp != ""
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			StoreID:   s.StoreID,
@@ -898,12 +985,13 @@ func chartJobKey(j chartJob) string {
 // returns would delete that path out from under the child. Charts are capped
 // at ~1MB, so holding every expansion until the call ends is cheap.
 //
-// Only the chart phase runs inside log.CaptureOutput. Helm's downloader can
+// Only the chart traversal runs inside log.CaptureOutput. Helm's downloader can
 // still print to stdout from a transitive dependency, and debug=true routes
 // that to DEBUG -- silent at the default level, which is what the per-call
-// os.Stdout swap deleted from pkg/content/chart achieved. The image phase must
-// stay outside it: pkg/cosign calls CaptureOutput too, and log.captureMu is a
-// plain non-reentrant mutex, so nesting the two would self-deadlock.
+// os.Stdout swap deleted from pkg/content/chart achieved. The image phase is
+// outside it because the capture is scoped to what Helm prints; hauler's own
+// log lines never reach it either way, since log.NewLogger binds its writer at
+// construction (pkg/log/log.go).
 func runChartJobs(ctx context.Context, s *store.Layout, jobs []chartJob, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
 	if len(jobs) == 0 {
 		return nil
