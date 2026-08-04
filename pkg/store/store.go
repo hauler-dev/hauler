@@ -233,7 +233,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting index digest for %q: %w", ref, err)
 		}
-		if err := l.writeIndex(parsedRef, idx, consts.KindAnnotationIndex); err != nil {
+		if err := l.writeIndex(parsedRef, idx, consts.KindAnnotationIndex, ref); err != nil {
 			return "", err
 		}
 	} else {
@@ -254,7 +254,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 		}
-		if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+		if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, "", ref); err != nil {
 			return "", err
 		}
 	}
@@ -291,7 +291,7 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 	}
 
-	if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+	if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, "", ref); err != nil {
 		return "", err
 	}
 	return d.String(), nil
@@ -357,7 +357,65 @@ func (l *Layout) writeImageBlobs(img v1.Image) error {
 // writeImage writes all blobs for img and adds a descriptor entry to the OCI index with the
 // given annotationRef and kind. containerdName overrides the io.containerd.image.name annotation;
 // if empty it defaults to annotationRef.Name().
-func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
+// dockerHubAnnotationRef returns the (annotationRefName, containerdName) pair to
+// store in AnnotationRefName and ContainerdImageNameKey.
+//
+// originalRef is the reference string as typed by the user (or as read from a
+// chart annotation). It is used to decide whether to strip the Docker Hub
+// "library/" namespace and which registry string to record:
+//
+//   - "nginx:latest"                           → "nginx:latest",        "index.docker.io/nginx:latest"
+//   - "library/nginx:latest"                   → "library/nginx:latest", "index.docker.io/library/nginx:latest"
+//   - "docker.io/nginx:latest"                 → "nginx:latest",        "docker.io/nginx:latest"
+//   - "docker.io/library/nginx:latest"         → "library/nginx:latest", "docker.io/library/nginx:latest"
+//   - "index.docker.io/library/nginx:latest"   → "library/nginx:latest", "index.docker.io/library/nginx:latest"
+//
+// Pass originalRef="" for internally derived refs (cosign sig/att/sbom, OCI
+// referrers), which inherit the strip-library behaviour used for bare names.
+func DockerHubAnnotationRef(ref gname.Reference, originalRef string) (annotationRefName, containerdName string) {
+	registry := ref.Context().RegistryStr()
+	full := ref.Name()
+	withoutReg := strings.TrimPrefix(full, registry+"/")
+
+	if registry != "index.docker.io" {
+		// Non-Docker Hub registry: no library/ normalisation to undo.
+		return withoutReg, full
+	}
+
+	// Determine whether the caller explicitly wrote "library/".
+	// If the original string is empty (derived ref) or does not contain "library/",
+	// strip it so the stored name matches what the user actually typed.
+	keepLibrary := originalRef != "" && strings.Contains(originalRef, "library/")
+	if !keepLibrary {
+		withoutReg = strings.TrimPrefix(withoutReg, "library/")
+	}
+
+	// Preserve the registry token as the user typed it ("docker.io" vs "index.docker.io").
+	displayRegistry := registry
+	if r := originalDockerRegistry(originalRef); r != "" {
+		displayRegistry = r
+	}
+
+	return withoutReg, displayRegistry + "/" + withoutReg
+}
+
+// originalDockerRegistry returns the registry token the user wrote at the start
+// of originalRef (e.g. "docker.io" or "index.docker.io"), or "" if the string
+// begins with a path component (bare name or explicit "library/...").
+func originalDockerRegistry(originalRef string) string {
+	slash := strings.Index(originalRef, "/")
+	if slash == -1 {
+		return "" // bare name, no registry prefix
+	}
+	prefix := originalRef[:slash]
+	// A registry host contains a dot or a colon (port), or is "localhost".
+	if strings.ContainsAny(prefix, ".:") || prefix == "localhost" {
+		return prefix
+	}
+	return "" // first segment is a path component, not a registry
+}
+
+func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind string, containerdName string, originalRef string) error {
 	if err := l.writeImageBlobs(img); err != nil {
 		return err
 	}
@@ -380,15 +438,16 @@ func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind st
 	}
 
 	if containerdName == "" {
-		containerdName = annotationRef.Name()
+		_, containerdName = DockerHubAnnotationRef(annotationRef, originalRef)
 	}
+	annotationRefName, _ := DockerHubAnnotationRef(annotationRef, originalRef)
 	desc := ocispec.Descriptor{
 		MediaType: string(mt),
 		Digest:    d,
 		Size:      int64(len(raw)),
 		Annotations: map[string]string{
 			consts.KindAnnotationName:     kind,
-			ocispec.AnnotationRefName:     strings.TrimPrefix(annotationRef.Name(), annotationRef.Context().RegistryStr()+"/"),
+			ocispec.AnnotationRefName:     annotationRefName,
 			consts.ContainerdImageNameKey: containerdName,
 		},
 	}
@@ -431,7 +490,7 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 
 // writeIndex writes all blobs for an image index (including all child platform images) and adds
 // a descriptor entry to the OCI index with the given annotationRef and kind.
-func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
+func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, kind string, originalRef string) error {
 	if err := l.writeIndexBlobs(idx); err != nil {
 		return err
 	}
@@ -457,14 +516,15 @@ func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, ki
 		return fmt.Errorf("parsing index digest: %w", err)
 	}
 
+	annotationRefName, containerdName := DockerHubAnnotationRef(annotationRef, originalRef)
 	desc := ocispec.Descriptor{
 		MediaType: string(mt),
 		Digest:    d,
 		Size:      int64(len(raw)),
 		Annotations: map[string]string{
 			consts.KindAnnotationName:     kind,
-			ocispec.AnnotationRefName:     strings.TrimPrefix(annotationRef.Name(), annotationRef.Context().RegistryStr()+"/"),
-			consts.ContainerdImageNameKey: annotationRef.Name(),
+			ocispec.AnnotationRefName:     annotationRefName,
+			consts.ContainerdImageNameKey: containerdName,
 		},
 	}
 	return l.OCI.AddIndex(desc)
@@ -521,8 +581,7 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 		// Embed the referrer manifest digest in the kind annotation so that multiple
 		// referrers for the same base image each get a unique entry in the OCI index.
 		kind := consts.KindAnnotationReferrers + "/" + referrerDesc.Digest.Hex
-		if err := l.writeImage(ref, img, kind, ""); err != nil {
-			return fmt.Errorf("saving OCI referrer %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
+		if err := l.writeImage(ref, img, kind, "", ""); err != nil {
 		}
 		log.Debug().Msgf("saved OCI referrer %s (%s) for %s", referrerDesc.Digest, string(referrerDesc.ArtifactType), ref.Name())
 	}
@@ -558,7 +617,7 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, 
 			// Artifact doesn't exist at this registry; skip silently.
 			continue
 		}
-		if err := l.writeImage(ref, img, r.kind, ""); err != nil {
+		if err := l.writeImage(ref, img, r.kind, "", ""); err != nil {
 			return saved, fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
 		}
 		if d, err := img.Digest(); err == nil {
