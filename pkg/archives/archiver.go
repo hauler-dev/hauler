@@ -109,6 +109,10 @@ func Archive(ctx context.Context, dir, outfile string, compression archives.Comp
 func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]string, error) {
 	l := log.FromContext(ctx)
 
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("maxBytes must be greater than zero, received %d", maxBytes)
+	}
+
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open archive for splitting: %w", err)

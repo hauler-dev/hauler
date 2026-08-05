@@ -172,14 +172,16 @@ func chunkInfo(archivePath string) (base string, index int, ok bool) {
 		return "", 0, false
 	}
 
-	idx, _ := strconv.Atoi(m[2])
+	idx, err := strconv.Atoi(m[2])
+	if err != nil || idx == 0 {
+		return "", 0, false
+	}
 	return filepath.Join(dir, m[1]), idx, true
 }
 
-// JoinChunks detects whether archivePath is a chunk file and, if so, finds all
-// sibling chunks, concatenates them in numeric order into a single file in tempDir,
-// and returns the path to the joined file. If archivePath is not a chunk, it is
-// returned unchanged.
+// JoinChunks detects whether archivePath is a chunk file and, if so, finds all sibling
+// chunks, concatenates them in numeric order into a single file in tempDir, and
+// returns the path to the joined file. If archivePath is not a chunk, it is unchanged.
 func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error) {
 	l := log.FromContext(ctx)
 
@@ -194,7 +196,9 @@ func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error
 	}
 	var matches []string
 	for _, m := range all {
-		if _, _, ok := chunkInfo(m); ok {
+		// the glob is a string-prefix match, so it can also catch siblings
+		// like <base>.old.001 whose own base differs from ours
+		if mBase, _, ok := chunkInfo(m); ok && mBase == base {
 			matches = append(matches, m)
 		}
 	}

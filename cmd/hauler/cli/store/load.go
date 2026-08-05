@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -168,6 +169,11 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	return err
 }
 
+// matches the <path>.NNN chunk suffix that is used to filter resolveHaulPath
+// glob matches down to real chunks, so an unrelated sibling file (.sig, .bak,
+// etc...) is never picked up instead of the actual first chunk
+var chunkSuffixRe = regexp.MustCompile(`\.(\d{3,})$`)
+
 // resolveHaulPath returns path as-is if it exists or is a URL, otherwise
 // globs for chunk files matching <path>.NNN so JoinChunks can reassemble them.
 func resolveHaulPath(path string) string {
@@ -178,10 +184,19 @@ func resolveHaulPath(path string) string {
 		return path
 	}
 	matches, err := filepath.Glob(path + ".*")
-	if err != nil || len(matches) == 0 {
+	if err != nil {
 		return path
 	}
-	return matches[0]
+	for _, m := range matches {
+		sub := chunkSuffixRe.FindStringSubmatch(m)
+		if sub == nil {
+			continue
+		}
+		if idx, err := strconv.Atoi(sub[1]); err == nil && idx != 0 {
+			return m
+		}
+	}
+	return path
 }
 
 func clearDir(path string) error {
