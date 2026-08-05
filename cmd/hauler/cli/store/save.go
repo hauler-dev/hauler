@@ -113,7 +113,7 @@ func parseChunkSize(s string) (int64, error) {
 		if strings.HasSuffix(s, suffix) {
 			n, err := strconv.ParseInt(strings.TrimSuffix(s, suffix), 10, 64)
 			if err != nil {
-				return 0, fmt.Errorf("invalid chunk size %q", s)
+				return 0, fmt.Errorf("invalid chunk size %q: %w", s, err)
 			}
 			result = n * mult
 			matched = true

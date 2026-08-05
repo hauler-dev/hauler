@@ -71,7 +71,7 @@ func TestUnarchiveLayoutTo(t *testing.T) {
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
 
-	if err := unarchiveLayoutTo(ctx, testHaulArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, testHaulArchive, destDir, tempDir, defaultCliOpts(), false); err != nil {
 		t.Fatalf("unarchiveLayoutTo: %v", err)
 	}
 
@@ -262,7 +262,7 @@ func TestUnarchiveLayoutTo_AnnotationBackfill(t *testing.T) {
 	// Step 4: Load the stripped archive.
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
-	if err := unarchiveLayoutTo(ctx, strippedArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, strippedArchive, destDir, tempDir, defaultCliOpts(), false); err != nil {
 		t.Fatalf("unarchiveLayoutTo stripped: %v", err)
 	}
 
@@ -354,7 +354,7 @@ func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 	// Step 4: Load the legacy archive.
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
-	if err := unarchiveLayoutTo(ctx, legacyArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, legacyArchive, destDir, tempDir, defaultCliOpts(), false); err != nil {
 		t.Fatalf("unarchiveLayoutTo legacy: %v", err)
 	}
 
