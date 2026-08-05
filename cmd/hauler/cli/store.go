@@ -236,6 +236,18 @@ func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Short:   "Print out information about the store",
 		Args:    cobra.ExactArgs(0),
 		Aliases: []string{"i", "list", "ls"},
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// suppress log output specifically for the --check + json combination so
+			// stdout stays pure, parseable JSON (--check emits progress/debug logs) --
+			// must be set before any log calls to keep stdout clean for piping, matching
+			// the `sync --dry-run` precedent. InfoCmd never logs anything on the success
+			// path when --check is off, so suppression is unnecessary (and would be a
+			// regression, silently swallowing e.g. ERR logs) for plain `-o json`.
+			if o.Check && o.OutputFormat == "json" {
+				log.FromContext(cmd.Context()).SetLevel("fatal")
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
