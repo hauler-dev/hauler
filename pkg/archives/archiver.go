@@ -125,19 +125,6 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 	var outf *os.File
 
 	for {
-		if outf == nil {
-			chunkPath := fmt.Sprintf("%s.%03d", archivePath, chunkIdx)
-			outf, err = os.Create(chunkPath)
-			if err != nil {
-				f.Close()
-				return nil, fmt.Errorf("failed to create chunk %d: %w", chunkIdx, err)
-			}
-			chunks = append(chunks, chunkPath)
-			l.Debugf("creating chunk [%s]", chunkPath)
-			written = 0
-			chunkIdx++
-		}
-
 		remaining := maxBytes - written
 		readSize := int64(len(buf))
 		if readSize > remaining {
@@ -146,6 +133,20 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 
 		n, readErr := f.Read(buf[:readSize])
 		if n > 0 {
+			// chunk files are only created once there's real data to write,
+			// so an archive size that's an exact multiple of maxBytes never
+			// leaves a trailing empty chunk behind.
+			if outf == nil {
+				chunkPath := fmt.Sprintf("%s.%03d", archivePath, chunkIdx)
+				outf, err = os.Create(chunkPath)
+				if err != nil {
+					f.Close()
+					return nil, fmt.Errorf("failed to create chunk %d: %w", chunkIdx, err)
+				}
+				chunks = append(chunks, chunkPath)
+				l.Debugf("creating chunk [%s]", chunkPath)
+				chunkIdx++
+			}
 			if _, writeErr := outf.Write(buf[:n]); writeErr != nil {
 				outf.Close()
 				f.Close()
@@ -155,12 +156,15 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 		}
 
 		if readErr == io.EOF {
-			outf.Close()
-			outf = nil
+			if outf != nil {
+				outf.Close()
+			}
 			break
 		}
 		if readErr != nil {
-			outf.Close()
+			if outf != nil {
+				outf.Close()
+			}
 			f.Close()
 			return nil, fmt.Errorf("failed to read archive: %w", readErr)
 		}
@@ -168,6 +172,7 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 		if written >= maxBytes {
 			outf.Close()
 			outf = nil
+			written = 0
 		}
 	}
 
