@@ -69,6 +69,18 @@ const (
 	ImageAnnotationExcludeExtras = "hauler.dev/exclude-extras"
 	ImageRefKey                  = "org.opencontainers.image.ref.name"
 
+	// OriginalRefAnnotation preserves each artifact's original source reference at
+	// the time it's first added to the store (images, charts, and files alike,
+	// whether local or remote), regardless of whether --rewrite is ever applied, so
+	// tooling like `store create manifest` can always recover a pullable source even
+	// after the store's own ref/containerd-name annotations have since been
+	// overwritten by a rewrite. For images this is the fully qualified containerd
+	// image name (registry/repo:tag); for charts, which have no equivalent
+	// registry-qualified annotation, it's "repoURL|repo:tag" (see
+	// encodeOriginalChartRef in cmd/hauler/cli/store); for files it's the original
+	// URL or absolute local path.
+	OriginalRefAnnotation = "hauler.dev/original-ref"
+
 	// cosign keyless validation options
 	ImageAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
 	ImageAnnotationCertIdentityRegexp           = "hauler.dev/certificate-identity-regexp"
