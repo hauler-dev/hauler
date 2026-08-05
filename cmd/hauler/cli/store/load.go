@@ -266,7 +266,7 @@ func chunkHint(haulPath string, wasRemote bool) (line1, line2 string, ok bool) {
 
 	if wasRemote {
 		return fmt.Sprintf("possibly detected an unjoined remote chunk for haul: [%s]", haulPath),
-			"download every chunk locally first, or specify each chunk via its own --filename flag, and try loading it again...",
+			"specify each chunk with its own --filename flag and try loading it again...",
 			true
 	}
 	if isLegacyShaped {
@@ -275,7 +275,7 @@ func chunkHint(haulPath string, wasRemote bool) (line1, line2 string, ok bool) {
 			true
 	}
 	return fmt.Sprintf("possibly detected a missing chunk for haul: [%s]", haulPath),
-		"ensure every chunk file (.001, .002, ...) is present in the same directory and try loading it again...",
+		"ensure every chunked haul is present in the same directory and try loading it again...",
 		true
 }
 
