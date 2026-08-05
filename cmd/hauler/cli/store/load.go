@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -19,6 +20,10 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
+
+// matches the old <base>_NNN.<ext> chunk naming of haul_0.tar.zst
+// used only to print a hint when a load fails on a file shaped like a stale chunk
+var legacyChunkRe = regexp.MustCompile(`_\d+\.`)
 
 // extracts the contents of an archived oci layout to an existing oci layout
 func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
@@ -41,7 +46,7 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 	for _, fileName := range o.FileName {
 		resolved := resolveHaulPath(fileName)
 		l.Infof("loading haul [%s] to [%s]", resolved, o.StoreDir)
-		err := unarchiveLayoutTo(ctx, resolved, o.StoreDir, tempDir)
+		err := unarchiveLayoutTo(ctx, resolved, o.StoreDir, tempDir, ro)
 		if err != nil {
 			return err
 		}
@@ -52,7 +57,7 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 }
 
 // accepts an archived OCI layout, extracts the contents to an existing OCI layout, and preserves the index
-func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDir string) error {
+func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDir string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
@@ -94,6 +99,19 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	haulPath = joined
 
 	if err := archives.Unarchive(ctx, haulPath, tempDir); err != nil {
+		if legacyChunkRe.MatchString(filepath.Base(haulPath)) {
+			ignoreErrors := ro.IgnoreErrors
+			if !ignoreErrors && os.Getenv(consts.HaulerIgnoreErrors) == "true" {
+				ignoreErrors = true
+			}
+			if ignoreErrors {
+				l.Warnf("possibly detected an old chunk format for haul: [%s]", haulPath)
+				l.Warnf("attempt to rename to '<base>.<ext>.NNN' and try loading it again...")
+				return nil
+			}
+			l.Errorf("possibly detected an old chunk format for haul: [%s]", haulPath)
+			l.Errorf("attempt to rename to '<base>.<ext>.NNN' and try loading it again...")
+		}
 		return err
 	}
 
