@@ -81,25 +81,7 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 		chartRef = opts.RepoURL + "/" + name
 	}
 
-	// suppress helm downloader oci logs (stdout/stderr)
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
-	rOut, wOut, _ := os.Pipe()
-	rErr, wErr, _ := os.Pipe()
-	os.Stdout = wOut
-	os.Stderr = wErr
-
 	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, settings)
-
-	wOut.Close()
-	wErr.Close()
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-	_, _ = io.Copy(io.Discard, rOut)
-	_, _ = io.Copy(io.Discard, rErr)
-	rOut.Close()
-	rErr.Close()
-
 	if err != nil {
 		return nil, err
 	}

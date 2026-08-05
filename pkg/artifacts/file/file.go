@@ -27,6 +27,13 @@ type File struct {
 	blob        gv1.Layer
 	manifest    *gv1.Manifest
 	annotations map[string]string
+
+	// ctx is used by compute() when fetching content. artifacts.OCI
+	// (Layers/Manifest/RawConfig) takes no context parameter, so a
+	// struct-stored ctx is the only way to thread real cancellation through
+	// to the getter. Defaults to context.Background() when unset via
+	// WithContext.
+	ctx context.Context
 }
 
 func NewFile(path string, opts ...Option) *File {
@@ -35,6 +42,7 @@ func NewFile(path string, opts ...Option) *File {
 	f := &File{
 		client: client,
 		Path:   path,
+		ctx:    context.Background(),
 	}
 
 	for _, opt := range opts {
@@ -75,13 +83,42 @@ func (f *File) Manifest() (*gv1.Manifest, error) {
 	return f.manifest, nil
 }
 
+// Size returns the total compressed byte size across every layer this file
+// produces (always exactly one today, see Layers), computing the content if
+// needed. compute() is memoized, so an already-added File pays no extra
+// fetch cost.
+func (f *File) Size() (int64, error) {
+	layers, err := f.Layers()
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, l := range layers {
+		sz, err := l.Size()
+		if err != nil {
+			return 0, err
+		}
+		total += sz
+	}
+	return total, nil
+}
+
 func (f *File) compute() error {
 	if f.computed {
 		return nil
 	}
 
-	ctx := context.TODO()
-	blob, err := f.client.LayerFrom(ctx, f.Path)
+	fetch := func() (gv1.Layer, error) {
+		return f.client.LayerFrom(f.ctx, f.Path)
+	}
+
+	var blob gv1.Layer
+	var err error
+	if cache := layerCacheFromContext(f.ctx); cache != nil {
+		blob, err = cache.getOrFetch(f.Path, fetch)
+	} else {
+		blob, err = fetch()
+	}
 	if err != nil {
 		return err
 	}
@@ -91,12 +128,18 @@ func (f *File) compute() error {
 		return err
 	}
 
-	// Manually preserve the Title annotation from the layer
-	// The layer was created with this annotation in getter.LayerFrom
-	if layer.Annotations == nil {
-		layer.Annotations = make(map[string]string)
+	// Manually preserve the Title annotation from the layer (set by
+	// getter.LayerFrom). Copy rather than mutate in place: Descriptor()
+	// returns the layer's own annotations map by reference, and blob may be
+	// shared across File instances with different name overrides via a
+	// LayerCache (cache.go) -- mutating in place would let whichever
+	// compute() runs last overwrite every other sharer's Title.
+	annotations := make(map[string]string, len(layer.Annotations)+1)
+	for k, v := range layer.Annotations {
+		annotations[k] = v
 	}
-	layer.Annotations[ocispec.AnnotationTitle] = f.client.Name(f.Path)
+	annotations[ocispec.AnnotationTitle] = f.client.Name(f.Path)
+	layer.Annotations = annotations
 
 	cfg := f.client.Config(f.Path)
 	if cfg == nil {

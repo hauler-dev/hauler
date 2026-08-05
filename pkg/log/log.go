@@ -3,7 +3,6 @@ package log
 import (
 	"context"
 	"io"
-	"os"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -33,7 +32,22 @@ type Fields map[string]string
 // NewLogger returns a new Logger
 func NewLogger(out io.Writer) Logger {
 	zerolog.TimeFieldFormat = consts.CustomTimeFormat
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: consts.CustomTimeFormat}
+	// out is bound once here, captured in the ConsoleWriter's closure, so
+	// this logger keeps writing to its original writer even after
+	// CaptureOutput swaps the process-global os.Stdout/os.Stderr during a
+	// Helm chart traversal -- why CaptureOutput never captures hauler's own
+	// log lines.
+	//
+	// NoColor is decided from the real os.Stdout, not out, matching
+	// ShouldShowProgress: the live-region path wraps a Renderer around the
+	// real os.Stdout, whose terminal-ness ShouldShowProgress has already
+	// confirmed. out itself is often a *bytes.Buffer (tests) or the
+	// Renderer wrapper, neither a terminal, so isatty on out would say no.
+	output := zerolog.ConsoleWriter{
+		Out:        zerolog.SyncWriter(out),
+		TimeFormat: consts.CustomTimeFormat,
+		NoColor:    !ShouldUseColor(),
+	}
 	l := log.Output(output)
 	return &logger{
 		zl: l.With().Timestamp().Logger(),

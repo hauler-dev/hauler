@@ -138,7 +138,7 @@ func TestRemoveCmd_ContainerdImageName(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 

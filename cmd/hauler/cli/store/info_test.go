@@ -352,7 +352,7 @@ func TestInfoCmd_CheckHealthyStore(t *testing.T) {
 	host, opts := newTestRegistry(t)
 
 	seedImage(t, host, "test/healthy", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/healthy:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/healthy:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -403,11 +403,11 @@ func TestInfoCmd_CheckCorruptBlob_HealthySiblingOmitted(t *testing.T) {
 	host, opts := newTestRegistry(t)
 
 	seedImage(t, host, "test/corrupt-a", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/corrupt-a:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/corrupt-a:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage corrupt-a: %v", err)
 	}
 	seedImage(t, host, "test/healthy-b", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/healthy-b:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/healthy-b:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage healthy-b: %v", err)
 	}
 
@@ -468,7 +468,7 @@ func TestInfoCmd_CheckCorruptManifest_RegressionGuard(t *testing.T) {
 	host, opts := newTestRegistry(t)
 
 	seedImage(t, host, "test/badmanifest", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/badmanifest:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/badmanifest:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -511,7 +511,7 @@ func TestInfoCmd_NoCheck_OutputUnchanged(t *testing.T) {
 	host, opts := newTestRegistry(t)
 
 	seedImage(t, host, "test/plain", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/plain:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/plain:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -567,7 +567,7 @@ func TestInfoCmd_CheckWithTypeFilter_SkipsFilteredCorruption(t *testing.T) {
 	host, opts := newTestRegistry(t)
 
 	seedImage(t, host, "test/filterhealthy", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/filterhealthy:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/filterhealthy:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -621,7 +621,7 @@ func TestInfoCmd_CheckHealthyStore_TableFormat_NoTableRendered(t *testing.T) {
 	var buf bytes.Buffer
 	ctx := newCapturingContext(&buf)
 
-	if _, err := s.AddImage(ctx, host+"/test/healthytable:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/healthytable:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -668,7 +668,7 @@ func TestInfoCmd_CheckCorruptBlob_RemediationHintLogged(t *testing.T) {
 	ctx := newCapturingContext(&buf)
 
 	seedImage(t, host, "test/remediation", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/remediation:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/remediation:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -711,7 +711,7 @@ func TestInfoCmd_RemediationHint_DedupedForMultiPlatformImage(t *testing.T) {
 	logCtx := newCapturingContext(&buf)
 
 	idx := seedIndex(t, host, "test/remediation-multiarch", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/remediation-multiarch:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/remediation-multiarch:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -770,7 +770,7 @@ func TestInfoCmd_CheckMultipleBadBlobs_OneRowPerProblem(t *testing.T) {
 	host, opts := newTestRegistry(t)
 
 	img := seedImage(t, host, "test/doublebad", "v1", opts...)
-	if _, err := s.AddImage(ctx, host+"/test/doublebad:v1", "", true, opts...); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/doublebad:v1", "", true, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 

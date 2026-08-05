@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 func TestAppend(t *testing.T) {
@@ -210,5 +213,22 @@ func TestResolveDir_Default(t *testing.T) {
 	got := resolveDir("")
 	if got == "" {
 		t.Error("resolveDir(\"\") returned empty string")
+	}
+}
+
+func TestBuildGlobal_IgnoreErrorsReflectsEnvVar(t *testing.T) {
+	// BuildGlobal must record the *effective* ignore-errors setting (flag OR
+	// env var) via flags.ShouldIgnoreErrors, not just the raw ro.IgnoreErrors
+	// field — callers no longer mutate ro.IgnoreErrors to reflect the env var.
+	ro := &flags.CliRootOpts{IgnoreErrors: false}
+	t.Setenv(consts.HaulerIgnoreErrors, "true")
+
+	g := BuildGlobal(ro, nil)
+
+	if !g.IgnoreErrors {
+		t.Fatal("expected BuildGlobal to report IgnoreErrors=true when HAULER_IGNORE_ERRORS is set, even though ro.IgnoreErrors is false")
+	}
+	if ro.IgnoreErrors {
+		t.Fatal("expected BuildGlobal to not mutate ro.IgnoreErrors")
 	}
 }

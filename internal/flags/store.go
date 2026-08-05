@@ -22,6 +22,15 @@ type StoreRootOpts struct {
 	StoreDir     string
 	Retries      int
 	TempOverride string
+
+	// BlobConcurrency overrides the store's default blob-write concurrency
+	// ceiling (content.OCI.blobSem) when > 0, bound to the
+	// --blob-concurrency persistent flag (0 means "auto"). Populated by one
+	// of two idempotent paths: `store sync`'s PreRunE (derives a value from
+	// --concurrency when none was given) or Store() itself (consults
+	// HAULER_BLOB_CONCURRENCY, so subcommands with no PreRunE still honor
+	// the env var).
+	BlobConcurrency int
 }
 
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
@@ -29,6 +38,7 @@ func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
 	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
 	pf.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
+	pf.IntVar(&o.BlobConcurrency, "blob-concurrency", 0, fmt.Sprintf("(Optional) Override the maximum number of concurrent blob writes (0 auto-derives from --concurrency where set, otherwise defaults to %d)", consts.DefaultBlobConcurrency))
 }
 
 func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layout, error) {
@@ -79,7 +89,25 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 		return nil, err
 	}
 
-	s, err := store.NewLayout(abs, store.WithHaulerDir(haulerDir))
+	// Always resolve, never just "when unset": this picks up
+	// HAULER_BLOB_CONCURRENCY for subcommands with no PreRunE of their own
+	// (add, load, copy, serve, extract...) and validates whatever value is
+	// already present -- a `o.BlobConcurrency == 0` guard would let a
+	// typo'd negative value skip validation and fail a later `> 0` check
+	// silently. This stays idempotent for `store sync`, whose PreRunE has
+	// already resolved a non-zero value: ResolveBlobConcurrency returns a
+	// positive input unchanged.
+	bc, err := ResolveBlobConcurrency(o.BlobConcurrency)
+	if err != nil {
+		return nil, err
+	}
+	o.BlobConcurrency = bc
+
+	opts := []store.Options{store.WithHaulerDir(haulerDir)}
+	if o.BlobConcurrency > 0 {
+		opts = append(opts, store.WithBlobConcurrency(o.BlobConcurrency))
+	}
+	s, err := store.NewLayout(abs, opts...)
 	if err != nil {
 		return nil, err
 	}

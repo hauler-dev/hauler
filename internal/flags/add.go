@@ -3,6 +3,8 @@ package flags
 import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v4/pkg/action"
+
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 type AddImageOpts struct {
@@ -58,6 +60,8 @@ type AddChartOpts struct {
 	Platform        string
 	Registry        string
 	KubeVersion     string
+	Concurrency     int
+	NoProgress      bool
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -85,4 +89,6 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64")
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
 	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(Optional) Override the kubernetes version for helm template rendering")
+	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of charts and their discovered images to fetch and store concurrently (1 = serial; also via HAULER_CONCURRENCY, explicit flag wins)")
+	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
 }

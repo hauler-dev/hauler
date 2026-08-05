@@ -158,7 +158,7 @@ func TestStoreInfoCheck_JSON_CorruptArtifactInPayload(t *testing.T) {
 	ctx := context.Background()
 
 	seedInfoCheckImage(t, host, "test/corrupt", "v1")
-	if _, err := s.AddImage(ctx, host+"/test/corrupt:v1", "", true); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/corrupt:v1", "", true, ""); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -213,7 +213,7 @@ func TestStoreInfoCheck_JSON_NoCheckStillWorks(t *testing.T) {
 	ctx := context.Background()
 
 	seedInfoCheckImage(t, host, "test/plain", "v1")
-	if _, err := s.AddImage(ctx, host+"/test/plain:v1", "", true); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/plain:v1", "", true, ""); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 

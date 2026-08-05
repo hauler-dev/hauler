@@ -46,7 +46,11 @@ func (h Http) Name(u *url.URL) string {
 }
 
 func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
-	resp, err := http.Get(u.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

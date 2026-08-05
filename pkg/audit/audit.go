@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -133,7 +134,7 @@ func BuildGlobal(ro *flags.CliRootOpts, rso *flags.StoreRootOpts) GlobalEntry {
 	g := GlobalEntry{}
 	if ro != nil {
 		g.HaulerDir = resolveDir(ro.HaulerDir)
-		g.IgnoreErrors = ro.IgnoreErrors
+		g.IgnoreErrors = flags.ShouldIgnoreErrors(ro)
 		g.LogLevel = ro.LogLevel
 		g.AuditLevel = ro.AuditLevel
 	}
@@ -199,7 +200,15 @@ func Append(haulerDir string, e Entry) error {
 	return globalErr
 }
 
+// appendMu serializes appendLine calls: os.OpenFile with O_APPEND is only
+// atomic for a single write() syscall on POSIX, and concurrent `store sync`
+// image jobs (runImageJobs) can each call this at once without it.
+var appendMu sync.Mutex
+
 func appendLine(dir string, v any) error {
+	appendMu.Lock()
+	defer appendMu.Unlock()
+
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("audit: ensure dir: %w", err)
 	}

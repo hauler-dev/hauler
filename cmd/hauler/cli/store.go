@@ -94,6 +94,22 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 					o.FileName = []string{}
 				}
 			}
+
+			n, err := flags.ResolveConcurrency(cmd.Flags().Changed("concurrency"), o.Concurrency)
+			if err != nil {
+				return err
+			}
+			o.Concurrency = n
+
+			// Must not be an unconditional assignment: rso.BlobConcurrency
+			// may already hold an explicit --blob-concurrency value, which
+			// has to win over anything derived from --concurrency.
+			bc, err := flags.SyncBlobConcurrency(rso.BlobConcurrency, n)
+			if err != nil {
+				return err
+			}
+			rso.BlobConcurrency = bc
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -415,6 +431,24 @@ func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 	# fetch remote helm chart and rewrite path
 	hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite custom-path/hauler-chart:latest`,
 		Args: cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			n, err := flags.ResolveConcurrency(cmd.Flags().Changed("concurrency"), o.Concurrency)
+			if err != nil {
+				return err
+			}
+			o.Concurrency = n
+
+			// Must not be an unconditional assignment: rso.BlobConcurrency
+			// may already hold an explicit --blob-concurrency value, which
+			// has to win over anything derived from --concurrency.
+			bc, err := flags.SyncBlobConcurrency(rso.BlobConcurrency, n)
+			if err != nil {
+				return err
+			}
+			rso.BlobConcurrency = bc
+
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

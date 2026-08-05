@@ -2,9 +2,12 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -54,7 +57,7 @@ func TestOperation_ExhaustsRetries(t *testing.T) {
 	if callCount != 1 {
 		t.Fatalf("expected 1 call, got %d", callCount)
 	}
-	want := fmt.Sprintf("operation unsuccessful after %d attempts", 1)
+	want := fmt.Sprintf("operation unsuccessful after %d attempts: always fails", 1)
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
@@ -124,7 +127,7 @@ func TestOperation_DefaultRetries(t *testing.T) {
 		if callCount2 != consts.DefaultRetries {
 			t.Fatalf("expected %d calls (DefaultRetries), got %d", consts.DefaultRetries, callCount2)
 		}
-		want := fmt.Sprintf("operation unsuccessful after %d attempts", consts.DefaultRetries)
+		want := fmt.Sprintf("operation unsuccessful after %d attempts: fail", consts.DefaultRetries)
 		if err2.Error() != want {
 			t.Fatalf("error = %q, want %q", err2.Error(), want)
 		}
@@ -139,6 +142,12 @@ func TestOperation_EnvVar_IgnoreErrors(t *testing.T) {
 
 	t.Setenv(consts.HaulerIgnoreErrors, "true")
 
+	// Confirm the pure helper observes the env var without needing Operation to
+	// mutate anything first.
+	if !flags.ShouldIgnoreErrors(ro) {
+		t.Fatal("expected ShouldIgnoreErrors(ro)=true once env var is set")
+	}
+
 	callCount := 0
 	err := Operation(ctx, rso, ro, func() error {
 		callCount++
@@ -151,10 +160,89 @@ func TestOperation_EnvVar_IgnoreErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error after exhausting retries, got nil")
 	}
-	if !ro.IgnoreErrors {
-		t.Fatal("expected ro.IgnoreErrors=true after env var override")
+	// Operation must NOT mutate ro — the env var override is read via the pure
+	// flags.ShouldIgnoreErrors helper on every call instead of being cached back
+	// onto the shared *CliRootOpts (that mutation was a data race once callers
+	// run concurrently).
+	if ro.IgnoreErrors {
+		t.Fatal("expected ro.IgnoreErrors to remain false: Operation must not mutate ro")
 	}
 	if callCount != 1 {
 		t.Fatalf("expected 1 call, got %d", callCount)
+	}
+}
+
+func TestOperation_ContextCancelledDuringSleep(t *testing.T) {
+	ctx, cancel := context.WithCancel(testContext())
+	rso := &flags.StoreRootOpts{Retries: 3}
+	ro := &flags.CliRootOpts{}
+
+	callCount := 0
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	err := Operation(ctx, rso, ro, func() error {
+		callCount++
+		return fmt.Errorf("always fails")
+	})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected error to wrap context.Canceled, got: %v", err)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("expected Operation to return promptly after cancellation, took %v", elapsed)
+	}
+	if callCount == 0 {
+		t.Fatal("expected at least one attempt before cancellation")
+	}
+}
+
+func TestOperation_AlreadyCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(testContext())
+	cancel()
+
+	rso := &flags.StoreRootOpts{Retries: 3}
+	ro := &flags.CliRootOpts{}
+
+	callCount := 0
+	err := Operation(ctx, rso, ro, func() error {
+		callCount++
+		return nil
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected error to wrap context.Canceled, got: %v", err)
+	}
+	if callCount != 0 {
+		t.Fatalf("expected operation to never be called, got %d calls", callCount)
+	}
+}
+
+func TestOperation_WrapsLastError(t *testing.T) {
+	ctx := testContext()
+	rso := &flags.StoreRootOpts{Retries: 1}
+	ro := &flags.CliRootOpts{}
+
+	sentinel := errors.New("sentinel: 404 not found")
+
+	err := Operation(ctx, rso, ro, func() error {
+		return sentinel
+	})
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected error to wrap sentinel via errors.Is, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "sentinel: 404 not found") {
+		t.Fatalf("expected error message to contain sentinel text, got: %q", err.Error())
 	}
 }
