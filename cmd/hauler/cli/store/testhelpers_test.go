@@ -321,6 +321,25 @@ func assertAnnotationsInStore(t *testing.T, s *store.Layout, refName, containerd
 	}
 }
 
+// assertOriginalRefInStore walks the store and fails if no descriptor has both
+// AnnotationRefName containing refSubstring AND OriginalRefAnnotation == wantOriginalRef.
+func assertOriginalRefInStore(t *testing.T, s *store.Layout, refSubstring, wantOriginalRef string) {
+	t.Helper()
+	found := false
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.Contains(desc.Annotations[ocispec.AnnotationRefName], refSubstring) &&
+			desc.Annotations[consts.OriginalRefAnnotation] == wantOriginalRef {
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("assertOriginalRefInStore walk: %v", err)
+	}
+	if !found {
+		t.Errorf("no artifact with ref containing %q and OriginalRefAnnotation=%q found in store", refSubstring, wantOriginalRef)
+	}
+}
+
 // assertReferrerInStore walks the store and fails if no descriptor has a kind
 // annotation with the KindAnnotationReferrers prefix and a ref containing refSubstring.
 func assertReferrerInStore(t *testing.T, s *store.Layout, refSubstring string) {
