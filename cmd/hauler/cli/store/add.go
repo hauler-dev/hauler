@@ -820,18 +820,21 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 			return nil, err
 		}
 
-		// caFile precedence: per-chart > annotation > global.
-		caFile := ch.CaFile
+		// caFile precedence: cli > per-chart > annotation.
+		caFile := o.CaFile
 		if caFile == "" {
-			if annotations[consts.ImageAnnotationCaFile] != "" {
+			if ch.CaFile != "" {
+				caFile = ch.CaFile
+			} else if annotations[consts.ImageAnnotationCaFile] == "true" {
 				caFile = annotations[consts.ImageAnnotationCaFile]
-			} else {
-				caFile = o.CaFile
 			}
 		}
 
-		// insecure precedence: per-chart (*bool) > annotation > global.
-		insecureSkipTLSVerify := resolveInsecure(ch.InsecureSkipTLSVerify, annotations, o.InsecureSkipTLSVerify)
+		insecureSkipTLSVerify := false
+		if o.CaFile != "" {
+			insecureSkipTLSVerify = resolveInsecure(ch.InsecureSkipTLSVerify, annotations, o.InsecureSkipTLSVerify)
+		} else {
+		}
 
 		jobs = append(jobs, chartJob{
 			cfg: ch,

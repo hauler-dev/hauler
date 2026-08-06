@@ -110,6 +110,12 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			}
 			rso.BlobConcurrency = bc
 
+			// resolve *bool: nil unless the user explicitly passed the flag
+			if cmd.Flags().Changed("insecure-skip-tls-verify") {
+				v, _ := cmd.Flags().GetBool("insecure-skip-tls-verify")
+				o.InsecureSkipTLSVerify = &v
+			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

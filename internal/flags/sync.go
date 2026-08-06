@@ -26,7 +26,7 @@ type SyncOpts struct {
 	Concurrency                  int
 	NoProgress                   bool
 	CaFile                       string
-	InsecureSkipTLSVerify        bool
+	InsecureSkipTLSVerify        *bool
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -50,5 +50,5 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of artifacts to fetch and store concurrently (1 = serial; also via HAULER_CONCURRENCY, explicit flag wins)")
 	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
 	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
-	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
+	f.Bool("insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 }

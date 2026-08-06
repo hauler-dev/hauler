@@ -149,7 +149,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 
 		img := v1.Image{
 			Name:                  manifestLoc,
-			InsecureSkipTLSVerify: &o.InsecureSkipTLSVerify,
+			InsecureSkipTLSVerify: o.InsecureSkipTLSVerify,
 			CaFile:                o.CaFile,
 		}
 		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "", "", false)
@@ -182,7 +182,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
+				h := getter.NewHttp(derefInsecure(o.InsecureSkipTLSVerify), o.CaFile)
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -234,7 +234,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote image.txt... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
+				h := getter.NewHttp(derefInsecure(o.InsecureSkipTLSVerify), o.CaFile)
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -280,19 +280,22 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	return nil
 }
 
-// resolveInsecure applies precedence: per-item (*bool) > annotation > global flag.
+// resolveInsecure applies precedence: cli > per-item > annotation.
 // A non-nil per-item pointer wins outright — including an explicit false — so an
 // individual file/image/chart can opt out of an insecure annotation or the global
 // --insecure-skip-tls-verify flag. nil means "not set on the item", which falls
 // through to the annotation, then the global flag.
-func resolveInsecure(item *bool, ann map[string]string, global bool) bool {
+func resolveInsecure(item *bool, ann map[string]string, global *bool) bool {
+	if global != nil {
+		return *global
+	}
 	if item != nil {
 		return *item
 	}
 	if ann != nil && ann[consts.ImageAnnotationInsecureSkipTLSVerify] == "true" {
 		return true
 	}
-	return global
+	return false
 }
 
 // derefInsecure is a nil-safe read of a *bool for logging/plumbing where a plain
@@ -427,7 +430,7 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 			img: v1.Image{
 				Name:                  line,
 				CaFile:                o.CaFile,
-				InsecureSkipTLSVerify: &o.InsecureSkipTLSVerify,
+				InsecureSkipTLSVerify: o.InsecureSkipTLSVerify,
 			},
 			platform:      o.Platform,
 			excludeExtras: o.ExcludeExtras,
@@ -532,19 +535,17 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 			i.Name = newRef.Name()
 		}
 
-		// caFile precedence: per-image > annotation > global.
-		if i.CaFile == "" {
-			if a[consts.ImageAnnotationCaFile] != "" {
-				i.CaFile = a[consts.ImageAnnotationCaFile]
-			} else {
-				i.CaFile = o.CaFile
-			}
+		// caFile precedence: cli >per-image > annotation.
+		if o.CaFile == "" && i.CaFile == "" && a[consts.ImageAnnotationCaFile] != "" {
+			i.CaFile = a[consts.ImageAnnotationCaFile]
+		} else if o.CaFile != "" {
+			i.CaFile = o.CaFile
 		}
 
-		// insecure precedence: per-image (*bool) > annotation > global.
-		// Written back as a pointer since storeImage/AddImage and
-		// verifyConfig below all read the resolved value off i itself.
-		insecureSkipTLSVerify := resolveInsecure(i.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
+		insecureSkipTLSVerify := false
+		if o.CaFile != "" {
+			insecureSkipTLSVerify = resolveInsecure(i.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
+		}
 		i.InsecureSkipTLSVerify = &insecureSkipTLSVerify
 
 		if i.Local {
@@ -1064,19 +1065,18 @@ type fileJob struct {
 func resolveFileJobs(o *flags.SyncOpts, a map[string]string, files []v1.File) []fileJob {
 	jobs := make([]fileJob, 0, len(files))
 	for _, f := range files {
-		// caFile precedence: per-file > annotation > global.
-		if f.CaFile == "" {
-			if a[consts.ImageAnnotationCaFile] != "" {
-				f.CaFile = a[consts.ImageAnnotationCaFile]
-			} else {
-				f.CaFile = o.CaFile
-			}
+
+		// caFile precedence: cli >per-image > annotation.
+		if o.CaFile == "" && f.CaFile == "" && a[consts.ImageAnnotationCaFile] != "" {
+			f.CaFile = a[consts.ImageAnnotationCaFile]
+		} else if o.CaFile != "" {
+			f.CaFile = o.CaFile
 		}
 
-		// insecure precedence: per-file (*bool) > annotation > global.
-		// storeFile reads the resolved value off the File struct, so write
-		// it back as a pointer.
-		insecure := resolveInsecure(f.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
+		insecure := false
+		if o.CaFile != "" {
+			insecure = resolveInsecure(f.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
+		}
 		f.InsecureSkipTLSVerify = &insecure
 
 		jobs = append(jobs, fileJob{file: f})
