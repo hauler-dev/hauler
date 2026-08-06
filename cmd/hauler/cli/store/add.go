@@ -57,7 +57,9 @@ func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, refe
 	}()
 
 	cfg := v1.File{
-		Path: reference,
+		Path:                  reference,
+		CaFile:                o.CaFile,
+		InsecureSkipTLSVerify: &o.InsecureSkipTLSVerify,
 	}
 	if len(o.Name) > 0 {
 		cfg.Name = o.Name
@@ -80,7 +82,9 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	}
 
 	copts := getter.ClientOptions{
-		NameOverride: fi.Name,
+		NameOverride:          fi.Name,
+		InsecureSkipTLSVerify: derefInsecure(fi.InsecureSkipTLSVerify),
+		CAFile:                fi.CaFile,
 	}
 
 	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)), file.WithContext(ctx))
@@ -198,6 +202,8 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		Rewrite:                      o.Rewrite,
 		ExcludeExtras:                o.ExcludeExtras,
 		Local:                        o.Local,
+		CaFile:                       o.CaFile,
+		InsecureSkipTLSVerify:        &o.InsecureSkipTLSVerify,
 	}
 
 	if o.Local {
@@ -242,7 +248,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 func addImageVerifyConfig(o *flags.AddImageOpts) cosign.Config {
 	switch {
 	case o.Key != "":
-		return cosign.Config{Key: o.Key, Tlog: o.Tlog}
+		return cosign.Config{Key: o.Key, Tlog: o.Tlog, InsecureSkipTLSVerify: o.InsecureSkipTLSVerify, CaFile: o.CaFile}
 	case o.CertIdentityRegexp != "" || o.CertIdentity != "":
 		return cosign.Config{
 			CertIdentity:                 o.CertIdentity,
@@ -250,6 +256,8 @@ func addImageVerifyConfig(o *flags.AddImageOpts) cosign.Config {
 			CertOidcIssuer:               o.CertOidcIssuer,
 			CertOidcIssuerRegexp:         o.CertOidcIssuerRegexp,
 			CertGithubWorkflowRepository: o.CertGithubWorkflowRepository,
+			InsecureSkipTLSVerify:        o.InsecureSkipTLSVerify,
+			CaFile:                       o.CaFile,
 		}
 	default:
 		return cosign.Config{}
@@ -484,6 +492,9 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
+	insecureSkipTLSVerify := derefInsecure(i.InsecureSkipTLSVerify)
+	caFile := i.CaFile
+
 	// fetch image along with any associated signatures and attestations.
 	// A fresh store.ImageStats is built inside the closure on every attempt,
 	// not once outside it, so a failed attempt's partial layer/byte counts
@@ -495,7 +506,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	err = retry.Operation(ctx, rso, ro, func() error {
 		attemptStats := &store.ImageStats{}
 		var addErr error
-		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), r.Name(), platform, excludeExtras, pinnedDigest)
+		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), r.Name(), platform, excludeExtras, pinnedDigest, insecureSkipTLSVerify, caFile)
 		if addErr == nil {
 			stats = attemptStats
 		}
@@ -564,6 +575,8 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 				"certificate-oidc-issuer":                i.CertOidcIssuer,
 				"certificate-oidc-issuer-regexp":         i.CertOidcIssuerRegexp,
 				"certificate-github-workflow-repository": i.CertGithubWorkflowRepository,
+				"ca-file":                                i.CaFile,
+				"insecure-skip-tls-verify":               i.InsecureSkipTLSVerify,
 				"rewrite":                                rewrite,
 				"exclude-extras":                         excludeExtras,
 			}
@@ -807,6 +820,19 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 			return nil, err
 		}
 
+		// caFile precedence: per-chart > annotation > global.
+		caFile := ch.CaFile
+		if caFile == "" {
+			if annotations[consts.ImageAnnotationCaFile] != "" {
+				caFile = annotations[consts.ImageAnnotationCaFile]
+			} else {
+				caFile = o.CaFile
+			}
+		}
+
+		// insecure precedence: per-chart (*bool) > annotation > global.
+		insecureSkipTLSVerify := resolveInsecure(ch.InsecureSkipTLSVerify, annotations, o.InsecureSkipTLSVerify)
+
 		jobs = append(jobs, chartJob{
 			cfg: ch,
 			opts: flags.AddChartOpts{
@@ -820,8 +846,8 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 					PassCredentialsAll:    ch.PassCredentialsAll,
 					CertFile:              ch.CertFile,
 					KeyFile:               ch.KeyFile,
-					CaFile:                ch.CaFile,
-					InsecureSkipTLSVerify: ch.InsecureSkipTLSVerify,
+					CaFile:                caFile,
+					InsecureSkipTLSVerify: insecureSkipTLSVerify,
 					PlainHTTP:             ch.PlainHTTP,
 				},
 				AddImages:       ch.AddImages,
@@ -1350,8 +1376,17 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 				return nil, nil, fmt.Errorf("unable to apply registry to image [%s]: %w", image, err)
 			}
 
+			// Chart-discovered images inherit the chart's own TLS settings --
+			// there is no separate per-discovered-image TLS knob in a chart
+			// manifest, so the registry a chart's images live in is assumed
+			// to share the chart repo's trust configuration.
+			chartInsecure := j.opts.ChartOpts.InsecureSkipTLSVerify
 			imageJobs = append(imageJobs, imageJob{
-				img:           v1.Image{Name: relocated},
+				img: v1.Image{
+					Name:                  relocated,
+					CaFile:                j.opts.ChartOpts.CaFile,
+					InsecureSkipTLSVerify: &chartInsecure,
+				},
 				platform:      j.opts.Platform,
 				excludeExtras: j.opts.ExcludeExtras,
 			})

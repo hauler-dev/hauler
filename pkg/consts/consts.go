@@ -76,6 +76,10 @@ const (
 	ImageAnnotationCertOidcIssuerRegexp         = "hauler.dev/certificate-oidc-issuer-regexp"
 	ImageAnnotationCertGithubWorkflowRepository = "hauler.dev/certificate-github-workflow-repository"
 
+	// TLS options for verifying the image signature.  If not specified, the default system CA bundle will be used.
+	ImageAnnotationCaFile                = "hauler.dev/ca-file"
+	ImageAnnotationInsecureSkipTLSVerify = "hauler.dev/insecure-skip-tls-verify"
+
 	// content kinds
 	ImagesContentKind = "Images"
 	ChartsContentKind = "Charts"
