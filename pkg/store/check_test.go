@@ -67,7 +67,7 @@ func pushAndAddExistingImage(t *testing.T, s *store.Layout, host, repo, tag stri
 	if err := remote.Write(ref, img, opts...); err != nil {
 		t.Fatalf("remote.Write: %v", err)
 	}
-	if _, err := s.AddImage(context.Background(), ref.Name(), "", true, "", opts...); err != nil {
+	if _, err := s.AddImage(context.Background(), ref.Name(), "", true, "", false, "", opts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 	return findManifestDescForRef(t, s, repo+":"+tag)
