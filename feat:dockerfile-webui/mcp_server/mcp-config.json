@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "command-executor": {
+      "command": "python3",
+      "args": ["./mcp_server/mcp-command-server.py"]
+    }
+  }
+}

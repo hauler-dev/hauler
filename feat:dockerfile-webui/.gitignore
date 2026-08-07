@@ -1,0 +1,115 @@
+# Hauler UI .gitignore
+
+# Data directories (keep structure, ignore content)
+data/store/*
+!data/store/.gitkeep
+data/hauls/*.tar.zst
+data/manifests/*.yaml
+data/config/*.json
+!data/config/.gitkeep
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+backend/hauler-ui
+
+# JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+frontend/app.obfuscated.js
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Test reports
+tests/reports/*.html
+tests/reports/*.xml
+tests/reports/*.json
+!tests/reports/.gitkeep
+
+# Security reports
+security-reports/
+*.sarif
+
+# Docker
+.dockerignore
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Build artifacts
+*.tar.gz
+*.zip
+*.tar.zst
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Coverage
+coverage/
+*.cover
+.coverage
+htmlcov/
+
+# Certificates and keys (never commit!)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+data/config/keys/*
+data/config/certs/*
+!data/config/keys/.gitkeep
+!data/config/certs/.gitkeep
+
+# Credentials
+*credentials*
+*secrets*
+*password*
+
+# Editor backups
+*~
+\#*\#
+.\#*
