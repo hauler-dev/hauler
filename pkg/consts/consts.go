@@ -100,7 +100,7 @@ const (
 	HaulerLogLevel        = "HAULER_LOG_LEVEL"
 	HaulerAuditLevel      = "HAULER_AUDIT_LEVEL"
 
-	CaFile = "CA_FILE"
+	CaFile                = "CA_FILE"
 	InsecureSkipTLSVerify = "INSECURE_SKIP_TLS_VERIFY"
 
 	// container files and directories

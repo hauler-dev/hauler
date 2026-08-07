@@ -832,7 +832,7 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 		}
 
 		insecureSkipTLSVerify := false
-		if o.CaFile != "" {
+		if o.CaFile == "" {
 			insecureSkipTLSVerify = resolveInsecure(ch.InsecureSkipTLSVerify, annotations, o.InsecureSkipTLSVerify)
 		} else {
 		}
