@@ -69,7 +69,7 @@ dockers_v2:
       "classification": "UNCLASSIFIED"
       "org.opencontainers.image.created": "{{.Date}}"
       "org.opencontainers.image.description": "Hauler: Airgap Swiss Army Knife"
-      "org.opencontainers.image.name": "{{.ProjectName}}-debug"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
       "org.opencontainers.image.revision": "{{.FullCommit}}"
       "org.opencontainers.image.source": "{{.GitURL}}"
       "org.opencontainers.image.version": "{{.Version}}"

@@ -1,5 +1,5 @@
 # builder stage
-FROM registry.suse.com/bci/bci-base:15.7 AS builder
+FROM registry.suse.com/bci/bci-base:16.1 AS builder
 ARG TARGETPLATFORM
 
 # fetched from goreleaser build process
@@ -29,15 +29,13 @@ USER hauler
 ENTRYPOINT [ "/hauler" ]
 
 # debug stage
-FROM alpine AS debug
+FROM registry.suse.com/bci/bci-base:16.1 AS debug
 
 COPY --from=builder /var/lib/ca-certificates/ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 COPY --from=builder --chown=hauler:hauler /home/hauler/. /home/hauler
 COPY --from=builder --chown=hauler:hauler /hauler /usr/local/bin/hauler
-
-RUN apk --no-cache add curl
 
 USER hauler
 WORKDIR /home/hauler
