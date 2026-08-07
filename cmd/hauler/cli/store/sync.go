@@ -543,7 +543,7 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 		}
 
 		insecureSkipTLSVerify := false
-		if o.CaFile != "" {
+		if o.CaFile == "" {
 			insecureSkipTLSVerify = resolveInsecure(i.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
 		}
 		i.InsecureSkipTLSVerify = &insecureSkipTLSVerify
@@ -1074,7 +1074,7 @@ func resolveFileJobs(o *flags.SyncOpts, a map[string]string, files []v1.File) []
 		}
 
 		insecure := false
-		if o.CaFile != "" {
+		if o.CaFile == "" {
 			insecure = resolveInsecure(f.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
 		}
 		f.InsecureSkipTLSVerify = &insecure

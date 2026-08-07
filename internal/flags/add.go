@@ -22,7 +22,7 @@ type AddImageOpts struct {
 	ExcludeExtras                bool
 	Local                        bool
 	CaFile                       string
-	InsecureSkipTLSVerify        bool
+	InsecureSkipTLSVerify        *bool
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
@@ -39,7 +39,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling the image")
 	f.BoolVar(&o.Local, "local", false, "(Optional) Add image from the local Docker daemon instead of a remote registry")
 	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
-	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
+	f.Bool("insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 }
 
 type AddFileOpts struct {
@@ -85,6 +85,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authentication")
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
+	f.BoolVar(&o.ChartOpts.PlainHTTP, "plain-http", false, "(Optional) Use plain HTTP for chart fetching")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 
 	cmd.MarkFlagsRequiredTogether("username", "password")

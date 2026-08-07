@@ -203,7 +203,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 		ExcludeExtras:                o.ExcludeExtras,
 		Local:                        o.Local,
 		CaFile:                       o.CaFile,
-		InsecureSkipTLSVerify:        &o.InsecureSkipTLSVerify,
+		InsecureSkipTLSVerify:        o.InsecureSkipTLSVerify,
 	}
 
 	if o.Local {
@@ -248,7 +248,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 func addImageVerifyConfig(o *flags.AddImageOpts) cosign.Config {
 	switch {
 	case o.Key != "":
-		return cosign.Config{Key: o.Key, Tlog: o.Tlog, InsecureSkipTLSVerify: o.InsecureSkipTLSVerify, CaFile: o.CaFile}
+		return cosign.Config{Key: o.Key, Tlog: o.Tlog, InsecureSkipTLSVerify: derefInsecure(o.InsecureSkipTLSVerify), CaFile: o.CaFile}
 	case o.CertIdentityRegexp != "" || o.CertIdentity != "":
 		return cosign.Config{
 			CertIdentity:                 o.CertIdentity,
@@ -256,7 +256,7 @@ func addImageVerifyConfig(o *flags.AddImageOpts) cosign.Config {
 			CertOidcIssuer:               o.CertOidcIssuer,
 			CertOidcIssuerRegexp:         o.CertOidcIssuerRegexp,
 			CertGithubWorkflowRepository: o.CertGithubWorkflowRepository,
-			InsecureSkipTLSVerify:        o.InsecureSkipTLSVerify,
+			InsecureSkipTLSVerify:        derefInsecure(o.InsecureSkipTLSVerify),
 			CaFile:                       o.CaFile,
 		}
 	default:
@@ -328,6 +328,7 @@ func verifyAddImage(ctx context.Context, o *flags.AddImageOpts, ref string, rso 
 }
 
 func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, chartName string, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+
 	l := log.FromContext(ctx)
 
 	// Nothing in the chart path forces an fsync: every descriptor it adds --
