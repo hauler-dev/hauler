@@ -480,17 +480,6 @@ func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 			}
 			rso.BlobConcurrency = bc
 
-			// PLAIN_HTTP env fallback: only applies if --plain-http wasn't passed.
-			if !cmd.Flags().Changed("plain-http") {
-				if v, ok := os.LookupEnv("PLAIN_HTTP"); ok {
-					b, err := strconv.ParseBool(v)
-					if err != nil {
-						return fmt.Errorf("invalid PLAIN_HTTP value %q: %w", v, err)
-					}
-					o.ChartOpts.PlainHTTP = b // swap for wherever the flag actually binds (o vs rso)
-				}
-			}
-
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -85,7 +85,6 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authentication")
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
-	f.BoolVar(&o.ChartOpts.PlainHTTP, "plain-http", false, "(Optional) Use plain HTTP for chart fetching")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 
 	cmd.MarkFlagsRequiredTogether("username", "password")
