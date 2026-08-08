@@ -605,8 +605,12 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	// index.docker.io. Preserve the original registry when the source is non-docker.
 	if newRegistry == "index.docker.io" && !strings.HasPrefix(rawRewrite, "docker.io") && !strings.HasPrefix(rawRewrite, "index.docker.io") {
 		newRegistry = oldRegistry
-		if !strings.HasPrefix(newRepo, "library/") {
-			newRepo = strings.TrimPrefix(newRepo, "library/") //if rewritten reference has library/ prefix in path it is stripped off unless registry specified in rewrite
+		rewriteRepo := strings.TrimPrefix(rawRewrite, "/")
+		if i := strings.LastIndex(rewriteRepo, ":"); i != -1 {
+			rewriteRepo = rewriteRepo[:i]
+		}
+		if !strings.HasPrefix(rewriteRepo, "library/") {
+			newRepo = strings.TrimPrefix(newRepo, "library/")
 		}
 	}
 	oldTotal := oldRepo + ":" + oldTag
@@ -1427,6 +1431,7 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 // rewrite. A rewrite that omits a tag inherits ref's.
 func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Reference, rewrite string) error {
 	rewrite = strings.TrimPrefix(rewrite, "/")
+	rawRewrite := rewrite
 	newRef, err := name.ParseReference(rewrite)
 	if err != nil {
 		// error... don't continue with a bad reference
@@ -1449,6 +1454,13 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Refere
 	// rename chart name in store
 	oldRepo := ref.Context().RepositoryStr()
 	newRepo := newRef.Context().RepositoryStr()
+	rewriteRepo := rawRewrite
+	if i := strings.LastIndex(rewriteRepo, ":"); i != -1 {
+		rewriteRepo = rewriteRepo[:i]
+	}
+	if !strings.HasPrefix(rewriteRepo, "library/") {
+		newRepo = strings.TrimPrefix(newRepo, "library/")
+	}
 	newTag := newRef.Identifier()
 	if tag, ok := newRef.(name.Tag); ok {
 		newTag = tag.TagStr()
