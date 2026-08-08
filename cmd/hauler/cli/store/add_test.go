@@ -368,6 +368,108 @@ func TestRewriteReference(t *testing.T) {
 		// condition fires → registry reverts to host, no library/ to strip
 		assertAnnotationsInStore(t, s, "newrepo/img:v2", host+"/newrepo/img:v2")
 	})
+
+	// The library/-detection must look at rawRewrite's path (not the
+	// go-containerregistry-normalized newRepo, which always carries "library/" for
+	// single-segment repos), so that a rewrite which explicitly asks for
+	// "library/..." is honored instead of being unconditionally stripped.
+
+	t.Run("path-only rewrite with explicit library/ prefix is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:v2")
+		rawRewrite := "library/nginx:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		// rewriteRepo (derived from rawRewrite) starts with "library/" → must be kept
+		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
+	})
+
+	t.Run("leading slash rewrite with explicit library/ prefix is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:v2")
+		// AddImageCmd passes the pre-trim rewrite string through as rawRewrite, so a
+		// leading "/" must still be handled correctly here.
+		rawRewrite := "/library/nginx:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
+	})
+}
+
+func TestRewriteChartReference(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// A chart rewritten to a bare single-segment name must not keep an erroneous
+	// "library/" prefix picked up from go-containerregistry's docker hub
+	// normalization, unless the rewrite explicitly asked for one.
+
+	t.Run("path-only rewrite strips library/ prefix from docker hub normalization", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "mychart:2.0.0"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "mychart:2.0.0")
+	})
+
+	t.Run("explicit library/ prefix in rewrite is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "library/mychart:2.0.0"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "library/mychart:2.0.0")
+	})
+
+	t.Run("leading slash rewrite with explicit library/ prefix is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "/library/mychart:2.0.0"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "library/mychart:2.0.0")
+	})
+
+	t.Run("rewrite omitting tag inherits the source tag", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "myneworg/mychart"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "myneworg/mychart:1.0.0")
+	})
 }
 
 // --------------------------------------------------------------------------
