@@ -215,6 +215,82 @@ func TestNewItem(t *testing.T) {
 	}
 }
 
+func TestResolveDisplayReference(t *testing.T) {
+	// ContainerdImageNameKey already holds the fully-qualified reference exactly as
+	// computed by rewriteReference (see add.go), so it must be returned verbatim.
+	// Re-parsing it through the reference package would re-trigger
+	// go-containerregistry's docker hub "library/" normalization for a
+	// single-segment repo, undoing a rewrite like "hello-world-custom" back to
+	// "library/hello-world-custom".
+	t.Run("ContainerdImageNameKey is used verbatim, without re-injecting library/", func(t *testing.T) {
+		desc := ocispec.Descriptor{
+			Annotations: map[string]string{
+				consts.ContainerdImageNameKey: "index.docker.io/hello-world-custom:v2",
+				ocispec.AnnotationRefName:     "hello-world-custom:v2",
+			},
+		}
+		got, err := resolveDisplayReference(desc)
+		if err != nil {
+			t.Fatalf("resolveDisplayReference: %v", err)
+		}
+		if want := "index.docker.io/hello-world-custom:v2"; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("falls back to AnnotationRefName parsed when ContainerdImageNameKey absent", func(t *testing.T) {
+		desc := ocispec.Descriptor{
+			Annotations: map[string]string{
+				ocispec.AnnotationRefName: "hello-world-custom:v2",
+			},
+		}
+		got, err := resolveDisplayReference(desc)
+		if err != nil {
+			t.Fatalf("resolveDisplayReference: %v", err)
+		}
+		if want := "hauler/hello-world-custom:v2"; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("returns error when fallback ref cannot be parsed", func(t *testing.T) {
+		desc := ocispec.Descriptor{Annotations: map[string]string{}}
+		if _, err := resolveDisplayReference(desc); err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+}
+
+func TestNewItem_ReferenceUsesContainerdImageNameVerbatim(t *testing.T) {
+	desc := ocispec.Descriptor{
+		Annotations: map[string]string{
+			consts.ContainerdImageNameKey: "index.docker.io/hello-world-custom:v2",
+			ocispec.AnnotationRefName:     "hello-world-custom:v2",
+		},
+	}
+	m := ocispec.Manifest{Config: ocispec.Descriptor{MediaType: consts.DockerConfigJSON}}
+	o := &flags.InfoOpts{TypeFilter: "all"}
+
+	got := newItem(nil, desc, m, "linux/amd64", o)
+	if want := "index.docker.io/hello-world-custom:v2"; got.Reference != want {
+		t.Errorf("got Reference %q, want %q", got.Reference, want)
+	}
+}
+
+func TestFallbackItem_ReferenceUsesContainerdImageNameVerbatim(t *testing.T) {
+	desc := ocispec.Descriptor{
+		Annotations: map[string]string{
+			consts.ContainerdImageNameKey: "index.docker.io/hello-world-custom:v2",
+			ocispec.AnnotationRefName:     "hello-world-custom:v2",
+		},
+	}
+
+	got := fallbackItem(desc, "linux/amd64", store.BlobResult{})
+	if want := "index.docker.io/hello-world-custom:v2"; got.Reference != want {
+		t.Errorf("got Reference %q, want %q", got.Reference, want)
+	}
+}
+
 func TestInfoCmd(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
