@@ -20,9 +20,8 @@ func TestNewTempRegistry_StartStop(t *testing.T) {
 	ctx := context.Background()
 	srv := NewTempRegistry(ctx, t.TempDir())
 
-	// Start the httptest server directly to avoid the Start() method's
-	// retry logic which only accepts HTTP 200, while /v2 returns 401
-	// from the distribution registry.
+	// start the httptest server directly to avoid the retry logic which only accepts HTTP 200
+	// while /v2 returns 401 from the distribution registry.
 	srv.Server.Start()
 	t.Cleanup(func() { srv.Stop() })
 
@@ -78,14 +77,10 @@ func TestNewFile_Configuration(t *testing.T) {
 	}
 }
 
-// TestConfigureDebugServer_Prometheus is the regression test for #451 --
-// hauler was silently never starting the debug/Prometheus server since it
-// calls registry.NewRegistry directly instead of going through
-// distribution's own CLI. ConfigureDebugServer registers on the global
-// http.DefaultServeMux, which panics on a duplicate pattern, so this has to
-// be the only test in the package that turns Prometheus on.
+// this is the only test in the package allowed to enable prometheus, since it registers
+// on http.DefaultServeMux and a second registration would panic.
 func TestConfigureDebugServer_Prometheus(t *testing.T) {
-	// grab a free port, then let it go so ConfigureDebugServer can bind it
+	// grab a free port and release it so ConfigureDebugServer can bind it
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to reserve a free port: %v", err)
@@ -126,8 +121,7 @@ func TestConfigureDebugServer_Prometheus(t *testing.T) {
 	}
 }
 
-// TestConfigureDebugServer_NoAddr just checks that an empty Debug.Addr is a
-// no-op -- no listener, nothing touching http.DefaultServeMux.
+// an empty Debug.Addr should just no-op, not start a listener.
 func TestConfigureDebugServer_NoAddr(t *testing.T) {
 	ConfigureDebugServer(&configuration.Configuration{})
 }
