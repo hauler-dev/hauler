@@ -61,6 +61,11 @@ const (
 	SigstoreBundleMediaType = "application/vnd.dev.sigstore.bundle.v0.3+json"
 	OCIEmptyConfigMediaType = "application/vnd.oci.empty.v1+json"
 
+	// annotations used by all artifacts
+	AnnotationTargetStore = "hauler.dev/store"
+	AnnotationRetries     = "hauler.dev/retries"
+
+	// annotations used by images
 	ImageAnnotationKey           = "hauler.dev/key"
 	ImageAnnotationPlatform      = "hauler.dev/platform"
 	ImageAnnotationRegistry      = "hauler.dev/registry"
@@ -80,7 +85,7 @@ const (
 	ImagesContentKind = "Images"
 	ChartsContentKind = "Charts"
 	FilesContentKind  = "Files"
-	// DriverContentKind    = "Driver"
+	// DriverContentKind = "Driver"
 
 	// content groups
 	ContentGroup    = "content.hauler.cattle.io"
@@ -91,6 +96,7 @@ const (
 	HaulerTempDir         = "HAULER_TEMP_DIR"
 	HaulerStoreDir        = "HAULER_STORE_DIR"
 	HaulerIgnoreErrors    = "HAULER_IGNORE_ERRORS"
+	HaulerRetries         = "HAULER_RETRIES"
 	HaulerConcurrency     = "HAULER_CONCURRENCY"
 	HaulerBlobConcurrency = "HAULER_BLOB_CONCURRENCY"
 	HaulerLogLevel        = "HAULER_LOG_LEVEL"
@@ -118,18 +124,9 @@ const (
 	DefaultStoreInventoryName = "stores.json"
 	DefaultRetries            = 3
 	RetriesInterval           = 5
-	// DefaultConcurrency bounds the number of images that `store sync` pulls
-	// and stores concurrently. See flags.ResolveConcurrency and
-	// flags.BlobConcurrencyFor for how this feeds into the per-store blob
-	// write ceiling (DefaultBlobConcurrency below).
-	DefaultConcurrency = 5
-	// DefaultBlobConcurrency bounds the number of blob writes (layer
-	// downloads, config/manifest writes) that may be in flight at once across
-	// the whole process, regardless of how many images or errgroups are
-	// fanning out concurrently. See content.OCI.WriteBlob and
-	// content.ociPusher.Push, the two call sites that acquire against it.
-	DefaultBlobConcurrency = 16
-	CustomTimeFormat       = "2006-01-02 15:04:05"
+	DefaultConcurrency        = 5
+	DefaultBlobConcurrency    = 16
+	CustomTimeFormat          = "2006-01-02 15:04:05"
 )
 
 var FileExcludePattern = fmt.Sprintf(`^%s/[.\-_]`, DefaultNamespace)

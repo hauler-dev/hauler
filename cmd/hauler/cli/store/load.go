@@ -31,11 +31,8 @@ var legacyChunkRe = regexp.MustCompile(`_\d+\.`)
 func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
+	// rso.TempOverride is already resolved (flag or HAULER_TEMP_DIR) by Store().
 	tempOverride := rso.TempOverride
-
-	if tempOverride == "" {
-		tempOverride = os.Getenv(consts.HaulerTempDir)
-	}
 
 	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {

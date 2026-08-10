@@ -179,10 +179,127 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent Files v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "synced.sh")
+}
+
+// a doc with hauler.dev/store set routes there instead of the default; one without it stays put.
+func TestProcessContent_Files_v1_TargetStoreAnnotation(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	altDir := t.TempDir()
+
+	defaultURL := seedFileInHTTPServer(t, "default.sh", "#!/bin/sh\necho default")
+	routedURL := seedFileInHTTPServer(t, "routed.sh", "#!/bin/sh\necho routed")
+
+	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: default-files
+spec:
+  files:
+    - path: %s
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: routed-files
+  annotations:
+    hauler.dev/store: %s
+spec:
+  files:
+    - path: %s
+`, defaultURL, altDir, routedURL)
+
+	fi := writeManifestFile(t, manifest)
+	o := newSyncOpts(s.Root)
+	ro := defaultCliOpts()
+	targetStores := map[string]*store.Layout{}
+
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, targetStores); err != nil {
+		t.Fatalf("processContent Files v1 with target store: %v", err)
+	}
+
+	assertArtifactInStore(t, s, "default.sh")
+	assertArtifactNotInStore(t, s, "routed.sh")
+
+	altAbs, err := filepath.Abs(altDir)
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	alt, ok := targetStores[altAbs]
+	if !ok {
+		t.Fatalf("expected a target store opened at %s, got %v", altAbs, targetStores)
+	}
+	assertArtifactInStore(t, alt, "routed.sh")
+	assertArtifactNotInStore(t, alt, "default.sh")
+}
+
+// --------------------------------------------------------------------------
+// resolveDocRetries tests
+// --------------------------------------------------------------------------
+
+func TestResolveDocRetries_NoAnnotation_ReturnsRsoUnchanged(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+	rso.Retries = 5
+
+	got, err := resolveDocRetries(map[string]string{}, rso)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != rso {
+		t.Fatal("expected the same *StoreRootOpts back when the annotation is absent")
+	}
+}
+
+func TestResolveDocRetries_Override_ReturnsCopyNotMutation(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+	rso.Retries = 5
+
+	got, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "9"}, rso)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == rso {
+		t.Fatal("expected a copy, not the same *StoreRootOpts, when the annotation overrides retries")
+	}
+	if got.Retries != 9 {
+		t.Fatalf("got Retries %d, want 9", got.Retries)
+	}
+	if rso.Retries != 5 {
+		t.Fatalf("original rso.Retries mutated to %d, want unchanged 5", rso.Retries)
+	}
+}
+
+func TestResolveDocRetries_ZeroMeansDefault(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+	rso.Retries = 5
+
+	got, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "0"}, rso)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Retries != consts.DefaultRetries {
+		t.Fatalf("got Retries %d, want default %d", got.Retries, consts.DefaultRetries)
+	}
+}
+
+func TestResolveDocRetries_Negative_ReturnsError(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+
+	if _, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "-1"}, rso); err == nil {
+		t.Fatal("expected an error for a negative hauler.dev/retries value, got nil")
+	}
+}
+
+func TestResolveDocRetries_NotANumber_ReturnsError(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+
+	if _, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "banana"}, rso); err == nil {
+		t.Fatal("expected an error for a non-numeric hauler.dev/retries value, got nil")
+	}
 }
 
 func TestProcessContent_Charts_v1(t *testing.T) {
@@ -206,7 +323,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent Charts v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "rancher-cluster-templates")
@@ -232,7 +349,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent Images v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/myimage")
@@ -254,7 +371,7 @@ metadata:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err == nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err == nil {
 		t.Fatal("expected error for unsupported kind, got nil")
 	}
 }
@@ -279,7 +396,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("expected nil for unrecognized apiVersion (warn-and-skip), got: %v", err)
 	}
 	if n := countArtifactsInStore(t, s); n != 0 {
@@ -325,7 +442,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent MultiDoc: %v", err)
 	}
 	assertArtifactInStore(t, s, "multi.sh")
@@ -1142,7 +1259,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent: %v", err)
 	}
 
