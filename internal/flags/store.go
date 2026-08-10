@@ -36,17 +36,17 @@ type StoreRootOpts struct {
 func (o *StoreRootOpts) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&o.StoreDir, "store", "s", "", "Set the directory to use for the content store")
-	pf.IntVarP(&o.Retries, "retries", "r", consts.DefaultRetries, "Set the number of retries for operations")
+	pf.IntVarP(&o.Retries, "retries", "r", 0, fmt.Sprintf("Set the number of retries for operations (0 uses HAULER_RETRIES, otherwise defaults to %d)", consts.DefaultRetries))
 	pf.StringVarP(&o.TempOverride, "tempdir", "t", "", "(Optional) Override the default temporary directory determined by the OS")
 	pf.IntVar(&o.BlobConcurrency, "blob-concurrency", 0, fmt.Sprintf("(Optional) Override the maximum number of concurrent blob writes (0 auto-derives from --concurrency where set, otherwise defaults to %d)", consts.DefaultBlobConcurrency))
 }
 
-func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layout, error) {
+// ResolveStoreDir turns storeDir into an absolute path without opening a store for it --
+// split out of Store() so sync can check a target store's path before deciding to open one.
+func ResolveStoreDir(ctx context.Context, ro *CliRootOpts, storeDir string) (string, error) {
 	l := log.FromContext(ctx)
 
 	haulerDir := resolveHaulerDir(ro)
-
-	storeDir := o.StoreDir
 
 	if storeDir == "" {
 		storeDir = os.Getenv(consts.HaulerStoreDir)
@@ -62,22 +62,33 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 		switch {
 		case rerr == nil:
 			if !store.MatchesStoreID(resolved, id) {
-				return nil, fmt.Errorf("store id %q was last seen at %s, but that path no longer contains that store", storeDir, resolved)
+				return "", fmt.Errorf("store id %q was last seen at %s, but that path no longer contains that store", storeDir, resolved)
 			}
 			l.Debugf("resolved store id [%s] to [%s]", storeDir, resolved)
 			storeDir = resolved
 		case storeIDPattern.MatchString(storeDir):
 			// looks like an ID, not a directory name to create
-			return nil, fmt.Errorf("no store found matching id %q (for directories, use the absolute path)", storeDir)
+			return "", fmt.Errorf("no store found matching id %q (for directories, use the absolute path)", storeDir)
 		}
 	}
 
-	abs, err := filepath.Abs(storeDir)
+	return filepath.Abs(storeDir)
+}
+
+func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layout, error) {
+	l := log.FromContext(ctx)
+
+	abs, err := ResolveStoreDir(ctx, ro, o.StoreDir)
 	if err != nil {
 		return nil, err
 	}
 
 	o.StoreDir = abs
+
+	// resolved once here, same as StoreDir/BlobConcurrency below
+	if o.TempOverride == "" {
+		o.TempOverride = os.Getenv(consts.HaulerTempDir)
+	}
 
 	l.Debugf("using store at [%s]", abs)
 
@@ -103,7 +114,14 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 	}
 	o.BlobConcurrency = bc
 
-	opts := []store.Options{store.WithHaulerDir(haulerDir)}
+	// same reasoning as BlobConcurrency above
+	retries, err := ResolveRetries(o.Retries)
+	if err != nil {
+		return nil, err
+	}
+	o.Retries = retries
+
+	opts := []store.Options{store.WithHaulerDir(resolveHaulerDir(ro))}
 	if o.BlobConcurrency > 0 {
 		opts = append(opts, store.WithBlobConcurrency(o.BlobConcurrency))
 	}

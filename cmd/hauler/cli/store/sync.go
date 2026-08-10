@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,27 +105,33 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		return nil
 	}
 
+	// caches stores opened via hauler.dev/store, keyed by abs path, so docs sharing a target reuse one Layout
+	targetStores := map[string]*store.Layout{}
+
 	// Everything below runs with a real store (s != nil; the dry-run branch
 	// above already returned). Force one durable index checkpoint at the end
 	// of the run since the per-artifact path only fsyncs on
 	// indexCheckpointInterval -- deferred so it still runs on error paths,
 	// where a partially-populated index is worth persisting. This does NOT
 	// run on Ctrl-C (no signal handler is installed), which is fine: process
-	// death doesn't lose page cache, so the index still reaches disk.
+	// death doesn't lose page cache, so the index still reaches disk. Covers
+	// any target stores from hauler.dev/store too, not just the primary one.
 	defer func() {
 		if err := s.OCI.SaveIndex(); err != nil {
 			l.Warnf("failed to save index at end of sync: %v", err)
 		}
 		l.Debugf("%s", formatIOStats(s.OCI.Stats().Snapshot(), s.OCI.BlobConcurrency()))
+
+		for _, ts := range targetStores {
+			if err := ts.OCI.SaveIndex(); err != nil {
+				l.Warnf("failed to save index for target store [%s]: %v", ts.Root, err)
+			}
+			l.Debugf("%s", formatIOStats(ts.OCI.Stats().Snapshot(), ts.OCI.BlobConcurrency()))
+		}
 	}()
 
-	tempOverride := rso.TempOverride
-
-	if tempOverride == "" {
-		tempOverride = os.Getenv(consts.HaulerTempDir)
-	}
-
-	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
+	// rso.TempOverride is already resolved (flag or HAULER_TEMP_DIR) by Store().
+	tempDir, err := os.MkdirTemp(rso.TempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
 		return err
 	}
@@ -166,7 +173,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			return err
 		}
 		defer fi.Close()
-		err = processContent(ctx, fi, o, s, rso, ro)
+		err = processContent(ctx, fi, o, s, rso, ro, targetStores)
 		if err != nil {
 			return err
 		}
@@ -216,7 +223,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			}
 			defer fi.Close()
 
-			err = processContent(ctx, fi, o, s, rso, ro)
+			err = processContent(ctx, fi, o, s, rso, ro, targetStores)
 			if err != nil {
 				return err
 			}
@@ -304,7 +311,7 @@ func derefInsecure(p *bool) bool {
 	return p != nil && *p
 }
 
-func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout) error {
 	l := log.FromContext(ctx)
 
 	reader := yaml.NewYAMLReader(bufio.NewReader(fi))
@@ -329,7 +336,6 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 
 		gvk := obj.GroupVersionKind()
-		l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, o.StoreDir)
 
 		switch gvk.Kind {
 
@@ -340,8 +346,18 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
-				jobs := resolveFileJobs(o, cfg.GetAnnotations(), cfg.Spec.Files)
-				if err := runFileJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro)); err != nil {
+				a := cfg.GetAnnotations()
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores)
+				if err != nil {
+					return err
+				}
+				docRso, err := resolveDocRetries(a, rso)
+				if err != nil {
+					return err
+				}
+				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
+				jobs := resolveFileJobs(o, a, cfg.Spec.Files)
+				if err := runFileJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
 				}
 
@@ -358,11 +374,20 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 
 				a := cfg.GetAnnotations()
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores)
+				if err != nil {
+					return err
+				}
+				docRso, err := resolveDocRetries(a, rso)
+				if err != nil {
+					return err
+				}
+				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
 				jobs, err := resolveImageJobs(o, a, cfg.Spec.Images)
 				if err != nil {
 					return err
 				}
-				if err := runImageJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro)); err != nil {
+				if err := runImageJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
 				}
 
@@ -377,11 +402,21 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
-				jobs, err := resolveChartJobs(o, cfg.GetAnnotations(), filepath.Dir(fi.Name()), cfg.Spec.Charts)
+				a := cfg.GetAnnotations()
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores)
 				if err != nil {
 					return err
 				}
-				if err := runChartJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro)); err != nil {
+				docRso, err := resolveDocRetries(a, rso)
+				if err != nil {
+					return err
+				}
+				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
+				jobs, err := resolveChartJobs(o, a, filepath.Dir(fi.Name()), cfg.Spec.Charts)
+				if err != nil {
+					return err
+				}
+				if err := runChartJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
 				}
 
@@ -394,6 +429,64 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 		}
 	}
 	return nil
+}
+
+// resolveTargetStore picks a doc's store based on its hauler.dev/store annotation,
+// falling back to def. Opens (or reuses, via targetStores) the target store otherwise.
+func resolveTargetStore(ctx context.Context, a map[string]string, def *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout) (*store.Layout, error) {
+	target := a[consts.AnnotationTargetStore]
+	if target == "" {
+		return def, nil
+	}
+
+	abs, err := flags.ResolveStoreDir(ctx, ro, target)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve target store [%s]: %w", target, err)
+	}
+
+	if abs == def.Root {
+		return def, nil
+	}
+
+	if ts, ok := targetStores[abs]; ok {
+		return ts, nil
+	}
+
+	// only overriding StoreDir, everything else still comes from rso
+	altOpts := *rso
+	altOpts.StoreDir = abs
+	ts, err := altOpts.Store(ctx, ro)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open target store [%s]: %w", target, err)
+	}
+
+	targetStores[abs] = ts
+	return ts, nil
+}
+
+// resolveDocRetries returns a copy of rso with Retries overridden by a doc's
+// hauler.dev/retries annotation, or rso unchanged if it's not set. Copy, not
+// mutation, so it can't leak into a sibling doc.
+func resolveDocRetries(a map[string]string, rso *flags.StoreRootOpts) (*flags.StoreRootOpts, error) {
+	v, ok := a[consts.AnnotationRetries]
+	if !ok || v == "" {
+		return rso, nil
+	}
+
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s value %q: %w", consts.AnnotationRetries, v, err)
+	}
+	if n < 0 {
+		return nil, fmt.Errorf("%s must be >= 0, got %d", consts.AnnotationRetries, n)
+	}
+	if n == 0 {
+		n = consts.DefaultRetries
+	}
+
+	docRso := *rso
+	docRso.Retries = n
+	return &docRso, nil
 }
 
 // resolveChartCreds reads credentials for a Chart entry from the env vars

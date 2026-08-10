@@ -344,6 +344,20 @@ func assertArtifactInStore(t *testing.T, s *store.Layout, refSubstring string) {
 	}
 }
 
+// assertArtifactNotInStore is assertArtifactInStore's opposite: fails if any
+// descriptor's AnnotationRefName contains refSubstring.
+func assertArtifactNotInStore(t *testing.T, s *store.Layout, refSubstring string) {
+	t.Helper()
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.Contains(desc.Annotations[ocispec.AnnotationRefName], refSubstring) {
+			t.Errorf("expected no artifact with ref containing %q, found one in store", refSubstring)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("assertArtifactNotInStore walk: %v", err)
+	}
+}
+
 // assertArtifactKindInStore walks the store and fails if no descriptor has an
 // AnnotationRefName containing refSubstring AND KindAnnotationName equal to kind.
 func assertArtifactKindInStore(t *testing.T, s *store.Layout, refSubstring, kind string) {

@@ -1032,11 +1032,8 @@ func runChartJobs(ctx context.Context, s *store.Layout, jobs []chartJob, concurr
 
 	l := log.FromContext(ctx)
 
-	tempOverride := rso.TempOverride
-	if tempOverride == "" {
-		tempOverride = os.Getenv(consts.HaulerTempDir)
-	}
-	tempRoot, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)
+	// rso.TempOverride is already resolved (flag or HAULER_TEMP_DIR) by Store().
+	tempRoot, err := os.MkdirTemp(rso.TempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}

@@ -149,8 +149,11 @@ func BuildGlobal(ro *flags.CliRootOpts, rso *flags.StoreRootOpts) GlobalEntry {
 		consts.HaulerTempDir,
 		consts.HaulerStoreDir,
 		consts.HaulerIgnoreErrors,
+		consts.HaulerRetries,
 		consts.HaulerLogLevel,
 		consts.HaulerAuditLevel,
+		consts.HaulerConcurrency,
+		consts.HaulerBlobConcurrency,
 	} {
 		if v := os.Getenv(key); v != "" {
 			env[key] = v
