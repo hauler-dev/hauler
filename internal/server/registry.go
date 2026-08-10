@@ -11,6 +11,7 @@ import (
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/distribution/distribution/v3/registry"
 	"github.com/distribution/distribution/v3/registry/handlers"
+	dockermetrics "github.com/docker/go-metrics"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -22,6 +23,27 @@ func NewRegistry(ctx context.Context, cfg *configuration.Configuration) (*regist
 	}
 
 	return r, nil
+}
+
+// ConfigureDebugServer starts pprof/expvar/prometheus on cfg.HTTP.Debug.Addr
+func ConfigureDebugServer(cfg *configuration.Configuration) {
+	if cfg.HTTP.Debug.Addr == "" {
+		return
+	}
+
+	if cfg.HTTP.Debug.Prometheus.Enabled {
+		path := cfg.HTTP.Debug.Prometheus.Path
+		if path == "" {
+			path = "/metrics"
+		}
+		http.Handle(path, dockermetrics.Handler())
+	}
+
+	go func(addr string) {
+		if err := http.ListenAndServe(addr, nil); err != nil { //nolint:gosec // debug interface: internal-only, no read/write timeouts needed
+			logrus.Fatalf("error listening on debug interface: %v", err)
+		}
+	}(cfg.HTTP.Debug.Addr)
 }
 
 type tmpRegistryServer struct {
