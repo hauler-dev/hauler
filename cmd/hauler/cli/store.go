@@ -2,12 +2,15 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v4/pkg/action"
 
 	"hauler.dev/go/hauler/v2/cmd/hauler/cli/store"
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
@@ -71,6 +74,17 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Short: "Sync content to the content store",
 		Args:  cobra.ExactArgs(0),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Check for ca-file & insecure-skip-tls-verify env variables
+			if o.CaFile == "" {
+				o.CaFile = os.Getenv(consts.CaFile)
+			}
+			if o.InsecureSkipTLSVerify == nil {
+				if v := os.Getenv(consts.InsecureSkipTLSVerify); v != "" {
+					b, _ := strconv.ParseBool(v)
+					o.InsecureSkipTLSVerify = &b
+				}
+			}
+
 			// --dry-run requires --products
 			if o.DryRun && len(o.Products) == 0 {
 				return fmt.Errorf("--dry-run requires --products")
@@ -109,6 +123,12 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return err
 			}
 			rso.BlobConcurrency = bc
+
+			// resolve *bool: nil unless the user explicitly passed the flag
+			if cmd.Flags().Changed("insecure-skip-tls-verify") {
+				v, _ := cmd.Flags().GetBool("insecure-skip-tls-verify")
+				o.InsecureSkipTLSVerify = &v
+			}
 
 			return nil
 		},
@@ -388,6 +408,19 @@ func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 	# add image from local Docker daemon
 	hauler store add image my-local-app:latest --local`,
 		Args: cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Check for ca-file & insecure-skip-tls-verify env variables
+			if o.CaFile == "" {
+				o.CaFile = os.Getenv(consts.CaFile)
+			}
+			if o.InsecureSkipTLSVerify == nil {
+				if v := os.Getenv(consts.InsecureSkipTLSVerify); v != "" {
+					b, _ := strconv.ParseBool(v)
+					o.InsecureSkipTLSVerify = &b
+				}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

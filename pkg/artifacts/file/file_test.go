@@ -127,7 +127,7 @@ func setup() func() {
 
 	mf := &mockFile{File: getter.NewFile(), fs: tfs}
 
-	mockHttp := getter.NewHttp()
+	mockHttp := getter.NewHttp(false, "")
 	mhttp := afero.NewHttpFs(tfs)
 	fileserver := http.FileServer(mhttp.Dir("."))
 	http.Handle("/", fileserver)
