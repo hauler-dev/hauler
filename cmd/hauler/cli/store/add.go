@@ -28,10 +28,10 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/artifacts/chart"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
 	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
-	"hauler.dev/go/hauler/v2/pkg/content/chart"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
 	"hauler.dev/go/hauler/v2/pkg/getter"
 	"hauler.dev/go/hauler/v2/pkg/log"
