@@ -1431,7 +1431,7 @@ func TestResolveFileJobs_OneJobPerFile(t *testing.T) {
 		{Path: "https://example.com/b.sh", Name: "renamed-b.sh"},
 	}
 
-	jobs := resolveFileJobs(files)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 	if len(jobs) != 2 {
 		t.Fatalf("resolveFileJobs: got %d jobs, want 2", len(jobs))
 	}
@@ -1444,7 +1444,7 @@ func TestResolveFileJobs_OneJobPerFile(t *testing.T) {
 }
 
 func TestResolveFileJobs_EmptyInput(t *testing.T) {
-	jobs := resolveFileJobs(nil)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, nil)
 	if len(jobs) != 0 {
 		t.Errorf("resolveFileJobs(nil): got %d jobs, want 0", len(jobs))
 	}
@@ -1461,7 +1461,7 @@ func TestRunFileJobs_AllSucceed(t *testing.T) {
 	url1 := seedFileInHTTPServer(t, "one.sh", "#!/bin/sh\necho one")
 	url2 := seedFileInHTTPServer(t, "two.sh", "#!/bin/sh\necho two")
 
-	jobs := resolveFileJobs([]v1.File{{Path: url1}, {Path: url2}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: url1}, {Path: url2}})
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
@@ -1491,7 +1491,7 @@ func TestRunFileJobs_ConcurrencyOneVsFour_ProduceEquivalentStores(t *testing.T) 
 
 	run := func(concurrency int) *storeSnapshot {
 		s := newTestStore(t)
-		jobs := resolveFileJobs(files)
+		jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 		if err := runFileJobs(ctx, s, jobs, concurrency, rso, ro, nil); err != nil {
@@ -1574,7 +1574,7 @@ func TestRunFileJobs_DedupesDuplicateSourceAcrossEntries(t *testing.T) {
 		{Path: url, Name: "rke2-install.sh"},
 	}
 
-	jobs := resolveFileJobs(files)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
@@ -1632,7 +1632,7 @@ func TestRunFileJobs_ErrorPropagation(t *testing.T) {
 				{Path: goodURL},
 			}
 
-			jobs := resolveFileJobs(files)
+			jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 			rso := defaultRootOpts(s.Root)
 			rso.Retries = 1 // avoid RetriesInterval sleeps in this table
 			ro := defaultCliOpts()
@@ -1686,7 +1686,7 @@ func TestRunFileJobs_RetryEventuallySucceeds(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	jobs := resolveFileJobs([]v1.File{{Path: srv.URL + "/eventual.sh"}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: srv.URL + "/eventual.sh"}})
 	rso := defaultRootOpts(s.Root)
 	rso.Retries = 2
 	ro := defaultCliOpts()
@@ -1736,7 +1736,7 @@ func TestRunFileJobs_CancellationAbortsPromptly(t *testing.T) {
 	}()
 
 	s := newTestStore(t)
-	jobs := resolveFileJobs([]v1.File{{Path: srv.URL + "/slow.sh"}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: srv.URL + "/slow.sh"}})
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
@@ -1774,7 +1774,7 @@ func TestRunFileJobs_WithProgress_RendersEscapeCodesAndCompletionLines(t *testin
 	ro := defaultCliOpts()
 
 	progress := log.NewRenderer(&buf)
-	jobs := resolveFileJobs(files)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 
 	if err := runFileJobs(ctx, s, jobs, 2, rso, ro, progress); err != nil {
 		t.Fatalf("runFileJobs: %v", err)
@@ -1799,7 +1799,7 @@ func TestRunFileJobs_NoProgress_CompletionLineRefAppearsOnce(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	jobs := resolveFileJobs([]v1.File{{Path: url}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: url}})
 	if err := runFileJobs(ctx, s, jobs, 1, rso, ro, nil); err != nil {
 		t.Fatalf("runFileJobs: %v", err)
 	}

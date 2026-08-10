@@ -238,10 +238,21 @@ func (l *Layout) AddArtifactCollection(ctx context.Context, collection artifacts
 // signature pass the digest they verified, so the bytes stored are provably
 // the bytes checked even if the tag moves mid-run. An empty pinnedDigest
 // resolves ref normally.
-func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, pinnedDigest string, opts ...remote.Option) (string, error) {
+//
+// insecureSkipTLSVerify and caFile configure the transport used for every
+// registry round trip this call makes (the image itself plus any related
+// signatures/attestations/SBOMs/referrers); insecureSkipTLSVerify takes
+// precedence over caFile -- see content.BuildTransport.
+func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, pinnedDigest string, insecureSkipTLSVerify bool, caFile string, opts ...remote.Option) (string, error) {
+	tr, err := content.BuildTransport(insecureSkipTLSVerify, caFile)
+	if err != nil {
+		return "", err
+	}
+
 	allOpts := append([]remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		remote.WithContext(ctx),
+		remote.WithTransport(tr),
 	}, opts...)
 
 	parsedRef, err := gname.ParseReference(ref)

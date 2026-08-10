@@ -155,7 +155,9 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		l.Infof("fetching product manifest from [%s]", manifestLoc)
 
 		img := v1.Image{
-			Name: manifestLoc,
+			Name:                  manifestLoc,
+			InsecureSkipTLSVerify: o.InsecureSkipTLSVerify,
+			CaFile:                o.CaFile,
 		}
 		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "", "", false)
 		if err != nil {
@@ -187,7 +189,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp()
+				h := getter.NewHttp(derefInsecure(o.InsecureSkipTLSVerify), o.CaFile)
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -239,7 +241,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote image.txt... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp()
+				h := getter.NewHttp(derefInsecure(o.InsecureSkipTLSVerify), o.CaFile)
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -283,6 +285,30 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	}
 
 	return nil
+}
+
+// resolveInsecure applies precedence: cli > per-item > annotation.
+// A non-nil per-item pointer wins outright — including an explicit false — so an
+// individual file/image/chart can opt out of an insecure annotation or the global
+// --insecure-skip-tls-verify flag. nil means "not set on the item", which falls
+// through to the annotation, then the global flag.
+func resolveInsecure(item *bool, ann map[string]string, global *bool) bool {
+	if global != nil {
+		return *global
+	}
+	if item != nil {
+		return *item
+	}
+	if ann != nil && ann[consts.ImageAnnotationInsecureSkipTLSVerify] == "true" {
+		return true
+	}
+	return false
+}
+
+// derefInsecure is a nil-safe read of a *bool for logging/plumbing where a plain
+// bool is needed. nil reads as false.
+func derefInsecure(p *bool) bool {
+	return p != nil && *p
 }
 
 func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout) error {
@@ -330,7 +356,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
-				jobs := resolveFileJobs(cfg.Spec.Files)
+				jobs := resolveFileJobs(o, a, cfg.Spec.Files)
 				if err := runFileJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
 				}
@@ -494,7 +520,11 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 		}
 		l.Debugf("adding image [%s] to the store [%s]", line, o.StoreDir)
 		jobs = append(jobs, imageJob{
-			img:           v1.Image{Name: line},
+			img: v1.Image{
+				Name:                  line,
+				CaFile:                o.CaFile,
+				InsecureSkipTLSVerify: o.InsecureSkipTLSVerify,
+			},
 			platform:      o.Platform,
 			excludeExtras: o.ExcludeExtras,
 		})
@@ -597,6 +627,19 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 			}
 			i.Name = newRef.Name()
 		}
+
+		// caFile precedence: cli >per-image > annotation.
+		if o.CaFile == "" && i.CaFile == "" && a[consts.ImageAnnotationCaFile] != "" {
+			i.CaFile = a[consts.ImageAnnotationCaFile]
+		} else if o.CaFile != "" {
+			i.CaFile = o.CaFile
+		}
+
+		insecureSkipTLSVerify := false
+		if o.CaFile == "" {
+			insecureSkipTLSVerify = resolveInsecure(i.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
+		}
+		i.InsecureSkipTLSVerify = &insecureSkipTLSVerify
 
 		if i.Local {
 			needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
@@ -749,7 +792,12 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 func (j imageJob) verifyConfig() cosign.Config {
 	switch {
 	case j.needsPubKey:
-		return cosign.Config{Key: j.key, Tlog: j.tlog}
+		return cosign.Config{
+			Key:                   j.key,
+			Tlog:                  j.tlog,
+			InsecureSkipTLSVerify: derefInsecure(j.img.InsecureSkipTLSVerify),
+			CaFile:                j.img.CaFile,
+		}
 	case j.needsKeyless:
 		return cosign.Config{
 			CertIdentity:                 j.certIdentity,
@@ -757,6 +805,8 @@ func (j imageJob) verifyConfig() cosign.Config {
 			CertOidcIssuer:               j.certOidcIssuer,
 			CertOidcIssuerRegexp:         j.certOidcIssuerRegexp,
 			CertGithubWorkflowRepository: j.certGithubWorkflowRepository,
+			InsecureSkipTLSVerify:        derefInsecure(j.img.InsecureSkipTLSVerify),
+			CaFile:                       j.img.CaFile,
 		}
 	default:
 		return cosign.Config{}
@@ -1102,11 +1152,26 @@ type fileJob struct {
 	file v1.File
 }
 
-// resolveFileJobs converts every v1.File in files into a fileJob. It is
-// pure.
-func resolveFileJobs(files []v1.File) []fileJob {
+// resolveFileJobs converts every v1.File in files into a fileJob, applying
+// the caFile/insecure precedence rules (per-file > annotation > global) --
+// see resolveInsecure. It is pure.
+func resolveFileJobs(o *flags.SyncOpts, a map[string]string, files []v1.File) []fileJob {
 	jobs := make([]fileJob, 0, len(files))
 	for _, f := range files {
+
+		// caFile precedence: cli >per-image > annotation.
+		if o.CaFile == "" && f.CaFile == "" && a[consts.ImageAnnotationCaFile] != "" {
+			f.CaFile = a[consts.ImageAnnotationCaFile]
+		} else if o.CaFile != "" {
+			f.CaFile = o.CaFile
+		}
+
+		insecure := false
+		if o.CaFile == "" {
+			insecure = resolveInsecure(f.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
+		}
+		f.InsecureSkipTLSVerify = &insecure
+
 		jobs = append(jobs, fileJob{file: f})
 	}
 	return jobs
