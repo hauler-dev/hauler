@@ -62,7 +62,7 @@ func TestAddImage_ImageStatsAccumulation(t *testing.T) {
 	stats := &store.ImageStats{}
 	ctx := store.WithImageStats(context.Background(), stats)
 
-	if _, err := s.AddImage(ctx, tag.Name(), "", false, "", remoteOpts...); err != nil {
+	if _, err := s.AddImage(ctx, tag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestAddImage_NoImageStatsInContext(t *testing.T) {
 		t.Fatalf("new layout: %v", err)
 	}
 
-	if _, err := s.AddImage(context.Background(), tag.Name(), "", false, "", remoteOpts...); err != nil {
+	if _, err := s.AddImage(context.Background(), tag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 }
