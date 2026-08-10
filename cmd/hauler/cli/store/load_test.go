@@ -103,6 +103,47 @@ func TestUnarchiveLayoutTo(t *testing.T) {
 	}
 }
 
+// TestUnarchiveLayoutTo_MergesAuditLog checks a haul's audit.log survives
+// the load and merges into (not overwrites) whatever dest already has.
+func TestUnarchiveLayoutTo_MergesAuditLog(t *testing.T) {
+	srcDir := t.TempDir()
+	srcLayout, err := store.NewLayout(srcDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(srcDir): %v", err)
+	}
+	// NewLayout doesn't write index.json until something forces a save --
+	// unarchiveLayoutTo requires one to exist in the archive.
+	if err := srcLayout.OCI.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex(srcDir): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "audit.log"), []byte(`{"command":"from-haul"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("seed source audit.log: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+	if err := createRootLevelArchive(srcDir, archivePath); err != nil {
+		t.Fatalf("createRootLevelArchive: %v", err)
+	}
+
+	destDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(destDir, "audit.log"), []byte(`{"command":"already-here"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("seed dest audit.log: %v", err)
+	}
+
+	ctx := newTestContext(t)
+	if err := unarchiveLayoutTo(ctx, archivePath, destDir, t.TempDir(), defaultCliOpts(), false); err != nil {
+		t.Fatalf("unarchiveLayoutTo: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(destDir, "audit.log"))
+	if err != nil {
+		t.Fatalf("ReadFile dest audit.log: %v", err)
+	}
+	if !strings.Contains(string(data), "already-here") || !strings.Contains(string(data), "from-haul") {
+		t.Fatalf("expected both entries preserved after load, got: %s", data)
+	}
+}
+
 // --------------------------------------------------------------------------
 // TestLoadCmd_LocalFile
 // --------------------------------------------------------------------------

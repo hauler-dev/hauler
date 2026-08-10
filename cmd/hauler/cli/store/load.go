@@ -14,6 +14,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/getter"
@@ -242,8 +243,17 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		return err
 	}
 
-	_, err = s.CopyAll(ctx, ts, nil)
-	return err
+	if _, err := s.CopyAll(ctx, ts, nil); err != nil {
+		return err
+	}
+
+	// CopyAll only copies OCI content; the haul's audit.log sits alongside
+	// it, not in it, so it has to be merged in separately.
+	if err := audit.MergeStoreLog(tempDir, dest); err != nil {
+		l.Warnf("failed to merge audit log from haul: %v", err)
+	}
+
+	return nil
 }
 
 // matches the <path>.NNN chunk suffix that is used to filter resolveHaulPath
