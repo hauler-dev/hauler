@@ -29,7 +29,7 @@ import (
 var legacyChunkRe = regexp.MustCompile(`_\d+\.`)
 
 // extracts the contents of an archived oci layout to an existing oci layout
-func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func LoadCmd(ctx context.Context, o *flags.LoadOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	tempOverride := rso.TempOverride
@@ -67,6 +67,25 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 		if err != nil {
 			return err
 		}
+
+		if auditLevel(ro) != "none" {
+			e := audit.Entry{
+				StoreID:   s.StoreID,
+				Store:     s.Root,
+				Command:   "store load",
+				Reference: audit.SanitizeURL(resolved),
+			}
+			if auditLevel(ro) == "verbose" {
+				sys := audit.BuildSystem()
+				g := audit.BuildGlobal(ro, rso)
+				e.System = &sys
+				e.Global = &g
+			}
+			if err := audit.Append(ro.HaulerDir, e); err != nil {
+				l.Warnf("failed to write audit entry: %v", err)
+			}
+		}
+
 		clearDir(tempDir)
 	}
 

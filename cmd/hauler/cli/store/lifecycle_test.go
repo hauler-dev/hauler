@@ -44,7 +44,7 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 	// Step 3: SaveCmd -> archive (absolute paths required).
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-file.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
@@ -58,11 +58,15 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 
 	// Step 4: LoadCmd -> store B.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -122,17 +126,21 @@ func TestLifecycle_Image_AddSaveLoadCopyRegistry(t *testing.T) {
 	// Step 3: SaveCmd -> archive.
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-image.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
 	// Step 4: LoadCmd -> store B.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -190,17 +198,21 @@ func TestLifecycle_Chart_AddSaveLoadExtract(t *testing.T) {
 	// Step 2: SaveCmd -> archive.
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-chart.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
 	// Step 3: LoadCmd -> new store.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -274,17 +286,21 @@ func TestLifecycle_DigestOnlyImage_AddSaveLoad(t *testing.T) {
 	// Step 3: SaveCmd -> archive
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-digestonly.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
 	// Step 4: LoadCmd -> fresh store B
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -339,17 +355,21 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 	// Step 3: SaveCmd -> archive.
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-remove.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
 	// Step 4: LoadCmd -> new store.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 

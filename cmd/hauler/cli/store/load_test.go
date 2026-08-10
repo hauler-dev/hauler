@@ -155,16 +155,22 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 
 	t.Run("single archive", func(t *testing.T) {
 		destDir := t.TempDir()
+		s, err := store.NewLayout(destDir)
+		if err != nil {
+			t.Fatalf("store.NewLayout: %v", err)
+		}
 		o := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(destDir),
 			FileName:      []string{testHaulArchive},
 		}
-		if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd: %v", err)
 		}
-		s, err := store.NewLayout(destDir)
+		// re-open: LoadCmd writes through its own content.OCI instance, so s's
+		// in-memory index predates the load.
+		s, err = store.NewLayout(destDir)
 		if err != nil {
-			t.Fatalf("store.NewLayout: %v", err)
+			t.Fatalf("store.NewLayout (post-load): %v", err)
 		}
 		if countArtifactsInStore(t, s) == 0 {
 			t.Error("expected artifacts in store after LoadCmd")
@@ -176,11 +182,15 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 		// silently discarded by the OCI pusher. The descriptor count after two
 		// loads must equal the count after a single load.
 		singleDir := t.TempDir()
+		singlePreLoad, err := store.NewLayout(singleDir)
+		if err != nil {
+			t.Fatalf("store.NewLayout single (pre-load): %v", err)
+		}
 		singleOpts := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(singleDir),
 			FileName:      []string{testHaulArchive},
 		}
-		if err := LoadCmd(ctx, singleOpts, defaultRootOpts(singleDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, singleOpts, singlePreLoad, defaultRootOpts(singleDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd single: %v", err)
 		}
 		singleStore, err := store.NewLayout(singleDir)
@@ -190,11 +200,15 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 		singleCount := countArtifactsInStore(t, singleStore)
 
 		doubleDir := t.TempDir()
+		doublePreLoad, err := store.NewLayout(doubleDir)
+		if err != nil {
+			t.Fatalf("store.NewLayout double (pre-load): %v", err)
+		}
 		doubleOpts := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(doubleDir),
 			FileName:      []string{testHaulArchive, testHaulArchive},
 		}
-		if err := LoadCmd(ctx, doubleOpts, defaultRootOpts(doubleDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, doubleOpts, doublePreLoad, defaultRootOpts(doubleDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd double: %v", err)
 		}
 		doubleStore, err := store.NewLayout(doubleDir)
@@ -233,12 +247,16 @@ func TestLoadCmd_RemoteArchive(t *testing.T) {
 	destDir := t.TempDir()
 	remoteURL := srv.URL + "/haul.tar.zst"
 
+	preLoad, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout (pre-load): %v", err)
+	}
 	o := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(destDir),
 		FileName:      []string{remoteURL},
 	}
 
-	if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, o, preLoad, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd remote: %v", err)
 	}
 
