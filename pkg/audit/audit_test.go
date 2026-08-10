@@ -186,6 +186,62 @@ func TestAppend_MultipleEntries(t *testing.T) {
 	}
 }
 
+func TestMergeStoreLog_AppendsOntoExisting(t *testing.T) {
+	temp, dest := t.TempDir(), t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dest, LogFileName), []byte(`{"command":"original"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("seed dest log: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(temp, LogFileName), []byte(`{"command":"from-haul"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("seed temp log: %v", err)
+	}
+
+	if err := MergeStoreLog(temp, dest); err != nil {
+		t.Fatalf("MergeStoreLog: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dest, LogFileName))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(data), "original") || !strings.Contains(string(data), "from-haul") {
+		t.Fatalf("expected both entries preserved, got: %s", data)
+	}
+}
+
+func TestMergeStoreLog_CreatesDestWhenMissing(t *testing.T) {
+	temp := t.TempDir()
+	dest := filepath.Join(t.TempDir(), "not-yet-created")
+
+	if err := os.WriteFile(filepath.Join(temp, LogFileName), []byte(`{"command":"from-haul"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("seed temp log: %v", err)
+	}
+
+	if err := MergeStoreLog(temp, dest); err != nil {
+		t.Fatalf("MergeStoreLog: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dest, LogFileName))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(data), "from-haul") {
+		t.Fatalf("expected dest log created with haul's entry, got: %s", data)
+	}
+}
+
+func TestMergeStoreLog_NoopWhenTempHasNoLog(t *testing.T) {
+	temp, dest := t.TempDir(), t.TempDir()
+
+	if err := MergeStoreLog(temp, dest); err != nil {
+		t.Fatalf("MergeStoreLog: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dest, LogFileName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no dest log to be created, stat err: %v", err)
+	}
+}
+
 func TestShortFileRef(t *testing.T) {
 	tests := []struct {
 		name string

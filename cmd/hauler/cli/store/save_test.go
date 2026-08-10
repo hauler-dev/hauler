@@ -182,7 +182,7 @@ func TestSaveCmd(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
 	o := newSaveOpts(s.Root, archivePath)
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
@@ -215,7 +215,7 @@ func TestSaveCmd_ContainerdCompatibility(t *testing.T) {
 	o := newSaveOpts(s.Root, archivePath)
 	o.ContainerdCompatibility = true
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd ContainerdCompatibility: %v", err)
 	}
 
@@ -244,7 +244,7 @@ func TestSaveCmd_EmptyStore(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "haul-empty.tar.zst")
 	o := newSaveOpts(s.Root, archivePath)
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd empty store: %v", err)
 	}
 
@@ -315,7 +315,7 @@ func TestSaveCmd_ChunkSize(t *testing.T) {
 	o := newSaveOpts(s.Root, archivePath)
 	o.ChunkSize = "1K"
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd with chunk-size: %v", err)
 	}
 
@@ -344,7 +344,7 @@ func TestSaveCmd_ChunkSize_Invalid(t *testing.T) {
 	o := newSaveOpts(s.Root, filepath.Join(t.TempDir(), "haul.tar.zst"))
 	o.ChunkSize = "0"
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
 		t.Fatal("SaveCmd: expected error for chunk-size=0, got nil")
 	}
 }

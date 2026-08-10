@@ -14,6 +14,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/getter"
@@ -28,7 +29,7 @@ import (
 var legacyChunkRe = regexp.MustCompile(`_\d+\.`)
 
 // extracts the contents of an archived oci layout to an existing oci layout
-func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func LoadCmd(ctx context.Context, o *flags.LoadOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	tempOverride := rso.TempOverride
@@ -66,6 +67,25 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, r
 		if err != nil {
 			return err
 		}
+
+		if auditLevel(ro) != "none" {
+			e := audit.Entry{
+				StoreID:   s.StoreID,
+				Store:     s.Root,
+				Command:   "store load",
+				Reference: audit.SanitizeURL(resolved),
+			}
+			if auditLevel(ro) == "verbose" {
+				sys := audit.BuildSystem()
+				g := audit.BuildGlobal(ro, rso)
+				e.System = &sys
+				e.Global = &g
+			}
+			if err := audit.Append(ro.HaulerDir, e); err != nil {
+				l.Warnf("failed to write audit entry: %v", err)
+			}
+		}
+
 		clearDir(tempDir)
 	}
 
@@ -242,8 +262,17 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		return err
 	}
 
-	_, err = s.CopyAll(ctx, ts, nil)
-	return err
+	if _, err := s.CopyAll(ctx, ts, nil); err != nil {
+		return err
+	}
+
+	// CopyAll only copies OCI content; the haul's audit.log sits alongside
+	// it, not in it, so it has to be merged in separately.
+	if err := audit.MergeStoreLog(tempDir, dest); err != nil {
+		l.Warnf("failed to merge audit log from haul: %v", err)
+	}
+
+	return nil
 }
 
 // matches the <path>.NNN chunk suffix that is used to filter resolveHaulPath

@@ -166,9 +166,8 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			if err != nil {
 				return err
 			}
-			_ = s
 
-			return store.LoadCmd(ctx, o, rso, ro)
+			return store.LoadCmd(ctx, o, s, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -252,9 +251,8 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			if err != nil {
 				return err
 			}
-			_ = s
 
-			return store.SaveCmd(ctx, o, rso, ro)
+			return store.SaveCmd(ctx, o, s, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
