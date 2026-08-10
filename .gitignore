@@ -21,3 +21,4 @@ trivy.out
 CLAUDE.md
 **/CLAUDE.*
 .claude**
+__debug_bin*

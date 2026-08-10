@@ -34,6 +34,12 @@ type Config struct {
 	CertOidcIssuer               string
 	CertOidcIssuerRegexp         string
 	CertGithubWorkflowRepository string
+
+	// TLS options for reaching the registry (signatures/attestations/SBOMs)
+	// and the transparency log. InsecureSkipTLSVerify takes precedence over
+	// CaFile -- see NewVerifier.
+	InsecureSkipTLSVerify bool
+	CaFile                string
 }
 
 // Empty reports whether cfg requests no verification at all.
@@ -119,7 +125,14 @@ func NewVerifier(ctx context.Context, cfg Config, rso *flags.StoreRootOpts, ro *
 		}
 	}
 
+	// insecureSkipTLSVerify takes precedence: when set, caFile is ignored --
+	// mirrors content.BuildTransport's precedence for the plain registry pull.
 	regOpts := options.RegistryOptions{}
+	if cfg.InsecureSkipTLSVerify {
+		regOpts.AllowInsecure = true
+	} else {
+		regOpts.RegistryCACert = cfg.CaFile
+	}
 	ociremoteOpts, err := regOpts.ClientOpts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("constructing registry client options: %w", err)

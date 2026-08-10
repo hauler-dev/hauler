@@ -142,7 +142,7 @@ func stageRemoteChunks(ctx context.Context, fileNames []string, stageDir string)
 // downloadHaul fetches urlStr into destDir, using the server-provided
 // filename when available, and returns the local path it was saved to.
 func downloadHaul(ctx context.Context, urlStr, destDir string) (string, error) {
-	h := getter.NewHttp()
+	h := getter.NewHttp(false, "")
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		return "", err
