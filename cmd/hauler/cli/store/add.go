@@ -720,20 +720,24 @@ func imagesFromImagesLock(chartDir string) ([]string, error) {
 	return out, nil
 }
 
-func applyDefaultRegistry(img string, defaultRegistry string) (string, error) {
+func applyDefaultRegistry(ctx context.Context, img string, defaultRegistry string, forceRegistry bool) (string, error) {
 	img = strings.TrimSpace(strings.TrimPrefix(img, "/"))
 	if img == "" || defaultRegistry == "" {
 		return img, nil
 	}
 
-	ref, err := reference.Parse(img)
-	if err != nil {
-		return "", err
+	if !forceRegistry {
+		ref, err := reference.Parse(img)
+		if err != nil {
+			return "", err
+		}
+
+		if ref.Context().RegistryStr() != "" {
+			return img, nil
+		}
 	}
 
-	if ref.Context().RegistryStr() != "" {
-		return img, nil
-	}
+	log.FromContext(ctx).Debugf("relocating image %s to registry %s", img, defaultRegistry)
 
 	newRef, err := reference.Relocate(img, defaultRegistry)
 	if err != nil {
@@ -828,6 +832,7 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 				AddDependencies: ch.AddDependencies,
 				ExcludeExtras:   excludeExtras,
 				Registry:        registry,
+				ForceRegistry:   o.ForceRegistry,
 				Platform:        platform,
 				ValuesFiles:     valuesFiles,
 			},
@@ -1341,7 +1346,7 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 		}
 
 		for _, image := range images {
-			relocated, err := applyDefaultRegistry(image, j.opts.Registry)
+			relocated, err := applyDefaultRegistry(ctx, image, j.opts.Registry, j.opts.ForceRegistry)
 			if err != nil {
 				if ignoreErrors {
 					l.Warnf("unable to apply registry to image [%s]: %v... skipping...", image, err)
@@ -1350,11 +1355,19 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 				return nil, nil, fmt.Errorf("unable to apply registry to image [%s]: %w", image, err)
 			}
 
-			imageJobs = append(imageJobs, imageJob{
+			job := imageJob{
 				img:           v1.Image{Name: relocated},
 				platform:      j.opts.Platform,
 				excludeExtras: j.opts.ExcludeExtras,
-			})
+			}
+
+			if j.opts.ForceRegistry {
+				// ForceRegistry is only used for pulling the image, therefore the
+				// rewrite is set to the initial image
+				job.rewrite = image
+			}
+
+			imageJobs = append(imageJobs, job)
 		}
 	}
 
