@@ -216,7 +216,43 @@ jobs:
       - name: Verify - hauler store copy
         run: |
           hauler store copy --help
-          # need more tests here
+          # verify via registry target
+          hauler store serve registry --port 5002 --readonly=false &
+          until curl -sf http://localhost:5002/v2/_catalog; do : ; done
+          hauler store copy registry://localhost:5002 --plain-http
+          # verify blobs actually landed in the registry backend
+          [ $(find registry -type f | wc -l) -gt 0 ]
+          # verify --only is accepted (a registry seeded fresh at startup from the
+          # whole store can't prove exclusion here -- registry-side filtering is
+          # covered by --only's own unit tests)
+          hauler store copy registry://localhost:5002 --plain-http --only busybox
+          pkill -f "hauler store serve registry --port 5002"
+          rm -rf registry
+          # verify via directory target (files and charts only; images and cosign artifacts are skipped)
+          hauler store copy dir://./store-copy-output
+          test -f ./store-copy-output/hauler-manifest.yaml
+          rm -rf ./store-copy-output
+
+      - name: Verify - hauler copy
+        run: |
+          hauler copy --help
+          # source registry (seeded from the store, which already has busybox)
+          hauler store serve registry --port 5004 --readonly=false --directory registry-src &
+          until curl -sf http://localhost:5004/v2/_catalog; do : ; done
+          # destination registry
+          hauler store serve registry --port 5005 --readonly=false --directory registry-dst &
+          until curl -sf http://localhost:5005/v2/_catalog; do : ; done
+          # verify a direct registry-to-registry copy, bypassing the store
+          # (destination path is deliberately distinct from anything the destination
+          # registry auto-seeded at startup, so its presence proves the copy, not the seed)
+          hauler copy localhost:5004/hauler-dev/library/busybox:latest localhost:5005/mycopy/busybox:latest --plain-http
+          test -d registry-dst/docker/registry/v2/repositories/mycopy/busybox
+          # verify --platform copies a single platform out of the index
+          hauler copy localhost:5004/hauler-dev/library/busybox:latest localhost:5005/mycopy/busybox-platform:amd64 --plain-http --platform linux/amd64
+          test -d registry-dst/docker/registry/v2/repositories/mycopy/busybox-platform
+          pkill -f "hauler store serve registry --port 5004"
+          pkill -f "hauler store serve registry --port 5005"
+          rm -rf registry-src registry-dst
 
       - name: Verify - hauler store extract
         run: |
