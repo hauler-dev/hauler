@@ -32,7 +32,6 @@ CN = CERTIFICATE AUTHORITY CERTIFICATE
 
 [v3_ca]
 keyUsage = critical, keyCertSign, cRLSign
-extendedKeyUsage = anyExtendedKeyUsage
 basicConstraints = critical, CA:TRUE
 EOF
 
@@ -71,7 +70,6 @@ CN = INTERMEDIARY CERTIFICATE AUTHORITY CERTIFICATE
 
 [v3_ca]
 keyUsage = critical, keyCertSign, cRLSign
-extendedKeyUsage = anyExtendedKeyUsage
 basicConstraints = critical, CA:TRUE
 EOF
 
