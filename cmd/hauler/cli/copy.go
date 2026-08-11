@@ -25,7 +25,7 @@ func addCopy(parent *cobra.Command, ro *flags.CliRootOpts) {
 	cmd := &cobra.Command{
 		Use:     "copy SRC DST",
 		Aliases: []string{"cp"},
-		Short:   "Copy an artifact between registries",
+		Short:   "(EXPERIMENTAL) Copy an artifact between registries",
 		Example: `  # copy an image to another registry
   hauler copy busybox:latest registry.example.com/busybox:latest
 
