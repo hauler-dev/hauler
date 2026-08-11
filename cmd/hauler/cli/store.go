@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v4/pkg/action"
@@ -78,11 +77,18 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			if o.CaFile == "" {
 				o.CaFile = os.Getenv(consts.CaFile)
 			}
-			if o.InsecureSkipTLSVerify == nil {
-				if v := os.Getenv(consts.InsecureSkipTLSVerify); v != "" {
-					b, _ := strconv.ParseBool(v)
-					o.InsecureSkipTLSVerify = &b
-				}
+
+			// record which precedence-carrying flags the user explicitly set, so
+			// the resolvers can let an explicit CLI value win over per-item/annotation
+			o.TlogChanged = cmd.Flags().Changed("use-tlog-verify")
+			o.ExcludeExtrasChanged = cmd.Flags().Changed("exclude-extras")
+			o.InsecureChanged = cmd.Flags().Changed("insecure-skip-tls-verify")
+			o.StoreChanged = cmd.Flags().Changed("store")
+			o.RetriesChanged = cmd.Flags().Changed("retries")
+
+			// env var only applies when the flag wasn't set, so an explicit --insecure-skip-tls-verify=false still wins
+			if !o.InsecureChanged && os.Getenv(consts.InsecureSkipTLSVerify) == "true" {
+				o.InsecureSkipTLSVerify = true
 			}
 
 			// --dry-run requires --products
@@ -123,12 +129,6 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return err
 			}
 			rso.BlobConcurrency = bc
-
-			// resolve *bool: nil unless the user explicitly passed the flag
-			if cmd.Flags().Changed("insecure-skip-tls-verify") {
-				v, _ := cmd.Flags().GetBool("insecure-skip-tls-verify")
-				o.InsecureSkipTLSVerify = &v
-			}
 
 			return nil
 		},
@@ -411,11 +411,9 @@ func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 			if o.CaFile == "" {
 				o.CaFile = os.Getenv(consts.CaFile)
 			}
-			if o.InsecureSkipTLSVerify == nil {
-				if v := os.Getenv(consts.InsecureSkipTLSVerify); v != "" {
-					b, _ := strconv.ParseBool(v)
-					o.InsecureSkipTLSVerify = &b
-				}
+			// env var only applies when the flag wasn't set, so an explicit --insecure-skip-tls-verify=false still wins
+			if !cmd.Flags().Changed("insecure-skip-tls-verify") && os.Getenv(consts.InsecureSkipTLSVerify) == "true" {
+				o.InsecureSkipTLSVerify = true
 			}
 			return nil
 		},

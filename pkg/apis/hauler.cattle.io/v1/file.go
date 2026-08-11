@@ -26,5 +26,5 @@ type File struct {
 	// TLS options for verifying the file contents for remote files.
 	// If not specified, the default system CA bundle will be used.
 	CaFile                string `json:"ca-file"`
-	InsecureSkipTLSVerify *bool  `json:"insecure-skip-tls-verify,omitempty"`
+	InsecureSkipTLSVerify bool   `json:"insecure-skip-tls-verify"`
 }
