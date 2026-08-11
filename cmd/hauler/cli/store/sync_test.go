@@ -2033,7 +2033,7 @@ func TestSyncImages_ErrorPropagation(t *testing.T) {
 // goroutine has fully returned (including cancelling gctx on failure), so
 // jobs run strictly in slice order and the good jobs are guaranteed to
 // observe the already-cancelled context before doing anything.
-func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
+func TestRunImageJobs_CancelledJobsDoNotLogResolvingImage(t *testing.T) {
 	host, remoteOpts := newTestRegistry(t)
 
 	const nGood = 3
@@ -2047,8 +2047,9 @@ func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
 
 	s := newTestStore(t)
 	var buf bytes.Buffer
-	// "adding image [...]" now logs at Debug (cmd/hauler/cli/store/add.go),
-	// so this test needs Debug-level output visible. Per-logger .Level() is
+	// "resolving image [...]" (storeImage's per-job startup line in
+	// cmd/hauler/cli/store/add.go) logs at Debug, so this test needs
+	// Debug-level output visible. Per-logger .Level() is
 	// not sufficient on its own: zerolog's Logger.should() gates on
 	// max(logger.level, zerolog.GlobalLevel()) -- and GlobalLevel is
 	// process-global state that other tests in this package mutate (e.g.
@@ -2073,9 +2074,9 @@ func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
 		t.Fatal("runImageJobs: expected error, got nil")
 	}
 
-	got := strings.Count(buf.String(), "adding image [")
+	got := strings.Count(buf.String(), "resolving image [")
 	if got != 1 {
-		t.Errorf("\"adding image [\" logged %d times, want exactly 1 (only the failed job should have attempted logging; the %d good jobs queued after it must never start)\nfull log:\n%s", got, nGood, buf.String())
+		t.Errorf("\"resolving image [\" logged %d times, want exactly 1 (only the failed job should have attempted logging; the %d good jobs queued after it must never start)\nfull log:\n%s", got, nGood, buf.String())
 	}
 }
 
