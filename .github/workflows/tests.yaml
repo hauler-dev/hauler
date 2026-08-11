@@ -216,7 +216,20 @@ jobs:
       - name: Verify - hauler store copy
         run: |
           hauler store copy --help
-          # need more tests here
+          # verify via registry target
+          hauler store serve registry --port 5002 --readonly=false &
+          until curl -sf http://localhost:5002/v2/_catalog; do : ; done
+          hauler store copy registry://localhost:5002 --plain-http
+          # verify blobs actually landed in the registry backend
+          [ $(find registry -type f | wc -l) -gt 0 ]
+          # verify via --only
+          hauler store copy registry://localhost:5002 --plain-http --only busybox
+          pkill -f "hauler store serve registry --port 5002"
+          rm -rf registry
+          # verify via directory target (files and charts only; images and cosign artifacts are skipped)
+          hauler store copy dir://./store-copy-output
+          test -f ./store-copy-output/hauler-manifest.yaml
+          rm -rf ./store-copy-output
 
       - name: Verify - hauler store extract
         run: |
@@ -354,9 +367,9 @@ jobs:
           until curl -sf http://localhost:5001/v2/_catalog; do : ; done
           pkill -f "hauler store serve registry --port 5001 --readonly"
           # verify via registry with different port with readonly with tls
-          # hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
-          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:5001/v2/_catalog; do : ; done
-          # pkill -f "hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+          hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:5001/v2/_catalog; do : ; done
+          pkill -f "hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
 
       - name: Verify - hauler store serve fileserver
         run: |
@@ -374,9 +387,9 @@ jobs:
           until curl -sf http://localhost:8000; do : ; done
           pkill -f "hauler store serve fileserver --port 8000 --timeout 120"
           # verify via fileserver with different port with timeout and tls
-          # hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
-          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
-          # pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+          hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
+          pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
 
       - name: Verify Hauler Store Contents
         run: |
