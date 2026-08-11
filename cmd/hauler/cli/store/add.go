@@ -389,7 +389,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 	start := time.Now()
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
-	l.Debugf("adding image [%s] from local Docker daemon to the store", i.Name)
+	l.Debugf("resolving image [%s] from local Docker daemon (rewrite=%q)", i.Name, rewrite)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
@@ -480,7 +480,11 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		return err
 	}
 
-	log.BaseFromContext(ctx).Debugf("adding image [%s] to the store", i.Name)
+	insecureSkipTLSVerify := derefInsecure(i.InsecureSkipTLSVerify)
+	caFile := i.CaFile
+
+	log.BaseFromContext(ctx).Debugf("resolving image [%s] (platform=%q, excludeExtras=%t, verified=%t, insecureSkipTLSVerify=%t, caFile=%q, rewrite=%q, digest=%q)",
+		i.Name, platform, excludeExtras, verified, insecureSkipTLSVerify, caFile, rewrite, pinnedDigest)
 
 	r, err := name.ParseReference(i.Name)
 	if err != nil {
@@ -492,9 +496,6 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 			return err
 		}
 	}
-
-	insecureSkipTLSVerify := derefInsecure(i.InsecureSkipTLSVerify)
-	caFile := i.CaFile
 
 	// fetch image along with any associated signatures and attestations.
 	// A fresh store.ImageStats is built inside the closure on every attempt,

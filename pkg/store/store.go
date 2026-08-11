@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/containerd/containerd/v2/core/remotes"
-	"github.com/containerd/errdefs"
 	"github.com/google/go-containerregistry/pkg/authn"
 	gname "github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -298,7 +295,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		// verified index, so the chain of trust holds.
 		imgOpts := append([]remote.Option{}, allOpts...)
 		if platform != "" {
-			p, err := parsePlatform(platform)
+			p, err := ParsePlatform(platform)
 			if err != nil {
 				return "", err
 			}
@@ -640,8 +637,8 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, 
 	return saved, nil
 }
 
-// parsePlatform parses a platform string in "os/arch[/variant]" format into a v1.Platform.
-func parsePlatform(s string) (v1.Platform, error) {
+// ParsePlatform parses a platform string in "os/arch[/variant]" format into a v1.Platform.
+func ParsePlatform(s string) (v1.Platform, error) {
 	parts := strings.SplitN(s, "/", 3)
 	if len(parts) < 2 {
 		return v1.Platform{}, fmt.Errorf("invalid platform %q: expected os/arch[/variant]", s)
@@ -698,168 +695,14 @@ func (l *Layout) Copy(ctx context.Context, ref string, to content.Target, toRef 
 	}
 
 	// Recursively copy the descriptor graph (matches oras.Copy behavior)
-	if err := l.copyDescriptorGraph(ctx, desc, fetcher, pusher); err != nil {
+	if err := content.CopyDescriptorGraph(ctx, desc, fetcher, pusher); err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
 	return desc, nil
 }
 
-// copyDescriptorGraph recursively copies a descriptor and all its referenced content
-// This matches the behavior of oras.Copy by walking the entire descriptor graph
-func (l *Layout) copyDescriptorGraph(ctx context.Context, desc ocispec.Descriptor, fetcher remotes.Fetcher, pusher remotes.Pusher) (err error) {
-	switch desc.MediaType {
-	case ocispec.MediaTypeImageManifest, consts.DockerManifestSchema2:
-		// Fetch and parse the manifest
-		rc, err := fetcher.Fetch(ctx, desc)
-		if err != nil {
-			return fmt.Errorf("failed to fetch manifest: %w", err)
-		}
-		defer func() {
-			if closeErr := rc.Close(); closeErr != nil && err == nil {
-				err = fmt.Errorf("failed to close manifest reader: %w", closeErr)
-			}
-		}()
-
-		data, err := io.ReadAll(rc)
-		if err != nil {
-			return fmt.Errorf("failed to read manifest: %w", err)
-		}
-
-		var manifest ocispec.Manifest
-		if err := json.Unmarshal(data, &manifest); err != nil {
-			return fmt.Errorf("failed to unmarshal manifest: %w", err)
-		}
-
-		// Copy config blob
-		if err := l.copyDescriptor(ctx, manifest.Config, fetcher, pusher); err != nil {
-			return fmt.Errorf("failed to copy config: %w", err)
-		}
-
-		// Copy all layer blobs
-		for _, layer := range manifest.Layers {
-			if err := l.copyDescriptor(ctx, layer, fetcher, pusher); err != nil {
-				return fmt.Errorf("failed to copy layer: %w", err)
-			}
-		}
-
-		// Push the manifest itself using the already-fetched data to avoid double-fetching
-		if err := l.pushData(ctx, desc, data, pusher); err != nil {
-			return fmt.Errorf("failed to push manifest: %w", err)
-		}
-
-	case ocispec.MediaTypeImageIndex, consts.DockerManifestListSchema2:
-		// Fetch and parse the index
-		rc, err := fetcher.Fetch(ctx, desc)
-		if err != nil {
-			return fmt.Errorf("failed to fetch index: %w", err)
-		}
-		defer func() {
-			if closeErr := rc.Close(); closeErr != nil && err == nil {
-				err = fmt.Errorf("failed to close index reader: %w", closeErr)
-			}
-		}()
-
-		data, err := io.ReadAll(rc)
-		if err != nil {
-			return fmt.Errorf("failed to read index: %w", err)
-		}
-
-		var index ocispec.Index
-		if err := json.Unmarshal(data, &index); err != nil {
-			return fmt.Errorf("failed to unmarshal index: %w", err)
-		}
-
-		// Recursively copy each child (could be manifest or nested index)
-		for _, child := range index.Manifests {
-			if err := l.copyDescriptorGraph(ctx, child, fetcher, pusher); err != nil {
-				return fmt.Errorf("failed to copy child: %w", err)
-			}
-		}
-
-		// Push the index itself using the already-fetched data to avoid double-fetching
-		if err := l.pushData(ctx, desc, data, pusher); err != nil {
-			return fmt.Errorf("failed to push index: %w", err)
-		}
-
-	default:
-		// For other types (config blobs, layers, etc.), just copy the blob
-		if err := l.copyDescriptor(ctx, desc, fetcher, pusher); err != nil {
-			return fmt.Errorf("failed to copy descriptor: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// copyDescriptor copies a single descriptor from source to target
-func (l *Layout) copyDescriptor(ctx context.Context, desc ocispec.Descriptor, fetcher remotes.Fetcher, pusher remotes.Pusher) (err error) {
-	// Fetch the content
-	rc, err := fetcher.Fetch(ctx, desc)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if closeErr := rc.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("failed to close reader: %w", closeErr)
-		}
-	}()
-
-	// Get a writer from the pusher
-	writer, err := pusher.Push(ctx, desc)
-	if err != nil {
-		if errdefs.IsAlreadyExists(err) {
-			zerolog.Ctx(ctx).Debug().Msgf("existing blob: %s", desc.Digest)
-			return nil // content already present on remote
-		}
-		return err
-	}
-	defer func() {
-		if closeErr := writer.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
-
-	// Copy the content
-	n, err := io.Copy(writer, rc)
-	if err != nil {
-		return err
-	}
-
-	// Commit the written content with the expected digest
-	if err := writer.Commit(ctx, n, desc.Digest); err != nil {
-		return err
-	}
-	zerolog.Ctx(ctx).Debug().Msgf("pushed blob: %s", desc.Digest)
-	return nil
-}
-
-// pushData pushes already-fetched data to the pusher without re-fetching.
-// This is used when we've already read the data for parsing and want to avoid double-fetching.
-func (l *Layout) pushData(ctx context.Context, desc ocispec.Descriptor, data []byte, pusher remotes.Pusher) (err error) {
-	// Get a writer from the pusher
-	writer, err := pusher.Push(ctx, desc)
-	if err != nil {
-		if errdefs.IsAlreadyExists(err) {
-			return nil // content already present on remote
-		}
-		return fmt.Errorf("failed to get writer: %w", err)
-	}
-	defer func() {
-		if closeErr := writer.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("failed to close writer: %w", closeErr)
-		}
-	}()
-
-	// Write the data using io.Copy to handle short writes properly
-	n, err := io.Copy(writer, bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("failed to write data: %w", err)
-	}
-
-	// Commit the written content with the expected digest
-	return writer.Commit(ctx, n, desc.Digest)
-}
+// copyDescriptorGraph, copyDescriptor, and pushData moved to pkg/content.CopyDescriptorGraph.
 
 // CopyAll performs bulk copy operations on the stores oci layout to a provided target
 func (l *Layout) CopyAll(ctx context.Context, to content.Target, toMapper func(string) (string, error)) ([]ocispec.Descriptor, error) {

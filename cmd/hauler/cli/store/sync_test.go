@@ -2025,8 +2025,8 @@ func TestSyncImages_ErrorPropagation(t *testing.T) {
 // bug: with concurrency=1 and a bad ref placed before several good refs, the
 // bad job's failure cancels the errgroup's derived context. Jobs queued after
 // it never get a chance to call s.AddImage, so they must never log the
-// "adding image [...] to the store" INFO line either -- otherwise a failed
-// sync of 1 image looks like it attempted all of them.
+// "resolving image [...]" line either -- otherwise a failed sync of 1 image
+// looks like it attempted all of them.
 //
 // concurrency=1 makes cancellation deterministic: errgroup.SetLimit(1) means
 // each g.Go call blocks acquiring its semaphore slot until the previous job's
@@ -2047,7 +2047,7 @@ func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
 
 	s := newTestStore(t)
 	var buf bytes.Buffer
-	// "adding image [...]" now logs at Debug (cmd/hauler/cli/store/add.go),
+	// "resolving image [...]" now logs at Debug (cmd/hauler/cli/store/add.go),
 	// so this test needs Debug-level output visible. Per-logger .Level() is
 	// not sufficient on its own: zerolog's Logger.should() gates on
 	// max(logger.level, zerolog.GlobalLevel()) -- and GlobalLevel is
@@ -2073,9 +2073,9 @@ func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
 		t.Fatal("runImageJobs: expected error, got nil")
 	}
 
-	got := strings.Count(buf.String(), "adding image [")
+	got := strings.Count(buf.String(), "resolving image [")
 	if got != 1 {
-		t.Errorf("\"adding image [\" logged %d times, want exactly 1 (only the failed job should have attempted logging; the %d good jobs queued after it must never start)\nfull log:\n%s", got, nGood, buf.String())
+		t.Errorf("\"resolving image [\" logged %d times, want exactly 1 (only the failed job should have attempted logging; the %d good jobs queued after it must never start)\nfull log:\n%s", got, nGood, buf.String())
 	}
 }
 
