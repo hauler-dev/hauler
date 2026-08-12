@@ -2220,6 +2220,39 @@ func TestResolveChartJobs_CredentialFields(t *testing.T) {
 	}
 }
 
+func TestResolveChartJobs_CaFilePrecedence(t *testing.T) {
+	tests := []struct {
+		name       string
+		cli        string
+		annotation string
+		perChart   string
+		want       string
+	}{
+		{name: "annotation used when CLI and per-chart unset", annotation: "/ann/ca.crt", want: "/ann/ca.crt"},
+		{name: "per-chart wins over annotation", annotation: "/ann/ca.crt", perChart: "/chart/ca.crt", want: "/chart/ca.crt"},
+		{name: "CLI wins over per-chart and annotation", cli: "/cli/ca.crt", annotation: "/ann/ca.crt", perChart: "/chart/ca.crt", want: "/cli/ca.crt"},
+		{name: "none set stays empty", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			o := &flags.SyncOpts{CaFile: tc.cli}
+			a := map[string]string{}
+			if tc.annotation != "" {
+				a[consts.ImageAnnotationCaFile] = tc.annotation
+			}
+
+			jobs, err := resolveChartJobs(o, a, "/manifests", []v1.Chart{{Name: "rancher", CaFile: tc.perChart}})
+			if err != nil {
+				t.Fatalf("resolveChartJobs: %v", err)
+			}
+			if got := jobs[0].opts.ChartOpts.CaFile; got != tc.want {
+				t.Errorf("CaFile = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestResolveChartJobs_CredentialEnv pins that UsernameEnv/PasswordEnv are
 // resolved into ChartOpts.Username/Password via resolveChartCreds.
 func TestResolveChartJobs_CredentialEnv(t *testing.T) {

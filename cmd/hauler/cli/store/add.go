@@ -821,7 +821,7 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 		if caFile == "" {
 			if ch.CaFile != "" {
 				caFile = ch.CaFile
-			} else if annotations[consts.ImageAnnotationCaFile] == "true" {
+			} else if annotations[consts.ImageAnnotationCaFile] != "" {
 				caFile = annotations[consts.ImageAnnotationCaFile]
 			}
 		}
