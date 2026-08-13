@@ -189,7 +189,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp(derefInsecure(o.InsecureSkipTLSVerify), o.CaFile)
+				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -241,7 +241,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
 				l.Debugf("detected remote image.txt... starting download... [%s]", haulPath)
 
-				h := getter.NewHttp(derefInsecure(o.InsecureSkipTLSVerify), o.CaFile)
+				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
 				parsedURL, err := url.Parse(haulPath)
 				if err != nil {
 					return err
@@ -287,28 +287,16 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	return nil
 }
 
-// resolveInsecure applies precedence: cli > per-item > annotation.
-// A non-nil per-item pointer wins outright — including an explicit false — so an
-// individual file/image/chart can opt out of an insecure annotation or the global
-// --insecure-skip-tls-verify flag. nil means "not set on the item", which falls
-// through to the annotation, then the global flag.
-func resolveInsecure(item *bool, ann map[string]string, global *bool) bool {
-	if global != nil {
-		return *global
+// resolveBoolFlag applies CLI-first precedence for a plain-bool flag: an
+// explicitly-set CLI flag wins outright (even when false); otherwise the flag
+// is on if the resolved CLI value (e.g. from an env var), the per-item field,
+// or the annotation is true. Plain bools have no unset state, so per-item and
+// annotation can only turn a flag on, never force it back off.
+func resolveBoolFlag(item, annTrue, global, cliChanged bool) bool {
+	if cliChanged {
+		return global
 	}
-	if item != nil {
-		return *item
-	}
-	if ann != nil && ann[consts.ImageAnnotationInsecureSkipTLSVerify] == "true" {
-		return true
-	}
-	return false
-}
-
-// derefInsecure is a nil-safe read of a *bool for logging/plumbing where a plain
-// bool is needed. nil reads as false.
-func derefInsecure(p *bool) bool {
-	return p != nil && *p
+	return global || item || annTrue
 }
 
 func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout) error {
@@ -347,11 +335,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				a := cfg.GetAnnotations()
-				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores)
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
 				if err != nil {
 					return err
 				}
-				docRso, err := resolveDocRetries(a, rso)
+				docRso, err := resolveDocRetries(a, rso, o.RetriesChanged)
 				if err != nil {
 					return err
 				}
@@ -374,11 +362,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				}
 
 				a := cfg.GetAnnotations()
-				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores)
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
 				if err != nil {
 					return err
 				}
-				docRso, err := resolveDocRetries(a, rso)
+				docRso, err := resolveDocRetries(a, rso, o.RetriesChanged)
 				if err != nil {
 					return err
 				}
@@ -403,11 +391,11 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 					return err
 				}
 				a := cfg.GetAnnotations()
-				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores)
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
 				if err != nil {
 					return err
 				}
-				docRso, err := resolveDocRetries(a, rso)
+				docRso, err := resolveDocRetries(a, rso, o.RetriesChanged)
 				if err != nil {
 					return err
 				}
@@ -433,7 +421,12 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 
 // resolveTargetStore picks a doc's store based on its hauler.dev/store annotation,
 // falling back to def. Opens (or reuses, via targetStores) the target store otherwise.
-func resolveTargetStore(ctx context.Context, a map[string]string, def *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout) (*store.Layout, error) {
+// An explicit CLI --store wins: cliStoreSet short-circuits to def, ignoring the annotation.
+func resolveTargetStore(ctx context.Context, a map[string]string, def *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout, cliStoreSet bool) (*store.Layout, error) {
+	if cliStoreSet {
+		return def, nil
+	}
+
 	target := a[consts.AnnotationTargetStore]
 	if target == "" {
 		return def, nil
@@ -466,8 +459,13 @@ func resolveTargetStore(ctx context.Context, a map[string]string, def *store.Lay
 
 // resolveDocRetries returns a copy of rso with Retries overridden by a doc's
 // hauler.dev/retries annotation, or rso unchanged if it's not set. Copy, not
-// mutation, so it can't leak into a sibling doc.
-func resolveDocRetries(a map[string]string, rso *flags.StoreRootOpts) (*flags.StoreRootOpts, error) {
+// mutation, so it can't leak into a sibling doc. An explicit CLI --retries
+// wins: cliRetriesSet returns rso unchanged, ignoring the annotation.
+func resolveDocRetries(a map[string]string, rso *flags.StoreRootOpts, cliRetriesSet bool) (*flags.StoreRootOpts, error) {
+	if cliRetriesSet {
+		return rso, nil
+	}
+
 	v, ok := a[consts.AnnotationRetries]
 	if !ok || v == "" {
 		return rso, nil
@@ -604,10 +602,12 @@ type imageJob struct {
 	certGithubWorkflowRepository         string
 }
 
-// resolveImageJobs applies the precedence rules (per-image > annotation >
-// CLI, except registry relocation which is CLI > annotation) to every image
-// in images, producing one imageJob per image. It is pure -- cosign
-// verification happens later, inside the pull worker; see resolveAndVerify.
+// resolveImageJobs applies the precedence rules (CLI > per-image > annotation)
+// to every image in images, producing one imageJob per image. For the boolean
+// flags (tlog, exclude-extras, insecure-skip-tls-verify) an explicit CLI flag
+// wins outright; otherwise per-image or annotation can only turn them on (see
+// resolveBoolFlag). It is pure -- cosign verification happens later, inside the
+// pull worker; see resolveAndVerify.
 func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image) ([]imageJob, error) {
 	var jobs []imageJob
 
@@ -635,11 +635,8 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 			i.CaFile = o.CaFile
 		}
 
-		insecureSkipTLSVerify := false
-		if o.CaFile == "" {
-			insecureSkipTLSVerify = resolveInsecure(i.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
-		}
-		i.InsecureSkipTLSVerify = &insecureSkipTLSVerify
+		// a CA file and skipping TLS verification are mutually exclusive: providing one forces verification on
+		i.InsecureSkipTLSVerify = o.CaFile == "" && resolveBoolFlag(i.InsecureSkipTLSVerify, a[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
 
 		if i.Local {
 			needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
@@ -669,71 +666,71 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 
 		if needsPubKeyVerification {
 			key := o.Key
-			if o.Key == "" && a[consts.ImageAnnotationKey] != "" {
-				expanded, err := homedir.Expand(a[consts.ImageAnnotationKey])
-				if err != nil {
-					return nil, err
+			if o.Key == "" {
+				if i.Key != "" {
+					expanded, err := homedir.Expand(i.Key)
+					if err != nil {
+						return nil, err
+					}
+					key = expanded
+				} else if a[consts.ImageAnnotationKey] != "" {
+					expanded, err := homedir.Expand(a[consts.ImageAnnotationKey])
+					if err != nil {
+						return nil, err
+					}
+					key = expanded
 				}
-				key = expanded
-			}
-			if i.Key != "" {
-				expanded, err := homedir.Expand(i.Key)
-				if err != nil {
-					return nil, err
-				}
-				key = expanded
 			}
 
-			tlog := o.Tlog
-			if !o.Tlog && a[consts.ImageAnnotationTlog] == "true" {
-				tlog = true
-			}
-			if i.Tlog {
-				tlog = i.Tlog
-			}
+			tlog := resolveBoolFlag(i.Tlog, a[consts.ImageAnnotationTlog] == "true", o.Tlog, o.TlogChanged)
 
 			job.needsPubKey = true
 			job.key = key
 			job.tlog = tlog
 		} else if needsKeylessVerificaton { //Keyless signature verification
 			certIdentityRegexp := o.CertIdentityRegexp
-			if o.CertIdentityRegexp == "" && a[consts.ImageAnnotationCertIdentityRegexp] != "" {
-				certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
-			}
-			if i.CertIdentityRegexp != "" {
-				certIdentityRegexp = i.CertIdentityRegexp
+			if o.CertIdentityRegexp == "" {
+				if i.CertIdentityRegexp != "" {
+					certIdentityRegexp = i.CertIdentityRegexp
+				} else if a[consts.ImageAnnotationCertIdentityRegexp] != "" {
+					certIdentityRegexp = a[consts.ImageAnnotationCertIdentityRegexp]
+				}
 			}
 
 			certIdentity := o.CertIdentity
-			if o.CertIdentity == "" && a[consts.ImageAnnotationCertIdentity] != "" {
-				certIdentity = a[consts.ImageAnnotationCertIdentity]
-			}
-			if i.CertIdentity != "" {
-				certIdentity = i.CertIdentity
+			if o.CertIdentity == "" {
+				if i.CertIdentity != "" {
+					certIdentity = i.CertIdentity
+				} else if a[consts.ImageAnnotationCertIdentity] != "" {
+					certIdentity = a[consts.ImageAnnotationCertIdentity]
+				}
 			}
 
 			certOidcIssuer := o.CertOidcIssuer
-			if o.CertOidcIssuer == "" && a[consts.ImageAnnotationCertOidcIssuer] != "" {
-				certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
-			}
-			if i.CertOidcIssuer != "" {
-				certOidcIssuer = i.CertOidcIssuer
+			if o.CertOidcIssuer == "" {
+				if i.CertOidcIssuer != "" {
+					certOidcIssuer = i.CertOidcIssuer
+				} else if a[consts.ImageAnnotationCertOidcIssuer] != "" {
+					certOidcIssuer = a[consts.ImageAnnotationCertOidcIssuer]
+				}
 			}
 
 			certOidcIssuerRegexp := o.CertOidcIssuerRegexp
-			if o.CertOidcIssuerRegexp == "" && a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
-				certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
-			}
-			if i.CertOidcIssuerRegexp != "" {
-				certOidcIssuerRegexp = i.CertOidcIssuerRegexp
+			if o.CertOidcIssuerRegexp == "" {
+				if i.CertOidcIssuerRegexp != "" {
+					certOidcIssuerRegexp = i.CertOidcIssuerRegexp
+				} else if a[consts.ImageAnnotationCertOidcIssuerRegexp] != "" {
+					certOidcIssuerRegexp = a[consts.ImageAnnotationCertOidcIssuerRegexp]
+				}
 			}
 
 			certGithubWorkflowRepository := o.CertGithubWorkflowRepository
-			if o.CertGithubWorkflowRepository == "" && a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
-				certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
-			}
-			if i.CertGithubWorkflowRepository != "" {
-				certGithubWorkflowRepository = i.CertGithubWorkflowRepository
+			if o.CertGithubWorkflowRepository == "" {
+				if i.CertGithubWorkflowRepository != "" {
+					certGithubWorkflowRepository = i.CertGithubWorkflowRepository
+				} else if a[consts.ImageAnnotationCertGithubWorkflowRepository] != "" {
+					certGithubWorkflowRepository = a[consts.ImageAnnotationCertGithubWorkflowRepository]
+				}
 			}
 
 			job.needsKeyless = true
@@ -745,11 +742,12 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 		}
 
 		platform := o.Platform
-		if o.Platform == "" && a[consts.ImageAnnotationPlatform] != "" {
-			platform = a[consts.ImageAnnotationPlatform]
-		}
-		if i.Platform != "" {
-			platform = i.Platform
+		if o.Platform == "" {
+			if i.Platform != "" {
+				platform = i.Platform
+			} else if a[consts.ImageAnnotationPlatform] != "" {
+				platform = a[consts.ImageAnnotationPlatform]
+			}
 		}
 
 		rewrite := ""
@@ -757,13 +755,7 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 			rewrite = i.Rewrite
 		}
 
-		excludeExtras := o.ExcludeExtras
-		if !o.ExcludeExtras && a[consts.ImageAnnotationExcludeExtras] == "true" {
-			excludeExtras = true
-		}
-		if i.ExcludeExtras {
-			excludeExtras = i.ExcludeExtras
-		}
+		excludeExtras := resolveBoolFlag(i.ExcludeExtras, a[consts.ImageAnnotationExcludeExtras] == "true", o.ExcludeExtras, o.ExcludeExtrasChanged)
 
 		job.platform = platform
 		job.rewrite = rewrite
@@ -795,7 +787,7 @@ func (j imageJob) verifyConfig() cosign.Config {
 		return cosign.Config{
 			Key:                   j.key,
 			Tlog:                  j.tlog,
-			InsecureSkipTLSVerify: derefInsecure(j.img.InsecureSkipTLSVerify),
+			InsecureSkipTLSVerify: j.img.InsecureSkipTLSVerify,
 			CaFile:                j.img.CaFile,
 		}
 	case j.needsKeyless:
@@ -805,7 +797,7 @@ func (j imageJob) verifyConfig() cosign.Config {
 			CertOidcIssuer:               j.certOidcIssuer,
 			CertOidcIssuerRegexp:         j.certOidcIssuerRegexp,
 			CertGithubWorkflowRepository: j.certGithubWorkflowRepository,
-			InsecureSkipTLSVerify:        derefInsecure(j.img.InsecureSkipTLSVerify),
+			InsecureSkipTLSVerify:        j.img.InsecureSkipTLSVerify,
 			CaFile:                       j.img.CaFile,
 		}
 	default:
@@ -1152,9 +1144,10 @@ type fileJob struct {
 	file v1.File
 }
 
-// resolveFileJobs converts every v1.File in files into a fileJob, applying
-// the caFile/insecure precedence rules (per-file > annotation > global) --
-// see resolveInsecure. It is pure.
+// resolveFileJobs converts every v1.File in files into a fileJob. caFile is
+// CLI > per-file > annotation; insecureSkipTLSVerify is CLI-first (an explicit
+// CLI flag wins, otherwise per-file or annotation can only turn it on -- see
+// resolveBoolFlag). It is pure.
 func resolveFileJobs(o *flags.SyncOpts, a map[string]string, files []v1.File) []fileJob {
 	jobs := make([]fileJob, 0, len(files))
 	for _, f := range files {
@@ -1166,11 +1159,8 @@ func resolveFileJobs(o *flags.SyncOpts, a map[string]string, files []v1.File) []
 			f.CaFile = o.CaFile
 		}
 
-		insecure := false
-		if o.CaFile == "" {
-			insecure = resolveInsecure(f.InsecureSkipTLSVerify, a, o.InsecureSkipTLSVerify)
-		}
-		f.InsecureSkipTLSVerify = &insecure
+		// a CA file and skipping TLS verification are mutually exclusive: providing one forces verification on
+		f.InsecureSkipTLSVerify = o.CaFile == "" && resolveBoolFlag(f.InsecureSkipTLSVerify, a[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
 
 		jobs = append(jobs, fileJob{file: f})
 	}

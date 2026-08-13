@@ -41,6 +41,6 @@ type Chart struct {
 	CertFile              string `json:"certFile,omitempty"`
 	KeyFile               string `json:"keyFile,omitempty"`
 	CaFile                string `json:"caFile,omitempty"`
-	InsecureSkipTLSVerify *bool  `json:"insecureSkipTLSVerify,omitempty"`
+	InsecureSkipTLSVerify bool   `json:"insecureSkipTLSVerify,omitempty"`
 	PlainHTTP             bool   `json:"plainHTTP,omitempty"`
 }

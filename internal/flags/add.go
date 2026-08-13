@@ -22,7 +22,7 @@ type AddImageOpts struct {
 	ExcludeExtras                bool
 	Local                        bool
 	CaFile                       string
-	InsecureSkipTLSVerify        *bool
+	InsecureSkipTLSVerify        bool
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
@@ -39,7 +39,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling the image")
 	f.BoolVar(&o.Local, "local", false, "(Optional) Add image from the local Docker daemon instead of a remote registry")
 	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
-	f.Bool("insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
+	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 }
 
 type AddFileOpts struct {
