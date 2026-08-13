@@ -14,7 +14,7 @@ release:
   make_latest: false
 
 env:
-  - vpkg=hauler.dev/go/hauler/internal/version
+  - vpkg=hauler.dev/go/hauler/v2/internal/version
 
 builds:
   - dir: ./cmd/hauler/.
@@ -45,6 +45,12 @@ homebrew_casks:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     description: "Hauler: Airgap Swiss Army Knife"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hauler"]
+          end
 
 dockers_v2:
   - id: hauler
@@ -63,7 +69,7 @@ dockers_v2:
       "classification": "UNCLASSIFIED"
       "org.opencontainers.image.created": "{{.Date}}"
       "org.opencontainers.image.description": "Hauler: Airgap Swiss Army Knife"
-      "org.opencontainers.image.name": "{{.ProjectName}}-debug"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
       "org.opencontainers.image.revision": "{{.FullCommit}}"
       "org.opencontainers.image.source": "{{.GitURL}}"
       "org.opencontainers.image.version": "{{.Version}}"

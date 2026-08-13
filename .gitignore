@@ -17,5 +17,8 @@ cmd/hauler/binaries
 testdata/certs/
 coverage.out
 vulncheck.out
+trivy.out
 CLAUDE.md
 **/CLAUDE.*
+.claude**
+__debug_bin*

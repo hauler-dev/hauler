@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/mholt/archives"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 const (
@@ -160,66 +160,130 @@ func Unarchive(ctx context.Context, tarball, dst string) error {
 	return nil
 }
 
-var chunkSuffixRe = regexp.MustCompile(`^(.+)_(\d+)$`)
+var chunkSuffixRe = regexp.MustCompile(`^(.+)\.(\d{3,})$`)
 
-// chunkInfo checks whether archivePath matches the chunk naming pattern (<base>_N<ext>).
-// Returns the base path (without index), compound extension, numeric index, and whether it matched.
-func chunkInfo(archivePath string) (base, ext string, index int, ok bool) {
+// checks whether archivePath matches the <name>.NNN chunk naming pattern
+func chunkInfo(archivePath string) (base string, index int, ok bool) {
 	dir := filepath.Dir(archivePath)
 	name := filepath.Base(archivePath)
 
-	// strip compound extension (e.g. .tar.zst)
-	nameBase := name
-	nameExt := ""
-	for filepath.Ext(nameBase) != "" {
-		nameExt = filepath.Ext(nameBase) + nameExt
-		nameBase = strings.TrimSuffix(nameBase, filepath.Ext(nameBase))
+	m := chunkSuffixRe.FindStringSubmatch(name)
+	if m == nil {
+		return "", 0, false
 	}
 
-	m := chunkSuffixRe.FindStringSubmatch(nameBase)
+	idx, err := strconv.Atoi(m[2])
+	if err != nil || idx == 0 {
+		return "", 0, false
+	}
+	return filepath.Join(dir, m[1]), idx, true
+}
+
+// the safe subset of the old <base>_N<ext> naming (e.g. haul_0.tar.zst):
+// dot-free base, 0-based index with no leading zero, simple extension. A
+// dotted base like a version string ("airgapped-docs_0.1.8...") is exactly
+// what caused the original false-positive bug, so it's never matched here —
+// only names where the split can't be ambiguous get legacy support back.
+var legacyChunkSuffixRe = regexp.MustCompile(`^([^./]+)_(0|[1-9]\d*)\.([A-Za-z0-9]+(?:\.[A-Za-z0-9]+)?)$`)
+
+// checks whether archivePath matches the unambiguous legacy chunk pattern.
+// See legacyChunkSuffixRe for exactly what is and isn't recognized.
+func legacyChunkInfo(archivePath string) (base, ext string, index int, ok bool) {
+	dir := filepath.Dir(archivePath)
+	name := filepath.Base(archivePath)
+
+	m := legacyChunkSuffixRe.FindStringSubmatch(name)
 	if m == nil {
 		return "", "", 0, false
 	}
 
-	idx, _ := strconv.Atoi(m[2])
-	return filepath.Join(dir, m[1]), nameExt, idx, true
+	idx, err := strconv.Atoi(m[2])
+	if err != nil {
+		return "", "", 0, false
+	}
+	return filepath.Join(dir, m[1]), "." + m[3], idx, true
 }
 
-// JoinChunks detects whether archivePath is a chunk file and, if so, finds all
-// sibling chunks, concatenates them in numeric order into a single file in tempDir,
-// and returns the path to the joined file. If archivePath is not a chunk, it is
-// returned unchanged.
+// ChunkGroupKey checks name against both chunk schemes (current .NNN and the
+// safe legacy subset) and, if it matches either, returns a key that's the
+// same for every chunk in that set. Same detection JoinChunks uses under the
+// hood, so callers grouping filenames (e.g. remote URLs) never disagree with
+// what JoinChunks will actually recognize later.
+func ChunkGroupKey(name string) (key string, ok bool) {
+	if base, _, ok := chunkInfo(name); ok {
+		return base, true
+	}
+	if base, ext, _, ok := legacyChunkInfo(name); ok {
+		return base + ext, true
+	}
+	return "", false
+}
+
+// JoinChunks detects whether archivePath is a chunk file and, if so, finds all sibling
+// chunks, concatenates them in numeric order into a single file in tempDir, and
+// returns the path to the joined file. If archivePath is not a chunk, it is unchanged.
+//
+// Both the current <name>.NNN scheme and the unambiguous subset of the old
+// <base>_N<ext> scheme are recognized (see legacyChunkInfo), so valid
+// pre-v2.1 chunk sets that were never at risk of misdetection don't need to
+// be manually renamed.
 func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error) {
-	l := log.FromContext(ctx)
-
-	base, ext, _, ok := chunkInfo(archivePath)
-	if !ok {
-		return archivePath, nil
-	}
-
-	all, err := filepath.Glob(base + "_*" + ext)
-	if err != nil {
-		return archivePath, nil
-	}
-	var matches []string
-	for _, m := range all {
-		if _, _, _, ok := chunkInfo(m); ok {
-			matches = append(matches, m)
+	if base, _, ok := chunkInfo(archivePath); ok {
+		all, err := filepath.Glob(base + ".*")
+		if err != nil {
+			return archivePath, nil
 		}
+		var matches []string
+		for _, m := range all {
+			// the glob is a string-prefix match, so it can also catch siblings
+			// like <base>.old.001 whose own base differs from ours
+			if mBase, _, ok := chunkInfo(m); ok && mBase == base {
+				matches = append(matches, m)
+			}
+		}
+		if len(matches) == 0 {
+			return archivePath, nil
+		}
+		sort.Slice(matches, func(i, j int) bool {
+			_, idxI, _ := chunkInfo(matches[i])
+			_, idxJ, _ := chunkInfo(matches[j])
+			return idxI < idxJ
+		})
+		return joinFiles(ctx, matches, tempDir, filepath.Base(base))
 	}
-	if len(matches) == 0 {
-		return archivePath, nil
+
+	if base, ext, _, ok := legacyChunkInfo(archivePath); ok {
+		all, err := filepath.Glob(base + "_*" + ext)
+		if err != nil {
+			return archivePath, nil
+		}
+		var matches []string
+		for _, m := range all {
+			// same prefix-collision guard as above, applied to the legacy shape
+			if mBase, mExt, _, ok := legacyChunkInfo(m); ok && mBase == base && mExt == ext {
+				matches = append(matches, m)
+			}
+		}
+		if len(matches) == 0 {
+			return archivePath, nil
+		}
+		sort.Slice(matches, func(i, j int) bool {
+			_, _, idxI, _ := legacyChunkInfo(matches[i])
+			_, _, idxJ, _ := legacyChunkInfo(matches[j])
+			return idxI < idxJ
+		})
+		return joinFiles(ctx, matches, tempDir, filepath.Base(base)+ext)
 	}
 
-	sort.Slice(matches, func(i, j int) bool {
-		_, _, idxI, _ := chunkInfo(matches[i])
-		_, _, idxJ, _ := chunkInfo(matches[j])
-		return idxI < idxJ
-	})
+	return archivePath, nil
+}
 
-	l.Debugf("joining %d chunk(s) for [%s]", len(matches), base)
+// concatenates matches in order into a new file named joinedName in tempDir.
+func joinFiles(ctx context.Context, matches []string, tempDir, joinedName string) (string, error) {
+	l := log.FromContext(ctx)
+	l.Debugf("joining %d chunk(s) into [%s]", len(matches), joinedName)
 
-	joinedPath := filepath.Join(tempDir, filepath.Base(base)+ext)
+	joinedPath := filepath.Join(tempDir, joinedName)
 	outf, err := os.Create(joinedPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create joined archive: %w", err)
@@ -239,6 +303,6 @@ func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error
 		cf.Close()
 	}
 
-	l.Infof("joined %d chunk(s) into [%s]", len(matches), filepath.Base(joinedPath))
+	l.Infof("joined %d chunk(s) into [%s]", len(matches), joinedName)
 	return joinedPath, nil
 }

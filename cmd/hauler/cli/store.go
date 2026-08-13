@@ -2,13 +2,16 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/pkg/action"
 
-	"hauler.dev/go/hauler/cmd/hauler/cli/store"
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/cmd/hauler/cli/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
@@ -50,7 +53,7 @@ func addStoreExtract(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -71,6 +74,17 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Short: "Sync content to the content store",
 		Args:  cobra.ExactArgs(0),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Check for ca-file & insecure-skip-tls-verify env variables
+			if o.CaFile == "" {
+				o.CaFile = os.Getenv(consts.CaFile)
+			}
+			if o.InsecureSkipTLSVerify == nil {
+				if v := os.Getenv(consts.InsecureSkipTLSVerify); v != "" {
+					b, _ := strconv.ParseBool(v)
+					o.InsecureSkipTLSVerify = &b
+				}
+			}
+
 			// --dry-run requires --products
 			if o.DryRun && len(o.Products) == 0 {
 				return fmt.Errorf("--dry-run requires --products")
@@ -94,6 +108,28 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 					o.FileName = []string{}
 				}
 			}
+
+			n, err := flags.ResolveConcurrency(cmd.Flags().Changed("concurrency"), o.Concurrency)
+			if err != nil {
+				return err
+			}
+			o.Concurrency = n
+
+			// Must not be an unconditional assignment: rso.BlobConcurrency
+			// may already hold an explicit --blob-concurrency value, which
+			// has to win over anything derived from --concurrency.
+			bc, err := flags.SyncBlobConcurrency(rso.BlobConcurrency, n)
+			if err != nil {
+				return err
+			}
+			rso.BlobConcurrency = bc
+
+			// resolve *bool: nil unless the user explicitly passed the flag
+			if cmd.Flags().Changed("insecure-skip-tls-verify") {
+				v, _ := cmd.Flags().GetBool("insecure-skip-tls-verify")
+				o.InsecureSkipTLSVerify = &v
+			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -103,7 +139,7 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return store.SyncCmd(ctx, o, nil, rso, ro)
 			}
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -126,13 +162,12 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
-			_ = s
 
-			return store.LoadCmd(ctx, o, rso, ro)
+			return store.LoadCmd(ctx, o, s, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -165,7 +200,7 @@ func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cob
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -188,7 +223,7 @@ func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -212,13 +247,12 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
-			_ = s
 
-			return store.SaveCmd(ctx, o, rso, ro)
+			return store.SaveCmd(ctx, o, s, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -236,10 +270,22 @@ func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Short:   "Print out information about the store",
 		Args:    cobra.ExactArgs(0),
 		Aliases: []string{"i", "list", "ls"},
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// suppress log output specifically for the --check + json combination so
+			// stdout stays pure, parseable JSON (--check emits progress/debug logs) --
+			// must be set before any log calls to keep stdout clean for piping, matching
+			// the `sync --dry-run` precedent. InfoCmd never logs anything on the success
+			// path when --check is off, so suppression is unnecessary (and would be a
+			// regression, silently swallowing e.g. ERR logs) for plain `-o json`.
+			if o.Check && o.OutputFormat == "json" {
+				log.FromContext(cmd.Context()).SetLevel("fatal")
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -264,13 +310,13 @@ func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Use:   "copy",
 		Short: "Copy all store content to another location",
 		Example: `  # supported copy target prefixes
-	registry://  | reg:// | oci:// - Pushes the store to an OCI registry
-	directory:// | dir://          - Extracts the store to a directory`,
+  registry://  | reg:// | oci:// - Pushes the store to an OCI registry
+  directory:// | dir://          - Extracts the store to a directory`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -308,23 +354,23 @@ func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 		Use:   "file",
 		Short: "Add a file to the store",
 		Example: `  # fetch local file
-	hauler store add file file.txt
+  hauler store add file file.txt
 
-	# fetch remote file
-	hauler store add file https://get.rke2.io/install.sh
+  # fetch remote file
+  hauler store add file https://get.rke2.io/install.sh
 
-	# fetch remote file and assign new name
-	hauler store add file https://get.hauler.dev --name hauler-install.sh`,
+  # fetch remote file and assign new name
+  hauler store add file https://get.hauler.dev --name hauler-install.sh`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.AddFileCmd(ctx, o, s, args[0])
+			return store.AddFileCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -338,32 +384,45 @@ func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 	cmd := &cobra.Command{
 		Use:   "image",
 		Short: "Add a image to the store",
-		Example: `	# fetch image
-	hauler store add image busybox
+		Example: `  # fetch image
+  hauler store add image busybox
 
-	# fetch image with repository and tag
-	hauler store add image library/busybox:stable
+  # fetch image with repository and tag
+  hauler store add image library/busybox:stable
 
-	# fetch image with full image reference and specific platform
-	hauler store add image ghcr.io/hauler-dev/hauler-debug:v1.2.0 --platform linux/amd64
+  # fetch image with full image reference and specific platform
+  hauler store add image ghcr.io/hauler-dev/hauler-debug:v1.2.0 --platform linux/amd64
 
-	# fetch image with full image reference via digest
-	hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+  # fetch image with full image reference via digest
+  hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
 
-	# fetch image with full image reference, specific platform, and signature verification
-	curl -sfOL https://raw.githubusercontent.com/rancherfederal/carbide-releases/main/carbide-key.pub
-	hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub
+  # fetch image with full image reference, specific platform, and signature verification
+  curl -sfOL https://raw.githubusercontent.com/rancherfederal/carbide-releases/main/carbide-key.pub
+  hauler store add image rgcrprod.azurecr.us/rancher/rke2-runtime:v1.31.5-rke2r1 --platform linux/amd64 --key carbide-key.pub
 
-	# fetch image and rewrite path
-	hauler store add image busybox --rewrite custom-path/busybox:latest
+  # fetch image and rewrite path
+  hauler store add image busybox --rewrite custom-path/busybox:latest
 
-	# add image from local Docker daemon
-	hauler store add image my-local-app:latest --local`,
+  # add image from local Docker daemon
+  hauler store add image my-local-app:latest --local`,
 		Args: cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Check for ca-file & insecure-skip-tls-verify env variables
+			if o.CaFile == "" {
+				o.CaFile = os.Getenv(consts.CaFile)
+			}
+			if o.InsecureSkipTLSVerify == nil {
+				if v := os.Getenv(consts.InsecureSkipTLSVerify); v != "" {
+					b, _ := strconv.ParseBool(v)
+					o.InsecureSkipTLSVerify = &b
+				}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -382,31 +441,49 @@ func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 	cmd := &cobra.Command{
 		Use:   "chart",
 		Short: "Add a helm chart to the store",
-		Example: `	# fetch local helm chart
-	hauler store add chart path/to/chart/directory --repo .
+		Example: `  # fetch local helm chart
+  hauler store add chart path/to/chart/directory --repo .
 
-	# fetch local compressed helm chart
-	hauler store add chart path/to/chart.tar.gz --repo .
+  # fetch local compressed helm chart
+  hauler store add chart path/to/chart.tar.gz --repo .
 
-	# fetch remote oci helm chart
-	hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev
+  # fetch remote oci helm chart
+  hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev
 
-	# fetch remote oci helm chart with version
-	hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.2.0
+  # fetch remote oci helm chart with version
+  hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.2.0
 
-	# fetch remote helm chart
-	hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
+  # fetch remote helm chart
+  hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
 
-	# fetch remote helm chart with specific version
-	hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1
+  # fetch remote helm chart with specific version
+  hauler store add chart rancher --repo https://releases.rancher.com/server-charts/latest --version 2.10.1
 
-	# fetch remote helm chart and rewrite path
-	hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite custom-path/hauler-chart:latest`,
+  # fetch remote helm chart and rewrite path
+  hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --rewrite custom-path/hauler-chart:latest`,
 		Args: cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			n, err := flags.ResolveConcurrency(cmd.Flags().Changed("concurrency"), o.Concurrency)
+			if err != nil {
+				return err
+			}
+			o.Concurrency = n
+
+			// Must not be an unconditional assignment: rso.BlobConcurrency
+			// may already hold an explicit --blob-concurrency value, which
+			// has to win over anything derived from --concurrency.
+			bc, err := flags.SyncBlobConcurrency(rso.BlobConcurrency, n)
+			if err != nil {
+				return err
+			}
+			rso.BlobConcurrency = bc
+
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx)
+			s, err := o.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
@@ -425,35 +502,35 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 		Use:   "remove <artifact-ref>",
 		Short: "Remove an artifact from the content store",
 		Example: `  # remove an image using full store reference
-	hauler store info
-	hauler store remove index.docker.io/library/busybox:stable
+  hauler store info
+  hauler store remove index.docker.io/library/busybox:stable
 
-	# remove a chart using full store reference
-	hauler store info
-	hauler store remove hauler/rancher:2.8.4
+  # remove a chart using full store reference
+  hauler store info
+  hauler store remove hauler/rancher:2.8.4
 
-	# remove a file using full store reference
-	hauler store info
-	hauler store remove hauler/rke2-install.sh
+  # remove a file using full store reference
+  hauler store info
+  hauler store remove hauler/rke2-install.sh
 
-	# remove any artifact with the latest tag
-	hauler store remove :latest
+  # remove any artifact with the latest tag
+  hauler store remove :latest
 
-	# remove any artifact with 'busybox' in the reference
-	hauler store remove busybox
+  # remove any artifact with 'busybox' in the reference
+  hauler store remove busybox
 
-	# force remove without verification
-	hauler store remove busybox:latest --force`,
+  # force remove without verification
+  hauler store remove busybox:latest --force`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := rso.Store(ctx)
+			s, err := rso.Store(ctx, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.RemoveCmd(ctx, o, s, args[0])
+			return store.RemoveCmd(ctx, o, s, args[0], ro, rso)
 		},
 	}
 	o.AddFlags(cmd)

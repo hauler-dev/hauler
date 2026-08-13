@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	ccontent "github.com/containerd/containerd/content"
+	ccontent "github.com/containerd/containerd/v2/core/content"
 	gname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -25,9 +25,9 @@ import (
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 var (
@@ -392,7 +392,7 @@ func TestCopyDescriptorGraph_Manifest(t *testing.T) {
 
 	// --- Error path: delete a layer blob from source, expect Copy to fail ---
 	if len(srcManifest.Layers) == 0 {
-		t.Skip("artifact has no layers; skipping missing-blob error path")
+		t.Skip("artifact has no layers... skipping missing blob error path")
 	}
 	if err := os.Remove(blobPath(srcRoot, srcManifest.Layers[0].Digest)); err != nil {
 		t.Fatalf("could not remove layer blob to simulate corruption: %v", err)
@@ -464,7 +464,7 @@ func TestCopyDescriptorGraph_Index(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := src.AddImage(ctx, idxTag.Name(), "", false, remoteOpts...); err != nil {
+	if _, err := src.AddImage(ctx, idxTag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 	if err := src.OCI.SaveIndex(); err != nil {
@@ -751,7 +751,7 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 	referrerImg = mutate.ConfigMediaType(referrerImg, types.MediaType(consts.OCIEmptyConfigMediaType))
 	referrerImg = mutate.Subject(referrerImg, baseDesc).(v1.Image)
 
-	// Push the referrer under an arbitrary tag; the in-process registry auto-wires the
+	// Push the referrer under an arbitrary tag... the in-process registry auto-wires the
 	// subject field and makes the manifest discoverable via GET /v2/.../referrers/<digest>.
 	referrerTag, err := gname.NewTag(host+"/test/image:bundle-referrer", gname.Insecure)
 	if err != nil {
@@ -767,7 +767,7 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new layout: %v", err)
 	}
-	if err := s.AddImage(context.Background(), baseTag.Name(), "", false, remoteOpts...); err != nil {
+	if _, err := s.AddImage(context.Background(), baseTag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -786,4 +786,98 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 		t.Fatal("expected at least one OCI referrer entry in the store, got none")
 	}
 	t.Logf("captured %d OCI referrer(s) for %s", referrerCount, baseTag.Name())
+}
+
+// newTestRegistry starts an in-process registry and returns its host and the
+// remote.Option needed to talk to it over plain HTTP.
+func newTestRegistry(t *testing.T) (string, []remote.Option) {
+	t.Helper()
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	return host, []remote.Option{remote.WithTransport(srv.Client().Transport)}
+}
+
+// newTestStore creates a fresh OCI layout store rooted in a temp directory.
+func newTestStore(t *testing.T) *store.Layout {
+	t.Helper()
+	s, err := store.NewLayout(t.TempDir())
+	if err != nil {
+		t.Fatalf("new layout: %v", err)
+	}
+	return s
+}
+
+// seedImage pushes a random image to host/repo:tag and returns it, so a test
+// can later assert on the exact bytes/digest that were pushed.
+func seedImage(t *testing.T, host, repo, tag string, opts ...remote.Option) v1.Image {
+	t.Helper()
+	img, err := random.Image(1024, 3)
+	if err != nil {
+		t.Fatalf("random.Image: %v", err)
+	}
+	ref, err := gname.NewTag(host+"/"+repo+":"+tag, gname.Insecure)
+	if err != nil {
+		t.Fatalf("new tag: %v", err)
+	}
+	if err := remote.Write(ref, img, opts...); err != nil {
+		t.Fatalf("remote.Write: %v", err)
+	}
+	return img
+}
+
+// TestAddImagePinnedDigestIgnoresMovedTag proves the TOCTOU fix: once a caller
+// pins the digest it verified, a tag that moves to different content between
+// verification and the fetch cannot substitute its bytes into the store.
+func TestAddImagePinnedDigestIgnoresMovedTag(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	original := seedImage(t, host, "test/pinned", "v1", remoteOpts...)
+	originalDigest, err := original.Digest()
+	if err != nil {
+		t.Fatalf("original digest: %v", err)
+	}
+
+	// Move the tag to different content, exactly as a mutable tag could be
+	// re-pushed between verification and the pull.
+	replacement, err := random.Image(1024, 3)
+	if err != nil {
+		t.Fatalf("random.Image: %v", err)
+	}
+	ref, err := gname.ParseReference(host + "/test/pinned:v1")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := remote.Write(ref, replacement, remoteOpts...); err != nil {
+		t.Fatalf("remote.Write replacement: %v", err)
+	}
+
+	s := newTestStore(t)
+	got, err := s.AddImage(context.Background(), host+"/test/pinned:v1", "", true,
+		originalDigest.String(), false, "", remoteOpts...)
+	if err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+	if got != originalDigest.String() {
+		t.Fatalf("stored digest = %s, want the pinned %s (the moved tag won)", got, originalDigest.String())
+	}
+}
+
+// TestAddImageEmptyPinResolvesTag confirms the unpinned path is untouched:
+// an empty pinnedDigest still resolves the tag normally.
+func TestAddImageEmptyPinResolvesTag(t *testing.T) {
+	host, remoteOpts := newTestRegistry(t)
+	img := seedImage(t, host, "test/unpinned", "v1", remoteOpts...)
+	want, err := img.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+
+	s := newTestStore(t)
+	got, err := s.AddImage(context.Background(), host+"/test/unpinned:v1", "", true, "", false, "", remoteOpts...)
+	if err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+	if got != want.String() {
+		t.Fatalf("stored digest = %s, want %s", got, want.String())
+	}
 }

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	ccontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/remotes"
+	ccontent "github.com/containerd/containerd/v2/core/content"
+	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -49,15 +49,29 @@ func (w *IoContentWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-// Close closes the writer and verifies the digest if configured
+// Close closes the writer and verifies the digest if configured, always
+// closing the underlying writer (even on mismatch) to avoid leaking file
+// descriptors. If both a digest mismatch and a close error occur, the more
+// informative mismatch is reported, with the close error appended.
 func (w *IoContentWriter) Close() error {
+	var mismatchErr error
 	if w.outputHash != "" {
 		computed := w.digester.Digest().String()
 		if computed != w.outputHash {
-			return fmt.Errorf("digest mismatch: expected %s, got %s", w.outputHash, computed)
+			mismatchErr = fmt.Errorf("digest mismatch: expected %s, got %s", w.outputHash, computed)
 		}
 	}
-	return w.writer.Close()
+
+	closeErr := w.writer.Close()
+
+	switch {
+	case mismatchErr != nil && closeErr != nil:
+		return fmt.Errorf("%w (additionally, close failed: %v)", mismatchErr, closeErr)
+	case mismatchErr != nil:
+		return mismatchErr
+	default:
+		return closeErr
+	}
 }
 
 // Digest returns the current digest of written data

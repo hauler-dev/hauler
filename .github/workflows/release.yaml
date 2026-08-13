@@ -1,3 +1,7 @@
+# NOTE: The goreleaser job uses `environment: release` to require manual
+# approval before publishing. This only pauses the run if a maintainer has
+# configured an Environment named "release" with Required reviewers under
+# Settings > Environments. Until then, the approval gate is a no-op.
 name: Release Workflow
 
 on:
@@ -7,8 +11,14 @@ on:
       - '*'
 
 jobs:
+  vulnerability-scan:
+    name: Vulnerability Scan
+    uses: ./.github/workflows/vulnerability-scan.yaml
+
   goreleaser:
     name: GoReleaser Job
+    needs: vulnerability-scan
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

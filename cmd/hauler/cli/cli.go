@@ -2,27 +2,55 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	cranecmd "github.com/google/go-containerregistry/cmd/crane/cmd"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "hauler",
 		Short:   "Airgap Swiss Army Knife",
-		Example: "  View the Docs: https://docs.hauler.dev\n  Environment Variables: " + consts.HaulerDir + " | " + consts.HaulerTempDir + " | " + consts.HaulerStoreDir + " | " + consts.HaulerIgnoreErrors + "\n  Warnings: Hauler commands and flags marked with (EXPERIMENTAL) are not yet stable and may change in the future.",
+		Example: "  View the Docs: https://docs.hauler.dev\n  Environment Variables: " + consts.HaulerDir + " | " + consts.HaulerTempDir + " | " + consts.HaulerStoreDir + " | " + consts.HaulerIgnoreErrors + " | " + consts.HaulerRetries + " | " + consts.HaulerLogLevel + " | " + consts.HaulerAuditLevel + " | " + consts.HaulerConcurrency + " | " + consts.HaulerBlobConcurrency + "\n  Warnings: Hauler commands and flags marked with (EXPERIMENTAL) are not yet stable and may change in the future.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// check for log level env variable or flag
+			if ro.LogLevel == "" {
+				ro.LogLevel = os.Getenv(consts.HaulerLogLevel)
+			}
+			// default to info log level
+			if ro.LogLevel == "" {
+				ro.LogLevel = "info"
+			}
+
+			// check for audit level env variable or flag
+			if ro.AuditLevel == "" {
+				ro.AuditLevel = os.Getenv(consts.HaulerAuditLevel)
+			}
+			// default to standard audit level
+			if ro.AuditLevel == "" {
+				ro.AuditLevel = "standard"
+			}
+			switch ro.AuditLevel {
+			case "none", "standard", "verbose":
+			default:
+				return fmt.Errorf("invalid --audit-level %q: must be one of none, standard, verbose", ro.AuditLevel)
+			}
+
 			l := log.FromContext(ctx)
 			l.SetLevel(ro.LogLevel)
 			l.Debugf("running cli command [%s]", cmd.CommandPath())
 
-			// Suppress WARN-level messages from containerd and other
-			// libraries that use the global logrus logger.
+			if dir, set := content.SetDefaultDockerConfig(); set {
+				l.Debugf("defaulted $DOCKER_CONFIG to [%s] for registry credential resolution", dir)
+			}
+
 			if ro.LogLevel == "debug" {
 				logrus.SetLevel(logrus.DebugLevel)
 			} else {

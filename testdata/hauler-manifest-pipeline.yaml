@@ -41,6 +41,15 @@ spec:
     - name: chart-with-file-dependency-chart-1.0.0.tgz
       repoURL: testdata
       add-dependencies: true
+      add-images: true
+      valuesFiles: 
+        - "chart-with-file-dependency-chart-required-values-2.yaml"
+        - "chart-with-file-dependency-chart-required-values.yaml"
+    - name: kube-vip
+      repoURL: https://kube-vip.github.io/helm-charts/
+      version: 0.9.9
+      add-images: true
+      platform: linux/amd64
 ---
 apiVersion: content.hauler.cattle.io/v1
 kind: Files

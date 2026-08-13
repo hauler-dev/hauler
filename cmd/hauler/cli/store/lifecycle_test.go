@@ -15,9 +15,9 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 // TestLifecycle_FileArtifact_AddSaveLoadCopy exercises the full lifecycle for a
@@ -31,7 +31,7 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 
 	// Step 2: storeFile into store A.
 	storeA := newTestStore(t)
-	if err := storeFile(ctx, storeA, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 	assertArtifactInStore(t, storeA, "lifecycle.txt")
@@ -44,7 +44,7 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 	// Step 3: SaveCmd -> archive (absolute paths required).
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-file.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
@@ -58,11 +58,15 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 
 	// Step 4: LoadCmd -> store B.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -109,7 +113,7 @@ func TestLifecycle_Image_AddSaveLoadCopyRegistry(t *testing.T) {
 	storeA := newTestStore(t)
 	rso := defaultRootOpts(storeA.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, storeA, v1.Image{Name: srcHost + "/lifecycle/app:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, storeA, v1.Image{Name: srcHost + "/lifecycle/app:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertArtifactInStore(t, storeA, "lifecycle/app:v1")
@@ -122,17 +126,21 @@ func TestLifecycle_Image_AddSaveLoadCopyRegistry(t *testing.T) {
 	// Step 3: SaveCmd -> archive.
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-image.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
 	// Step 4: LoadCmd -> store B.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -190,17 +198,21 @@ func TestLifecycle_Chart_AddSaveLoadExtract(t *testing.T) {
 	// Step 2: SaveCmd -> archive.
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-chart.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
 	// Step 3: LoadCmd -> new store.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -241,6 +253,67 @@ func TestLifecycle_Chart_AddSaveLoadExtract(t *testing.T) {
 	}
 }
 
+// TestLifecycle_DigestOnlyImage_AddSaveLoad exercises the full save/load round-trip
+// for an image added by digest only (no tag). Before fix #642, the image disappeared
+// from index.json after LoadCmd because CopyAll appended a double-@ digest.
+func TestLifecycle_DigestOnlyImage_AddSaveLoad(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// Step 1: seed a tagged image so we can get its digest
+	srcHost, srcOpts := newLocalhostRegistry(t)
+	srcImg := seedImage(t, srcHost, "lifecycle/digestonly", "v1", srcOpts...)
+	hash, err := srcImg.Digest()
+	if err != nil {
+		t.Fatalf("srcImg.Digest: %v", err)
+	}
+
+	// Step 2: add BY DIGEST (not tag) into store A
+	storeA := newTestStore(t)
+	rso := defaultRootOpts(storeA.Root)
+	ro := defaultCliOpts()
+	digestRef := srcHost + "/lifecycle/digestonly@" + hash.String()
+	if err := storeImage(ctx, storeA, v1.Image{Name: digestRef}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage by digest: %v", err)
+	}
+	// The image should be findable by its digest hex
+	assertArtifactInStore(t, storeA, hash.Hex)
+
+	// Flush index.json for SaveCmd
+	if err := storeA.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	// Step 3: SaveCmd -> archive
+	archivePath := filepath.Join(t.TempDir(), "lifecycle-digestonly.tar.zst")
+	saveOpts := newSaveOpts(storeA.Root, archivePath)
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("SaveCmd: %v", err)
+	}
+
+	// Step 4: LoadCmd -> fresh store B
+	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
+	loadOpts := &flags.LoadOpts{
+		StoreRootOpts: defaultRootOpts(storeBDir),
+		FileName:      []string{archivePath},
+	}
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+		t.Fatalf("LoadCmd: %v", err)
+	}
+
+	storeB, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB): %v", err)
+	}
+
+	// Regression assertion: the digest-only image must survive the save/load round-trip.
+	// Before fix 1, the image disappears from the loaded store's index.json.
+	assertArtifactInStore(t, storeB, hash.Hex)
+}
+
 // TestLifecycle_Remove_ThenSave verifies that removing one artifact from a store
 // with two file artifacts, then saving/loading, results in only the retained
 // artifact being present.
@@ -252,10 +325,10 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 	url2 := seedFileInHTTPServer(t, "remove-me.txt", "content to remove")
 
 	storeA := newTestStore(t)
-	if err := storeFile(ctx, storeA, v1.File{Path: url1}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url1}, defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("storeFile keep-me: %v", err)
 	}
-	if err := storeFile(ctx, storeA, v1.File{Path: url2}); err != nil {
+	if err := storeFile(ctx, storeA, v1.File{Path: url2}, defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("storeFile remove-me: %v", err)
 	}
 
@@ -264,7 +337,7 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 	}
 
 	// Step 2: RemoveCmd(Force:true) on the "remove-me" artifact.
-	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, storeA, "remove-me"); err != nil {
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, storeA, "remove-me", defaultCliOpts(), defaultRootOpts(storeA.Root)); err != nil {
 		t.Fatalf("RemoveCmd: %v", err)
 	}
 
@@ -282,17 +355,21 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 	// Step 3: SaveCmd -> archive.
 	archivePath := filepath.Join(t.TempDir(), "lifecycle-remove.tar.zst")
 	saveOpts := newSaveOpts(storeA.Root, archivePath)
-	if err := SaveCmd(ctx, saveOpts, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
 	// Step 4: LoadCmd -> new store.
 	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 

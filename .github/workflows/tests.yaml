@@ -87,6 +87,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip
           sudo apt-get install -y tree
+          sudo apt-get install -y jq
 
       - name: Download Artifacts
         uses: actions/download-artifact@v6
@@ -139,18 +140,18 @@ jobs:
           # verify via helm repository
           hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable
           hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.4
-          hauler store add chart rancher --repo https://releases.rancher.com/server-charts/stable --version 2.8.3 --verify
           # verify via oci helm repository
           hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev
           hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.6
-          hauler store add chart hauler-helm --repo oci://ghcr.io/hauler-dev --version 1.0.4 --verify
           # verify via local helm repository
           curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.2/rancher-cluster-templates-0.5.2.tgz
           hauler store add chart rancher-cluster-templates-0.5.2.tgz --repo .
           curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.1/rancher-cluster-templates-0.5.1.tgz
           hauler store add chart rancher-cluster-templates-0.5.1.tgz --repo . --version 0.5.1
-          curl -sfOL https://github.com/rancherfederal/rancher-cluster-templates/releases/download/rancher-cluster-templates-0.5.0/rancher-cluster-templates-0.5.0.tgz
-          hauler store add chart rancher-cluster-templates-0.5.0.tgz --repo . --version 0.5.0 --verify
+          curl -sfLO https://raw.githubusercontent.com/helm/helm/v3.18.6/cmd/helm/testdata/testcharts/signtest-0.1.0.tgz
+          curl -sfLO https://raw.githubusercontent.com/helm/helm/v3.18.6/cmd/helm/testdata/testcharts/signtest-0.1.0.tgz.prov
+          curl -sfLO https://raw.githubusercontent.com/helm/helm/v3.18.6/cmd/helm/testdata/helm-test-key.pub
+          hauler store add chart signtest-0.1.0.tgz --repo . --version 0.1.0 --verify --keyring helm-test-key.pub
           # verify via the hauler store contents
           hauler store info
 
@@ -215,7 +216,20 @@ jobs:
       - name: Verify - hauler store copy
         run: |
           hauler store copy --help
-          # need more tests here
+          # verify via registry target
+          hauler store serve registry --port 5002 --readonly=false &
+          until curl -sf http://localhost:5002/v2/_catalog; do : ; done
+          hauler store copy registry://localhost:5002 --plain-http
+          # verify blobs actually landed in the registry backend
+          [ $(find registry -type f | wc -l) -gt 0 ]
+          # verify via --only
+          hauler store copy registry://localhost:5002 --plain-http --only busybox
+          pkill -f "hauler store serve registry --port 5002"
+          rm -rf registry
+          # verify via directory target (files and charts only; images and cosign artifacts are skipped)
+          hauler store copy dir://./store-copy-output
+          test -f ./store-copy-output/hauler-manifest.yaml
+          rm -rf ./store-copy-output
 
       - name: Verify - hauler store extract
         run: |
@@ -250,13 +264,13 @@ jobs:
           hauler store save --filename store.tar.zst
           # verify via save with filename and platform (amd64)
           hauler store save --filename store-amd64.tar.zst --platform linux/amd64
-          # verify via save with chunk-size (splits into haul-chunked_0.tar.zst, haul-chunked_1.tar.zst, ...)
+          # verify via save with chunk-size (splits into haul-chunked.tar.zst.001, haul-chunked.tar.zst.002, ...)
           hauler store save --filename haul-chunked.tar.zst --chunk-size 50M
           # verify chunk files exist and original is removed
-          ls haul-chunked_*.tar.zst
+          ls haul-chunked.tar.zst.*
           ! test -f haul-chunked.tar.zst
           # verify at least two chunks were produced
-          [ $(ls haul-chunked_*.tar.zst | wc -l) -ge 2 ]
+          [ $(ls haul-chunked.tar.zst.* | wc -l) -ge 2 ]
 
       - name: Remove Hauler Store Contents
         run: |
@@ -278,7 +292,7 @@ jobs:
           hauler store load --filename store-amd64.tar.zst
           # verify via load from chunks using explicit first chunk
           rm -rf store
-          hauler store load --filename haul-chunked_0.tar.zst
+          hauler store load --filename haul-chunked.tar.zst.001
           hauler store info
           # verify via load from chunks using base filename (auto-detect)
           rm -rf store
@@ -306,7 +320,7 @@ jobs:
 
       - name: Remove Hauler Store Contents
         run: |
-          rm -rf store haul.tar.zst store.tar.zst store-amd64.tar.zst haul-chunked_*.tar.zst
+          rm -rf store haul.tar.zst store.tar.zst store-amd64.tar.zst haul-chunked.tar.zst.*
           hauler store info
 
       - name: Verify - hauler store sync
@@ -314,6 +328,10 @@ jobs:
           hauler store sync --help
           # verify via sync
           hauler store sync --filename testdata/hauler-manifest-pipeline.yaml
+          # verify images are present
+          hauler store info | grep 'musl'
+          # verify that only one kube-vip image with the correct platform is present
+          hauler store info --output json | jq -e '.artifacts | map(select(.type=="image" and .reference=="ghcr.io/kube-vip/kube-vip:v1.0.4")) | length == 1' >/dev/null
           # verify via sync with multiple files
           hauler store sync --filename testdata/hauler-manifest-pipeline.yaml --filename testdata/hauler-manifest.yaml
           # need more tests here
@@ -349,9 +367,9 @@ jobs:
           until curl -sf http://localhost:5001/v2/_catalog; do : ; done
           pkill -f "hauler store serve registry --port 5001 --readonly"
           # verify via registry with different port with readonly with tls
-          # hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
-          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:5001/v2/_catalog; do : ; done
-          # pkill -f "hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+          hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:5001/v2/_catalog; do : ; done
+          pkill -f "hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
 
       - name: Verify - hauler store serve fileserver
         run: |
@@ -369,9 +387,9 @@ jobs:
           until curl -sf http://localhost:8000; do : ; done
           pkill -f "hauler store serve fileserver --port 8000 --timeout 120"
           # verify via fileserver with different port with timeout and tls
-          # hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
-          # until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
-          # pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+          hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
+          until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
+          pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
 
       - name: Verify Hauler Store Contents
         run: |

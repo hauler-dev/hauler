@@ -2,7 +2,9 @@ package flags
 
 import (
 	"github.com/spf13/cobra"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/pkg/action"
+
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 type AddImageOpts struct {
@@ -19,6 +21,8 @@ type AddImageOpts struct {
 	Rewrite                      string
 	ExcludeExtras                bool
 	Local                        bool
+	CaFile                       string
+	InsecureSkipTLSVerify        *bool
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
@@ -34,16 +38,22 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling the image")
 	f.BoolVar(&o.Local, "local", false, "(Optional) Add image from the local Docker daemon instead of a remote registry")
+	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
+	f.Bool("insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 }
 
 type AddFileOpts struct {
 	*StoreRootOpts
-	Name string
+	Name                  string
+	CaFile                string
+	InsecureSkipTLSVerify bool
 }
 
 func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Name, "name", "n", "", "(Optional) Rewrite the name of the file")
+	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification for remote files")
+	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification for remote files")
 }
 
 type AddChartOpts struct {
@@ -54,10 +64,12 @@ type AddChartOpts struct {
 	AddDependencies bool
 	AddImages       bool
 	ExcludeExtras   bool
-	HelmValues      string
+	ValuesFiles     []string
 	Platform        string
 	Registry        string
 	KubeVersion     string
+	Concurrency     int
+	NoProgress      bool
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -66,22 +78,25 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.ChartOpts.RepoURL, "repo", "", "Location of the chart (https:// | http:// | oci://)")
 	f.StringVar(&o.ChartOpts.Version, "version", "", "(Optional) Specify the version of the chart (v1.0.0 | 2.0.0 | ^2.0.0)")
 	f.BoolVar(&o.ChartOpts.Verify, "verify", false, "(Optional) Verify the chart before fetching it")
+	f.StringVar(&o.ChartOpts.Keyring, "keyring", "", "(Optional) Location of public keyring used by --verify (default: $HOME/.gnupg/pubring.gpg)")
 	f.StringVar(&o.ChartOpts.Username, "username", "", "(Optional) Username to use for authentication")
 	f.StringVar(&o.ChartOpts.Password, "password", "", "(Optional) Password to use for authentication")
 	f.StringVar(&o.ChartOpts.CertFile, "cert-file", "", "(Optional) Location of the TLS Certificate to use for client authentication")
 	f.StringVar(&o.ChartOpts.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authentication")
-	f.BoolVar(&o.ChartOpts.InsecureSkipTLSverify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
+	f.BoolVar(&o.ChartOpts.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 
 	cmd.MarkFlagsRequiredTogether("username", "password")
-	cmd.MarkFlagsRequiredTogether("cert-file", "key-file", "ca-file")
+	cmd.MarkFlagsRequiredTogether("cert-file", "key-file")
 
-	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(EXPERIMENTAL & Optional) Fetch dependent helm charts")
-	f.BoolVar(&o.AddImages, "add-images", false, "(EXPERIMENTAL & Optional) Fetch images referenced in helm charts")
+	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(Optional) Fetch dependent helm charts")
+	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in helm charts")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images discovered via --add-images")
-	f.StringVar(&o.HelmValues, "values", "", "(EXPERIMENTAL & Optional) Specify helm chart values when fetching images")
+	f.StringArrayVar(&o.ValuesFiles, "values", []string{}, "(Optional) Specify helm chart values when fetching images")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64")
 	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
-	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(EXPERIMENTAL & Optional) Override the kubernetes version for helm template rendering")
+	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(Optional) Override the kubernetes version for helm template rendering")
+	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of charts and their discovered images to fetch and store concurrently (1 = serial; also via HAULER_CONCURRENCY, explicit flag wins)")
+	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
 }

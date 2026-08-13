@@ -12,10 +12,15 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	digest "github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 // --------------------------------------------------------------------------
@@ -79,6 +84,47 @@ func TestCopyCmd_UnknownProtocol(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// repoFromBaseRef / destination ref derivation tests (#667)
+// --------------------------------------------------------------------------
+
+func TestRepoFromBaseRef(t *testing.T) {
+	cases := map[string]string{
+		"myorg/myimage@sha256:" + strings.Repeat("a", 64):   "myorg/myimage",
+		"myorg/myimage:v1.0.2":                              "myorg/myimage",
+		"myorg/myimage":                                     "myorg/myimage",
+		"nested/path/img@sha256:" + strings.Repeat("b", 64): "nested/path/img",
+	}
+	for in, want := range cases {
+		if got := repoFromBaseRef(in); got != want {
+			t.Errorf("repoFromBaseRef(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestDestRef_DigestOnly_Parses is a regression test for #667: destination refs
+// derived for artifacts of a digest-only image must be parseable by the real
+// RewriteRefToRegistry.
+func TestDestRef_DigestOnly_Parses(t *testing.T) {
+	imgDigest := "sha256:" + strings.Repeat("a", 64)
+	refDigestHex := strings.Repeat("c", 64)
+	base := "myorg/myimage@" + imgDigest // tag@digest ingests to digest-only
+
+	repo := repoFromBaseRef(base)
+
+	// sig/att/sbom cosign tag
+	sigDest := repo + ":" + strings.ReplaceAll(imgDigest, ":", "-") + ".sig"
+	if _, err := content.RewriteRefToRegistry(sigDest, "target.example.com"); err != nil {
+		t.Errorf("sig destRef %q failed to rewrite: %v", sigDest, err)
+	}
+
+	// referrer by manifest digest
+	refDest := repo + "@sha256:" + refDigestHex
+	if _, err := content.RewriteRefToRegistry(refDest, "target.example.com"); err != nil {
+		t.Errorf("referrer destRef %q failed to rewrite: %v", refDest, err)
+	}
+}
+
+// --------------------------------------------------------------------------
 // Registry copy tests
 // --------------------------------------------------------------------------
 
@@ -93,7 +139,7 @@ func TestCopyCmd_Registry(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/copy:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/copy:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -129,7 +175,7 @@ func TestCopyCmd_Registry_OnlyFilter(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 	for _, repo := range []string{"myorg/repo1:v1", "myorg/repo2:v1"} {
-		if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/" + repo}, "", false, rso, ro, ""); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/" + repo}, "", false, rso, ro, "", "", false); err != nil {
 			t.Fatalf("storeImage %s: %v", repo, err)
 		}
 	}
@@ -176,7 +222,7 @@ func TestCopyCmd_Registry_SigTagDerivation(t *testing.T) {
 
 	// AddImage discovers and stores the .sig/.att/.sbom tags automatically.
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, srcHost+"/test/signed:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, srcHost+"/test/signed:v1", "", false, "", false, ""); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -216,7 +262,7 @@ func TestCopyCmd_Registry_IgnoreErrors(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/ignore:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/ignore:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -230,6 +276,172 @@ func TestCopyCmd_Registry_IgnoreErrors(t *testing.T) {
 	if err := CopyCmd(ctx, o, s, "registry://localhost:1", roIgnore); err != nil {
 		t.Errorf("expected no error with IgnoreErrors=true, got: %v", err)
 	}
+}
+
+// TestCopyCmd_Registry_IgnoreErrors_EnvVar verifies that a push failure to a
+// non-listening address is swallowed when HAULER_IGNORE_ERRORS=true is set via
+// the environment alone, without --ignore-errors. This is a regression test:
+// retry.Operation used to mutate the shared ro.IgnoreErrors from the env var as
+// a side effect, so the ro.IgnoreErrors read immediately after it always saw
+// the env var. Now that retry.Operation is a pure read via
+// flags.ShouldIgnoreErrors, the check after it must not silently start
+// aborting on the first failure again.
+func TestCopyCmd_Registry_IgnoreErrors_EnvVar(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	seedImage(t, srcHost, "test/ignore-env", "v1")
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/ignore-env:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	// localhost:1 is a port that is never listening.
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+	}
+	roEnv := defaultCliOpts()
+	t.Setenv(consts.HaulerIgnoreErrors, "true")
+	if err := CopyCmd(ctx, o, s, "registry://localhost:1", roEnv); err != nil {
+		t.Errorf("expected no error with HAULER_IGNORE_ERRORS=true, got: %v", err)
+	}
+	if roEnv.IgnoreErrors {
+		t.Fatal("expected ro.IgnoreErrors to remain false: CopyCmd must not mutate ro")
+	}
+}
+
+// TestCopyCmd_Registry_IgnoreErrors_EnvVar_MultipleArtifacts verifies that, with
+// HAULER_IGNORE_ERRORS=true set via the environment only, a copy failure for one
+// artifact does not prevent CopyCmd from continuing on to push the remaining
+// artifacts to the target registry.
+func TestCopyCmd_Registry_IgnoreErrors_EnvVar_MultipleArtifacts(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	seedImage(t, srcHost, "test/ignore-env-a", "v1")
+	seedImage(t, srcHost, "test/ignore-env-b", "v1")
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	for _, repo := range []string{"test/ignore-env-a:v1", "test/ignore-env-b:v1"} {
+		if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/" + repo}, "", false, rso, ro, "", "", false); err != nil {
+			t.Fatalf("storeImage %s: %v", repo, err)
+		}
+	}
+
+	// Seed an undeliverable referrer descriptor directly, per the technique used
+	// in TestCopy_UndeliverableArtifact_RespectsIgnoreErrors, so that one artifact
+	// fails ref-rewriting (copy.go's earlier IgnoreErrors check) while the two
+	// images above should still make it to the target registry.
+	desc := ocispec.Descriptor{
+		MediaType: ocispec.MediaTypeImageManifest,
+		Digest:    digest.Digest("sha256:not a valid digest"),
+		Size:      1,
+		Annotations: map[string]string{
+			ocispec.AnnotationRefName:     "myorg/undeliverable",
+			consts.ContainerdImageNameKey: "myorg/undeliverable",
+			consts.KindAnnotationName:     consts.KindAnnotationReferrers + "/" + strings.Repeat("a", 64),
+		},
+	}
+	if err := s.OCI.AddIndex(desc); err != nil {
+		t.Fatalf("AddIndex: %v", err)
+	}
+
+	dstHost, dstOpts := newTestRegistry(t)
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+	}
+	roEnv := defaultCliOpts()
+	t.Setenv(consts.HaulerIgnoreErrors, "true")
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, roEnv); err != nil {
+		t.Fatalf("expected no error with HAULER_IGNORE_ERRORS=true, got: %v", err)
+	}
+
+	for _, repo := range []string{"test/ignore-env-a", "test/ignore-env-b"} {
+		ref, err := name.NewTag(dstHost+"/"+repo+":v1", name.Insecure)
+		if err != nil {
+			t.Fatalf("name.NewTag %s: %v", repo, err)
+		}
+		if _, err := remote.Get(ref, dstOpts...); err != nil {
+			t.Errorf("%s should be in target registry despite unrelated undeliverable artifact, but was not found: %v", repo, err)
+		}
+	}
+}
+
+// TestCopy_UndeliverableArtifact_RespectsIgnoreErrors verifies that when
+// CopyCmd's registry branch derives an unparseable destination ref for an
+// artifact (RewriteRefToRegistry failure), the walk fails by default and
+// only swallows the error when --ignore-errors is set (#667).
+//
+// AnnotationRefName is validated on the way into the store's index (AddIndex
+// parses it), so a malformed ref name can never reach CopyCmd's walk. The
+// referrer destRef, however, is derived from the descriptor's raw Digest
+// field ("<repo>@<digest>"), which is never validated as a reference. Seeding
+// a referrer descriptor with a Digest containing a space reproduces the
+// derivation failure without needing an actually malformed AnnotationRefName.
+func TestCopy_UndeliverableArtifact_RespectsIgnoreErrors(t *testing.T) {
+	ctx := newTestContext(t)
+
+	buildStore := func(t *testing.T) *store.Layout {
+		s := newTestStore(t)
+		desc := ocispec.Descriptor{
+			MediaType: ocispec.MediaTypeImageManifest,
+			Digest:    digest.Digest("sha256:not a valid digest"),
+			Size:      1,
+			Annotations: map[string]string{
+				ocispec.AnnotationRefName:     "myorg/myimage",
+				consts.ContainerdImageNameKey: "myorg/myimage",
+				consts.KindAnnotationName:     consts.KindAnnotationReferrers + "/" + strings.Repeat("a", 64),
+			},
+		}
+		if err := s.OCI.AddIndex(desc); err != nil {
+			t.Fatalf("AddIndex: %v", err)
+		}
+		return s
+	}
+
+	dstHost, _ := newTestRegistry(t)
+
+	t.Run("default returns error", func(t *testing.T) {
+		s := buildStore(t)
+		o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), PlainHTTP: true}
+		if err := CopyCmd(ctx, o, s, "registry://"+dstHost, defaultCliOpts()); err == nil {
+			t.Fatal("expected error for undeliverable artifact, got nil")
+		}
+	})
+
+	t.Run("ignore errors returns nil", func(t *testing.T) {
+		s := buildStore(t)
+		o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), PlainHTTP: true}
+		ro := defaultCliOpts()
+		ro.IgnoreErrors = true
+		if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+			t.Errorf("expected no error with IgnoreErrors=true, got: %v", err)
+		}
+	})
+
+	// Regression test: with retry.Operation no longer mutating the shared
+	// ro.IgnoreErrors as a side effect, the ref-rewrite failure check earlier in
+	// CopyCmd's registry walk must still honor HAULER_IGNORE_ERRORS set via the
+	// environment alone, without --ignore-errors.
+	t.Run("ignore errors via env var returns nil", func(t *testing.T) {
+		s := buildStore(t)
+		o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), PlainHTTP: true}
+		ro := defaultCliOpts()
+		t.Setenv(consts.HaulerIgnoreErrors, "true")
+		if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+			t.Errorf("expected no error with HAULER_IGNORE_ERRORS=true, got: %v", err)
+		}
+		if ro.IgnoreErrors {
+			t.Fatal("expected ro.IgnoreErrors to remain false: CopyCmd must not mutate ro")
+		}
+	})
 }
 
 // TestCopyCmd_Registry_InvalidFilenameSkipTest verifies that CopyCmd emits a
@@ -257,7 +469,7 @@ func TestCopyCmd_Registry_InvalidFilenameSkipTest(t *testing.T) {
 		if err := os.WriteFile(p, []byte(pf.content), 0644); err != nil {
 			t.Fatalf("WriteFile %s: %v", pf.name, err)
 		}
-		if err := storeFile(ctx, s, v1.File{Path: p}); err != nil {
+		if err := storeFile(ctx, s, v1.File{Path: p}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 			t.Fatalf("storeFile %s: %v", pf.name, err)
 		}
 	}
@@ -304,7 +516,7 @@ func TestCopyCmd_Dir_Files(t *testing.T) {
 	url := seedFileInHTTPServer(t, "data.txt", content)
 
 	s := newTestStore(t)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -335,7 +547,7 @@ func TestCopyCmd_Dir_SkipsImages(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/imgskip:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/imgskip:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -395,6 +607,6 @@ func TestCopyCmd_Dir_Charts(t *testing.T) {
 		for i, e := range entries {
 			names[i] = e.Name()
 		}
-		t.Errorf("no .tgz found in destDir after chart copy; found: %v", names)
+		t.Errorf("no .tgz found in destDir after chart copy... found: %v", names)
 	}
 }

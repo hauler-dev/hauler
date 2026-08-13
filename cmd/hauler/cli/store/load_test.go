@@ -20,10 +20,10 @@ import (
 	mholtarchives "github.com/mholt/archives"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/internal/flags"
-	"hauler.dev/go/hauler/pkg/archives"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/store"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 // testHaulArchive is the relative path from cmd/hauler/cli/store/ to the
@@ -71,7 +71,7 @@ func TestUnarchiveLayoutTo(t *testing.T) {
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
 
-	if err := unarchiveLayoutTo(ctx, testHaulArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, testHaulArchive, destDir, tempDir, defaultCliOpts(), false); err != nil {
 		t.Fatalf("unarchiveLayoutTo: %v", err)
 	}
 
@@ -103,6 +103,47 @@ func TestUnarchiveLayoutTo(t *testing.T) {
 	}
 }
 
+// TestUnarchiveLayoutTo_MergesAuditLog checks a haul's audit.log survives
+// the load and merges into (not overwrites) whatever dest already has.
+func TestUnarchiveLayoutTo_MergesAuditLog(t *testing.T) {
+	srcDir := t.TempDir()
+	srcLayout, err := store.NewLayout(srcDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(srcDir): %v", err)
+	}
+	// NewLayout doesn't write index.json until something forces a save --
+	// unarchiveLayoutTo requires one to exist in the archive.
+	if err := srcLayout.OCI.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex(srcDir): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "audit.log"), []byte(`{"command":"from-haul"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("seed source audit.log: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+	if err := createRootLevelArchive(srcDir, archivePath); err != nil {
+		t.Fatalf("createRootLevelArchive: %v", err)
+	}
+
+	destDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(destDir, "audit.log"), []byte(`{"command":"already-here"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("seed dest audit.log: %v", err)
+	}
+
+	ctx := newTestContext(t)
+	if err := unarchiveLayoutTo(ctx, archivePath, destDir, t.TempDir(), defaultCliOpts(), false); err != nil {
+		t.Fatalf("unarchiveLayoutTo: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(destDir, "audit.log"))
+	if err != nil {
+		t.Fatalf("ReadFile dest audit.log: %v", err)
+	}
+	if !strings.Contains(string(data), "already-here") || !strings.Contains(string(data), "from-haul") {
+		t.Fatalf("expected both entries preserved after load, got: %s", data)
+	}
+}
+
 // --------------------------------------------------------------------------
 // TestLoadCmd_LocalFile
 // --------------------------------------------------------------------------
@@ -114,16 +155,22 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 
 	t.Run("single archive", func(t *testing.T) {
 		destDir := t.TempDir()
+		s, err := store.NewLayout(destDir)
+		if err != nil {
+			t.Fatalf("store.NewLayout: %v", err)
+		}
 		o := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(destDir),
 			FileName:      []string{testHaulArchive},
 		}
-		if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd: %v", err)
 		}
-		s, err := store.NewLayout(destDir)
+		// re-open: LoadCmd writes through its own content.OCI instance, so s's
+		// in-memory index predates the load.
+		s, err = store.NewLayout(destDir)
 		if err != nil {
-			t.Fatalf("store.NewLayout: %v", err)
+			t.Fatalf("store.NewLayout (post-load): %v", err)
 		}
 		if countArtifactsInStore(t, s) == 0 {
 			t.Error("expected artifacts in store after LoadCmd")
@@ -135,11 +182,15 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 		// silently discarded by the OCI pusher. The descriptor count after two
 		// loads must equal the count after a single load.
 		singleDir := t.TempDir()
+		singlePreLoad, err := store.NewLayout(singleDir)
+		if err != nil {
+			t.Fatalf("store.NewLayout single (pre-load): %v", err)
+		}
 		singleOpts := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(singleDir),
 			FileName:      []string{testHaulArchive},
 		}
-		if err := LoadCmd(ctx, singleOpts, defaultRootOpts(singleDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, singleOpts, singlePreLoad, defaultRootOpts(singleDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd single: %v", err)
 		}
 		singleStore, err := store.NewLayout(singleDir)
@@ -149,11 +200,15 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 		singleCount := countArtifactsInStore(t, singleStore)
 
 		doubleDir := t.TempDir()
+		doublePreLoad, err := store.NewLayout(doubleDir)
+		if err != nil {
+			t.Fatalf("store.NewLayout double (pre-load): %v", err)
+		}
 		doubleOpts := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(doubleDir),
 			FileName:      []string{testHaulArchive, testHaulArchive},
 		}
-		if err := LoadCmd(ctx, doubleOpts, defaultRootOpts(doubleDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, doubleOpts, doublePreLoad, defaultRootOpts(doubleDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd double: %v", err)
 		}
 		doubleStore, err := store.NewLayout(doubleDir)
@@ -192,12 +247,16 @@ func TestLoadCmd_RemoteArchive(t *testing.T) {
 	destDir := t.TempDir()
 	remoteURL := srv.URL + "/haul.tar.zst"
 
+	preLoad, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout (pre-load): %v", err)
+	}
 	o := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(destDir),
 		FileName:      []string{remoteURL},
 	}
 
-	if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, o, preLoad, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd remote: %v", err)
 	}
 
@@ -262,7 +321,7 @@ func TestUnarchiveLayoutTo_AnnotationBackfill(t *testing.T) {
 	// Step 4: Load the stripped archive.
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
-	if err := unarchiveLayoutTo(ctx, strippedArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, strippedArchive, destDir, tempDir, defaultCliOpts(), false); err != nil {
 		t.Fatalf("unarchiveLayoutTo stripped: %v", err)
 	}
 
@@ -354,7 +413,7 @@ func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 	// Step 4: Load the legacy archive.
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
-	if err := unarchiveLayoutTo(ctx, legacyArchive, destDir, tempDir); err != nil {
+	if err := unarchiveLayoutTo(ctx, legacyArchive, destDir, tempDir, defaultCliOpts(), false); err != nil {
 		t.Fatalf("unarchiveLayoutTo legacy: %v", err)
 	}
 
@@ -367,11 +426,11 @@ func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
 		kind := desc.Annotations[consts.KindAnnotationName]
 		if strings.HasPrefix(kind, legacyPrefix) {
-			t.Errorf("descriptor %s still has legacy kind %q; expected dev.hauler prefix",
+			t.Errorf("descriptor %s still has legacy kind %q... expected dev.hauler prefix",
 				desc.Digest, kind)
 		}
 		if !strings.HasPrefix(kind, newPrefix) {
-			t.Errorf("descriptor %s has unexpected kind %q; expected dev.hauler prefix",
+			t.Errorf("descriptor %s has unexpected kind %q... expected dev.hauler prefix",
 				desc.Digest, kind)
 		}
 		return nil

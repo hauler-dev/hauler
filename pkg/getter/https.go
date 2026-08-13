@@ -4,49 +4,41 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strings"
 
-	"hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
 )
 
-type Http struct{}
+type Http struct {
+	client *http.Client
+}
 
-func NewHttp() *Http {
-	return &Http{}
+func NewHttp(insecureSkipTLSVerify bool, caFile string) *Http {
+	tr, err := content.BuildTransport(insecureSkipTLSVerify, caFile)
+	if err != nil {
+		return &Http{client: http.DefaultClient}
+	}
+	return &Http{client: &http.Client{Transport: tr}}
 }
 
 func (h Http) Name(u *url.URL) string {
-	resp, err := http.Head(u.String())
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-
 	unescaped, err := url.PathUnescape(u.String())
 	if err != nil {
 		return ""
 	}
-
-	contentType := resp.Header.Get("Content-Type")
-	for _, v := range strings.Split(contentType, ",") {
-		t, _, err := mime.ParseMediaType(v)
-		if err != nil {
-			break
-		}
-		// TODO: Identify known mimetypes for hints at a filename
-		_ = t
-	}
-
 	return filepath.Base(unescaped)
 }
 
 func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
-	resp, err := http.Get(u.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := h.client.Do(req)
 	if err != nil {
 		return nil, err
 	}

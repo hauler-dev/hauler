@@ -7,6 +7,7 @@ SHELL=/bin/bash
 GO_FILES=./...
 GO_COVERPROFILE=coverage.out
 GO_VULNCHECKS=vulncheck.out
+TRIVY_RESULTS=trivy.out
 
 # set build variables
 BIN_DIRECTORY=bin
@@ -48,7 +49,10 @@ test:
 # check for vulnerabilities
 vulns:
 	govulncheck $(GO_FILES) > $(GO_VULNCHECKS) 2>&1 || true
+	curl -fsSL -o rancher.openvex.json https://media.githubusercontent.com/media/rancher/vexhub/refs/heads/main/reports/rancher.openvex.json || true
+	trivy fs --vex rancher.openvex.json --skip-files rancher.openvex.json . > $(TRIVY_RESULTS) 2>&1 || true
+	rm rancher.openvex.json || true
 
 # cleanup artifacts
 clean:
-	rm -rf $(BIN_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE) $(GO_VULNCHECKS)
+	rm -rf $(BIN_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE) $(GO_VULNCHECKS) $(TRIVY_RESULTS)

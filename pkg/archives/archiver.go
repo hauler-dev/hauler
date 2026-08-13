@@ -6,10 +6,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/mholt/archives"
-	"hauler.dev/go/hauler/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 // maps to handle compression types
@@ -105,19 +104,13 @@ func Archive(ctx context.Context, dir, outfile string, compression archives.Comp
 	return nil
 }
 
-// SplitArchive splits an existing archive into chunks of at most maxBytes each.
-// Chunks are named <base>_0<ext>, <base>_1<ext>, ... where base is the archive
-// path with all extensions stripped, and ext is the compound extension (e.g. .tar.zst).
-// The original archive is removed after successful splitting.
+// splits an existing archive into chunks of at most maxBytes each, named
+// <archivePath>.001, .002, ... and removes the original archive afterward.
 func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]string, error) {
 	l := log.FromContext(ctx)
 
-	// derive base path and compound extension by stripping all extensions
-	base := archivePath
-	ext := ""
-	for filepath.Ext(base) != "" {
-		ext = filepath.Ext(base) + ext
-		base = strings.TrimSuffix(base, filepath.Ext(base))
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("maxBytes must be greater than zero, received %d", maxBytes)
 	}
 
 	f, err := os.Open(archivePath)
@@ -127,24 +120,11 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 
 	var chunks []string
 	buf := make([]byte, 32*1024)
-	chunkIdx := 0
+	chunkIdx := 1
 	var written int64
 	var outf *os.File
 
 	for {
-		if outf == nil {
-			chunkPath := fmt.Sprintf("%s_%d%s", base, chunkIdx, ext)
-			outf, err = os.Create(chunkPath)
-			if err != nil {
-				f.Close()
-				return nil, fmt.Errorf("failed to create chunk %d: %w", chunkIdx, err)
-			}
-			chunks = append(chunks, chunkPath)
-			l.Debugf("creating chunk [%s]", chunkPath)
-			written = 0
-			chunkIdx++
-		}
-
 		remaining := maxBytes - written
 		readSize := int64(len(buf))
 		if readSize > remaining {
@@ -153,6 +133,20 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 
 		n, readErr := f.Read(buf[:readSize])
 		if n > 0 {
+			// chunk files are only created once there's real data to write,
+			// so an archive size that's an exact multiple of maxBytes never
+			// leaves a trailing empty chunk behind.
+			if outf == nil {
+				chunkPath := fmt.Sprintf("%s.%03d", archivePath, chunkIdx)
+				outf, err = os.Create(chunkPath)
+				if err != nil {
+					f.Close()
+					return nil, fmt.Errorf("failed to create chunk %d: %w", chunkIdx, err)
+				}
+				chunks = append(chunks, chunkPath)
+				l.Debugf("creating chunk [%s]", chunkPath)
+				chunkIdx++
+			}
 			if _, writeErr := outf.Write(buf[:n]); writeErr != nil {
 				outf.Close()
 				f.Close()
@@ -162,12 +156,15 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 		}
 
 		if readErr == io.EOF {
-			outf.Close()
-			outf = nil
+			if outf != nil {
+				outf.Close()
+			}
 			break
 		}
 		if readErr != nil {
-			outf.Close()
+			if outf != nil {
+				outf.Close()
+			}
 			f.Close()
 			return nil, fmt.Errorf("failed to read archive: %w", readErr)
 		}
@@ -175,6 +172,7 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 		if written >= maxBytes {
 			outf.Close()
 			outf = nil
+			written = 0
 		}
 	}
 

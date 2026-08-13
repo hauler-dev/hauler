@@ -2,7 +2,7 @@ package flags
 
 import (
 	"github.com/spf13/cobra"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 type ServeRegistryOpts struct {

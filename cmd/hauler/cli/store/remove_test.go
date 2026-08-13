@@ -6,8 +6,8 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 )
 
 // --------------------------------------------------------------------------
@@ -81,7 +81,7 @@ func TestRemoveCmd_Force(t *testing.T) {
 	s := newTestStore(t)
 
 	url := seedFileInHTTPServer(t, "removeme.txt", "file-to-remove")
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestRemoveCmd_Force(t *testing.T) {
 		t.Fatal("could not find stored artifact reference containing 'removeme'")
 	}
 
-	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "removeme"); err != nil {
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "removeme", defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("RemoveCmd: %v", err)
 	}
 
@@ -116,12 +116,46 @@ func TestRemoveCmd_NotFound(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
 
-	err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "nonexistent-ref")
+	err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "nonexistent-ref", defaultCliOpts(), defaultRootOpts(s.Root))
 	if err == nil {
 		t.Fatal("expected error for non-existent ref, got nil")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected error containing 'not found', got: %v", err)
+	}
+}
+
+// TestRemoveCmd_ContainerdImageName confirms that a
+// registry-prefixed ref (which only appears in the io.containerd.image.name
+// annotation, not the registry-stripped org.opencontainers.image.ref.name
+// used to key the store's nameMap) still matches for removal.
+func TestRemoveCmd_ContainerdImageName(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	host, rOpts := newLocalhostRegistry(t)
+	seedImage(t, host, "test/repo", "v1", rOpts...)
+
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	if n := countArtifactsInStore(t, s); n == 0 {
+		t.Fatal("expected at least 1 artifact after storeImage, got 0")
+	}
+
+	// The registry-qualified ref only lives in io.containerd.image.name;
+	// org.opencontainers.image.ref.name (and the nameMap key derived from it)
+	// only holds the registry-stripped short form "test/repo:v1".
+	fullRef := host + "/test/repo:v1"
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, fullRef, ro, rso); err != nil {
+		t.Fatalf("RemoveCmd with fully-qualified ref: %v", err)
+	}
+
+	if n := countArtifactsInStore(t, s); n != 0 {
+		t.Errorf("expected 0 artifacts after removal by containerd image name, got %d", n)
 	}
 }
 
@@ -133,10 +167,10 @@ func TestRemoveCmd_Force_MultipleMatches(t *testing.T) {
 	url1 := seedFileInHTTPServer(t, "testfile-alpha.txt", "content-alpha")
 	url2 := seedFileInHTTPServer(t, "testfile-beta.txt", "content-beta")
 
-	if err := storeFile(ctx, s, v1.File{Path: url1}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url1}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile alpha: %v", err)
 	}
-	if err := storeFile(ctx, s, v1.File{Path: url2}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url2}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile beta: %v", err)
 	}
 
@@ -145,7 +179,7 @@ func TestRemoveCmd_Force_MultipleMatches(t *testing.T) {
 	}
 
 	// Remove using a substring that matches both.
-	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "testfile"); err != nil {
+	if err := RemoveCmd(ctx, &flags.RemoveOpts{Force: true}, s, "testfile", defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("RemoveCmd: %v", err)
 	}
 

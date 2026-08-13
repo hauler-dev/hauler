@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	ccontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/remotes"
+	ccontent "github.com/containerd/containerd/v2/core/content"
+	"github.com/containerd/containerd/v2/core/remotes"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"hauler.dev/go/hauler/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/content"
 )
 
 // NewMapperFileStore creates a new file store that uses mapper functions for each detected descriptor.
@@ -72,7 +72,7 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 
 	// Get the filename from the mapper function.
 	// An empty filename means the mapper explicitly declined this descriptor (e.g. a
-	// config blob that has no title annotation); treat it the same as no mapper.
+	// config blob that has no title annotation... treat it the same as no mapper.
 	filename, err := mapperFn(desc)
 	if err != nil {
 		return nil, err

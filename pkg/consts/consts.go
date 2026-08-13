@@ -26,9 +26,6 @@ const (
 	FileDirectoryConfigMediaType = "application/vnd.content.hauler.file.directory.config.v1+json"
 	FileHttpConfigMediaType      = "application/vnd.content.hauler.file.http.config.v1+json"
 
-	// memory media types
-	MemoryConfigMediaType = "application/vnd.content.hauler.memory.config.v1+json"
-
 	// wasm media types
 	WasmArtifactLayerMediaType = "application/vnd.wasm.content.layer.v1+wasm"
 	WasmConfigMediaType        = "application/vnd.wasm.config.v1+json"
@@ -61,6 +58,11 @@ const (
 	SigstoreBundleMediaType = "application/vnd.dev.sigstore.bundle.v0.3+json"
 	OCIEmptyConfigMediaType = "application/vnd.oci.empty.v1+json"
 
+	// annotations used by all artifacts
+	AnnotationTargetStore = "hauler.dev/store"
+	AnnotationRetries     = "hauler.dev/retries"
+
+	// annotations used by images
 	ImageAnnotationKey           = "hauler.dev/key"
 	ImageAnnotationPlatform      = "hauler.dev/platform"
 	ImageAnnotationRegistry      = "hauler.dev/registry"
@@ -76,21 +78,33 @@ const (
 	ImageAnnotationCertOidcIssuerRegexp         = "hauler.dev/certificate-oidc-issuer-regexp"
 	ImageAnnotationCertGithubWorkflowRepository = "hauler.dev/certificate-github-workflow-repository"
 
+	// TLS options for verifying the image signature.  If not specified, the default system CA bundle will be used.
+	ImageAnnotationCaFile                = "hauler.dev/ca-file"
+	ImageAnnotationInsecureSkipTLSVerify = "hauler.dev/insecure-skip-tls-verify"
+
 	// content kinds
 	ImagesContentKind = "Images"
 	ChartsContentKind = "Charts"
 	FilesContentKind  = "Files"
-	// DriverContentKind    = "Driver"
+	// DriverContentKind = "Driver"
 
 	// content groups
 	ContentGroup    = "content.hauler.cattle.io"
 	CollectionGroup = "collection.hauler.cattle.io"
 
 	// environment variables
-	HaulerDir          = "HAULER_DIR"
-	HaulerTempDir      = "HAULER_TEMP_DIR"
-	HaulerStoreDir     = "HAULER_STORE_DIR"
-	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
+	HaulerDir             = "HAULER_DIR"
+	HaulerTempDir         = "HAULER_TEMP_DIR"
+	HaulerStoreDir        = "HAULER_STORE_DIR"
+	HaulerIgnoreErrors    = "HAULER_IGNORE_ERRORS"
+	HaulerRetries         = "HAULER_RETRIES"
+	HaulerConcurrency     = "HAULER_CONCURRENCY"
+	HaulerBlobConcurrency = "HAULER_BLOB_CONCURRENCY"
+	HaulerLogLevel        = "HAULER_LOG_LEVEL"
+	HaulerAuditLevel      = "HAULER_AUDIT_LEVEL"
+
+	CaFile                = "CA_FILE"
+	InsecureSkipTLSVerify = "INSECURE_SKIP_TLS_VERIFY"
 
 	// container files and directories
 	ImageManifestFile = "manifest.json"
@@ -110,8 +124,12 @@ const (
 	DefaultFileserverTimeout  = 60
 	DefaultHaulerArchiveName  = "haul.tar.zst"
 	DefaultHaulerManifestName = "hauler-manifest.yaml"
+	DefaultStoreMetadataName  = "store.json"
+	DefaultStoreInventoryName = "stores.json"
 	DefaultRetries            = 3
 	RetriesInterval           = 5
+	DefaultConcurrency        = 5
+	DefaultBlobConcurrency    = 16
 	CustomTimeFormat          = "2006-01-02 15:04:05"
 )
 

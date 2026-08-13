@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/containerd/containerd/remotes"
+	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/errdefs"
 	"github.com/google/go-containerregistry/pkg/authn"
 	gname "github.com/google/go-containerregistry/pkg/name"
@@ -18,21 +18,31 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/uuid"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
-	"hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/content"
-	"hauler.dev/go/hauler/pkg/layer"
+	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/layer"
 )
 
 type Layout struct {
 	*content.OCI
-	Root  string
-	cache layer.Cache
+	Root      string
+	StoreID   string
+	haulerDir string
+	cache     layer.Cache
+
+	// blobConcurrency overrides the OCI layout's default blob-write
+	// concurrency ceiling (content.OCI.blobSem) when > 0. Set via
+	// WithBlobConcurrency; must be known before content.NewOCI is called, so
+	// NewLayout applies opts before constructing the OCI store.
+	blobConcurrency int
 }
 
 type Options func(*Layout)
@@ -43,26 +53,86 @@ func WithCache(c layer.Cache) Options {
 	}
 }
 
+// WithHaulerDir records this store in <haulerDir>/stores.json so it can
+// later be referenced by StoreID. If unset, NewLayout skips the inventory
+func WithHaulerDir(dir string) Options {
+	return func(l *Layout) {
+		l.haulerDir = dir
+	}
+}
+
+// WithBlobConcurrency overrides the OCI layout's default blob-write
+// concurrency ceiling. See content.WithBlobConcurrency for the mechanics and
+// why the floor in flags.BlobConcurrencyFor matters.
+func WithBlobConcurrency(n int) Options {
+	return func(l *Layout) {
+		l.blobConcurrency = n
+	}
+}
+
 func NewLayout(rootdir string, opts ...Options) (*Layout, error) {
-	ociStore, err := content.NewOCI(rootdir)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ociStore.LoadIndex(); err != nil {
-		return nil, err
-	}
-
 	l := &Layout{
-		Root: rootdir,
-		OCI:  ociStore,
+		Root:    rootdir,
+		StoreID: loadOrCreateStoreID(rootdir),
 	}
 
 	for _, opt := range opts {
 		opt(l)
 	}
 
+	var ociOpts []content.OCIOption
+	if l.blobConcurrency > 0 {
+		ociOpts = append(ociOpts, content.WithBlobConcurrency(l.blobConcurrency))
+	}
+	ociStore, err := content.NewOCI(rootdir, ociOpts...)
+	if err != nil {
+		return nil, err
+	}
+	if err := ociStore.LoadIndex(); err != nil {
+		return nil, err
+	}
+	l.OCI = ociStore
+
+	if l.haulerDir != "" {
+		updateStoreInventory(l.haulerDir, l.StoreID, rootdir)
+	}
+
 	return l, nil
+}
+
+type storeMetadata struct {
+	StoreID string `json:"store-id"`
+}
+
+// loadOrCreateStoreID returns the persistent store identity from <rootdir>/store.json,
+// creating the file with a fresh UUID on first use.
+func loadOrCreateStoreID(rootdir string) string {
+	metaPath := filepath.Join(rootdir, consts.DefaultStoreMetadataName)
+	if data, err := os.ReadFile(metaPath); err == nil {
+		var m storeMetadata
+		if uerr := json.Unmarshal(data, &m); uerr == nil && m.StoreID != "" {
+			return m.StoreID
+		} else if uerr != nil {
+			zlog.Warn().Err(uerr).Str("path", metaPath).Msg("failed to parse store metadata... generating new store id")
+		} else {
+			zlog.Warn().Str("path", metaPath).Msg("store metadata missing store-id... generating new store id")
+		}
+	}
+	m := storeMetadata{StoreID: uuid.New().String()}
+	data, err := json.Marshal(m)
+	if err != nil {
+		zlog.Warn().Err(err).Msg("failed to marshal store metadata... store id will not persist across runs")
+		return m.StoreID
+	}
+	tmp := metaPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		zlog.Warn().Err(err).Str("path", tmp).Msg("failed to write store metadata... store id will not persist across runs")
+		return m.StoreID
+	}
+	if err := os.Rename(tmp, metaPath); err != nil {
+		zlog.Warn().Err(err).Str("path", metaPath).Msg("failed to write store metadata... store id will not persist across runs")
+	}
+	return m.StoreID
 }
 
 // AddArtifact adds an artifacts.OCI to the store
@@ -87,7 +157,7 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 	if err != nil {
 		return ocispec.Descriptor{}, err
 	}
-	if err := l.writeBlobData(mdata); err != nil {
+	if err := l.writeBlobData(ctx, mdata); err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
@@ -97,7 +167,7 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
-	if err := l.writeBlobData(cdata); err != nil {
+	if err := l.writeBlobData(ctx, cdata); err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
@@ -107,11 +177,16 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
-	var g errgroup.Group
+	// errgroup.WithContext, not a zero-value Group: Wait() on a zero-value
+	// group never cancels siblings on failure, so other layers would keep
+	// downloading after one fails. gctx is cancelled the moment any
+	// writeLayer errors, which content.OCI.WriteBlob observes (via ctx.Err()
+	// and the wrapped reader) to abort in-flight writes promptly.
+	g, gctx := errgroup.WithContext(ctx)
 	for _, lyr := range layers {
 		lyr := lyr
 		g.Go(func() error {
-			return l.writeLayer(lyr)
+			return l.writeLayer(gctx, lyr)
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -157,20 +232,51 @@ func (l *Layout) AddArtifactCollection(ctx context.Context, collection artifacts
 // discovered via cosign's tag convention (<digest>.sig, <digest>.att, <digest>.sbom).
 // When platform is non-empty and the ref is a multi-arch index, only that platform is fetched.
 // When excludeExtras is true, cosign signatures, attestations, SBOMs, and OCI referrers are skipped.
-func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, opts ...remote.Option) error {
+//
+// pinnedDigest, when non-empty, is the digest actually fetched -- ref supplies
+// only the name recorded in the index annotations. Callers that verified a
+// signature pass the digest they verified, so the bytes stored are provably
+// the bytes checked even if the tag moves mid-run. An empty pinnedDigest
+// resolves ref normally.
+//
+// insecureSkipTLSVerify and caFile configure the transport used for every
+// registry round trip this call makes (the image itself plus any related
+// signatures/attestations/SBOMs/referrers); insecureSkipTLSVerify takes
+// precedence over caFile -- see content.BuildTransport.
+func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excludeExtras bool, pinnedDigest string, insecureSkipTLSVerify bool, caFile string, opts ...remote.Option) (string, error) {
+	tr, err := content.BuildTransport(insecureSkipTLSVerify, caFile)
+	if err != nil {
+		return "", err
+	}
+
 	allOpts := append([]remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		remote.WithContext(ctx),
+		remote.WithTransport(tr),
 	}, opts...)
 
 	parsedRef, err := gname.ParseReference(ref)
 	if err != nil {
-		return fmt.Errorf("parsing reference %q: %w", ref, err)
+		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
 
-	desc, err := remote.Get(parsedRef, allOpts...)
+	// fetchRef drives the network; parsedRef stays the annotation ref so the
+	// store keeps recording the tag a user asked for rather than a digest.
+	fetchRef := parsedRef
+	if pinnedDigest != "" {
+		fetchRef = parsedRef.Context().Digest(pinnedDigest)
+	}
+
+	desc, err := remote.Get(fetchRef, allOpts...)
 	if err != nil {
-		return fmt.Errorf("fetching descriptor for %q: %w", ref, err)
+		return "", fmt.Errorf("fetching descriptor for %q: %w", ref, err)
+	}
+
+	// go-containerregistry already validates content against a digest ref;
+	// this restates the invariant locally so a future refactor that switches
+	// fetchRef back to a tag fails loudly instead of silently unpinning.
+	if pinnedDigest != "" && desc.Digest.String() != pinnedDigest {
+		return "", fmt.Errorf("digest mismatch for %q: fetched %s, pinned %s", ref, desc.Digest, pinnedDigest)
 	}
 
 	var imageDigest v1.Hash
@@ -179,66 +285,74 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		// Multi-arch image with no platform filter: save the full index.
 		imageDigest, err = idx.Digest()
 		if err != nil {
-			return fmt.Errorf("getting index digest for %q: %w", ref, err)
+			return "", fmt.Errorf("getting index digest for %q: %w", ref, err)
 		}
-		if err := l.writeIndex(parsedRef, idx, consts.KindAnnotationIndex); err != nil {
-			return err
+		if err := l.writeIndex(ctx, parsedRef, idx, consts.KindAnnotationIndex); err != nil {
+			return "", err
 		}
 	} else {
 		// Single-platform image, or the caller requested a specific platform.
+		//
+		// Under a platform filter the pinned digest is the index's while the stored
+		// digest is the selected child's. The child is content-addressed within the
+		// verified index, so the chain of trust holds.
 		imgOpts := append([]remote.Option{}, allOpts...)
 		if platform != "" {
 			p, err := parsePlatform(platform)
 			if err != nil {
-				return err
+				return "", err
 			}
 			imgOpts = append(imgOpts, remote.WithPlatform(p))
 		}
-		img, err := remote.Image(parsedRef, imgOpts...)
+		img, err := remote.Image(fetchRef, imgOpts...)
 		if err != nil {
-			return fmt.Errorf("fetching image %q: %w", ref, err)
+			return "", fmt.Errorf("fetching image %q: %w", ref, err)
 		}
 		imageDigest, err = img.Digest()
 		if err != nil {
-			return fmt.Errorf("getting image digest for %q: %w", ref, err)
+			return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 		}
-		if err := l.writeImage(parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
-			return err
+		if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+			return "", err
 		}
 	}
 
 	if !excludeExtras {
 		savedDigests, err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...)
 		if err != nil {
-			return err
+			return "", err
 		}
-		return l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
+		return imageDigest.String(), l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
 	}
-	return nil
+	return imageDigest.String(), nil
 }
 
 // AddLocalImage fetches a container image from the local Docker daemon and saves it to the store.
 // No cosign signatures, attestations, SBOMs, or OCI referrers are fetched (registry-only concepts).
-func (l *Layout) AddLocalImage(ctx context.Context, ref string) error {
+func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) {
 	parsedRef, err := gname.ParseReference(ref)
 	if err != nil {
-		return fmt.Errorf("parsing reference %q: %w", ref, err)
+		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
 
 	if err := ensureDockerHost(); err != nil {
-		return fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
+		return "", fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
 	}
 
 	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx))
 	if err != nil {
-		return fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
+		return "", fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
 	}
 
-	if _, err := img.Digest(); err != nil {
-		return fmt.Errorf("getting image digest for %q: %w", ref, err)
+	d, err := img.Digest()
+	if err != nil {
+		return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 	}
 
-	return l.writeImage(parsedRef, img, consts.KindAnnotationImage, "")
+	if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+		return "", err
+	}
+	return d.String(), nil
 }
 
 // ensureDockerHost sets DOCKER_HOST if it is not already set and the default
@@ -269,15 +383,31 @@ func ensureDockerHost() error {
 
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's
 // blob directory. It does not add an entry to the OCI index.
-func (l *Layout) writeImageBlobs(img v1.Image) error {
+func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 	layers, err := img.Layers()
 	if err != nil {
 		return fmt.Errorf("getting layers: %w", err)
 	}
-	var g errgroup.Group
+
+	if stats := imageStatsFromContext(ctx); stats != nil {
+		var totalBytes int64
+		for _, lyr := range layers {
+			size, err := lyr.Size()
+			if err != nil {
+				return fmt.Errorf("getting layer size: %w", err)
+			}
+			totalBytes += size
+		}
+		stats.Layers.Add(int64(len(layers)))
+		stats.Bytes.Add(totalBytes)
+	}
+
+	// See AddArtifact's identical errgroup.WithContext conversion for why this
+	// can't stay a zero-value errgroup.Group.
+	g, gctx := errgroup.WithContext(ctx)
 	for _, lyr := range layers {
 		lyr := lyr
-		g.Go(func() error { return l.writeLayer(lyr) })
+		g.Go(func() error { return l.writeLayer(gctx, lyr) })
 	}
 	if err := g.Wait(); err != nil {
 		return err
@@ -287,7 +417,7 @@ func (l *Layout) writeImageBlobs(img v1.Image) error {
 	if err != nil {
 		return fmt.Errorf("getting config: %w", err)
 	}
-	if err := l.writeBlobData(cfgData); err != nil {
+	if err := l.writeBlobData(ctx, cfgData); err != nil {
 		return fmt.Errorf("writing config blob: %w", err)
 	}
 
@@ -295,14 +425,14 @@ func (l *Layout) writeImageBlobs(img v1.Image) error {
 	if err != nil {
 		return fmt.Errorf("getting manifest: %w", err)
 	}
-	return l.writeBlobData(manifestData)
+	return l.writeBlobData(ctx, manifestData)
 }
 
 // writeImage writes all blobs for img and adds a descriptor entry to the OCI index with the
 // given annotationRef and kind. containerdName overrides the io.containerd.image.name annotation;
 // if empty it defaults to annotationRef.Name().
-func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
-	if err := l.writeImageBlobs(img); err != nil {
+func (l *Layout) writeImage(ctx context.Context, annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
+	if err := l.writeImageBlobs(ctx, img); err != nil {
 		return err
 	}
 
@@ -341,7 +471,7 @@ func (l *Layout) writeImage(annotationRef gname.Reference, img v1.Image, kind st
 
 // writeIndexBlobs recursively writes all child image blobs for an image index to the store's blob
 // directory. It does not write the top-level index manifest or add index entries.
-func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
+func (l *Layout) writeIndexBlobs(ctx context.Context, idx v1.ImageIndex) error {
 	manifest, err := idx.IndexManifest()
 	if err != nil {
 		return fmt.Errorf("getting index manifest: %w", err)
@@ -350,14 +480,14 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 	for _, childDesc := range manifest.Manifests {
 		// Try as a nested index first, then fall back to a regular image.
 		if childIdx, err := idx.ImageIndex(childDesc.Digest); err == nil {
-			if err := l.writeIndexBlobs(childIdx); err != nil {
+			if err := l.writeIndexBlobs(ctx, childIdx); err != nil {
 				return err
 			}
 			raw, err := childIdx.RawManifest()
 			if err != nil {
 				return fmt.Errorf("getting nested index manifest: %w", err)
 			}
-			if err := l.writeBlobData(raw); err != nil {
+			if err := l.writeBlobData(ctx, raw); err != nil {
 				return err
 			}
 		} else {
@@ -365,7 +495,7 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 			if err != nil {
 				return fmt.Errorf("getting child image %v: %w", childDesc.Digest, err)
 			}
-			if err := l.writeImageBlobs(childImg); err != nil {
+			if err := l.writeImageBlobs(ctx, childImg); err != nil {
 				return err
 			}
 		}
@@ -375,8 +505,8 @@ func (l *Layout) writeIndexBlobs(idx v1.ImageIndex) error {
 
 // writeIndex writes all blobs for an image index (including all child platform images) and adds
 // a descriptor entry to the OCI index with the given annotationRef and kind.
-func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
-	if err := l.writeIndexBlobs(idx); err != nil {
+func (l *Layout) writeIndex(ctx context.Context, annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
+	if err := l.writeIndexBlobs(ctx, idx); err != nil {
 		return err
 	}
 
@@ -384,7 +514,7 @@ func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, ki
 	if err != nil {
 		return fmt.Errorf("getting index manifest: %w", err)
 	}
-	if err := l.writeBlobData(raw); err != nil {
+	if err := l.writeBlobData(ctx, raw); err != nil {
 		return fmt.Errorf("writing index manifest blob: %w", err)
 	}
 
@@ -414,11 +544,10 @@ func (l *Layout) writeIndex(annotationRef gname.Reference, idx v1.ImageIndex, ki
 	return l.OCI.AddIndex(desc)
 }
 
-// saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/hash.
-// This captures cosign v3 new-bundle-format signatures/attestations stored as OCI referrers
-// (via the subject field) rather than the legacy sha256-<hex>.sig/.att/.sbom tag convention.
-// go-containerregistry handles both the native referrers API and the tag-based fallback.
-// Missing referrers and fetch errors are logged at debug level and silently skipped.
+// saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/hash --
+// cosign v3 new-bundle-format sigs/attestations stored via the subject field, as opposed to the
+// legacy sha256-<hex>.sig/.att/.sbom tag convention. Missing referrers and fetch errors are
+// logged at debug level and silently skipped.
 func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
 	log := zerolog.Ctx(ctx)
 
@@ -465,7 +594,7 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 		// Embed the referrer manifest digest in the kind annotation so that multiple
 		// referrers for the same base image each get a unique entry in the OCI index.
 		kind := consts.KindAnnotationReferrers + "/" + referrerDesc.Digest.Hex
-		if err := l.writeImage(ref, img, kind, ""); err != nil {
+		if err := l.writeImage(ctx, ref, img, kind, ""); err != nil {
 			return fmt.Errorf("saving OCI referrer %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
 		}
 		log.Debug().Msgf("saved OCI referrer %s (%s) for %s", referrerDesc.Digest, string(referrerDesc.ArtifactType), ref.Name())
@@ -474,9 +603,8 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 }
 
 // saveRelatedArtifacts discovers and saves cosign-compatible signature, attestation, and SBOM
-// artifacts for the image identified by ref/hash. Missing artifacts are silently skipped.
-// Returns the set of manifest digest strings (e.g. "sha256:abc...") that were saved, so that
-// saveReferrers can skip duplicates when a registry exposes the same manifest via both paths.
+// artifacts for the image identified by ref/hash, skipping missing ones silently. Returns the
+// set of saved manifest digest strings so saveReferrers can skip duplicates exposed via both paths.
 func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, hash v1.Hash, opts ...remote.Option) (map[string]bool, error) {
 	saved := make(map[string]bool)
 
@@ -502,7 +630,7 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, 
 			// Artifact doesn't exist at this registry; skip silently.
 			continue
 		}
-		if err := l.writeImage(ref, img, r.kind, ""); err != nil {
+		if err := l.writeImage(ctx, ref, img, r.kind, ""); err != nil {
 			return saved, fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
 		}
 		if d, err := img.Digest(); err == nil {
@@ -753,9 +881,13 @@ func (l *Layout) CopyAll(ctx context.Context, to content.Target, toMapper func(s
 			toRef = tr
 		}
 
-		// Append the digest to help the target pusher identify the root descriptor
-		// Format: "reference@digest" allows the pusher to update its index.json
+		// Append the digest so the target pusher can identify the root descriptor.
+		// AnnotationRefName for digest-only images already ends in "@sha256:...", so
+		// strip any existing digest first -- a double "@" leaves the image unindexed (#642).
 		if desc.Digest.Validate() == nil {
+			if at := strings.Index(toRef, "@"); at != -1 {
+				toRef = toRef[:at]
+			}
 			toRef = fmt.Sprintf("%s@%s", toRef, desc.Digest)
 		}
 
@@ -793,51 +925,32 @@ func (l *Layout) Identify(ctx context.Context, desc ocispec.Descriptor) string {
 	return m.Config.MediaType
 }
 
-func (l *Layout) writeBlobData(data []byte) error {
+func (l *Layout) writeBlobData(ctx context.Context, data []byte) error {
 	blob := static.NewLayer(data, "") // NOTE: MediaType isn't actually used in the writing
-	return l.writeLayer(blob)
+	return l.writeLayer(ctx, blob)
 }
 
-func (l *Layout) writeLayer(layer v1.Layer) error {
+// writeLayer writes a single layer's content to the store's blob directory.
+// Writes are atomic (temp file + rename), digest-verified, and deduplicated
+// across concurrent callers writing the same digest -- see
+// content.OCI.WriteBlob for the implementation.
+func (l *Layout) writeLayer(ctx context.Context, layer v1.Layer) error {
 	d, err := layer.Digest()
 	if err != nil {
 		return err
 	}
-
-	dir := filepath.Join(l.Root, ocispec.ImageBlobsDir, d.Algorithm)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil && !os.IsExist(err) {
-		return err
-	}
-
-	blobPath := filepath.Join(dir, d.Hex)
-	// Skip entirely if something exists, assume layer is present already
-	if _, err := os.Stat(blobPath); err == nil {
-		return nil
-	}
-
-	r, err := layer.Compressed()
+	expected, err := digest.Parse(d.String())
 	if err != nil {
 		return err
 	}
-	defer r.Close()
-
-	w, err := os.Create(blobPath)
+	size, err := layer.Size()
 	if err != nil {
 		return err
 	}
 
-	_, copyErr := io.Copy(w, r)
-	if closeErr := w.Close(); closeErr != nil && copyErr == nil {
-		copyErr = closeErr
-	}
-
-	// Remove a partially-written or corrupt blob on any failure so retries
-	// can attempt a fresh download rather than skipping the file.
-	if copyErr != nil {
-		os.Remove(blobPath)
-	}
-
-	return copyErr
+	return l.OCI.WriteBlob(ctx, expected, size, func() (io.ReadCloser, error) {
+		return layer.Compressed()
+	})
 }
 
 // Remove artifact reference from the store

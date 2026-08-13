@@ -10,10 +10,10 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 
-	content2 "hauler.dev/go/hauler/pkg/artifacts"
-	"hauler.dev/go/hauler/pkg/consts"
-	"hauler.dev/go/hauler/pkg/content"
-	"hauler.dev/go/hauler/pkg/layer"
+	content2 "hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/layer"
 )
 
 type Client struct {
@@ -23,7 +23,9 @@ type Client struct {
 
 // ClientOptions provides options for the client
 type ClientOptions struct {
-	NameOverride string
+	NameOverride          string
+	InsecureSkipTLSVerify bool
+	CAFile                string
 }
 
 var (
@@ -44,7 +46,7 @@ func NewClient(opts ClientOptions) *Client {
 	defaults := map[string]Getter{
 		"file":      NewFile(),
 		"directory": NewDirectory(),
-		"http":      NewHttp(),
+		"http":      NewHttp(opts.InsecureSkipTLSVerify, opts.CAFile),
 	}
 
 	c := &Client{

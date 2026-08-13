@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hauler.dev/go/hauler/internal/flags"
-	v1 "hauler.dev/go/hauler/pkg/apis/hauler.cattle.io/v1"
-	"hauler.dev/go/hauler/pkg/archives"
-	"hauler.dev/go/hauler/pkg/consts"
+	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // manifestEntry mirrors tarball.Descriptor for asserting manifest.json contents.
@@ -59,7 +59,7 @@ func TestWriteExportsManifest(t *testing.T) {
 		seedIndex(t, host, "test/multiarch", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/test/multiarch:v1", "", false); err != nil {
+		if _, err := s.AddImage(ctx, host+"/test/multiarch:v1", "", false, "", false, ""); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -78,7 +78,7 @@ func TestWriteExportsManifest(t *testing.T) {
 		seedIndex(t, host, "test/multiarch", "v2", rOpts...)
 
 		s := newTestStore(t)
-		if err := s.AddImage(ctx, host+"/test/multiarch:v2", "", false); err != nil {
+		if _, err := s.AddImage(ctx, host+"/test/multiarch:v2", "", false, "", false, ""); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -113,12 +113,43 @@ func TestWriteExportsManifest(t *testing.T) {
 	})
 }
 
+func TestWriteExportsManifest_DigestOnlyImageHasRepoTag(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// Seed a tagged image so we can reference it by digest
+	host, srcOpts := newLocalhostRegistry(t)
+	img := seedImage(t, host, "test/digestonly", "v1", srcOpts...)
+	hash, err := img.Digest()
+	if err != nil {
+		t.Fatalf("img.Digest: %v", err)
+	}
+
+	// Add the image BY DIGEST
+	s := newTestStore(t)
+	if _, err := s.AddImage(ctx, host+"/test/digestonly@"+hash.String(), "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage by digest: %v", err)
+	}
+
+	if err := writeExportsManifest(ctx, s.Root, ""); err != nil {
+		t.Fatalf("writeExportsManifest: %v", err)
+	}
+
+	entries := readManifestJSON(t, s.Root)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 manifest entry, got %d", len(entries))
+	}
+	// Before fix 2, digest-only refs fall through the switch without setting RepoTags.
+	if len(entries[0].RepoTags) == 0 {
+		t.Errorf("expected at least one RepoTag for digest-only image, got none")
+	}
+}
+
 func TestWriteExportsManifest_SkipsNonImages(t *testing.T) {
 	ctx := newTestContext(t)
 
 	url := seedFileInHTTPServer(t, "skip.sh", "#!/bin/sh\necho skip")
 	s := newTestStore(t)
-	if err := storeFile(ctx, s, v1.File{Path: url}); err != nil {
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile: %v", err)
 	}
 
@@ -143,7 +174,7 @@ func TestSaveCmd(t *testing.T) {
 	seedImage(t, host, "test/save", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/save:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/save:v1", "", false, "", false, ""); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -151,7 +182,7 @@ func TestSaveCmd(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
 	o := newSaveOpts(s.Root, archivePath)
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd: %v", err)
 	}
 
@@ -176,7 +207,7 @@ func TestSaveCmd_ContainerdCompatibility(t *testing.T) {
 	seedImage(t, host, "test/containerd-compat", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/containerd-compat:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/containerd-compat:v1", "", false, "", false, ""); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -184,7 +215,7 @@ func TestSaveCmd_ContainerdCompatibility(t *testing.T) {
 	o := newSaveOpts(s.Root, archivePath)
 	o.ContainerdCompatibility = true
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd ContainerdCompatibility: %v", err)
 	}
 
@@ -205,7 +236,7 @@ func TestSaveCmd_EmptyStore(t *testing.T) {
 	s := newTestStore(t)
 
 	// SaveCmd uses layout.FromPath which stats index.json — it must exist on
-	// disk. A fresh store holds the index only in memory; SaveIndex flushes it.
+	// disk. A fresh store holds the index only in memory... SaveIndex flushes it.
 	if err := s.SaveIndex(); err != nil {
 		t.Fatalf("SaveIndex: %v", err)
 	}
@@ -213,7 +244,7 @@ func TestSaveCmd_EmptyStore(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "haul-empty.tar.zst")
 	o := newSaveOpts(s.Root, archivePath)
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd empty store: %v", err)
 	}
 
@@ -275,7 +306,7 @@ func TestSaveCmd_ChunkSize(t *testing.T) {
 	seedImage(t, host, "test/chunksave", "v1")
 
 	s := newTestStore(t)
-	if err := s.AddImage(ctx, host+"/test/chunksave:v1", "", false); err != nil {
+	if _, err := s.AddImage(ctx, host+"/test/chunksave:v1", "", false, "", false, ""); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -284,7 +315,7 @@ func TestSaveCmd_ChunkSize(t *testing.T) {
 	o := newSaveOpts(s.Root, archivePath)
 	o.ChunkSize = "1K"
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("SaveCmd with chunk-size: %v", err)
 	}
 
@@ -294,7 +325,7 @@ func TestSaveCmd_ChunkSize(t *testing.T) {
 	}
 
 	// at least one chunk must exist
-	matches, err := filepath.Glob(filepath.Join(archiveDir, "haul-chunked_*.tar.zst"))
+	matches, err := filepath.Glob(filepath.Join(archiveDir, "haul-chunked.tar.zst.*"))
 	if err != nil {
 		t.Fatalf("glob chunks: %v", err)
 	}
@@ -313,7 +344,7 @@ func TestSaveCmd_ChunkSize_Invalid(t *testing.T) {
 	o := newSaveOpts(s.Root, filepath.Join(t.TempDir(), "haul.tar.zst"))
 	o.ChunkSize = "0"
 
-	if err := SaveCmd(ctx, o, defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
 		t.Fatal("SaveCmd: expected error for chunk-size=0, got nil")
 	}
 }

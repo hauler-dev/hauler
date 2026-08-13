@@ -10,6 +10,7 @@ type InfoOpts struct {
 	SizeUnit     string
 	ListRepos    bool
 	ShowDigests  bool
+	Check        bool
 }
 
 func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
@@ -19,4 +20,6 @@ func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.TypeFilter, "type", "all", "(Optional) Filter on content type (image | chart | file | sigs | atts | sbom | referrer)")
 	f.BoolVar(&o.ListRepos, "list-repos", false, "(Optional) List all repository names")
 	f.BoolVar(&o.ShowDigests, "digests", false, "(Optional) Show digests of each artifact in the output table")
+	f.BoolVar(&o.Check, "check", false,
+		"(Optional) Check the integrity of each artifact by hashing every blob (slow on large stores)")
 }
