@@ -10,6 +10,7 @@ import (
 
 	gname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -63,6 +64,13 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 	toStdout := o.Output == ""
 	if toStdout {
 		l.SetLevel("fatal")
+	}
+
+	// Warn when the store predates the provenance metadata this command relies on
+	// to faithfully reconstruct the manifest. Written to stderr so it stays visible
+	// even in stdout mode (where the logger is silenced and stdout carries the YAML).
+	if version, err := readStoreHaulerVersion(s.Root); err != nil || storeLacksProvenance(version) {
+		fmt.Fprintln(os.Stderr, "WARNING: The version of Hauler used to create this store did not include provenance metadata to reconstruct the manifest. Please confirm the generated manifest is accurate.")
 	}
 
 	var images []manifestImage
@@ -235,6 +243,50 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 	l.Infof("wrote manifest with [%d] image(s), [%d] chart(s), [%d] file(s) to [%s]", len(images), len(charts), len(files), outPath)
 
 	return nil
+}
+
+// provenanceMinVersion is the first Hauler release whose stores record enough
+// provenance metadata for `store create manifest` to faithfully reconstruct
+// them. Stores written by earlier versions (or with no recorded version) get a
+// best-effort manifest and a warning.
+const provenanceMinVersion = "v2.1.0"
+
+// storeVersionMetadata mirrors the subset of store.json this command reads to
+// decide whether the store carries reliable provenance metadata.
+type storeVersionMetadata struct {
+	HaulerVersion string `json:"hauler-version"`
+}
+
+// readStoreHaulerVersion returns the "hauler-version" recorded in the store's
+// store.json, or an error if the file is missing or unparseable.
+func readStoreHaulerVersion(root string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(root, consts.DefaultStoreMetadataName))
+	if err != nil {
+		return "", err
+	}
+	var m storeVersionMetadata
+	if err := json.Unmarshal(data, &m); err != nil {
+		return "", err
+	}
+	return m.HaulerVersion, nil
+}
+
+// storeLacksProvenance reports whether a store written by haulerVersion predates
+// provenanceMinVersion. An empty or unparseable version is treated as lacking
+// provenance. The comparison is by major.minor so that pre-releases of the
+// threshold (e.g. v2.1.0-rc1) are not flagged.
+func storeLacksProvenance(haulerVersion string) bool {
+	v := strings.TrimSpace(haulerVersion)
+	if v == "" {
+		return true
+	}
+	if !strings.HasPrefix(v, "v") {
+		v = "v" + v
+	}
+	if !semver.IsValid(v) {
+		return true
+	}
+	return semver.Compare(semver.MajorMinor(v), semver.MajorMinor(provenanceMinVersion)) < 0
 }
 
 func writeDoc(out *strings.Builder, header string, kind string, name string, spec interface{}) error {

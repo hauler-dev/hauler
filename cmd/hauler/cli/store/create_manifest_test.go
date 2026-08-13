@@ -327,6 +327,67 @@ func TestCreateManifestCmd_MixedContent(t *testing.T) {
 	}
 }
 
+func TestStoreLacksProvenance(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		want    bool
+	}{
+		{name: "empty version", version: "", want: true},
+		{name: "whitespace only", version: "   ", want: true},
+		{name: "unparseable", version: "not-a-version", want: true},
+		{name: "older patch", version: "v2.0.2", want: true},
+		{name: "older minor", version: "v2.0.99", want: true},
+		{name: "older major", version: "v1.9.9", want: true},
+		{name: "pseudo-version before threshold", version: "v2.0.2-0.20260728211252-c6fbcc97b769+dirty", want: true},
+		{name: "threshold exactly", version: "v2.1.0", want: false},
+		{name: "threshold pre-release", version: "v2.1.0-rc1", want: false},
+		{name: "newer patch", version: "v2.1.5", want: false},
+		{name: "newer major", version: "v3.0.0", want: false},
+		{name: "missing v prefix still parses", version: "2.0.2", want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := storeLacksProvenance(tc.version); got != tc.want {
+				t.Errorf("storeLacksProvenance(%q) = %v, want %v", tc.version, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReadStoreHaulerVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "store.json")
+	if err := os.WriteFile(path, []byte(`{"store-id":"abc","hauler-version":"v2.0.2"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readStoreHaulerVersion(dir)
+	if err != nil {
+		t.Fatalf("readStoreHaulerVersion: %v", err)
+	}
+	if got != "v2.0.2" {
+		t.Errorf("readStoreHaulerVersion = %q, want %q", got, "v2.0.2")
+	}
+
+	// A store.json with no hauler-version field yields an empty string (which the
+	// caller treats as lacking provenance).
+	if err := os.WriteFile(path, []byte(`{"store-id":"abc"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err = readStoreHaulerVersion(dir)
+	if err != nil {
+		t.Fatalf("readStoreHaulerVersion (no version): %v", err)
+	}
+	if got != "" {
+		t.Errorf("readStoreHaulerVersion (no version) = %q, want empty", got)
+	}
+
+	// A missing store.json is surfaced as an error.
+	if _, err := readStoreHaulerVersion(t.TempDir()); err == nil {
+		t.Error("expected error reading version from a directory with no store.json")
+	}
+}
+
 func TestDecodeOriginalChartRef(t *testing.T) {
 	tests := []struct {
 		name        string
