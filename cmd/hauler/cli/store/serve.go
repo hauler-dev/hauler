@@ -126,6 +126,18 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 		return err
 	}
 
+	if cfg.HTTP.Debug.Addr != "" {
+		l.Infof("starting debug server on address [%s]", cfg.HTTP.Debug.Addr)
+		if cfg.HTTP.Debug.Prometheus.Enabled {
+			path := cfg.HTTP.Debug.Prometheus.Path
+			if path == "" {
+				path = "/metrics"
+			}
+			l.Infof("providing prometheus metrics on [%s]", path)
+		}
+	}
+	server.ConfigureDebugServer(cfg)
+
 	if err = r.ListenAndServe(); err != nil {
 		return err
 	}

@@ -21,6 +21,8 @@ type AddImageOpts struct {
 	Rewrite                      string
 	ExcludeExtras                bool
 	Local                        bool
+	CaFile                       string
+	InsecureSkipTLSVerify        bool
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
@@ -36,16 +38,22 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling the image")
 	f.BoolVar(&o.Local, "local", false, "(Optional) Add image from the local Docker daemon instead of a remote registry")
+	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
+	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 }
 
 type AddFileOpts struct {
 	*StoreRootOpts
-	Name string
+	Name                  string
+	CaFile                string
+	InsecureSkipTLSVerify bool
 }
 
 func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&o.Name, "name", "n", "", "(Optional) Rewrite the name of the file")
+	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification for remote files")
+	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification for remote files")
 }
 
 type AddChartOpts struct {
@@ -80,7 +88,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
 
 	cmd.MarkFlagsRequiredTogether("username", "password")
-	cmd.MarkFlagsRequiredTogether("cert-file", "key-file", "ca-file")
+	cmd.MarkFlagsRequiredTogether("cert-file", "key-file")
 
 	cmd.Flags().BoolVar(&o.AddDependencies, "add-dependencies", false, "(Optional) Fetch dependent helm charts")
 	f.BoolVar(&o.AddImages, "add-images", false, "(Optional) Fetch images referenced in helm charts")

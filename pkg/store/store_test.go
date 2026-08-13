@@ -464,7 +464,7 @@ func TestCopyDescriptorGraph_Index(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := src.AddImage(ctx, idxTag.Name(), "", false, "", remoteOpts...); err != nil {
+	if _, err := src.AddImage(ctx, idxTag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 	if err := src.OCI.SaveIndex(); err != nil {
@@ -767,7 +767,7 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new layout: %v", err)
 	}
-	if _, err := s.AddImage(context.Background(), baseTag.Name(), "", false, "", remoteOpts...); err != nil {
+	if _, err := s.AddImage(context.Background(), baseTag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
 
@@ -853,7 +853,7 @@ func TestAddImagePinnedDigestIgnoresMovedTag(t *testing.T) {
 
 	s := newTestStore(t)
 	got, err := s.AddImage(context.Background(), host+"/test/pinned:v1", "", true,
-		originalDigest.String(), remoteOpts...)
+		originalDigest.String(), false, "", remoteOpts...)
 	if err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}
@@ -873,7 +873,7 @@ func TestAddImageEmptyPinResolvesTag(t *testing.T) {
 	}
 
 	s := newTestStore(t)
-	got, err := s.AddImage(context.Background(), host+"/test/unpinned:v1", "", true, "", remoteOpts...)
+	got, err := s.AddImage(context.Background(), host+"/test/unpinned:v1", "", true, "", false, "", remoteOpts...)
 	if err != nil {
 		t.Fatalf("AddImage: %v", err)
 	}

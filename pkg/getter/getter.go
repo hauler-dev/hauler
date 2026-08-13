@@ -23,7 +23,9 @@ type Client struct {
 
 // ClientOptions provides options for the client
 type ClientOptions struct {
-	NameOverride string
+	NameOverride          string
+	InsecureSkipTLSVerify bool
+	CAFile                string
 }
 
 var (
@@ -44,7 +46,7 @@ func NewClient(opts ClientOptions) *Client {
 	defaults := map[string]Getter{
 		"file":      NewFile(),
 		"directory": NewDirectory(),
-		"http":      NewHttp(),
+		"http":      NewHttp(opts.InsecureSkipTLSVerify, opts.CAFile),
 	}
 
 	c := &Client{

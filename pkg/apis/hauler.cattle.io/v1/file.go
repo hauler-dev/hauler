@@ -22,4 +22,9 @@ type File struct {
 	// Name is an optional field specifying the name of the file when specified,
 	// 	it will override any dynamic name discovery from Path
 	Name string `json:"name,omitempty"`
+
+	// TLS options for verifying the file contents for remote files.
+	// If not specified, the default system CA bundle will be used.
+	CaFile                string `json:"ca-file"`
+	InsecureSkipTLSVerify bool   `json:"insecure-skip-tls-verify"`
 }

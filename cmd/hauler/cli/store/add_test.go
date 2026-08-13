@@ -3,9 +3,16 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -252,7 +259,7 @@ func TestRewriteReference(t *testing.T) {
 		seedImage(t, host, "src/repo", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if _, err := s.AddImage(ctx, host+"/src/repo:v1", "", false, "", rOpts...); err != nil {
+		if _, err := s.AddImage(ctx, host+"/src/repo:v1", "", false, "", false, "", rOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -354,7 +361,7 @@ func TestRewriteReference(t *testing.T) {
 		seedImage(t, host, "src/repo", "v1", rOpts...)
 
 		s := newTestStore(t)
-		if _, err := s.AddImage(ctx, host+"/src/repo:v1", "", false, "", rOpts...); err != nil {
+		if _, err := s.AddImage(ctx, host+"/src/repo:v1", "", false, "", false, "", rOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -1893,12 +1900,13 @@ func TestResolveChartJobs_ExcludeExtras(t *testing.T) {
 	tests := []struct {
 		name       string
 		cli        bool
+		cliChanged bool
 		annotation string
 		perChart   bool
 		want       bool
 	}{
 		{name: "nothing set", want: false},
-		{name: "CLI flag alone", cli: true, want: true},
+		{name: "CLI flag alone", cli: true, cliChanged: true, want: true},
 		{name: "annotation alone", annotation: "true", want: true},
 		{name: "per-chart alone", perChart: true, want: true},
 		{
@@ -1911,14 +1919,16 @@ func TestResolveChartJobs_ExcludeExtras(t *testing.T) {
 			// --exclude-extras back off; both are one-way switches.
 			name:       "CLI flag survives an annotation that is not true",
 			cli:        true,
+			cliChanged: true,
 			annotation: "false",
 			want:       true,
 		},
 		{
-			name:     "CLI flag survives a false per-chart field",
-			cli:      true,
-			perChart: false,
-			want:     true,
+			name:       "CLI flag survives a false per-chart field",
+			cli:        true,
+			cliChanged: true,
+			perChart:   false,
+			want:       true,
 		},
 		{
 			name:       "annotation survives a false per-chart field",
@@ -1926,11 +1936,20 @@ func TestResolveChartJobs_ExcludeExtras(t *testing.T) {
 			perChart:   false,
 			want:       true,
 		},
+		{
+			// An explicit CLI --exclude-extras=false wins outright over an
+			// annotation/per-chart true.
+			name:       "explicit CLI false overrides annotation and per-chart",
+			cliChanged: true,
+			annotation: "true",
+			perChart:   true,
+			want:       false,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &flags.SyncOpts{ExcludeExtras: tc.cli}
+			o := &flags.SyncOpts{ExcludeExtras: tc.cli, ExcludeExtrasChanged: tc.cliChanged}
 			a := map[string]string{}
 			if tc.annotation != "" {
 				a[consts.ImageAnnotationExcludeExtras] = tc.annotation
@@ -1972,8 +1991,14 @@ func TestResolveChartJobs_Platform(t *testing.T) {
 			want:       "linux/amd64",
 		},
 		{
-			name:       "per-chart wins over both",
+			name:       "CLI flag wins over annotation and per-chart",
 			cli:        "linux/amd64",
+			annotation: "linux/arm64",
+			perChart:   "linux/s390x",
+			want:       "linux/amd64",
+		},
+		{
+			name:       "per-chart wins over annotation when CLI flag unset",
 			annotation: "linux/arm64",
 			perChart:   "linux/s390x",
 			want:       "linux/s390x",
@@ -2294,6 +2319,39 @@ func TestResolveChartJobs_CredentialFields(t *testing.T) {
 	}
 	if opts.PlainHTTP != ch.PlainHTTP {
 		t.Errorf("PlainHTTP = %v, want %v", opts.PlainHTTP, ch.PlainHTTP)
+	}
+}
+
+func TestResolveChartJobs_CaFilePrecedence(t *testing.T) {
+	tests := []struct {
+		name       string
+		cli        string
+		annotation string
+		perChart   string
+		want       string
+	}{
+		{name: "annotation used when CLI and per-chart unset", annotation: "/ann/ca.crt", want: "/ann/ca.crt"},
+		{name: "per-chart wins over annotation", annotation: "/ann/ca.crt", perChart: "/chart/ca.crt", want: "/chart/ca.crt"},
+		{name: "CLI wins over per-chart and annotation", cli: "/cli/ca.crt", annotation: "/ann/ca.crt", perChart: "/chart/ca.crt", want: "/cli/ca.crt"},
+		{name: "none set stays empty", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			o := &flags.SyncOpts{CaFile: tc.cli}
+			a := map[string]string{}
+			if tc.annotation != "" {
+				a[consts.ImageAnnotationCaFile] = tc.annotation
+			}
+
+			jobs, err := resolveChartJobs(o, a, "/manifests", []v1.Chart{{Name: "rancher", CaFile: tc.perChart}})
+			if err != nil {
+				t.Fatalf("resolveChartJobs: %v", err)
+			}
+			if got := jobs[0].opts.ChartOpts.CaFile; got != tc.want {
+				t.Errorf("CaFile = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -3073,4 +3131,101 @@ func TestFormatAddedLine_WithStats(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStoreImage_CAFileAndInsecure exercises the insecureSkipTLSVerify / caFile
+// plumbing through storeImage -> AddImage. Note: the in-memory registry runs on
+// localhost, which go-containerregistry forces to http, so these cases do NOT
+// perform a real TLS handshake — the actual CA trust/reject behavior is covered
+// by buildTransport's handshake test in pkg/store. What's verified here is caFile
+// error propagation, insecure-over-caFile precedence, and that a valid caFile
+// doesn't break the pull.
+func TestStoreImage_CAFileAndInsecure(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+	seedImage(t, host, "tls/repo", "v1", rOpts...)
+	ref := host + "/tls/repo:v1"
+
+	const missingCA = "/nonexistent/ca.pem"
+
+	t.Run("bad caFile without insecure returns error and stores nothing", func(t *testing.T) {
+		s := newTestStore(t)
+		insecure := false
+		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: insecure}
+		err := storeImage(ctx, s, img, "", false,
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+		if err == nil {
+			t.Fatal("expected error from unreadable caFile, got nil")
+		}
+		if n := countArtifactsInStore(t, s); n != 0 {
+			t.Errorf("expected nothing stored on caFile error, got %d", n)
+		}
+	})
+
+	t.Run("non-PEM caFile without insecure returns error", func(t *testing.T) {
+		s := newTestStore(t)
+		junk := filepath.Join(t.TempDir(), "junk.pem")
+		if err := os.WriteFile(junk, []byte("not a certificate"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		insecure := false
+		img := v1.Image{Name: ref, CaFile: junk, InsecureSkipTLSVerify: insecure}
+		err := storeImage(ctx, s, img, "", false,
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+		if err == nil {
+			t.Fatal("expected error from non-PEM caFile, got nil")
+		}
+	})
+
+	t.Run("insecure takes precedence over bad caFile", func(t *testing.T) {
+		s := newTestStore(t)
+		// insecure=true short-circuits before caFile is read; the bogus path is
+		// ignored and the pull still succeeds. If caFile were read first, the
+		// pull would error and nothing would be stored.
+		insecure := true
+		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: insecure}
+		err := storeImage(ctx, s, img, "", false,
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+		if err != nil {
+			t.Fatalf("insecure should ignore caFile, got: %v", err)
+		}
+		assertArtifactInStore(t, s, "tls/repo:v1")
+	})
+
+	t.Run("valid caFile without insecure is accepted", func(t *testing.T) {
+		s := newTestStore(t)
+		insecure := false
+		img := v1.Image{Name: ref, CaFile: writeCAFile(t), InsecureSkipTLSVerify: insecure}
+		err := storeImage(ctx, s, img, "", false,
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+		if err != nil {
+			t.Fatalf("valid caFile should be accepted, got: %v", err)
+		}
+		assertArtifactInStore(t, s, "tls/repo:v1")
+	})
+}
+
+// writeCAFile writes a valid self-signed cert PEM to a temp file and returns its
+// path. Its only job is to be a parseable CA file (AppendCertsFromPEM succeeds).
+func writeCAFile(t *testing.T) string {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test-ca"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(p, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

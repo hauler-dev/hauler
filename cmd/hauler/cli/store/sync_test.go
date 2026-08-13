@@ -179,10 +179,143 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent Files v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "synced.sh")
+}
+
+// a doc with hauler.dev/store set routes there instead of the default; one without it stays put.
+func TestProcessContent_Files_v1_TargetStoreAnnotation(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	altDir := t.TempDir()
+
+	defaultURL := seedFileInHTTPServer(t, "default.sh", "#!/bin/sh\necho default")
+	routedURL := seedFileInHTTPServer(t, "routed.sh", "#!/bin/sh\necho routed")
+
+	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: default-files
+spec:
+  files:
+    - path: %s
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: routed-files
+  annotations:
+    hauler.dev/store: %s
+spec:
+  files:
+    - path: %s
+`, defaultURL, altDir, routedURL)
+
+	fi := writeManifestFile(t, manifest)
+	o := newSyncOpts(s.Root)
+	ro := defaultCliOpts()
+	targetStores := map[string]*store.Layout{}
+
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, targetStores); err != nil {
+		t.Fatalf("processContent Files v1 with target store: %v", err)
+	}
+
+	assertArtifactInStore(t, s, "default.sh")
+	assertArtifactNotInStore(t, s, "routed.sh")
+
+	altAbs, err := filepath.Abs(altDir)
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	alt, ok := targetStores[altAbs]
+	if !ok {
+		t.Fatalf("expected a target store opened at %s, got %v", altAbs, targetStores)
+	}
+	assertArtifactInStore(t, alt, "routed.sh")
+	assertArtifactNotInStore(t, alt, "default.sh")
+}
+
+// --------------------------------------------------------------------------
+// resolveDocRetries tests
+// --------------------------------------------------------------------------
+
+func TestResolveDocRetries_NoAnnotation_ReturnsRsoUnchanged(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+	rso.Retries = 5
+
+	got, err := resolveDocRetries(map[string]string{}, rso, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != rso {
+		t.Fatal("expected the same *StoreRootOpts back when the annotation is absent")
+	}
+}
+
+func TestResolveDocRetries_Override_ReturnsCopyNotMutation(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+	rso.Retries = 5
+
+	got, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "9"}, rso, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == rso {
+		t.Fatal("expected a copy, not the same *StoreRootOpts, when the annotation overrides retries")
+	}
+	if got.Retries != 9 {
+		t.Fatalf("got Retries %d, want 9", got.Retries)
+	}
+	if rso.Retries != 5 {
+		t.Fatalf("original rso.Retries mutated to %d, want unchanged 5", rso.Retries)
+	}
+}
+
+func TestResolveDocRetries_CLIWinsOverAnnotation(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+	rso.Retries = 5
+
+	got, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "9"}, rso, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != rso {
+		t.Fatal("expected rso unchanged when --retries was set on the CLI")
+	}
+	if got.Retries != 5 {
+		t.Fatalf("got Retries %d, want the CLI value 5", got.Retries)
+	}
+}
+
+func TestResolveDocRetries_ZeroMeansDefault(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+	rso.Retries = 5
+
+	got, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "0"}, rso, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Retries != consts.DefaultRetries {
+		t.Fatalf("got Retries %d, want default %d", got.Retries, consts.DefaultRetries)
+	}
+}
+
+func TestResolveDocRetries_Negative_ReturnsError(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+
+	if _, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "-1"}, rso, false); err == nil {
+		t.Fatal("expected an error for a negative hauler.dev/retries value, got nil")
+	}
+}
+
+func TestResolveDocRetries_NotANumber_ReturnsError(t *testing.T) {
+	rso := defaultRootOpts(t.TempDir())
+
+	if _, err := resolveDocRetries(map[string]string{consts.AnnotationRetries: "banana"}, rso, false); err == nil {
+		t.Fatal("expected an error for a non-numeric hauler.dev/retries value, got nil")
+	}
 }
 
 func TestProcessContent_Charts_v1(t *testing.T) {
@@ -206,7 +339,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent Charts v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "rancher-cluster-templates")
@@ -232,7 +365,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent Images v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/myimage")
@@ -254,7 +387,7 @@ metadata:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err == nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err == nil {
 		t.Fatal("expected error for unsupported kind, got nil")
 	}
 }
@@ -279,7 +412,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("expected nil for unrecognized apiVersion (warn-and-skip), got: %v", err)
 	}
 	if n := countArtifactsInStore(t, s); n != 0 {
@@ -325,7 +458,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent MultiDoc: %v", err)
 	}
 	assertArtifactInStore(t, s, "multi.sh")
@@ -826,8 +959,15 @@ func TestResolveImageJobs_KeyPrecedence(t *testing.T) {
 			wantKey:    homeKey,
 		},
 		{
-			name:       "per-image overrides annotation and CLI, expanded via homedir",
+			// CLI wins outright over both annotation and per-image.
+			name:       "CLI overrides annotation and per-image",
 			cliKey:     "/cli/key.pub",
+			annotation: "/annotation/key.pub",
+			imageKey:   "~/mykey.pub",
+			wantKey:    "/cli/key.pub",
+		},
+		{
+			name:       "per-image overrides annotation when CLI key unset, expanded via homedir",
 			annotation: "/annotation/key.pub",
 			imageKey:   "~/mykey.pub",
 			wantKey:    homeKey,
@@ -865,24 +1005,35 @@ func TestResolveImageJobs_TlogPrecedence(t *testing.T) {
 	tests := []struct {
 		name       string
 		cliTlog    bool
+		cliChanged bool
 		annotation string
 		imageTlog  bool
 		wantTlog   bool
 	}{
 		{
-			name:     "CLI true",
-			cliTlog:  true,
-			wantTlog: true,
+			name:       "CLI true",
+			cliTlog:    true,
+			cliChanged: true,
+			wantTlog:   true,
 		},
 		{
-			name:       "annotation true overrides CLI false",
+			name:       "annotation true when CLI unset",
 			annotation: "true",
 			wantTlog:   true,
 		},
 		{
-			name:      "per-image true overrides annotation/CLI false",
+			name:      "per-image true when CLI unset",
 			imageTlog: true,
 			wantTlog:  true,
+		},
+		{
+			// An explicit CLI flag wins outright, even false, over an
+			// annotation/per-image true.
+			name:       "explicit CLI false overrides annotation and per-image",
+			cliChanged: true,
+			annotation: "true",
+			imageTlog:  true,
+			wantTlog:   false,
 		},
 		{
 			name:     "all false stays false",
@@ -892,7 +1043,7 @@ func TestResolveImageJobs_TlogPrecedence(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &flags.SyncOpts{Key: "/cli/key.pub", Tlog: tc.cliTlog}
+			o := &flags.SyncOpts{Key: "/cli/key.pub", Tlog: tc.cliTlog, TlogChanged: tc.cliChanged}
 			a := map[string]string{}
 			if tc.annotation != "" {
 				a[consts.ImageAnnotationTlog] = tc.annotation
@@ -925,7 +1076,9 @@ func TestResolveImageJobs_PlatformPrecedence(t *testing.T) {
 		// Annotation only applies when the CLI platform is unset — it does not
 		// override an explicitly-set CLI platform.
 		{name: "annotation used when CLI platform unset", annotation: "linux/arm64", want: "linux/arm64"},
-		{name: "per-image overrides annotation and CLI", cliPlatform: "linux/amd64", annotation: "linux/arm64", imagePlatform: "linux/386", want: "linux/386"},
+		// CLI wins outright over both annotation and per-image.
+		{name: "CLI overrides annotation and per-image", cliPlatform: "linux/amd64", annotation: "linux/arm64", imagePlatform: "linux/386", want: "linux/amd64"},
+		{name: "per-image overrides annotation when CLI platform unset", annotation: "linux/arm64", imagePlatform: "linux/386", want: "linux/386"},
 		{name: "none set stays empty", want: ""},
 	}
 
@@ -986,19 +1139,21 @@ func TestResolveImageJobs_ExcludeExtrasPrecedence(t *testing.T) {
 	tests := []struct {
 		name             string
 		cliExcludeExtras bool
+		cliChanged       bool
 		annotation       string
 		imageExclude     bool
 		want             bool
 	}{
-		{name: "CLI true", cliExcludeExtras: true, want: true},
-		{name: "annotation true overrides CLI false", annotation: "true", want: true},
-		{name: "per-image true overrides annotation/CLI false", imageExclude: true, want: true},
+		{name: "CLI true", cliExcludeExtras: true, cliChanged: true, want: true},
+		{name: "annotation true when CLI unset", annotation: "true", want: true},
+		{name: "per-image true when CLI unset", imageExclude: true, want: true},
+		{name: "explicit CLI false overrides annotation and per-image", cliChanged: true, annotation: "true", imageExclude: true, want: false},
 		{name: "all false stays false", want: false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &flags.SyncOpts{ExcludeExtras: tc.cliExcludeExtras}
+			o := &flags.SyncOpts{ExcludeExtras: tc.cliExcludeExtras, ExcludeExtrasChanged: tc.cliChanged}
 			a := map[string]string{}
 			if tc.annotation != "" {
 				a[consts.ImageAnnotationExcludeExtras] = tc.annotation
@@ -1014,6 +1169,46 @@ func TestResolveImageJobs_ExcludeExtrasPrecedence(t *testing.T) {
 			}
 			if jobs[0].excludeExtras != tc.want {
 				t.Errorf("got excludeExtras %v, want %v", jobs[0].excludeExtras, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveImageJobs_InsecurePrecedence(t *testing.T) {
+	tests := []struct {
+		name       string
+		cliCaFile  string
+		cliChanged bool
+		annotation string
+		imageIns   bool
+		want       bool
+	}{
+		{name: "per-image true when CLI unset", imageIns: true, want: true},
+		{name: "annotation true when CLI unset", annotation: "true", want: true},
+		{name: "explicit CLI false overrides annotation and per-image", cliChanged: true, annotation: "true", imageIns: true, want: false},
+		// a CA file forces verification on, overriding a per-image/annotation true
+		{name: "ca-file forces insecure off", cliCaFile: "/ca.pem", annotation: "true", imageIns: true, want: false},
+		{name: "all unset stays false", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			o := &flags.SyncOpts{CaFile: tc.cliCaFile, InsecureChanged: tc.cliChanged}
+			a := map[string]string{}
+			if tc.annotation != "" {
+				a[consts.ImageAnnotationInsecureSkipTLSVerify] = tc.annotation
+			}
+			images := []v1.Image{{Name: "rancher/rancher:v2.9", InsecureSkipTLSVerify: tc.imageIns}}
+
+			jobs, err := resolveImageJobs(o, a, images)
+			if err != nil {
+				t.Fatalf("resolveImageJobs: %v", err)
+			}
+			if len(jobs) != 1 {
+				t.Fatalf("expected 1 job, got %d", len(jobs))
+			}
+			if jobs[0].img.InsecureSkipTLSVerify != tc.want {
+				t.Errorf("got insecure %v, want %v", jobs[0].img.InsecureSkipTLSVerify, tc.want)
 			}
 		})
 	}
@@ -1142,7 +1337,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
 		t.Fatalf("processContent: %v", err)
 	}
 
@@ -1314,7 +1509,7 @@ func TestResolveFileJobs_OneJobPerFile(t *testing.T) {
 		{Path: "https://example.com/b.sh", Name: "renamed-b.sh"},
 	}
 
-	jobs := resolveFileJobs(files)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 	if len(jobs) != 2 {
 		t.Fatalf("resolveFileJobs: got %d jobs, want 2", len(jobs))
 	}
@@ -1327,7 +1522,7 @@ func TestResolveFileJobs_OneJobPerFile(t *testing.T) {
 }
 
 func TestResolveFileJobs_EmptyInput(t *testing.T) {
-	jobs := resolveFileJobs(nil)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, nil)
 	if len(jobs) != 0 {
 		t.Errorf("resolveFileJobs(nil): got %d jobs, want 0", len(jobs))
 	}
@@ -1344,7 +1539,7 @@ func TestRunFileJobs_AllSucceed(t *testing.T) {
 	url1 := seedFileInHTTPServer(t, "one.sh", "#!/bin/sh\necho one")
 	url2 := seedFileInHTTPServer(t, "two.sh", "#!/bin/sh\necho two")
 
-	jobs := resolveFileJobs([]v1.File{{Path: url1}, {Path: url2}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: url1}, {Path: url2}})
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
@@ -1374,7 +1569,7 @@ func TestRunFileJobs_ConcurrencyOneVsFour_ProduceEquivalentStores(t *testing.T) 
 
 	run := func(concurrency int) *storeSnapshot {
 		s := newTestStore(t)
-		jobs := resolveFileJobs(files)
+		jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 		if err := runFileJobs(ctx, s, jobs, concurrency, rso, ro, nil); err != nil {
@@ -1457,7 +1652,7 @@ func TestRunFileJobs_DedupesDuplicateSourceAcrossEntries(t *testing.T) {
 		{Path: url, Name: "rke2-install.sh"},
 	}
 
-	jobs := resolveFileJobs(files)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
@@ -1515,7 +1710,7 @@ func TestRunFileJobs_ErrorPropagation(t *testing.T) {
 				{Path: goodURL},
 			}
 
-			jobs := resolveFileJobs(files)
+			jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 			rso := defaultRootOpts(s.Root)
 			rso.Retries = 1 // avoid RetriesInterval sleeps in this table
 			ro := defaultCliOpts()
@@ -1569,7 +1764,7 @@ func TestRunFileJobs_RetryEventuallySucceeds(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	jobs := resolveFileJobs([]v1.File{{Path: srv.URL + "/eventual.sh"}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: srv.URL + "/eventual.sh"}})
 	rso := defaultRootOpts(s.Root)
 	rso.Retries = 2
 	ro := defaultCliOpts()
@@ -1619,7 +1814,7 @@ func TestRunFileJobs_CancellationAbortsPromptly(t *testing.T) {
 	}()
 
 	s := newTestStore(t)
-	jobs := resolveFileJobs([]v1.File{{Path: srv.URL + "/slow.sh"}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: srv.URL + "/slow.sh"}})
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
@@ -1657,7 +1852,7 @@ func TestRunFileJobs_WithProgress_RendersEscapeCodesAndCompletionLines(t *testin
 	ro := defaultCliOpts()
 
 	progress := log.NewRenderer(&buf)
-	jobs := resolveFileJobs(files)
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, files)
 
 	if err := runFileJobs(ctx, s, jobs, 2, rso, ro, progress); err != nil {
 		t.Fatalf("runFileJobs: %v", err)
@@ -1682,7 +1877,7 @@ func TestRunFileJobs_NoProgress_CompletionLineRefAppearsOnce(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	jobs := resolveFileJobs([]v1.File{{Path: url}})
+	jobs := resolveFileJobs(&flags.SyncOpts{}, nil, []v1.File{{Path: url}})
 	if err := runFileJobs(ctx, s, jobs, 1, rso, ro, nil); err != nil {
 		t.Fatalf("runFileJobs: %v", err)
 	}
@@ -1916,7 +2111,7 @@ func TestSyncImages_ErrorPropagation(t *testing.T) {
 // goroutine has fully returned (including cancelling gctx on failure), so
 // jobs run strictly in slice order and the good jobs are guaranteed to
 // observe the already-cancelled context before doing anything.
-func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
+func TestRunImageJobs_CancelledJobsDoNotLogResolvingImage(t *testing.T) {
 	host, remoteOpts := newTestRegistry(t)
 
 	const nGood = 3
@@ -1930,8 +2125,9 @@ func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
 
 	s := newTestStore(t)
 	var buf bytes.Buffer
-	// "adding image [...]" now logs at Debug (cmd/hauler/cli/store/add.go),
-	// so this test needs Debug-level output visible. Per-logger .Level() is
+	// "resolving image [...]" (storeImage's per-job startup line in
+	// cmd/hauler/cli/store/add.go) logs at Debug, so this test needs
+	// Debug-level output visible. Per-logger .Level() is
 	// not sufficient on its own: zerolog's Logger.should() gates on
 	// max(logger.level, zerolog.GlobalLevel()) -- and GlobalLevel is
 	// process-global state that other tests in this package mutate (e.g.
@@ -1956,9 +2152,9 @@ func TestRunImageJobs_CancelledJobsDoNotLogAddingImage(t *testing.T) {
 		t.Fatal("runImageJobs: expected error, got nil")
 	}
 
-	got := strings.Count(buf.String(), "adding image [")
+	got := strings.Count(buf.String(), "resolving image [")
 	if got != 1 {
-		t.Errorf("\"adding image [\" logged %d times, want exactly 1 (only the failed job should have attempted logging; the %d good jobs queued after it must never start)\nfull log:\n%s", got, nGood, buf.String())
+		t.Errorf("\"resolving image [\" logged %d times, want exactly 1 (only the failed job should have attempted logging; the %d good jobs queued after it must never start)\nfull log:\n%s", got, nGood, buf.String())
 	}
 }
 

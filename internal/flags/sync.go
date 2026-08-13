@@ -25,6 +25,18 @@ type SyncOpts struct {
 	DryRun                       bool
 	Concurrency                  int
 	NoProgress                   bool
+	CaFile                       string
+	InsecureSkipTLSVerify        bool
+
+	// Whether each of these flags was explicitly set on the CLI, captured in
+	// sync's PreRunE. A plain bool (and a resolved store/retries value) has no
+	// "unset" state, so the resolvers use these markers to let an explicit CLI
+	// value win over per-item/annotation instead of only ever turning a flag on.
+	TlogChanged          bool
+	ExcludeExtrasChanged bool
+	InsecureChanged      bool
+	StoreChanged         bool
+	RetriesChanged       bool
 }
 
 func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
@@ -47,4 +59,6 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.DryRun, "dry-run", false, "(Optional) Output product manifest content to stdout instead of processing it (requires --products)")
 	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of artifacts to fetch and store concurrently (1 = serial; also via HAULER_CONCURRENCY, explicit flag wins)")
 	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
+	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
+	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 }

@@ -43,7 +43,7 @@ func TestHttp_Open_HonorsContextCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	h := getter.NewHttp()
+	h := getter.NewHttp(false, "")
 
 	done := make(chan error, 1)
 	go func() {

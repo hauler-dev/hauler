@@ -40,4 +40,8 @@ type Image struct {
 	Rewrite       string `json:"rewrite"`
 	ExcludeExtras bool   `json:"exclude-extras"`
 	Local         bool   `json:"local"`
+
+	// TLS options for verifying the image signature.  If not specified, the default system CA bundle will be used.
+	CaFile                string `json:"ca-file"`
+	InsecureSkipTLSVerify bool   `json:"insecure-skip-tls-verify"`
 }

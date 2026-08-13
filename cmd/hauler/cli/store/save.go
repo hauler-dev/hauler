@@ -22,12 +22,14 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
 // saves a content store to store archives
-func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	// maps to handle compression and archival types
@@ -92,6 +94,29 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, rso *flags.StoreRootOpts, r
 		}
 	} else {
 		l.Infof("saving store [%s] to archive [%s]", o.StoreDir, o.FileName)
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:   s.StoreID,
+			Store:     s.Root,
+			Command:   "store save",
+			Reference: o.FileName,
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"platform":   o.Platform,
+				"containerd": o.ContainerdCompatibility,
+				"chunk-size": o.ChunkSize,
+			}
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
 	}
 
 	return nil

@@ -149,8 +149,11 @@ func BuildGlobal(ro *flags.CliRootOpts, rso *flags.StoreRootOpts) GlobalEntry {
 		consts.HaulerTempDir,
 		consts.HaulerStoreDir,
 		consts.HaulerIgnoreErrors,
+		consts.HaulerRetries,
 		consts.HaulerLogLevel,
 		consts.HaulerAuditLevel,
+		consts.HaulerConcurrency,
+		consts.HaulerBlobConcurrency,
 	} {
 		if v := os.Getenv(key); v != "" {
 			env[key] = v
@@ -200,9 +203,13 @@ func Append(haulerDir string, e Entry) error {
 	return globalErr
 }
 
-// appendMu serializes appendLine calls: os.OpenFile with O_APPEND is only
-// atomic for a single write() syscall on POSIX, and concurrent `store sync`
-// image jobs (runImageJobs) can each call this at once without it.
+// LogFileName is the audit log's filename, under both haulerDir and a store's Root.
+const LogFileName = "audit.log"
+
+// appendMu serializes appendLine/MergeStoreLog calls: os.OpenFile with
+// O_APPEND is only atomic for a single write() syscall on POSIX, and
+// concurrent `store sync` image jobs (runImageJobs) can each call this at
+// once without it.
 var appendMu sync.Mutex
 
 func appendLine(dir string, v any) error {
@@ -216,12 +223,40 @@ func appendLine(dir string, v any) error {
 	if err != nil {
 		return fmt.Errorf("audit: marshal: %w", err)
 	}
-	f, err := os.OpenFile(filepath.Join(dir, "audit.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(filepath.Join(dir, LogFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("audit: open log: %w", err)
 	}
 	defer f.Close()
 	_, err = fmt.Fprintf(f, "%s\n", data)
+	return err
+}
+
+// MergeStoreLog appends tempDir's staged audit.log onto destDir's. No-op if tempDir has none.
+func MergeStoreLog(tempDir, destDir string) error {
+	data, err := os.ReadFile(filepath.Join(tempDir, LogFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("audit: read staged log: %w", err)
+	}
+	if len(data) == 0 {
+		return nil
+	}
+
+	appendMu.Lock()
+	defer appendMu.Unlock()
+
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("audit: ensure dir: %w", err)
+	}
+	f, err := os.OpenFile(filepath.Join(destDir, LogFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("audit: open log: %w", err)
+	}
+	defer f.Close()
+	_, err = f.Write(data)
 	return err
 }
 
