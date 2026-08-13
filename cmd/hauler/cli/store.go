@@ -516,7 +516,7 @@ func addStoreCreateManifest(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 
 	cmd := &cobra.Command{
 		Use:   "manifest",
-		Short: "Create a hauler content manifest from the store's metadata",
+		Short: "(EXPERIMENTAL) Create a hauler content manifest from the store's metadata",
 		Example: `  # print a manifest for the default store to stdout
 	hauler store create manifest
 
