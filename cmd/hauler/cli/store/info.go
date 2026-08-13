@@ -562,6 +562,26 @@ func newItemWithDigest(s *store.Layout, digestStr string, desc ocispec.Descripto
 	return item
 }
 
+// resolveDisplayReference returns the fully-qualified reference string to display
+// for desc. ContainerdImageNameKey already holds the canonical "registry/repo:tag"
+// string exactly as computed when the artifact was stored (see rewriteReference in
+// cmd/hauler/cli/store/add.go), so it's used verbatim. Re-parsing it through
+// name.ParseReference and calling .Name() would re-trigger go-containerregistry's
+// Docker Hub "library/" namespace normalization for any single-segment repo under
+// index.docker.io, undoing a rewrite like "hello-world-custom" back to
+// "library/hello-world-custom". AnnotationRefName, used as a fallback, has no
+// registry component, so it still needs reference.Parse to fill one in.
+func resolveDisplayReference(desc ocispec.Descriptor) (string, error) {
+	if refName := desc.Annotations[consts.ContainerdImageNameKey]; refName != "" {
+		return refName, nil
+	}
+	ref, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+	if err != nil {
+		return "", err
+	}
+	return ref.Name(), nil
+}
+
 func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat string, o *flags.InfoOpts) item {
 	var size int64 = 0
 	for _, l := range m.Layers {
@@ -570,11 +590,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 
 	ctype := resolveCtype(desc, m.Config.MediaType)
 
-	refName := desc.Annotations[consts.ContainerdImageNameKey]
-	if refName == "" {
-		refName = desc.Annotations[ocispec.AnnotationRefName]
-	}
-	ref, err := reference.Parse(refName)
+	refName, err := resolveDisplayReference(desc)
 	if err != nil {
 		return item{}
 	}
@@ -584,7 +600,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	}
 
 	return item{
-		Reference: ref.Name(),
+		Reference: refName,
 		Type:      ctype,
 		Platform:  plat,
 		Digest:    desc.Digest.String(),
@@ -637,17 +653,13 @@ func fallbackItem(desc ocispec.Descriptor, plat string, problem store.BlobResult
 		plat = "-"
 	}
 
-	refName := desc.Annotations[consts.ContainerdImageNameKey]
-	if refName == "" {
-		refName = desc.Annotations[ocispec.AnnotationRefName]
-	}
-	ref, err := reference.Parse(refName)
+	refName, err := resolveDisplayReference(desc)
 	if err != nil {
 		return item{}
 	}
 
 	return item{
-		Reference:    ref.Name(),
+		Reference:    refName,
 		Type:         resolveCtype(desc, ""),
 		Platform:     plat,
 		Layers:       0,

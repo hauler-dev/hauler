@@ -375,6 +375,108 @@ func TestRewriteReference(t *testing.T) {
 		// condition fires → registry reverts to host, no library/ to strip
 		assertAnnotationsInStore(t, s, "newrepo/img:v2", host+"/newrepo/img:v2")
 	})
+
+	// The library/-detection must look at rawRewrite's path (not the
+	// go-containerregistry-normalized newRepo, which always carries "library/" for
+	// single-segment repos), so that a rewrite which explicitly asks for
+	// "library/..." is honored instead of being unconditionally stripped.
+
+	t.Run("path-only rewrite with explicit library/ prefix is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:v2")
+		rawRewrite := "library/nginx:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		// rewriteRepo (derived from rawRewrite) starts with "library/" → must be kept
+		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
+	})
+
+	t.Run("leading slash rewrite with explicit library/ prefix is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName:     "library/nginx:latest",
+			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
+		})
+
+		oldRef, _ := name.NewTag("nginx:latest")
+		newRef, _ := name.NewTag("library/nginx:v2")
+		// AddImageCmd passes the pre-trim rewrite string through as rawRewrite, so a
+		// leading "/" must still be handled correctly here.
+		rawRewrite := "/library/nginx:v2"
+
+		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
+			t.Fatalf("rewriteReference: %v", err)
+		}
+		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
+	})
+}
+
+func TestRewriteChartReference(t *testing.T) {
+	ctx := newTestContext(t)
+
+	// A chart rewritten to a bare single-segment name must not keep an erroneous
+	// "library/" prefix picked up from go-containerregistry's docker hub
+	// normalization, unless the rewrite explicitly asked for one.
+
+	t.Run("path-only rewrite strips library/ prefix from docker hub normalization", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "mychart:2.0.0"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "mychart:2.0.0")
+	})
+
+	t.Run("explicit library/ prefix in rewrite is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "library/mychart:2.0.0"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "library/mychart:2.0.0")
+	})
+
+	t.Run("leading slash rewrite with explicit library/ prefix is preserved", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "/library/mychart:2.0.0"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "library/mychart:2.0.0")
+	})
+
+	t.Run("rewrite omitting tag inherits the source tag", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := name.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, "myneworg/mychart"); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "myneworg/mychart:1.0.0")
+	})
 }
 
 // --------------------------------------------------------------------------
@@ -1798,12 +1900,13 @@ func TestResolveChartJobs_ExcludeExtras(t *testing.T) {
 	tests := []struct {
 		name       string
 		cli        bool
+		cliChanged bool
 		annotation string
 		perChart   bool
 		want       bool
 	}{
 		{name: "nothing set", want: false},
-		{name: "CLI flag alone", cli: true, want: true},
+		{name: "CLI flag alone", cli: true, cliChanged: true, want: true},
 		{name: "annotation alone", annotation: "true", want: true},
 		{name: "per-chart alone", perChart: true, want: true},
 		{
@@ -1816,14 +1919,16 @@ func TestResolveChartJobs_ExcludeExtras(t *testing.T) {
 			// --exclude-extras back off; both are one-way switches.
 			name:       "CLI flag survives an annotation that is not true",
 			cli:        true,
+			cliChanged: true,
 			annotation: "false",
 			want:       true,
 		},
 		{
-			name:     "CLI flag survives a false per-chart field",
-			cli:      true,
-			perChart: false,
-			want:     true,
+			name:       "CLI flag survives a false per-chart field",
+			cli:        true,
+			cliChanged: true,
+			perChart:   false,
+			want:       true,
 		},
 		{
 			name:       "annotation survives a false per-chart field",
@@ -1831,11 +1936,20 @@ func TestResolveChartJobs_ExcludeExtras(t *testing.T) {
 			perChart:   false,
 			want:       true,
 		},
+		{
+			// An explicit CLI --exclude-extras=false wins outright over an
+			// annotation/per-chart true.
+			name:       "explicit CLI false overrides annotation and per-chart",
+			cliChanged: true,
+			annotation: "true",
+			perChart:   true,
+			want:       false,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &flags.SyncOpts{ExcludeExtras: tc.cli}
+			o := &flags.SyncOpts{ExcludeExtras: tc.cli, ExcludeExtrasChanged: tc.cliChanged}
 			a := map[string]string{}
 			if tc.annotation != "" {
 				a[consts.ImageAnnotationExcludeExtras] = tc.annotation
@@ -1877,8 +1991,14 @@ func TestResolveChartJobs_Platform(t *testing.T) {
 			want:       "linux/amd64",
 		},
 		{
-			name:       "per-chart wins over both",
+			name:       "CLI flag wins over annotation and per-chart",
 			cli:        "linux/amd64",
+			annotation: "linux/arm64",
+			perChart:   "linux/s390x",
+			want:       "linux/amd64",
+		},
+		{
+			name:       "per-chart wins over annotation when CLI flag unset",
 			annotation: "linux/arm64",
 			perChart:   "linux/s390x",
 			want:       "linux/s390x",
@@ -2155,7 +2275,6 @@ func TestResolveChartJobs_NoCharts(t *testing.T) {
 // TestResolveChartJobs_CredentialFields pins that every TLS/verification
 // field on v1.Chart reaches the job's ChartOpts unchanged.
 func TestResolveChartJobs_CredentialFields(t *testing.T) {
-	insecure := true
 	ch := v1.Chart{
 		Name:                  "rancher",
 		Verify:                true,
@@ -2164,7 +2283,7 @@ func TestResolveChartJobs_CredentialFields(t *testing.T) {
 		CertFile:              "/certs/client.crt",
 		KeyFile:               "/certs/client.key",
 		CaFile:                "/certs/ca.crt",
-		InsecureSkipTLSVerify: &insecure,
+		InsecureSkipTLSVerify: true,
 		PlainHTTP:             true,
 	}
 
@@ -2195,11 +2314,44 @@ func TestResolveChartJobs_CredentialFields(t *testing.T) {
 	if opts.CaFile != ch.CaFile {
 		t.Errorf("CaFile = %q, want %q", opts.CaFile, ch.CaFile)
 	}
-	if opts.InsecureSkipTLSVerify != derefInsecure(ch.InsecureSkipTLSVerify) {
-		t.Errorf("InsecureSkipTLSVerify = %v, want %v", opts.InsecureSkipTLSVerify, derefInsecure(ch.InsecureSkipTLSVerify))
+	if opts.InsecureSkipTLSVerify != ch.InsecureSkipTLSVerify {
+		t.Errorf("InsecureSkipTLSVerify = %v, want %v", opts.InsecureSkipTLSVerify, ch.InsecureSkipTLSVerify)
 	}
 	if opts.PlainHTTP != ch.PlainHTTP {
 		t.Errorf("PlainHTTP = %v, want %v", opts.PlainHTTP, ch.PlainHTTP)
+	}
+}
+
+func TestResolveChartJobs_CaFilePrecedence(t *testing.T) {
+	tests := []struct {
+		name       string
+		cli        string
+		annotation string
+		perChart   string
+		want       string
+	}{
+		{name: "annotation used when CLI and per-chart unset", annotation: "/ann/ca.crt", want: "/ann/ca.crt"},
+		{name: "per-chart wins over annotation", annotation: "/ann/ca.crt", perChart: "/chart/ca.crt", want: "/chart/ca.crt"},
+		{name: "CLI wins over per-chart and annotation", cli: "/cli/ca.crt", annotation: "/ann/ca.crt", perChart: "/chart/ca.crt", want: "/cli/ca.crt"},
+		{name: "none set stays empty", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			o := &flags.SyncOpts{CaFile: tc.cli}
+			a := map[string]string{}
+			if tc.annotation != "" {
+				a[consts.ImageAnnotationCaFile] = tc.annotation
+			}
+
+			jobs, err := resolveChartJobs(o, a, "/manifests", []v1.Chart{{Name: "rancher", CaFile: tc.perChart}})
+			if err != nil {
+				t.Fatalf("resolveChartJobs: %v", err)
+			}
+			if got := jobs[0].opts.ChartOpts.CaFile; got != tc.want {
+				t.Errorf("CaFile = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -2999,7 +3151,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 	t.Run("bad caFile without insecure returns error and stores nothing", func(t *testing.T) {
 		s := newTestStore(t)
 		insecure := false
-		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: &insecure}
+		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
 			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
 		if err == nil {
@@ -3017,7 +3169,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 			t.Fatal(err)
 		}
 		insecure := false
-		img := v1.Image{Name: ref, CaFile: junk, InsecureSkipTLSVerify: &insecure}
+		img := v1.Image{Name: ref, CaFile: junk, InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
 			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
 		if err == nil {
@@ -3031,7 +3183,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 		// ignored and the pull still succeeds. If caFile were read first, the
 		// pull would error and nothing would be stored.
 		insecure := true
-		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: &insecure}
+		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
 			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
 		if err != nil {
@@ -3043,7 +3195,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 	t.Run("valid caFile without insecure is accepted", func(t *testing.T) {
 		s := newTestStore(t)
 		insecure := false
-		img := v1.Image{Name: ref, CaFile: writeCAFile(t), InsecureSkipTLSVerify: &insecure}
+		img := v1.Image{Name: ref, CaFile: writeCAFile(t), InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
 			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
 		if err != nil {
