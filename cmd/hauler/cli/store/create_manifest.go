@@ -73,6 +73,11 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		fmt.Fprintln(os.Stderr, "WARNING: The version of Hauler used to create this store did not include provenance metadata to reconstruct the manifest. Please confirm the generated manifest is accurate.")
 	}
 
+	// Advise reviewing the output regardless of provenance. Written to stderr so it
+	// stays visible even in stdout mode (where the logger is silenced and stdout
+	// carries the YAML).
+	fmt.Fprintln(os.Stderr, "INFO: Always confirm the accuracy of the generated manifest before recreating store.")
+
 	var images []manifestImage
 	var charts []manifestChart
 	var files []manifestFile
