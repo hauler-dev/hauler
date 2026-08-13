@@ -517,13 +517,13 @@ func addStoreCreateManifest(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 	cmd := &cobra.Command{
 		Use:   "manifest",
 		Short: "Create a hauler content manifest from the store's metadata",
-		Example: `  # generate a manifest for the default store into ./store-manifest.yaml
+		Example: `  # print a manifest for the default store to stdout
 	hauler store create manifest
 
-	# generate a manifest for a specific store into ./my-store-manifest.yaml
+	# print a manifest for a specific store to stdout
 	hauler store create manifest --store /path/to/my-store
 
-	# generate a manifest for a specific store into a custom path
+	# write a manifest for a specific store to a file
 	hauler store create manifest --store /path/to/store --output my-manifest.yaml`,
 		Args: cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -55,9 +55,15 @@ type manifestDoc struct {
 // CreateManifestCmd walks the store's OCI index (and the manifests/configs it
 // references) to reconstruct a hauler content manifest capable of recreating the
 // store's contents via `hauler store sync`. It groups discovered content into
-// Images/Charts/Files documents and writes them to o.Output.
+// Images/Charts/Files documents and writes them to o.Output, or to stdout when
+// o.Output is empty.
 func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *store.Layout) error {
 	l := log.FromContext(ctx)
+
+	toStdout := o.Output == ""
+	if toStdout {
+		l.SetLevel("fatal")
+	}
 
 	var images []manifestImage
 	var charts []manifestChart
@@ -184,11 +190,6 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 
 	base := filepath.Base(s.Root)
 
-	output := o.Output
-	if output == "" {
-		output = base + "-manifest.yaml"
-	}
-
 	var out strings.Builder
 	if len(images) > 0 {
 		if err := writeDoc(&out, "", consts.ImagesContentKind, base+"-images", struct {
@@ -216,12 +217,19 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		}
 	}
 
-	if err := os.WriteFile(output, []byte(out.String()), 0o644); err != nil {
-		return fmt.Errorf("writing manifest to [%s]: %w", output, err)
+	if toStdout {
+		if _, err := os.Stdout.Write([]byte(out.String())); err != nil {
+			return err
+		}
+		return nil
 	}
 
-	outPath := output
-	if abs, err := filepath.Abs(output); err == nil {
+	if err := os.WriteFile(o.Output, []byte(out.String()), 0o644); err != nil {
+		return fmt.Errorf("writing manifest to [%s]: %w", o.Output, err)
+	}
+
+	outPath := o.Output
+	if abs, err := filepath.Abs(o.Output); err == nil {
 		outPath = abs
 	}
 	l.Infof("wrote manifest with [%d] image(s), [%d] chart(s), [%d] file(s) to [%s]", len(images), len(charts), len(files), outPath)
