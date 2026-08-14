@@ -55,7 +55,7 @@ func TestCreateManifestCmd_Image(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -88,7 +88,7 @@ func TestCreateManifestCmd_ImageWithRewrite(t *testing.T) {
 	// storeImage with a rewrite target: the store ends up with the new ref as
 	// the "current" annotations, but consts.OriginalRefAnnotation still holds
 	// the original, pullable source ref captured at the initial add.
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2"); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2", "", false); err != nil {
 		t.Fatalf("storeImage with rewrite: %v", err)
 	}
 	assertArtifactInStore(t, s, "newrepo/img:v2")
@@ -118,7 +118,7 @@ func TestCreateManifestCmd_MultiPlatformIndexOmitsPlatform(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage multi-arch index: %v", err)
 	}
 
@@ -175,14 +175,14 @@ func TestCreateManifestCmd_ChartMissingRepoURL(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	// storeChart called directly with a bare local .tgz path and no RepoURL,
-	// mirroring how a chart added without --repo has no recoverable source.
+	// A chart added from a bare local .tgz path with no RepoURL, mirroring how a
+	// chart added without --repo has no recoverable source.
 	chartDir := t.TempDir()
 	tgzPath := seedChartWithImages(t, chartDir, nil)
 
 	co := newAddChartOpts("", "")
-	if err := storeChart(ctx, s, v1.Chart{Name: tgzPath}, co, rso, ro, ""); err != nil {
-		t.Fatalf("storeChart: %v", err)
+	if err := AddChartCmd(ctx, co, s, tgzPath, rso, ro); err != nil {
+		t.Fatalf("AddChartCmd: %v", err)
 	}
 
 	o := newCreateManifestOpts(t, rso)
@@ -295,7 +295,7 @@ func TestCreateManifestCmd_MixedContent(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, ""); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	co := newAddChartOpts(chartTestdataDir, "")
