@@ -1180,19 +1180,20 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 		return nil, nil, err
 	}
 
+	// Charts have no registry-qualified annotation the way images do (via
+	// ContainerdImageNameKey), and RepoURL is otherwise never persisted anywhere in
+	// the store, so capture both here to maintain provenance regardless of whether
+	// --rewrite is ever applied. This must happen before rewriteChartReference so its
+	// retag of AnnotationRefName isn't clobbered by re-adding a pre-rewrite chartDesc.
+	chartDesc.Annotations[consts.OriginalRefAnnotation] = encodeOriginalChartRef(j.cfg.RepoURL, ref.Name())
+	if err := s.OCI.AddIndex(chartDesc); err != nil {
+		return nil, nil, err
+	}
+
 	if j.rewrite != "" {
 		if err := rewriteChartReference(ctx, s, ref, j.rewrite); err != nil {
 			return nil, nil, err
 		}
-	}
-
-	// Charts have no registry-qualified annotation the way images do (via
-	// ContainerdImageNameKey), and RepoURL is otherwise never persisted anywhere in
-	// the store, so capture both here to maintain provenance regardless of whether
-	// --rewrite is ever applied.
-	chartDesc.Annotations[consts.OriginalRefAnnotation] = encodeOriginalChartRef(j.cfg.RepoURL, ref.Name())
-	if err := s.OCI.AddIndex(chartDesc); err != nil {
-		return nil, nil, err
 	}
 
 	if auditLevel(ro) != "none" {

@@ -913,7 +913,7 @@ func TestAddImage_OriginalRefAnnotation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("new layout: %v", err)
 		}
-		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, remoteOpts...); err != nil {
+		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
@@ -970,7 +970,7 @@ func TestAddImage_OriginalRefAnnotation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("new layout: %v", err)
 		}
-		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, remoteOpts...); err != nil {
+		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
 			t.Fatalf("AddImage: %v", err)
 		}
 
