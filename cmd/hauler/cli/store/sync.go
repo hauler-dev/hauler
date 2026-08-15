@@ -163,12 +163,12 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
 		}
-		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
+		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts, DestinationDir: tempDir}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
 		if err != nil {
 			return err
 		}
 		fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
-		fi, err := os.Open(fileName)
+		fi, err := os.Open(filepath.Join(tempDir, fileName))
 		if err != nil {
 			return err
 		}
