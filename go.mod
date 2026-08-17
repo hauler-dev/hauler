@@ -23,7 +23,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.35.1
 	github.com/sigstore/cosign/v3 v3.0.5
-	github.com/sirupsen/logrus v1.9.4
+	github.com/sirupsen/logrus v1.10.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sync v0.22.0
