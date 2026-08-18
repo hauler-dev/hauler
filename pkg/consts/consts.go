@@ -87,10 +87,26 @@ const (
 	CollectionGroup = "collection.hauler.cattle.io"
 
 	// environment variables
+<<<<<<< HEAD
 	HaulerDir          = "HAULER_DIR"
 	HaulerTempDir      = "HAULER_TEMP_DIR"
 	HaulerStoreDir     = "HAULER_STORE_DIR"
 	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
+=======
+	HaulerDir             = "HAULER_DIR"
+	HaulerTempDir         = "HAULER_TEMP_DIR"
+	HaulerWorkDir         = "HAULER_WORK_DIR"
+	HaulerStoreDir        = "HAULER_STORE_DIR"
+	HaulerIgnoreErrors    = "HAULER_IGNORE_ERRORS"
+	HaulerRetries         = "HAULER_RETRIES"
+	HaulerConcurrency     = "HAULER_CONCURRENCY"
+	HaulerBlobConcurrency = "HAULER_BLOB_CONCURRENCY"
+	HaulerLogLevel        = "HAULER_LOG_LEVEL"
+	HaulerAuditLevel      = "HAULER_AUDIT_LEVEL"
+
+	CaFile                = "CA_FILE"
+	InsecureSkipTLSVerify = "INSECURE_SKIP_TLS_VERIFY"
+>>>>>>> 29a5c69 (fixed bug with store sync extraction into unwritable directory (#737))
 
 	// container files and directories
 	ImageManifestFile = "manifest.json"
