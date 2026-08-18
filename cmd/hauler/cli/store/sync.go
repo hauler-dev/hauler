@@ -163,12 +163,14 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
 		}
-		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
+		// The manifest is output for the user, so it goes to workDir, not tempDir (removed when sync returns).
+		workDir := flags.ResolveWorkDir(ro)
+		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts, DestinationDir: workDir}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
 		if err != nil {
 			return err
 		}
 		fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
-		fi, err := os.Open(fileName)
+		fi, err := os.Open(filepath.Join(workDir, fileName))
 		if err != nil {
 			return err
 		}

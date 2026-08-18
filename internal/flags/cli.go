@@ -7,6 +7,7 @@ type CliRootOpts struct {
 	HaulerDir    string
 	IgnoreErrors bool
 	AuditLevel   string
+	WorkDir      string
 }
 
 func AddRootFlags(cmd *cobra.Command, ro *CliRootOpts) {
@@ -16,4 +17,5 @@ func AddRootFlags(cmd *cobra.Command, ro *CliRootOpts) {
 	pf.StringVarP(&ro.HaulerDir, "haulerdir", "d", "", "Set the location of the hauler directory (default $HOME/.hauler)")
 	pf.BoolVar(&ro.IgnoreErrors, "ignore-errors", false, "Warn and continue instead of failing on errors, including storing images that failed verification (defaults false)")
 	pf.StringVar(&ro.AuditLevel, "audit-level", "", "Set the audit logging level (none, standard, verbose) (defaults standard)")
+	pf.StringVarP(&ro.WorkDir, "work-dir", "w", "", "(Optional) Set the directory for output that commands would otherwise write to the current directory (default: current directory)")
 }
