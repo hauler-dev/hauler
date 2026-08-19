@@ -36,6 +36,7 @@ func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
 		addStoreCopy(rso, ro),
 		addStoreAdd(rso, ro),
 		addStoreRemove(rso, ro),
+		addStoreCreate(rso, ro),
 	)
 
 	parent.AddCommand(cmd)
@@ -487,6 +488,53 @@ func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 			}
 
 			return store.AddChartCmd(ctx, o, s, args[0], rso, ro)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreCreate(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create content derived from the store",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+
+	cmd.AddCommand(
+		addStoreCreateManifest(rso, ro),
+	)
+
+	return cmd
+}
+
+func addStoreCreateManifest(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.CreateManifestOpts{StoreRootOpts: rso}
+
+	cmd := &cobra.Command{
+		Use:   "manifest",
+		Short: "(EXPERIMENTAL) Create a hauler content manifest from the store's metadata",
+		Example: `  # print a manifest for the default store to stdout
+	hauler store create manifest
+
+	# print a manifest for a specific store to stdout
+	hauler store create manifest --store /path/to/my-store
+
+	# write a manifest for a specific store to a file
+	hauler store create manifest --store /path/to/store --output my-manifest.yaml`,
+		Args: cobra.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := o.Store(ctx, ro)
+			if err != nil {
+				return err
+			}
+
+			return store.CreateManifestCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)
