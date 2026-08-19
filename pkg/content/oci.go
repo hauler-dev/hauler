@@ -192,6 +192,13 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 		}
 	}
 
+	// Clone the annotations before storing: the caller keeps its own copy of
+	// desc (AddArtifact returns the very descriptor it passed here), and
+	// storeFile/fetchChart annotate that copy afterwards to record the
+	// original reference. Aliasing the same map into nameMap would let those
+	// unsynchronized writes race saveIndexLocked's iteration, and would also
+	// make the follow-up AddIndex compare equal to itself and skip the save.
+	desc.Annotations = maps.Clone(desc.Annotations)
 	o.nameMap.Store(mapKey, desc)
 	return o.saveIndexCheckpointLocked()
 }
