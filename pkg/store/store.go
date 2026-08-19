@@ -30,6 +30,7 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/layer"
+	href "hauler.dev/go/hauler/v2/pkg/reference"
 )
 
 type Layout struct {
@@ -461,6 +462,10 @@ func (l *Layout) writeImage(ctx context.Context, annotationRef gname.Reference, 
 	if containerdName == "" {
 		containerdName = annotationRef.Name()
 	}
+	// Provenance keeps the pre-normalization ref; only the containerd lookup
+	// name gets the docker.io form.
+	originalRef := containerdName
+	containerdName = href.NormalizeContainerd(containerdName)
 	desc := ocispec.Descriptor{
 		MediaType: string(mt),
 		Digest:    d,
@@ -471,7 +476,7 @@ func (l *Layout) writeImage(ctx context.Context, annotationRef gname.Reference, 
 			consts.ContainerdImageNameKey: containerdName,
 			// Captured once at the initial add so the original, pullable reference
 			// survives even if a later --rewrite overwrites the annotations above.
-			consts.OriginalRefAnnotation: containerdName,
+			consts.OriginalRefAnnotation: originalRef,
 		},
 	}
 	return l.OCI.AddIndex(desc)
@@ -546,7 +551,7 @@ func (l *Layout) writeIndex(ctx context.Context, annotationRef gname.Reference, 
 		Annotations: map[string]string{
 			consts.KindAnnotationName:     kind,
 			ocispec.AnnotationRefName:     strings.TrimPrefix(annotationRef.Name(), annotationRef.Context().RegistryStr()+"/"),
-			consts.ContainerdImageNameKey: annotationRef.Name(),
+			consts.ContainerdImageNameKey: href.NormalizeContainerd(annotationRef.Name()),
 			// Captured once at the initial add so the original, pullable reference
 			// survives even if a later --rewrite overwrites the annotations above.
 			consts.OriginalRefAnnotation: annotationRef.Name(),
