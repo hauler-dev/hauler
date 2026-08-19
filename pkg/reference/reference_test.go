@@ -55,3 +55,23 @@ func TestParse(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeContainerd(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"index.docker.io digest ref", "index.docker.io/library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0", "docker.io/library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0"},
+		{"index.docker.io tag ref", "index.docker.io/library/nginx:1.25", "docker.io/library/nginx:1.25"},
+		{"short docker hub ref", "busybox:latest", "docker.io/library/busybox:latest"},
+		{"non-hub registry untouched", "ghcr.io/org/img:v1", "ghcr.io/org/img:v1"},
+		{"port registry untouched", "localhost:5000/test/img:v1", "localhost:5000/test/img:v1"},
+		{"unparseable returns input", "not a ref!!", "not a ref!!"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reference.NormalizeContainerd(tc.in); got != tc.want {
+				t.Errorf("NormalizeContainerd(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
