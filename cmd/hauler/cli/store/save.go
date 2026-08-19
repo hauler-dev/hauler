@@ -290,10 +290,11 @@ func writeExportsManifest(ctx context.Context, dir string, outDir string, platfo
 		case desc.MediaType.IsIndex():
 			l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
-			// when no platform is inputted... warn the user of potential mismatch on import for docker
-			// required for docker to be able to interpret and load the image correctly
+			// when no platform is inputted... docker load keeps only one architecture per tag (last wins)
+			// containerd and OCI imports include all architectures and are unaffected
 			if platform.String() == "" {
-				l.Warnf("compatibility warning... docker... specify platform to prevent potential mismatch on import of index [%s]", refName)
+				l.Warnf("compatibility warning... docker... multi-arch index [%s] saved without --platform", refName)
+				l.Warnf("'docker load' keeps only one architecture per tag (last wins)... use --platform (i.e. linux/amd64) to select one... containerd and OCI imports include all architectures and are unaffected")
 			}
 
 			iix, err := idx.ImageIndex(desc.Digest)
