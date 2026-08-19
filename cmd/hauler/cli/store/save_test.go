@@ -1,21 +1,27 @@
 package store
 
 // save_test.go covers writeExportsManifest and SaveCmd.
-//
-// IMPORTANT: SaveCmd calls os.Chdir(storeDir) and defers os.Chdir back. Do
-// NOT call t.Parallel() on any SaveCmd test, and always use absolute paths for
-// StoreDir and FileName so they remain valid after the chdir.
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
+
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/archives"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 )
 
 // manifestEntry mirrors tarball.Descriptor for asserting manifest.json contents.
@@ -63,7 +69,7 @@ func TestWriteExportsManifest(t *testing.T) {
 			t.Fatalf("AddImage: %v", err)
 		}
 
-		if err := writeExportsManifest(ctx, s.Root, ""); err != nil {
+		if err := writeExportsManifest(ctx, s.Root, s.Root, ""); err != nil {
 			t.Fatalf("writeExportsManifest: %v", err)
 		}
 
@@ -82,7 +88,7 @@ func TestWriteExportsManifest(t *testing.T) {
 			t.Fatalf("AddImage: %v", err)
 		}
 
-		if err := writeExportsManifest(ctx, s.Root, "linux/amd64"); err != nil {
+		if err := writeExportsManifest(ctx, s.Root, s.Root, "linux/amd64"); err != nil {
 			t.Fatalf("writeExportsManifest: %v", err)
 		}
 
@@ -102,7 +108,7 @@ func TestWriteExportsManifest(t *testing.T) {
 			t.Fatalf("AddChartCmd: %v", err)
 		}
 
-		if err := writeExportsManifest(ctx, s.Root, ""); err != nil {
+		if err := writeExportsManifest(ctx, s.Root, s.Root, ""); err != nil {
 			t.Fatalf("writeExportsManifest: %v", err)
 		}
 
@@ -130,7 +136,7 @@ func TestWriteExportsManifest_DigestOnlyImageHasRepoTag(t *testing.T) {
 		t.Fatalf("AddImage by digest: %v", err)
 	}
 
-	if err := writeExportsManifest(ctx, s.Root, ""); err != nil {
+	if err := writeExportsManifest(ctx, s.Root, s.Root, ""); err != nil {
 		t.Fatalf("writeExportsManifest: %v", err)
 	}
 
@@ -153,7 +159,7 @@ func TestWriteExportsManifest_SkipsNonImages(t *testing.T) {
 		t.Fatalf("storeFile: %v", err)
 	}
 
-	if err := writeExportsManifest(ctx, s.Root, ""); err != nil {
+	if err := writeExportsManifest(ctx, s.Root, s.Root, ""); err != nil {
 		t.Fatalf("writeExportsManifest: %v", err)
 	}
 
@@ -163,9 +169,250 @@ func TestWriteExportsManifest_SkipsNonImages(t *testing.T) {
 	}
 }
 
+func TestWriteExportsManifest_DigestPinnedIndexUsesParentDigest(t *testing.T) {
+	ctx := newTestContext(t)
+	host, srcOpts := newLocalhostRegistry(t)
+	idx := seedIndexWithUnknown(t, host, "test/digestindex", "v1", srcOpts...)
+	parentHash, err := idx.Digest()
+	if err != nil {
+		t.Fatalf("idx.Digest: %v", err)
+	}
+
+	s := newTestStore(t)
+	if _, err := s.AddImage(ctx, host+"/test/digestindex@"+parentHash.String(), "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage by digest: %v", err)
+	}
+
+	outDir := t.TempDir()
+	if err := writeExportsManifest(ctx, s.Root, outDir, ""); err != nil {
+		t.Fatalf("writeExportsManifest: %v", err)
+	}
+
+	parentTag := strings.ReplaceAll(parentHash.String(), ":", "-")
+	var tags []string
+	for _, e := range readManifestJSON(t, outDir) {
+		tags = append(tags, e.RepoTags...)
+	}
+	// No platform given: one child per known platform, each tagged from the PARENT
+	// digest with an os-arch suffix. The child digests must appear nowhere.
+	// referencev3.FamiliarName only strips the registry host for docker.io; this
+	// test's host is a localhost test registry, so the expected tag keeps it.
+	wantSuffixes := []string{"-linux-amd64", "-linux-arm64"}
+	for _, sfx := range wantSuffixes {
+		want := host + "/test/digestindex:" + parentTag + sfx
+		if !slices.Contains(tags, want) {
+			t.Errorf("missing tag %q in %v", want, tags)
+		}
+	}
+	for _, tag := range tags {
+		if !strings.Contains(tag, parentTag) {
+			t.Errorf("tag %q not derived from parent digest %s", tag, parentHash.String())
+		}
+		if strings.Contains(tag, "-unknown-unknown") {
+			t.Errorf("tag %q carries the unknown/unknown attestation child, which save.go's existing skip must exclude", tag)
+		}
+	}
+}
+
+func TestWriteExportsManifest_DigestPinnedIndexWithPlatform(t *testing.T) {
+	ctx := newTestContext(t)
+	host, srcOpts := newLocalhostRegistry(t)
+	idx := seedIndex(t, host, "test/digestplat", "v1", srcOpts...)
+	parentHash, err := idx.Digest()
+	if err != nil {
+		t.Fatalf("idx.Digest: %v", err)
+	}
+
+	s := newTestStore(t)
+	if _, err := s.AddImage(ctx, host+"/test/digestplat@"+parentHash.String(), "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage by digest: %v", err)
+	}
+
+	outDir := t.TempDir()
+	if err := writeExportsManifest(ctx, s.Root, outDir, "linux/amd64"); err != nil {
+		t.Fatalf("writeExportsManifest: %v", err)
+	}
+
+	entries := readManifestJSON(t, outDir)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry with --platform, got %d", len(entries))
+	}
+	// See the FamiliarName note in TestWriteExportsManifest_DigestPinnedIndexUsesParentDigest.
+	want := host + "/test/digestplat:" + strings.ReplaceAll(parentHash.String(), ":", "-")
+	if !slices.Contains(entries[0].RepoTags, want) {
+		t.Errorf("RepoTags = %v, want to contain %q", entries[0].RepoTags, want)
+	}
+}
+
+// --------------------------------------------------------------------------
+// writeContainerdIndexes unit tests
+// --------------------------------------------------------------------------
+
+func TestWriteContainerdIndexes(t *testing.T) {
+	storeDir := t.TempDir()
+	// Parent index entry with a legacy un-normalized name; a chart entry shaped
+	// like what AddArtifact actually produces today (kind dev.hauler/image, no
+	// io.containerd.image.name -- see writeContainerdIndexes's doc comment) that
+	// must be filtered out on the missing-name half of the predicate; and a sigs
+	// entry that must be filtered out on the kind half.
+	storeIndex := `{
+  "schemaVersion": 2,
+  "manifests": [
+    {
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "digest": "sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0",
+      "size": 10200,
+      "annotations": {
+        "io.containerd.image.name": "index.docker.io/library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0",
+        "kind": "dev.hauler/imageIndex",
+        "org.opencontainers.image.ref.name": "library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0"
+      }
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "size": 100,
+      "annotations": {"kind": "dev.hauler/image", "org.opencontainers.image.ref.name": "charts/foo:1.0.0"}
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "size": 100,
+      "annotations": {"kind": "dev.hauler/sigs", "io.containerd.image.name": "index.docker.io/library/busybox:sha256-498a.sig"}
+    }
+  ]
+}`
+	if err := os.WriteFile(filepath.Join(storeDir, "index.json"), []byte(storeIndex), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	outDir := t.TempDir()
+	dropped, err := writeContainerdIndexes(storeDir, outDir)
+	if err != nil {
+		t.Fatalf("writeContainerdIndexes: %v", err)
+	}
+	if dropped != 2 {
+		t.Errorf("dropped = %d, want 2", dropped)
+	}
+
+	sidecar, err := os.ReadFile(filepath.Join(outDir, consts.HaulerIndexFile))
+	if err != nil {
+		t.Fatalf("sidecar missing: %v", err)
+	}
+	if string(sidecar) != storeIndex {
+		t.Errorf("sidecar is not byte-identical to the store index")
+	}
+
+	var filtered ocispec.Index
+	data, err := os.ReadFile(filepath.Join(outDir, "index.json"))
+	if err != nil {
+		t.Fatalf("filtered index missing: %v", err)
+	}
+	if err := json.Unmarshal(data, &filtered); err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Manifests) != 1 {
+		t.Fatalf("filtered manifests = %d, want 1", len(filtered.Manifests))
+	}
+	got := filtered.Manifests[0].Annotations[consts.ContainerdImageNameKey]
+	want := "docker.io/library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0"
+	if got != want {
+		t.Errorf("normalized name = %q, want %q", got, want)
+	}
+	// The store itself must be untouched.
+	after, _ := os.ReadFile(filepath.Join(storeDir, "index.json"))
+	if string(after) != storeIndex {
+		t.Errorf("store index.json was modified")
+	}
+}
+
+// TestWriteDefaultIndex covers the default-mode (non-`--containerd`) archive
+// index rewrite added for #744 fix 1: every descriptor is kept (unlike
+// writeContainerdIndexes' filtered rewrite), but io.containerd.image.name
+// annotations still get normalized where present, so a default haul of a
+// legacy store still carries CRI-resolvable names once oci-layout steers
+// containerd onto the OCI import path. Reuses TestWriteContainerdIndexes'
+// fixture shape.
+func TestWriteDefaultIndex(t *testing.T) {
+	storeDir := t.TempDir()
+	storeIndex := `{
+  "schemaVersion": 2,
+  "manifests": [
+    {
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "digest": "sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0",
+      "size": 10200,
+      "annotations": {
+        "io.containerd.image.name": "index.docker.io/library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0",
+        "kind": "dev.hauler/imageIndex",
+        "org.opencontainers.image.ref.name": "library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0"
+      }
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "size": 100,
+      "annotations": {"kind": "dev.hauler/image", "org.opencontainers.image.ref.name": "charts/foo:1.0.0"}
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "size": 100,
+      "annotations": {"kind": "dev.hauler/sigs", "io.containerd.image.name": "index.docker.io/library/busybox:sha256-498a.sig"}
+    }
+  ]
+}`
+	if err := os.WriteFile(filepath.Join(storeDir, "index.json"), []byte(storeIndex), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	outDir := t.TempDir()
+	if err := writeDefaultIndex(storeDir, outDir); err != nil {
+		t.Fatalf("writeDefaultIndex: %v", err)
+	}
+
+	var got ocispec.Index
+	data, err := os.ReadFile(filepath.Join(outDir, "index.json"))
+	if err != nil {
+		t.Fatalf("default index missing: %v", err)
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	var original ocispec.Index
+	if err := json.Unmarshal([]byte(storeIndex), &original); err != nil {
+		t.Fatal(err)
+	}
+	// Default mode is unfiltered: same descriptor count as the store's index,
+	// unlike writeContainerdIndexes which drops the chart and sigs entries.
+	if len(got.Manifests) != len(original.Manifests) {
+		t.Fatalf("default index manifests = %d, want %d (unfiltered)", len(got.Manifests), len(original.Manifests))
+	}
+
+	wantParentName := "docker.io/library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0"
+	foundParent := false
+	for _, d := range got.Manifests {
+		if d.Digest.String() == "sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0" {
+			foundParent = true
+			if got := d.Annotations[consts.ContainerdImageNameKey]; got != wantParentName {
+				t.Errorf("normalized parent name = %q, want %q", got, wantParentName)
+			}
+		}
+	}
+	if !foundParent {
+		t.Fatal("parent index descriptor missing from default-mode index")
+	}
+
+	// The store itself must be untouched.
+	after, _ := os.ReadFile(filepath.Join(storeDir, "index.json"))
+	if string(after) != storeIndex {
+		t.Errorf("store index.json was modified")
+	}
+}
+
 // --------------------------------------------------------------------------
 // SaveCmd integration tests
-// Do NOT use t.Parallel() — SaveCmd calls os.Chdir.
 // --------------------------------------------------------------------------
 
 func TestSaveCmd(t *testing.T) {
@@ -178,7 +425,6 @@ func TestSaveCmd(t *testing.T) {
 		t.Fatalf("AddImage: %v", err)
 	}
 
-	// FileName must be absolute so it remains valid after SaveCmd's os.Chdir.
 	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
 	o := newSaveOpts(s.Root, archivePath)
 
@@ -224,10 +470,293 @@ func TestSaveCmd_ContainerdCompatibility(t *testing.T) {
 		t.Fatalf("Unarchive: %v", err)
 	}
 
-	// oci-layout must be absent from the extracted archive.
-	ociLayoutPath := filepath.Join(destDir, "oci-layout")
-	if _, err := os.Stat(ociLayoutPath); !os.IsNotExist(err) {
-		t.Errorf("expected oci-layout to be absent in containerd-compatible archive, got: %v", err)
+	// oci-layout must be PRESENT so containerd takes its OCI import path (#744);
+	// index.json is filtered; the full index rides as the sidecar.
+	if _, err := os.Stat(filepath.Join(destDir, "oci-layout")); err != nil {
+		t.Errorf("expected oci-layout present in containerd archive: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destDir, consts.HaulerIndexFile)); err != nil {
+		t.Errorf("expected %s sidecar in containerd archive: %v", consts.HaulerIndexFile, err)
+	}
+	var filtered ocispec.Index
+	data, err := os.ReadFile(filepath.Join(destDir, "index.json"))
+	if err != nil {
+		t.Fatalf("read archive index.json: %v", err)
+	}
+	if err := json.Unmarshal(data, &filtered); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range filtered.Manifests {
+		kind := d.Annotations[consts.KindAnnotationName]
+		if kind != consts.KindAnnotationImage && kind != consts.KindAnnotationIndex {
+			t.Errorf("non-image kind %q leaked into containerd index.json", kind)
+		}
+	}
+}
+
+// TestSaveCmd_ContainerdCompatibility_DigestPinnedMultiArch drives #744's own
+// reproducer shape through the real pipeline in one pass: AddImage on a
+// digest-pinned multi-arch index (with the unknown/unknown attestation child
+// real registries attach) -> SaveCmd --containerd -> unarchive -> all three
+// archive files. TestWriteContainerdIndexes and TestWriteExportsManifest_*
+// exercise writeContainerdIndexes/writeExportsManifest directly against
+// synthetic or single-purpose fixtures; nothing else routes a digest-pinned
+// index through AddImage and SaveCmd together and inspects index.json,
+// hauler-index.json, and manifest.json from the same archive. A non-image
+// file artifact is included so the "zero non-image kinds" and dropped-count
+// assertions are non-vacuous.
+func TestSaveCmd_ContainerdCompatibility_DigestPinnedMultiArch(t *testing.T) {
+	ctx := newTestContext(t)
+	host, srcOpts := newLocalhostRegistry(t)
+	idx := seedIndexWithUnknown(t, host, "test/save-multiarch-digest", "v1", srcOpts...)
+	parentHash, err := idx.Digest()
+	if err != nil {
+		t.Fatalf("idx.Digest: %v", err)
+	}
+
+	s := newTestStore(t)
+	imageRef := host + "/test/save-multiarch-digest@" + parentHash.String()
+	if _, err := s.AddImage(ctx, imageRef, "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage by digest: %v", err)
+	}
+	fileURL := seedFileInHTTPServer(t, "companion.txt", "not an image")
+	if err := storeFile(ctx, s, v1.File{Path: fileURL}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "haul-multiarch-digest.tar.zst")
+	o := newSaveOpts(s.Root, archivePath)
+	o.ContainerdCompatibility = true
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("SaveCmd ContainerdCompatibility: %v", err)
+	}
+
+	destDir := t.TempDir()
+	if err := archives.Unarchive(ctx, archivePath, destDir); err != nil {
+		t.Fatalf("Unarchive: %v", err)
+	}
+
+	// filtered index.json: exactly the parent index descriptor, normalized name, no
+	// non-image kinds -- the attestation child and file artifact must both be gone.
+	var filtered ocispec.Index
+	data, err := os.ReadFile(filepath.Join(destDir, "index.json"))
+	if err != nil {
+		t.Fatalf("read archive index.json: %v", err)
+	}
+	if err := json.Unmarshal(data, &filtered); err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Manifests) != 1 {
+		t.Fatalf("filtered index.json manifests = %d, want 1 (parent index only)", len(filtered.Manifests))
+	}
+	parent := filtered.Manifests[0]
+	if parent.Digest.String() != parentHash.String() {
+		t.Errorf("filtered parent digest = %s, want %s", parent.Digest, parentHash)
+	}
+	if kind := parent.Annotations[consts.KindAnnotationName]; kind != consts.KindAnnotationIndex {
+		t.Errorf("filtered parent kind = %q, want %q", kind, consts.KindAnnotationIndex)
+	}
+	wantContainerdName := reference.NormalizeContainerd(imageRef)
+	if got := parent.Annotations[consts.ContainerdImageNameKey]; got != wantContainerdName {
+		t.Errorf("filtered parent io.containerd.image.name = %q, want %q", got, wantContainerdName)
+	}
+
+	// The parent index blob itself must ride along in blobs/ -- spec §9.1's "parent
+	// blob present" assertion, proven directly rather than only transitively via a
+	// successful Unarchive.
+	blobPath := filepath.Join(destDir, "blobs", parentHash.Algorithm, parentHash.Hex)
+	if _, err := os.Stat(blobPath); err != nil {
+		t.Errorf("parent index blob missing from archive at %s: %v", blobPath, err)
+	}
+
+	// hauler-index.json sidecar: parent index and the file artifact both present.
+	sidecarData, err := os.ReadFile(filepath.Join(destDir, consts.HaulerIndexFile))
+	if err != nil {
+		t.Fatalf("read %s: %v", consts.HaulerIndexFile, err)
+	}
+	var sidecar ocispec.Index
+	if err := json.Unmarshal(sidecarData, &sidecar); err != nil {
+		t.Fatal(err)
+	}
+	if len(sidecar.Manifests) != 2 {
+		t.Fatalf("%s manifests = %d, want 2 (parent index + file)", consts.HaulerIndexFile, len(sidecar.Manifests))
+	}
+	foundParent, foundFile := false, false
+	for _, d := range sidecar.Manifests {
+		if d.Digest.String() == parentHash.String() {
+			foundParent = true
+		}
+		if strings.Contains(d.Annotations[ocispec.AnnotationRefName], "companion.txt") {
+			foundFile = true
+		}
+	}
+	if !foundParent {
+		t.Errorf("%s missing parent index digest %s", consts.HaulerIndexFile, parentHash)
+	}
+	if !foundFile {
+		t.Errorf("%s missing companion.txt file artifact", consts.HaulerIndexFile)
+	}
+
+	// manifest.json: every digest-pinned-index tag derives from the parent digest,
+	// never a child's -- the #643/#744 regression this whole feature fixes.
+	parentTag := strings.ReplaceAll(parentHash.String(), ":", "-")
+	var tags []string
+	for _, e := range readManifestJSON(t, destDir) {
+		tags = append(tags, e.RepoTags...)
+	}
+	if len(tags) == 0 {
+		t.Fatal("manifest.json has no RepoTags for the digest-pinned index")
+	}
+	for _, tag := range tags {
+		if !strings.Contains(tag, parentTag) {
+			t.Errorf("manifest.json tag %q not derived from parent digest %s", tag, parentHash)
+		}
+		if strings.Contains(tag, "-unknown-unknown") {
+			t.Errorf("manifest.json tag %q carries the unknown/unknown attestation child", tag)
+		}
+	}
+}
+
+// snapshotDir maps every file under root (relative path) to its content hash.
+func snapshotDir(t *testing.T, root string) map[string]string {
+	t.Helper()
+	snap := map[string]string{}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		snap[rel] = fmt.Sprintf("%x", sha256.Sum256(data))
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("snapshotDir: %v", err)
+	}
+	return snap
+}
+
+// TestSaveCmd_DoesNotMutateStore asserts save never mutates the live store,
+// with one deliberate, documented exception: audit.log. At AuditLevel
+// "standard" (the CLI default -- auditLevel in audit.go), Append writes a
+// portable entry to <storeDir>/audit.log as designed (#727); that append is
+// intentional and stays. The first two iterations run at AuditLevel "none"
+// (defaultCliOpts) and must see zero delta, byte for byte. The third
+// iteration runs at AuditLevel "standard" and must see exactly one delta:
+// audit.log created or appended to -- nothing else in the store may move.
+func TestSaveCmd_DoesNotMutateStore(t *testing.T) {
+	ctx := newTestContext(t)
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "test/no-mutate", "v1")
+
+	s := newTestStore(t)
+	if _, err := s.AddImage(ctx, host+"/test/no-mutate:v1", "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	before := snapshotDir(t, s.Root)
+	for _, containerd := range []bool{false, true} {
+		o := newSaveOpts(s.Root, filepath.Join(t.TempDir(), "haul.tar.zst"))
+		o.ContainerdCompatibility = containerd
+		if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+			t.Fatalf("SaveCmd(containerd=%v): %v", containerd, err)
+		}
+		after := snapshotDir(t, s.Root)
+		if !reflect.DeepEqual(before, after) {
+			t.Errorf("store mutated by save (containerd=%v):\nbefore: %v\nafter:  %v", containerd, before, after)
+		}
+	}
+
+	t.Run("audit standard only touches audit.log", func(t *testing.T) {
+		before := snapshotDir(t, s.Root)
+
+		ro := defaultCliOpts()
+		ro.AuditLevel = "standard"
+		// Point the global audit write at a temp dir too, so this test never
+		// touches the real $HOME/.hauler/audit.log -- see testhelpers_test.go's
+		// note on defaultCliOpts for why AuditLevel defaults to "none" there.
+		ro.HaulerDir = t.TempDir()
+
+		o := newSaveOpts(s.Root, filepath.Join(t.TempDir(), "haul.tar.zst"))
+		if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), ro); err != nil {
+			t.Fatalf("SaveCmd(audit=standard): %v", err)
+		}
+		after := snapshotDir(t, s.Root)
+
+		var changed []string
+		for k, v := range after {
+			if bv, ok := before[k]; !ok || bv != v {
+				changed = append(changed, k)
+			}
+		}
+		for k := range before {
+			if _, ok := after[k]; !ok {
+				t.Errorf("store file %q disappeared after save", k)
+			}
+		}
+		if len(changed) != 1 || changed[0] != audit.LogFileName {
+			t.Errorf("expected only %s to change, got: %v", audit.LogFileName, changed)
+		}
+	})
+}
+
+// TestSaveCmd_OutputInsideStoreDir proves the ReadDir skip on absOutputfile
+// (#744 fold-in b): saving into a path inside the store dir a second time
+// used to map the first save's own output file, which ArchiveFiles then
+// deletes via RemoveAll before FilesFromDisk can read it -- erroring on a
+// path that no longer exists.
+func TestSaveCmd_OutputInsideStoreDir(t *testing.T) {
+	ctx := newTestContext(t)
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "test/output-in-store", "v1")
+
+	s := newTestStore(t)
+	if _, err := s.AddImage(ctx, host+"/test/output-in-store:v1", "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	archivePath := filepath.Join(s.Root, "haul.tar.zst")
+	o := newSaveOpts(s.Root, archivePath)
+
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("first SaveCmd: %v", err)
+	}
+	if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("second SaveCmd (output already present in store dir): %v", err)
+	}
+}
+
+func TestSaveCmd_DefaultArchiveLayoutUnchanged(t *testing.T) {
+	ctx := newTestContext(t)
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "test/default-layout", "v1")
+
+	s := newTestStore(t)
+	if _, err := s.AddImage(ctx, host+"/test/default-layout:v1", "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+	if err := SaveCmd(ctx, newSaveOpts(s.Root, archivePath), s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("SaveCmd: %v", err)
+	}
+
+	destDir := t.TempDir()
+	if err := archives.Unarchive(ctx, archivePath, destDir); err != nil {
+		t.Fatalf("Unarchive: %v", err)
+	}
+	// oci-layout here is RESTORED, not preserved: v1 parity, but v2's store
+	// never wrote one before this change (#744) -- see the scratch-marker
+	// generation in SaveCmd. Don't assume a live store already has this file.
+	for _, want := range []string{"index.json", "oci-layout", "manifest.json", "blobs"} {
+		if _, err := os.Stat(filepath.Join(destDir, want)); err != nil {
+			t.Errorf("default archive missing %s: %v", want, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(destDir, consts.HaulerIndexFile)); !os.IsNotExist(err) {
+		t.Errorf("default archive must not contain the sidecar")
 	}
 }
 
@@ -297,7 +826,6 @@ func TestParseChunkSize(t *testing.T) {
 
 // --------------------------------------------------------------------------
 // SaveCmd chunk-size integration tests
-// Do NOT use t.Parallel() — SaveCmd calls os.Chdir.
 // --------------------------------------------------------------------------
 
 func TestSaveCmd_ChunkSize(t *testing.T) {

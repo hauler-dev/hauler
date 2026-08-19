@@ -7,6 +7,7 @@ package reference
 import (
 	"strings"
 
+	dreference "github.com/distribution/reference"
 	gname "github.com/google/go-containerregistry/pkg/name"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
@@ -62,4 +63,19 @@ func Relocate(reference string, registry string) (gname.Reference, error) {
 		return relocated.Context().Digest(ref.Identifier()), nil
 	}
 	return relocated.Context().Tag(ref.Identifier()), nil
+}
+
+// NormalizeContainerd returns ref in the distribution-normalized form containerd
+// and CRI resolve ("docker.io/library/busybox:tag", never "index.docker.io/...").
+// Hauler v1 wrote store annotations this way via its cosign fork; v2's writeImage
+// lost it, which is the #744 regression on the OCI import path. Unparseable input
+// is returned unchanged -- never fail a flow over a name hauler itself wrote.
+// Tagless input gains ":latest" (ParseDockerRef semantics); hauler always passes
+// refs that already carry a tag or digest.
+func NormalizeContainerd(ref string) string {
+	named, err := dreference.ParseDockerRef(ref)
+	if err != nil {
+		return ref
+	}
+	return named.String()
 }

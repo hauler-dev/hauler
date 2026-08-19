@@ -3,7 +3,6 @@ package store
 // lifecycle_test.go covers the end-to-end add->save->load->copy/extract lifecycle
 // for file, image, and chart artifact types.
 //
-// Do NOT use t.Parallel() -- SaveCmd calls os.Chdir(storeDir).
 // Always use absolute paths for StoreDir and FileName.
 
 import (

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/mholt/archives"
 	"hauler.dev/go/hauler/v2/pkg/log"
@@ -42,6 +43,30 @@ func Archive(ctx context.Context, dir, outfile string, compression archives.Comp
 	l := log.FromContext(ctx)
 	l.Debugf("starting the archival process for [%s]", dir)
 
+	if !isExist(dir) {
+		errMsg := fmt.Errorf("directory [%s] does not exist, cannot proceed with archival", dir)
+		l.Debugf("%s", errMsg.Error())
+		return errMsg
+	}
+
+	// FilesFromDisk maps a directory key to the directory's *contents*
+	// nested one level under the map value: {dir: "blobs"} yields an archive
+	// tree rooted at "blobs/<dir's children>", not "blobs/<dir's basename>/...".
+	// So the source dir's basename must be supplied explicitly as the map
+	// value to reproduce Archive's historical top-level-named layout.
+	archiveDirName := filepath.Base(filepath.Clean(dir))
+	if dir == "." {
+		archiveDirName = ""
+	}
+	return ArchiveFiles(ctx, map[string]string{dir: archiveDirName}, outfile, compression, archival)
+}
+
+// ArchiveFiles archives an explicit disk-path -> archive-path map rather than a
+// whole directory, so save can substitute generated files (filtered index.json,
+// manifest.json) without ever mutating the source store directory (#744).
+func ArchiveFiles(ctx context.Context, fileMap map[string]string, outfile string, compression archives.Compression, archival archives.Archival) error {
+	l := log.FromContext(ctx)
+
 	// remove outfile
 	l.Debugf("removing existing output file: [%s]", outfile)
 	if err := os.RemoveAll(outfile); err != nil {
@@ -50,27 +75,33 @@ func Archive(ctx context.Context, dir, outfile string, compression archives.Comp
 		return errMsg
 	}
 
-	if !isExist(dir) {
-		errMsg := fmt.Errorf("directory [%s] does not exist, cannot proceed with archival", dir)
-		l.Debugf("%s", errMsg.Error())
-		return errMsg
-	}
-
 	// map files on disk to their paths in the archive
-	l.Debugf("mapping files in directory [%s]", dir)
-	archiveDirName := filepath.Base(filepath.Clean(dir))
-	if dir == "." {
-		archiveDirName = ""
+	l.Debugf("mapping files for archive [%s]", outfile)
+	// mholt/archives.FilesFromDisk ranges over fileMap directly, and Go
+	// randomizes map iteration order per range -- even two ranges over the same
+	// map in one process can differ. Left alone, that made two saves of an
+	// identical store produce byte-different .tar.zst files and shifted
+	// --chunk-size boundaries. Each root is walked independently (no shared
+	// state across roots in FilesFromDisk), so calling it once per sorted key
+	// and concatenating gives the same []FileInfo the library would produce,
+	// just in a fixed order.
+	keys := make([]string, 0, len(fileMap))
+	for k := range fileMap {
+		keys = append(keys, k)
 	}
-	files, err := archives.FilesFromDisk(context.Background(), nil, map[string]string{
-		dir: archiveDirName,
-	})
-	if err != nil {
-		errMsg := fmt.Errorf("error mapping files from directory [%s]: %w", dir, err)
-		l.Debugf("%s", errMsg.Error())
-		return errMsg
+	sort.Strings(keys)
+
+	var files []archives.FileInfo
+	for _, rootOnDisk := range keys {
+		rootFiles, err := archives.FilesFromDisk(ctx, nil, map[string]string{rootOnDisk: fileMap[rootOnDisk]})
+		if err != nil {
+			errMsg := fmt.Errorf("error mapping files: %w", err)
+			l.Debugf("%s", errMsg.Error())
+			return errMsg
+		}
+		files = append(files, rootFiles...)
 	}
-	l.Debugf("successfully mapped files for directory [%s]", dir)
+	l.Debugf("successfully mapped files for archive [%s]", outfile)
 
 	// create the output file we'll write to
 	l.Debugf("creating output file [%s]", outfile)
@@ -94,7 +125,7 @@ func Archive(ctx context.Context, dir, outfile string, compression archives.Comp
 
 	// create the archive
 	l.Debugf("starting archive for [%s]", outfile)
-	err = format.Archive(context.Background(), outf, files)
+	err = format.Archive(ctx, outf, files)
 	if err != nil {
 		errMsg := fmt.Errorf("error during archive creation for output file [%s]: %w", outfile, err)
 		l.Debugf("%s", errMsg.Error())

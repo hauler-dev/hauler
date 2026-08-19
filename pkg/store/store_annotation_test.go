@@ -1,0 +1,126 @@
+package store
+
+// store_annotation_test.go covers containerd-name normalization in
+// writeImage/writeIndex. This file is intentionally `package store`
+// (whitebox) rather than `package store_test` because writeImage is
+// unexported.
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	gname "github.com/google/go-containerregistry/pkg/name"
+	gv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/random"
+	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"hauler.dev/go/hauler/v2/pkg/consts"
+)
+
+func TestWriteImageNormalizesContainerdName(t *testing.T) {
+	l, err := NewLayout(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+	img, err := random.Image(256, 1)
+	if err != nil {
+		t.Fatalf("random.Image: %v", err)
+	}
+	ref, err := gname.ParseReference("docker.io/library/busybox:v1")
+	if err != nil {
+		t.Fatalf("ParseReference: %v", err)
+	}
+	// ref.Name() is "index.docker.io/library/busybox:v1"; the annotation must not be.
+	if err := l.writeImage(context.Background(), ref, img, consts.KindAnnotationImage, ""); err != nil {
+		t.Fatalf("writeImage: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(l.Root, "index.json"))
+	if err != nil {
+		t.Fatalf("read index.json: %v", err)
+	}
+	var idx ocispec.Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		t.Fatalf("unmarshal index: %v", err)
+	}
+	if len(idx.Manifests) != 1 {
+		t.Fatalf("expected 1 descriptor, got %d", len(idx.Manifests))
+	}
+	got := idx.Manifests[0].Annotations[consts.ContainerdImageNameKey]
+	want := "docker.io/library/busybox:v1"
+	if got != want {
+		t.Errorf("io.containerd.image.name = %q, want %q", got, want)
+	}
+}
+
+// TestWriteIndexNormalizesContainerdName is writeIndex's counterpart to
+// TestWriteImageNormalizesContainerdName above -- writeImage and writeIndex
+// each call href.NormalizeContainerd independently (store.go:460, store.go:543),
+// so a fix to one is not evidence the other was updated. This is the
+// multi-arch parent-descriptor path #744's digest-pinned index goes through.
+func TestWriteIndexNormalizesContainerdName(t *testing.T) {
+	l, err := NewLayout(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+	amd64Img, err := random.Image(256, 1)
+	if err != nil {
+		t.Fatalf("random.Image amd64: %v", err)
+	}
+	arm64Img, err := random.Image(256, 1)
+	if err != nil {
+		t.Fatalf("random.Image arm64: %v", err)
+	}
+	idx := mutate.AppendManifests(
+		empty.Index,
+		mutate.IndexAddendum{
+			Add: amd64Img,
+			Descriptor: gv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gv1.Platform{OS: "linux", Architecture: "amd64"},
+			},
+		},
+		mutate.IndexAddendum{
+			Add: arm64Img,
+			Descriptor: gv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gv1.Platform{OS: "linux", Architecture: "arm64"},
+			},
+		},
+	)
+	ref, err := gname.ParseReference("docker.io/library/busybox@sha256:" +
+		"498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0")
+	if err != nil {
+		t.Fatalf("ParseReference: %v", err)
+	}
+	// ref.Name() is "index.docker.io/library/busybox@sha256:..."; the annotation must not be.
+	if err := l.writeIndex(context.Background(), ref, idx, consts.KindAnnotationIndex); err != nil {
+		t.Fatalf("writeIndex: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(l.Root, "index.json"))
+	if err != nil {
+		t.Fatalf("read index.json: %v", err)
+	}
+	var ociIdx ocispec.Index
+	if err := json.Unmarshal(data, &ociIdx); err != nil {
+		t.Fatalf("unmarshal index: %v", err)
+	}
+	if len(ociIdx.Manifests) != 1 {
+		t.Fatalf("expected 1 descriptor, got %d", len(ociIdx.Manifests))
+	}
+	got := ociIdx.Manifests[0].Annotations[consts.ContainerdImageNameKey]
+	want := "docker.io/library/busybox@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0"
+	if got != want {
+		t.Errorf("io.containerd.image.name = %q, want %q", got, want)
+	}
+	if kind := ociIdx.Manifests[0].Annotations[consts.KindAnnotationName]; kind != consts.KindAnnotationIndex {
+		t.Errorf("kind = %q, want %q", kind, consts.KindAnnotationIndex)
+	}
+}

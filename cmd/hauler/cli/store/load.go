@@ -210,6 +210,19 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 		return err
 	}
 
+	// A --containerd haul's index.json is filtered for containerd's importer;
+	// the full index rides as the sidecar. Prefer it so non-image artifacts
+	// survive the round trip. A present-but-unreadable sidecar is an error --
+	// silently falling back to the filtered index would lose content.
+	sidecar := filepath.Join(tempDir, consts.HaulerIndexFile)
+	if _, err := os.Stat(sidecar); err == nil {
+		if err := os.Rename(sidecar, filepath.Join(tempDir, ocispec.ImageIndexFile)); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
 	// ensure the incoming index.json has the correct annotations.
 	data, err := os.ReadFile(tempDir + "/index.json")
 	if err != nil {
