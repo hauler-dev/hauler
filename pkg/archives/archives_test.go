@@ -3,6 +3,7 @@ package archives
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -403,6 +404,108 @@ func TestJoinChunks(t *testing.T) {
 			t.Errorf("JoinChunks() included non-numeric suffix file; content = %q", data)
 		}
 	})
+}
+
+// --------------------------------------------------------------------------
+// ArchiveFiles
+// --------------------------------------------------------------------------
+
+func TestArchiveFiles(t *testing.T) {
+	ctx := context.Background()
+
+	// A "store" dir with a nested blobs tree, and a separate scratch dir whose
+	// generated index.json must land at the archive root in place of the store's.
+	storeDir := t.TempDir()
+	blobDir := filepath.Join(storeDir, "blobs", "sha256")
+	if err := os.MkdirAll(blobDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blobDir, "aaa"), []byte("blob-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storeDir, "index.json"), []byte(`{"stale":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	scratch := t.TempDir()
+	if err := os.WriteFile(filepath.Join(scratch, "index.json"), []byte(`{"generated":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(t.TempDir(), "out.tar.zst")
+	files := map[string]string{
+		filepath.Join(storeDir, "blobs"):     "blobs",
+		filepath.Join(scratch, "index.json"): "index.json",
+	}
+	if err := ArchiveFiles(ctx, files, out, CompressionMap["zst"], ArchivalMap["tar"]); err != nil {
+		t.Fatalf("ArchiveFiles: %v", err)
+	}
+
+	dest := t.TempDir()
+	if err := Unarchive(ctx, out, dest); err != nil {
+		t.Fatalf("Unarchive: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "index.json"))
+	if err != nil {
+		t.Fatalf("index.json missing from archive root: %v", err)
+	}
+	if string(got) != `{"generated":true}` {
+		t.Errorf("index.json = %s, want the scratch copy, not the store's", got)
+	}
+	if _, err := os.ReadFile(filepath.Join(dest, "blobs", "sha256", "aaa")); err != nil {
+		t.Errorf("blobs tree not nested correctly: %v", err)
+	}
+}
+
+// TestArchiveFiles_DeterministicOrder guards against mholt/archives.FilesFromDisk's
+// map-range iteration (randomized per range, even within one process) leaking into
+// tar entry order: two ArchiveFiles runs over the identical multi-entry fileMap must
+// produce byte-identical archives, or identical saves would diverge and
+// --chunk-size boundaries would shift between runs (#744 fix 2).
+func TestArchiveFiles_DeterministicOrder(t *testing.T) {
+	ctx := context.Background()
+
+	srcDir := t.TempDir()
+	entries := map[string]string{
+		"alpha.txt":          "alpha-content",
+		"bravo.txt":          "bravo-content",
+		"charlie/nested.txt": "charlie-content",
+		"delta.txt":          "delta-content",
+		"echo.txt":           "echo-content",
+	}
+	for rel, content := range entries {
+		full := filepath.Join(srcDir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fileMap := map[string]string{
+		filepath.Join(srcDir, "alpha.txt"): "alpha.txt",
+		filepath.Join(srcDir, "bravo.txt"): "bravo.txt",
+		filepath.Join(srcDir, "charlie"):   "charlie",
+		filepath.Join(srcDir, "delta.txt"): "delta.txt",
+		filepath.Join(srcDir, "echo.txt"):  "echo.txt",
+	}
+
+	var digests [2]string
+	for i := range digests {
+		out := filepath.Join(t.TempDir(), "out.tar.zst")
+		if err := ArchiveFiles(ctx, fileMap, out, CompressionMap["zst"], ArchivalMap["tar"]); err != nil {
+			t.Fatalf("ArchiveFiles run %d: %v", i, err)
+		}
+		data, err := os.ReadFile(out)
+		if err != nil {
+			t.Fatalf("read archive run %d: %v", i, err)
+		}
+		digests[i] = fmt.Sprintf("%x", sha256.Sum256(data))
+	}
+
+	if digests[0] != digests[1] {
+		t.Errorf("archive digests differ across identical runs: %s vs %s", digests[0], digests[1])
+	}
 }
 
 // --------------------------------------------------------------------------
