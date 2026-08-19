@@ -123,6 +123,11 @@ const (
 	ImageManifestFile = "manifest.json"
 	ImageConfigFile   = "config.json"
 
+	// HaulerIndexFile is the full-fidelity index sidecar written into --containerd
+	// hauls, whose index.json is filtered to image content for containerd's OCI
+	// import path; store load prefers this file so non-image artifacts round-trip.
+	HaulerIndexFile = "hauler-index.json"
+
 	// other constraints
 	CarbideRegistry           = "rgcrprod.azurecr.us"
 	DefaultNamespace          = "hauler"
