@@ -61,20 +61,6 @@ func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 	}
 	return s, nil
 }
-<<<<<<< HEAD
-=======
-
-// resolveHaulerDir mirrors other variable detection, but duplicated to avoid an import cycle
-func resolveHaulerDir(ro *CliRootOpts) string {
-	if ro != nil && ro.HaulerDir != "" {
-		return ro.HaulerDir
-	}
-	if d := os.Getenv(consts.HaulerDir); d != "" {
-		return d
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, consts.DefaultHaulerDirName)
-}
 
 // ResolveWorkDir returns the configured output dir, or "" to mean the current directory (legacy behavior).
 func ResolveWorkDir(ro *CliRootOpts) string {
@@ -83,4 +69,3 @@ func ResolveWorkDir(ro *CliRootOpts) string {
 	}
 	return os.Getenv(consts.HaulerWorkDir)
 }
->>>>>>> 29a5c69 (fixed bug with store sync extraction into unwritable directory (#737))
