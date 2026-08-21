@@ -89,6 +89,7 @@ const (
 	// environment variables
 	HaulerDir          = "HAULER_DIR"
 	HaulerTempDir      = "HAULER_TEMP_DIR"
+	HaulerWorkDir      = "HAULER_WORK_DIR"
 	HaulerStoreDir     = "HAULER_STORE_DIR"
 	HaulerIgnoreErrors = "HAULER_IGNORE_ERRORS"
 

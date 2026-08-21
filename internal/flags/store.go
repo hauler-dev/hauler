@@ -61,3 +61,11 @@ func (o *StoreRootOpts) Store(ctx context.Context) (*store.Layout, error) {
 	}
 	return s, nil
 }
+
+// ResolveWorkDir returns the configured output dir, or "" to mean the current directory (legacy behavior).
+func ResolveWorkDir(ro *CliRootOpts) string {
+	if ro != nil && ro.WorkDir != "" {
+		return ro.WorkDir
+	}
+	return os.Getenv(consts.HaulerWorkDir)
+}

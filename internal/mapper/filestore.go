@@ -89,8 +89,10 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 	}
 	fullFileName := filepath.Join(destDir, filename)
 
-	// Guard against path traversal (e.g. filename containing "../")
-	if !strings.HasPrefix(fullFileName, destDir+string(filepath.Separator)) {
+	// Guard against path traversal (e.g. "../"). filepath.Rel handles this
+	// correctly even when destDir is "/", unlike a plain prefix check.
+	rel, err := filepath.Rel(destDir, fullFileName)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return nil, fmt.Errorf("path_traversal_disallowed: %q resolves outside destination dir", filename)
 	}
 
