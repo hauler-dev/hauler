@@ -168,8 +168,9 @@ func (t *RegistryTarget) Pusher(ctx context.Context, ref string) (remotes.Pusher
 // repository path and tag or digest. For example:
 //
 //	"index.docker.io/library/nginx:latest" + "localhost:5000" → "localhost:5000/library/nginx:latest"
+//	"registry.k8s.io/pause:latest" + "localhost:5000" → "localhost:5000/pause:latest"
 func RewriteRefToRegistry(sourceRef string, targetRegistry string) (string, error) {
-	ref, err := goname.ParseReference(sourceRef)
+	ref, err := goname.ParseReference(sourceRef, goname.WithDefaultRegistry(""))
 	if err != nil {
 		return "", fmt.Errorf("parsing reference %q: %w", sourceRef, err)
 	}

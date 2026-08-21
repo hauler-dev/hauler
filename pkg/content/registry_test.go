@@ -7,6 +7,10 @@ package content
 // also incorrectly conflated with PlainHTTP when selecting the http/https
 // scheme, plus a follow-up regression where Insecure was wired into the
 // registry client but not into the Docker Bearer-auth token-fetch client.
+//
+// It also covers RewriteRefToRegistry, specifically the WithDefaultRegistry("")
+// fix that prevents single-component refs from being resolved to
+// index.docker.io, which would add the "library/" namespace prefix.
 
 import (
 	"context"
@@ -332,5 +336,133 @@ func TestNewRegistryHTTPClient_FallsBackWhenDefaultTransportIsNotHTTPTransport(t
 	}
 	if transport.TLSClientConfig == nil || !transport.TLSClientConfig.InsecureSkipVerify {
 		t.Fatalf("expected InsecureSkipVerify to be honored on the fallback transport")
+	}
+}
+
+// TestRewriteRefToRegistry_SingleComponentNoLibraryPrefix verifies that a
+// single-component ref like "pause:3.10.1" is served at "target/pause:3.10.1"
+// and NOT at "target/library/pause:3.10.1". Before the fix, go-containerregistry
+// defaulted to index.docker.io and added the "library/" namespace prefix for
+// single-component repos, breaking air-gapped kubespray setups where the
+// cluster definition references bare image names.
+func TestRewriteRefToRegistry_SingleComponentNoLibraryPrefix(t *testing.T) {
+	cases := []struct {
+		name    string
+		ref     string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "tagged single component",
+			ref:  "pause:3.10.1",
+			want: "registry.evroc.dev/pause:3.10.1",
+		},
+		{
+			name: "tagged single component without tag defaults to latest",
+			ref:  "kube-apiserver",
+			want: "registry.evroc.dev/kube-apiserver:latest",
+		},
+		{
+			name: "digest single component",
+			ref:  "pause@sha256:" + strings.Repeat("a", 64),
+			want: "registry.evroc.dev/pause@sha256:" + strings.Repeat("a", 64),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RewriteRefToRegistry(tc.ref, "registry.evroc.dev")
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("RewriteRefToRegistry(%q, ...) = %q, want %q", tc.ref, got, tc.want)
+			}
+			if strings.Contains(got, "library/") {
+				t.Errorf("result should not contain 'library/' prefix, got: %q", got)
+			}
+		})
+	}
+}
+
+// TestRewriteRefToRegistry_MultiComponentUnchanged verifies that refs with
+// multiple path components (e.g. "coredns/coredns:v1.12.4") are served at
+// "target/coredns/coredns:v1.12.4".
+func TestRewriteRefToRegistry_MultiComponentUnchanged(t *testing.T) {
+	cases := []struct {
+		name string
+		ref  string
+		want string
+	}{
+		{
+			name: "two-component tag",
+			ref:  "coredns/coredns:v1.12.4",
+			want: "registry.evroc.dev/coredns/coredns:v1.12.4",
+		},
+		{
+			name: "three-component tag",
+			ref:  "library/nginx:1.28.2-alpine",
+			want: "registry.evroc.dev/library/nginx:1.28.2-alpine",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RewriteRefToRegistry(tc.ref, "registry.evroc.dev")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("RewriteRefToRegistry(%q, ...) = %q, want %q", tc.ref, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRewriteRefToRegistry_FullUpstreamRefStripped verifies that a ref with
+// an explicit upstream registry (e.g. "registry.k8s.io/pause:3.10.1") has the
+// upstream registry stripped, producing "target/pause:3.10.1" matching the mirror
+// model where the target replaces the upstream.
+func TestRewriteRefToRegistry_FullUpstreamRefStripped(t *testing.T) {
+	cases := []struct {
+		name string
+		ref  string
+		want string
+	}{
+		{
+			name: "registry.k8s.io single component",
+			ref:  "registry.k8s.io/pause:3.10.1",
+			want: "registry.evroc.dev/pause:3.10.1",
+		},
+		{
+			name: "registry.k8s.io multi component",
+			ref:  "registry.k8s.io/coredns/coredns:v1.12.4",
+			want: "registry.evroc.dev/coredns/coredns:v1.12.4",
+		},
+		{
+			name: "docker.io library multi component",
+			ref:  "index.docker.io/library/nginx:1.28.2-alpine",
+			want: "registry.evroc.dev/library/nginx:1.28.2-alpine",
+		},
+		{
+			name: "ghcr.io multi component",
+			ref:  "ghcr.io/kube-vip/kube-vip:v1.0.3",
+			want: "registry.evroc.dev/kube-vip/kube-vip:v1.0.3",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RewriteRefToRegistry(tc.ref, "registry.evroc.dev")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("RewriteRefToRegistry(%q, ...) = %q, want %q", tc.ref, got, tc.want)
+			}
+		})
 	}
 }
