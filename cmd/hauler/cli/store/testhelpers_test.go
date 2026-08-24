@@ -273,6 +273,57 @@ func seedIndex(t *testing.T, host, repo, tag string, opts ...remote.Option) gcrv
 	return idx
 }
 
+// seedIndexWithUnknown mirrors seedIndex but adds a third child with
+// Platform unknown/unknown, matching the attestation-manifest topology real
+// registries (e.g. the busybox image in #744) attach to a multi-arch index.
+func seedIndexWithUnknown(t *testing.T, host, repo, tag string, opts ...remote.Option) gcrv1.ImageIndex {
+	t.Helper()
+	amd64Img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("seedIndexWithUnknown random.Image amd64: %v", err)
+	}
+	arm64Img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("seedIndexWithUnknown random.Image arm64: %v", err)
+	}
+	unknownImg, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("seedIndexWithUnknown random.Image unknown: %v", err)
+	}
+	idx := mutate.AppendManifests(
+		empty.Index,
+		mutate.IndexAddendum{
+			Add: amd64Img,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "amd64"},
+			},
+		},
+		mutate.IndexAddendum{
+			Add: arm64Img,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "arm64"},
+			},
+		},
+		mutate.IndexAddendum{
+			Add: unknownImg,
+			Descriptor: gcrv1.Descriptor{
+				MediaType: gvtypes.OCIManifestSchema1,
+				Platform:  &gcrv1.Platform{OS: "unknown", Architecture: "unknown"},
+			},
+		},
+	)
+	ref, err := name.NewTag(host+"/"+repo+":"+tag, name.Insecure)
+	if err != nil {
+		t.Fatalf("seedIndexWithUnknown name.NewTag: %v", err)
+	}
+	if err := remote.WriteIndex(ref, idx, opts...); err != nil {
+		t.Fatalf("seedIndexWithUnknown remote.WriteIndex: %v", err)
+	}
+	return idx
+}
+
 // seedFileInHTTPServer starts an httptest server serving a single file at
 // /filename with the given content. Returns the full URL. Server closed via t.Cleanup.
 func seedFileInHTTPServer(t *testing.T, filename, content string) string {

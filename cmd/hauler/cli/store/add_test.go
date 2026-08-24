@@ -449,6 +449,39 @@ func TestRewriteReference(t *testing.T) {
 	})
 }
 
+// TestRewriteReferenceMatchesContainerdNameVintage covers the #744 vintage gap:
+// stores written by older hauler v2 carry "index.docker.io/..." in
+// ContainerdImageNameKey, while stores written after the containerd-name
+// normalization fix (Task 1/2) carry "docker.io/...". rewriteReference's match
+// predicate compared that annotation verbatim, so it must be taught to match
+// either vintage against a docker.io rewrite request.
+func TestRewriteReferenceMatchesContainerdNameVintage(t *testing.T) {
+	ctx := newTestContext(t)
+
+	tests := []struct {
+		name           string
+		containerdName string
+	}{
+		{"legacy index.docker.io form", "index.docker.io/library/rewrite-legacy:v1"},
+		{"normalized docker.io form", "docker.io/library/rewrite-legacy:v1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestStore(t)
+			seedStoreDescriptor(t, s, map[string]string{
+				ocispec.AnnotationRefName:     "library/rewrite-legacy:v1",
+				consts.ContainerdImageNameKey: tc.containerdName,
+			})
+
+			oldRef, _ := name.ParseReference("docker.io/library/rewrite-legacy:v1")
+			newRef, _ := name.ParseReference("docker.io/library/rewrite-new:v1")
+			if err := rewriteReference(ctx, s, oldRef, newRef, "docker.io/library/rewrite-new:v1"); err != nil {
+				t.Fatalf("rewriteReference should match %s: %v", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestRewriteChartReference(t *testing.T) {
 	ctx := newTestContext(t)
 

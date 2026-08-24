@@ -619,9 +619,9 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 		newTag = tag.TagStr()
 	}
 
-	// ContainerdImageNameKey stores annotationRef.Name() verbatim, which includes the
-	// "index.docker.io" prefix for docker.io images. Do not strip "index." here or the
-	// comparison will never match images stored by writeImage/writeIndex.
+	// Stores written before the #744 fix carry "index.docker.io/..." containerd
+	// names; new writes are normalized to "docker.io/...". Normalize both sides
+	// of the comparison so rewrite matches either vintage.
 	oldRegistry := oldRefContext.RegistryStr()
 	newRegistry := newRefContext.RegistryStr()
 	// If user omitted a registry in the rewrite string, go-containerregistry defaults to
@@ -643,10 +643,16 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 
 	log.BaseFromContext(ctx).Infof("rewriting [%s] to [%s]", oldTotalReg, newTotalReg)
 
+	// The write below still emits newTotalReg's un-normalized form (registry-preservation
+	// and library/-stripping above depend on go-containerregistry's literal "index.docker.io"
+	// default) -- only the match target is normalized, so lookup tolerates either vintage.
+	oldTotalRegNormalized := reference.NormalizeContainerd(oldTotalReg)
+
 	//find and update reference
 	matched, err := s.OCI.UpdateAnnotations(
 		func(d ocispec.Descriptor) bool {
-			return d.Annotations[ocispec.AnnotationRefName] == oldTotal && d.Annotations[consts.ContainerdImageNameKey] == oldTotalReg
+			return d.Annotations[ocispec.AnnotationRefName] == oldTotal &&
+				reference.NormalizeContainerd(d.Annotations[consts.ContainerdImageNameKey]) == oldTotalRegNormalized
 		},
 		func(a map[string]string) {
 			a[ocispec.AnnotationRefName] = newTotal

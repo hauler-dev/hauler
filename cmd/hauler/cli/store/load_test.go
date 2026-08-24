@@ -1,11 +1,6 @@
 package store
 
 // load_test.go covers unarchiveLayoutTo, LoadCmd, and clearDir.
-//
-// Do NOT call t.Parallel() on tests that invoke createRootLevelArchive —
-// that helper uses the mholt/archives library directly to avoid os.Chdir,
-// so it is safe for concurrent use, but the tests themselves exercise
-// unarchiveLayoutTo which is already sequential.
 
 import (
 	"context"
@@ -21,6 +16,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/store"
@@ -31,9 +27,8 @@ import (
 const testHaulArchive = "../../../../testdata/haul.tar.zst"
 
 // createRootLevelArchive creates a tar.zst archive from dir with files placed
-// at the archive root (no directory prefix). This matches the layout produced
-// by SaveCmd, which uses os.Chdir + Archive(".", ...) to achieve the same
-// effect. Using mholt/archives directly avoids the os.Chdir side-effect.
+// at the archive root (no directory prefix), matching the layout SaveCmd
+// produces via archives.ArchiveFiles.
 func createRootLevelArchive(dir, outfile string) error {
 	// A trailing path separator tells mholt/archives to enumerate the
 	// directory's *contents* only — files land at archive root with no prefix.
@@ -436,6 +431,102 @@ func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatalf("Walk: %v", err)
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestLoadCmd_ContainerdHaulRoundTripsNonImageContent
+// --------------------------------------------------------------------------
+
+// TestLoadCmd_ContainerdHaulRoundTripsNonImageContent verifies that loading a
+// --containerd haul recovers the file artifact that was filtered out of
+// index.json, by preferring the hauler-index.json sidecar over the filtered
+// index.
+func TestLoadCmd_ContainerdHaulRoundTripsNonImageContent(t *testing.T) {
+	ctx := newTestContext(t)
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "test/roundtrip", "v1")
+
+	// Source store: one image + one file artifact. AddArtifact (used by
+	// storeFile) tags the file dev.hauler/image like every non-image
+	// artifact, but never sets ContainerdImageNameKey -- writeContainerdIndexes
+	// drops it on that missing annotation, so it's absent from index.json and
+	// only recoverable from the hauler-index.json sidecar.
+	src := newTestStore(t)
+	if _, err := src.AddImage(ctx, host+"/test/roundtrip:v1", "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+	url := seedFileInHTTPServer(t, "roundtrip.txt", "file-content")
+	if err := storeFile(ctx, src, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(src.Root)); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+	so := newSaveOpts(src.Root, archivePath)
+	so.ContainerdCompatibility = true
+	if err := SaveCmd(ctx, so, src, defaultRootOpts(src.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("SaveCmd: %v", err)
+	}
+
+	// Inspect the archive directly (mirrors TestSaveCmd_ContainerdCompatibility):
+	// the file descriptor must be genuinely absent from the filtered index.json
+	// and present only in the sidecar. Without this, the test can't distinguish
+	// "the sidecar rescued a dropped artifact" from "nothing was ever dropped"
+	// -- see Step D in the task-8 report for what that false-positive looks like.
+	archiveInspectDir := t.TempDir()
+	if err := archives.Unarchive(ctx, archivePath, archiveInspectDir); err != nil {
+		t.Fatalf("Unarchive (inspection): %v", err)
+	}
+	assertNoDescriptorReferences(t, filepath.Join(archiveInspectDir, "index.json"), "roundtrip.txt")
+	assertDescriptorReferences(t, filepath.Join(archiveInspectDir, consts.HaulerIndexFile), "roundtrip.txt")
+
+	dest := newTestStore(t)
+	lo := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(dest.Root), FileName: []string{archivePath}}
+	if err := LoadCmd(ctx, lo, dest, defaultRootOpts(dest.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("LoadCmd: %v", err)
+	}
+
+	assertArtifactInStore(t, dest, "test/roundtrip")
+	assertArtifactInStore(t, dest, "roundtrip.txt")
+}
+
+// descriptorReferences reads an OCI index at indexPath and reports whether
+// any top-level manifest's annotation values contain refSubstring.
+func descriptorReferences(t *testing.T, indexPath, refSubstring string) bool {
+	t.Helper()
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", indexPath, err)
+	}
+	var idx ocispec.Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		t.Fatalf("unmarshal %s: %v", indexPath, err)
+	}
+	for _, d := range idx.Manifests {
+		for _, v := range d.Annotations {
+			if strings.Contains(v, refSubstring) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// assertNoDescriptorReferences fails if any manifest in the index at
+// indexPath has an annotation value containing refSubstring.
+func assertNoDescriptorReferences(t *testing.T, indexPath, refSubstring string) {
+	t.Helper()
+	if descriptorReferences(t, indexPath, refSubstring) {
+		t.Errorf("expected no descriptor in %s to reference %q, but found one", indexPath, refSubstring)
+	}
+}
+
+// assertDescriptorReferences fails unless some manifest in the index at
+// indexPath has an annotation value containing refSubstring.
+func assertDescriptorReferences(t *testing.T, indexPath, refSubstring string) {
+	t.Helper()
+	if !descriptorReferences(t, indexPath, refSubstring) {
+		t.Errorf("expected a descriptor in %s to reference %q, found none", indexPath, refSubstring)
 	}
 }
 
