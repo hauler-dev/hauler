@@ -23,6 +23,7 @@ type AddImageOpts struct {
 	Local                        bool
 	CaFile                       string
 	InsecureSkipTLSVerify        bool
+	RegistriesFilePath           string
 }
 
 func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
@@ -36,6 +37,7 @@ func (o *AddImageOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Enable transparency log verification for key-based signature verification (keyless/OIDC verification always uses the tlog)")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image... i.e. linux/amd64 (defaults to all)")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
+	f.StringVar(&o.RegistriesFilePath, "registries-file-path", "", "(Optional) Specify the path to a registries.yaml file, to configure registry rewrites for pulling images")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling the image")
 	f.BoolVar(&o.Local, "local", false, "(Optional) Add image from the local Docker daemon instead of a remote registry")
 	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
@@ -59,17 +61,18 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 type AddChartOpts struct {
 	*StoreRootOpts
 
-	ChartOpts       *action.ChartPathOptions
-	Rewrite         string
-	AddDependencies bool
-	AddImages       bool
-	ExcludeExtras   bool
-	ValuesFiles     []string
-	Platform        string
-	Registry        string
-	KubeVersion     string
-	Concurrency     int
-	NoProgress      bool
+	ChartOpts          *action.ChartPathOptions
+	Rewrite            string
+	AddDependencies    bool
+	AddImages          bool
+	ExcludeExtras      bool
+	ValuesFiles        []string
+	Platform           string
+	RegistriesFilePath string
+	Registry           string
+	KubeVersion        string
+	Concurrency        int
+	NoProgress         bool
 }
 
 func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
@@ -86,6 +89,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.ChartOpts.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
 	f.StringVar(&o.ChartOpts.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.StringVar(&o.Rewrite, "rewrite", "", "(Optional) Rewrite artifact path to specified string")
+	f.StringVar(&o.RegistriesFilePath, "registries-file-path", "", "(Optional) Specify the path to a registries.yaml file, to configure registry rewrites for pulling images")
 
 	cmd.MarkFlagsRequiredTogether("username", "password")
 	cmd.MarkFlagsRequiredTogether("cert-file", "key-file")

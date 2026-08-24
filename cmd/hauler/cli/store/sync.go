@@ -159,7 +159,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			InsecureSkipTLSVerify: o.InsecureSkipTLSVerify,
 			CaFile:                o.CaFile,
 		}
-		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "", "", false)
+		err := storeImage(ctx, s, img, o.Platform, o.ExcludeExtras, rso, ro, "", "", false, o.RegistriesFilePath)
 		if err != nil {
 			return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
 		}
@@ -588,11 +588,12 @@ func formatIOStats(st content.IOStatsSnapshot, ceiling int) string {
 // imageJob is the fully-resolved set of inputs needed to verify (if
 // applicable) and store a single image; see resolveImageJobs.
 type imageJob struct {
-	img           v1.Image // Name already relocated to the target registry if applicable
-	platform      string
-	excludeExtras bool
-	rewrite       string
-	local         bool
+	img            v1.Image // Name already relocated to the target registry if applicable
+	platform       string
+	excludeExtras  bool
+	rewrite        string
+	local          bool
+	registriesPath string
 
 	// resolved verification inputs, collapsed into a cosign.Config by
 	// verifyConfig and consumed by the pull worker
@@ -664,7 +665,7 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 		needsKeylessVerificaton := hasAnnotationIdentityOptions || hasCliIdentityOptions || hasImageIdentityOptions
 		needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
 
-		job := imageJob{img: i}
+		job := imageJob{img: i, registriesPath: o.RegistriesFilePath}
 
 		if needsPubKeyVerification {
 			key := o.Key
@@ -1134,7 +1135,7 @@ func runRemoteImageJobsWith(ctx context.Context, s *store.Layout, jobs []imageJo
 			// and succeeded: err is nil on success and stays non-nil on a
 			// failure that fell through to here under --ignore-errors.
 			verified := err == nil && !j.verifyConfig().Empty()
-			return storeImage(jctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite, pinned, verified)
+			return storeImage(jctx, s, j.img, j.platform, j.excludeExtras, rso, ro, j.rewrite, pinned, verified, j.registriesPath)
 		})
 	}
 	return g.Wait()
