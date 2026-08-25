@@ -36,13 +36,20 @@ func NewTagged(n string, tag string) (goname.Reference, error) {
 // carries no registry stays registryless (consts.DefaultRegistry) instead of
 // defaulting to Docker Hub. Any caller-supplied options are applied after the
 // default, so an explicit goname.WithDefaultRegistry still wins (options are
-// applied in order). Use this everywhere in place of goname.ParseReference.
+// applied in order).
+//
+// Use this when reading or constructing hauler store references, where a name
+// whose registry was stripped (e.g. the AnnotationRefName annotation) must stay
+// registryless rather than be mis-attributed to Docker Hub. Plain
+// goname.ParseReference is still correct on the pull path, where a registryless
+// source name should resolve to Docker Hub so the image can be fetched.
 func ParseReference(ref string, opts ...goname.Option) (goname.Reference, error) {
 	opts = append([]goname.Option{goname.WithDefaultRegistry(consts.DefaultRegistry)}, opts...)
 	return goname.ParseReference(ref, opts...)
 }
 
 // Parse will parse a reference and return a name.Reference namespaced with DefaultNamespace if necessary
+// for example charts stored as hauler/chart-name:tag
 func Parse(ref string) (goname.Reference, error) {
 	r, err := ParseReference(ref, goname.WithDefaultTag(consts.DefaultTag))
 	if err != nil {

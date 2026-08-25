@@ -303,7 +303,7 @@ func verifyAddImage(ctx context.Context, o *flags.AddImageOpts, ref string, rso 
 	if cfg.Empty() {
 		return "", nil
 	}
-
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
 	r, err := goname.ParseReference(ref)
 	if err != nil {
 		return "", &verifyError{stage: "unable to parse image reference", err: err}
@@ -400,6 +400,7 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 
 	l.Debugf("resolving image [%s] from local Docker daemon (rewrite=%q)", i.Name, rewrite)
 
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
 	r, err := goname.ParseReference(i.Name)
 	if err != nil {
 		if ignoreErrors {
@@ -494,6 +495,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 
 	log.BaseFromContext(ctx).Debugf("resolving image [%s] (verified=%t, platform=%q, excludeExtras=%t, insecureSkipTLSVerify=%t, caFile=%q, rewrite=%q, digest=%q)", i.Name, verified, platform, excludeExtras, insecureSkipTLSVerify, caFile, rewrite, pinnedDigest)
 
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
 	r, err := goname.ParseReference(i.Name)
 	if err != nil {
 		if ignoreErrors {

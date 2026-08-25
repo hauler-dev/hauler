@@ -334,3 +334,79 @@ func TestNewRegistryHTTPClient_FallsBackWhenDefaultTransportIsNotHTTPTransport(t
 		t.Fatalf("expected InsecureSkipVerify to be honored on the fallback transport")
 	}
 }
+
+// TestRewriteRefToRegistry covers the ref-relocation serve-registry's copy path
+// uses to map a stored reference onto the temp registry host. It must preserve
+// the repository path and the tag/digest while swapping the host, and a registryless source must keep
+// its repo path verbatim (no Docker Hub library/ injection) rather than being
+// defaulted to index.docker.io.
+func TestRewriteRefToRegistry(t *testing.T) {
+	const target = "localhost:5000"
+	const digest = "@sha256:498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0"
+
+	cases := []struct {
+		name      string
+		sourceRef string
+		target    string
+		want      string
+		wantErr   bool
+	}{
+		{
+			name:      "fully-qualified docker hub tag ref",
+			sourceRef: "index.docker.io/library/nginx:latest",
+			target:    target,
+			want:      "localhost:5000/library/nginx:latest",
+		},
+		{
+			name:      "non-hub tag ref preserves repo path",
+			sourceRef: "ghcr.io/org/img:v1",
+			target:    target,
+			want:      "localhost:5000/org/img:v1",
+		},
+		{
+			name:      "digest ref preserves the digest",
+			sourceRef: "index.docker.io/library/nginx" + digest,
+			target:    target,
+			want:      "localhost:5000/library/nginx" + digest,
+		},
+		{
+			name:      "source registry with port is replaced by target",
+			sourceRef: "localhost:5000/team/app:dev",
+			target:    "example.com:6000",
+			want:      "example.com:6000/team/app:dev",
+		},
+		{
+			name:      "registryless single-segment keeps repo without library/ prefix",
+			sourceRef: "nginx:latest",
+			target:    target,
+			want:      "localhost:5000/nginx:latest",
+		},
+		{
+			name:      "registryless namespaced ref preserves repo path",
+			sourceRef: "org/img:v1",
+			target:    target,
+			want:      "localhost:5000/org/img:v1",
+		},
+		{
+			name:      "unparseable source ref errors",
+			sourceRef: "NOT A REF!!",
+			target:    target,
+			wantErr:   true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RewriteRefToRegistry(tc.sourceRef, tc.target)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("RewriteRefToRegistry(%q, %q) error = %v, wantErr %v", tc.sourceRef, tc.target, err, tc.wantErr)
+			}
+			if tc.wantErr {
+				return
+			}
+			if got != tc.want {
+				t.Errorf("RewriteRefToRegistry(%q, %q) = %q, want %q", tc.sourceRef, tc.target, got, tc.want)
+			}
+		})
+	}
+}
