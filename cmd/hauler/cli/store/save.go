@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	referencev3 "github.com/distribution/reference"
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	libv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
@@ -485,14 +485,14 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 		}
 	}
 
-	ref, err := name.ParseReference(refname)
+	ref, err := reference.ParseReference(refname)
 	if err != nil {
 		return err
 	}
 
 	// record tags for the digest, eliminating dupes
 	switch tag := ref.(type) {
-	case name.Tag:
+	case goname.Tag:
 		named, err := referencev3.ParseNormalizedNamed(refname)
 		if err != nil {
 			return err
@@ -503,7 +503,7 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 		slices.Sort(xd.RepoTags)
 		xd.RepoTags = slices.Compact(xd.RepoTags)
 		ref = tag.Digest(digest)
-	case name.Digest:
+	case goname.Digest:
 		// For digest-only refs, derive a deterministic, docker-valid tag from the
 		// digest the user actually pinned (#642, #744). For a multi-arch index that
 		// is the PARENT index digest, not this child's; children disambiguate with

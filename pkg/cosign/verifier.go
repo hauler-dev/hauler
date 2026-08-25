@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"sync"
 
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
 	cosignpkg "github.com/sigstore/cosign/v3/pkg/cosign"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/retry"
 )
 
@@ -206,7 +207,7 @@ func NewVerifier(ctx context.Context, cfg Config, rso *flags.StoreRootOpts, ro *
 // has no .sig tag and so fails there with a not-found error; only that specific
 // failure falls back to the bundle path.
 func (v *Verifier) Verify(ctx context.Context, ref string) error {
-	r, err := gname.ParseReference(ref)
+	r, err := reference.ParseReference(ref)
 	if err != nil {
 		return fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
@@ -221,7 +222,7 @@ func (v *Verifier) Verify(ctx context.Context, ref string) error {
 }
 
 // verifyImage checks ref for a classic tag-based signature.
-func (v *Verifier) verifyImage(ctx context.Context, r gname.Reference) error {
+func (v *Verifier) verifyImage(ctx context.Context, r goname.Reference) error {
 	return v.withRetry(ctx, func() error {
 		_, _, err := cosignpkg.VerifyImageSignatures(ctx, r, v.co)
 		return err
@@ -244,7 +245,7 @@ func (v *Verifier) verifyImage(ctx context.Context, r gname.Reference) error {
 //
 // Reached only for images with no classic signature, so it stays off the hot
 // path for the workloads hauler actually syncs.
-func (v *Verifier) verifyBundle(ctx context.Context, r gname.Reference) error {
+func (v *Verifier) verifyBundle(ctx context.Context, r goname.Reference) error {
 	return v.withRetry(ctx, func() error {
 		_, _, err := cosignpkg.VerifyImageAttestations(ctx, r, v.coBundle)
 		return err

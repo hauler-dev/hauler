@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sync/singleflight"
 
@@ -172,9 +172,9 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 
 	var mapKey string
 	switch key.(type) {
-	case name.Digest:
+	case goname.Digest:
 		mapKey = fmt.Sprintf("%s-%s", key.Context().String(), desc.Annotations[consts.KindAnnotationName])
-	case name.Tag:
+	case goname.Tag:
 		mapKey = fmt.Sprintf("%s-%s", key.String(), desc.Annotations[consts.KindAnnotationName])
 	default:
 		return nil
@@ -287,9 +287,9 @@ func (o *OCI) loadIndexLocked() error {
 
 		if strings.TrimSpace(key.String()) != "--" {
 			switch key.(type) {
-			case name.Digest:
+			case goname.Digest:
 				o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), kind), desc)
-			case name.Tag:
+			case goname.Tag:
 				o.nameMap.Store(fmt.Sprintf("%s-%s", key.String(), kind), desc)
 			}
 		}

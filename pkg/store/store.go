@@ -13,7 +13,7 @@ import (
 	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/errdefs"
 	"github.com/google/go-containerregistry/pkg/authn"
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -261,7 +261,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		remote.WithTransport(tr),
 	}, opts...)
 
-	parsedRef, err := gname.ParseReference(ref)
+	parsedRef, err := href.ParseReference(ref)
 	if err != nil {
 		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
@@ -336,7 +336,7 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 // AddLocalImage fetches a container image from the local Docker daemon and saves it to the store.
 // No cosign signatures, attestations, SBOMs, or OCI referrers are fetched (registry-only concepts).
 func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) {
-	parsedRef, err := gname.ParseReference(ref)
+	parsedRef, err := href.ParseReference(ref)
 	if err != nil {
 		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
@@ -437,7 +437,7 @@ func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 // writeImage writes all blobs for img and adds a descriptor entry to the OCI index with the
 // given annotationRef and kind. containerdName overrides the io.containerd.image.name annotation;
 // if empty it defaults to annotationRef.Name().
-func (l *Layout) writeImage(ctx context.Context, annotationRef gname.Reference, img v1.Image, kind string, containerdName string) error {
+func (l *Layout) writeImage(ctx context.Context, annotationRef goname.Reference, img v1.Image, kind string, containerdName string) error {
 	if err := l.writeImageBlobs(ctx, img); err != nil {
 		return err
 	}
@@ -518,7 +518,7 @@ func (l *Layout) writeIndexBlobs(ctx context.Context, idx v1.ImageIndex) error {
 
 // writeIndex writes all blobs for an image index (including all child platform images) and adds
 // a descriptor entry to the OCI index with the given annotationRef and kind.
-func (l *Layout) writeIndex(ctx context.Context, annotationRef gname.Reference, idx v1.ImageIndex, kind string) error {
+func (l *Layout) writeIndex(ctx context.Context, annotationRef goname.Reference, idx v1.ImageIndex, kind string) error {
 	if err := l.writeIndexBlobs(ctx, idx); err != nil {
 		return err
 	}
@@ -564,10 +564,10 @@ func (l *Layout) writeIndex(ctx context.Context, annotationRef gname.Reference, 
 // cosign v3 new-bundle-format sigs/attestations stored via the subject field, as opposed to the
 // legacy sha256-<hex>.sig/.att/.sbom tag convention. Missing referrers and fetch errors are
 // logged at debug level and silently skipped.
-func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
+func (l *Layout) saveReferrers(ctx context.Context, ref goname.Reference, hash v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
 	log := zerolog.Ctx(ctx)
 
-	imageDigestRef, err := gname.NewDigest(ref.Context().String() + "@" + hash.String())
+	imageDigestRef, err := goname.NewDigest(ref.Context().String() + "@" + hash.String())
 	if err != nil {
 		log.Debug().Err(err).Msgf("saveReferrers: could not construct digest ref for %s", ref.Name())
 		return nil
@@ -587,7 +587,7 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 	}
 
 	for _, referrerDesc := range idxManifest.Manifests {
-		digestRef, err := gname.NewDigest(ref.Context().String() + "@" + referrerDesc.Digest.String())
+		digestRef, err := goname.NewDigest(ref.Context().String() + "@" + referrerDesc.Digest.String())
 		if err != nil {
 			log.Debug().Err(err).Msgf("saveReferrers: could not construct digest ref for referrer %s", referrerDesc.Digest)
 			continue
@@ -621,7 +621,7 @@ func (l *Layout) saveReferrers(ctx context.Context, ref gname.Reference, hash v1
 // saveRelatedArtifacts discovers and saves cosign-compatible signature, attestation, and SBOM
 // artifacts for the image identified by ref/hash, skipping missing ones silently. Returns the
 // set of saved manifest digest strings so saveReferrers can skip duplicates exposed via both paths.
-func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, hash v1.Hash, opts ...remote.Option) (map[string]bool, error) {
+func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref goname.Reference, hash v1.Hash, opts ...remote.Option) (map[string]bool, error) {
 	saved := make(map[string]bool)
 
 	// Cosign tag convention: "sha256:hexvalue" → "sha256-hexvalue.sig" / ".att" / ".sbom"
@@ -637,7 +637,7 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref gname.Reference, 
 	}
 
 	for _, r := range related {
-		artifactRef, err := gname.ParseReference(ref.Context().String() + ":" + r.tag)
+		artifactRef, err := href.ParseReference(ref.Context().String() + ":" + r.tag)
 		if err != nil {
 			continue
 		}

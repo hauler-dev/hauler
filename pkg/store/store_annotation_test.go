@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	gname "github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
@@ -21,6 +20,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 )
 
 func TestWriteImageNormalizesContainerdName(t *testing.T) {
@@ -32,7 +32,7 @@ func TestWriteImageNormalizesContainerdName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("random.Image: %v", err)
 	}
-	ref, err := gname.ParseReference("docker.io/library/busybox:v1")
+	ref, err := reference.ParseReference("docker.io/library/busybox:v1")
 	if err != nil {
 		t.Fatalf("ParseReference: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestWriteIndexNormalizesContainerdName(t *testing.T) {
 			},
 		},
 	)
-	ref, err := gname.ParseReference("docker.io/library/busybox@sha256:" +
+	ref, err := reference.ParseReference("docker.io/library/busybox@sha256:" +
 		"498a000f370d8c37927118ed80afe8adc38d1edcbfc071627d17b25c88efcab0")
 	if err != nil {
 		t.Fatalf("ParseReference: %v", err)

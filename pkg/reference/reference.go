@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	dreference "github.com/distribution/reference"
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
@@ -22,7 +22,7 @@ type Reference interface {
 }
 
 // NewTagged will create a new docker.NamedTagged given a path-component
-func NewTagged(n string, tag string) (gname.Reference, error) {
+func NewTagged(n string, tag string) (goname.Reference, error) {
 	n = strings.Replace(strings.ToLower(n), "+", "-", -1)
 	repo, err := Parse(n)
 	if err != nil {
@@ -32,34 +32,44 @@ func NewTagged(n string, tag string) (gname.Reference, error) {
 	return repo.Context().Tag(tag), nil
 }
 
+// ParseReference wraps goname.ParseReference so that a reference whose input
+// carries no registry stays registryless (consts.DefaultRegistry) instead of
+// defaulting to Docker Hub. Any caller-supplied options are applied after the
+// default, so an explicit goname.WithDefaultRegistry still wins (options are
+// applied in order). Use this everywhere in place of goname.ParseReference.
+func ParseReference(ref string, opts ...goname.Option) (goname.Reference, error) {
+	opts = append([]goname.Option{goname.WithDefaultRegistry(consts.DefaultRegistry)}, opts...)
+	return goname.ParseReference(ref, opts...)
+}
+
 // Parse will parse a reference and return a name.Reference namespaced with DefaultNamespace if necessary
-func Parse(ref string) (gname.Reference, error) {
-	r, err := gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(consts.DefaultTag))
+func Parse(ref string) (goname.Reference, error) {
+	r, err := ParseReference(ref, goname.WithDefaultTag(consts.DefaultTag))
 	if err != nil {
 		return nil, err
 	}
 
 	if !strings.ContainsRune(r.String(), '/') {
 		ref = consts.DefaultNamespace + "/" + r.String()
-		return gname.ParseReference(ref, gname.WithDefaultRegistry(""), gname.WithDefaultTag(consts.DefaultTag))
+		return ParseReference(ref, goname.WithDefaultTag(consts.DefaultTag))
 	}
 
 	return r, nil
 }
 
 // Relocate returns a name.Reference given a reference and registry
-func Relocate(reference string, registry string) (gname.Reference, error) {
-	ref, err := gname.ParseReference(reference)
+func Relocate(reference string, registry string) (goname.Reference, error) {
+	ref, err := ParseReference(reference)
 	if err != nil {
 		return nil, err
 	}
 
-	relocated, err := gname.ParseReference(ref.Context().RepositoryStr(), gname.WithDefaultRegistry(registry))
+	relocated, err := ParseReference(ref.Context().RepositoryStr(), goname.WithDefaultRegistry(registry))
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := gname.NewDigest(ref.Name()); err == nil {
+	if _, err := goname.NewDigest(ref.Name()); err == nil {
 		return relocated.Context().Digest(ref.Identifier()), nil
 	}
 	return relocated.Context().Tag(ref.Identifier()), nil
