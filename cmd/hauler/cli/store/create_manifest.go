@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
@@ -16,6 +16,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -142,7 +143,7 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 			return fmt.Errorf("decoding manifest for [%s]: %w", refName, err)
 		}
 
-		ref, err := gname.ParseReference(refName)
+		ref, err := reference.ParseReference(refName)
 		if err != nil {
 			return fmt.Errorf("parsing reference [%s]: %w", refName, err)
 		}
@@ -151,7 +152,7 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		switch m.Config.MediaType {
 		case consts.ChartConfigMediaType:
 			version := ref.Identifier()
-			if tag, ok := ref.(gname.Tag); ok {
+			if tag, ok := ref.(goname.Tag); ok {
 				version = tag.TagStr()
 			}
 
@@ -166,10 +167,10 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 					// pullable name/version and reapply the same rewrite so a resync
 					// reproduces this exact store layout.
 					rewrite = refName
-					if origRef, err := gname.ParseReference(origTotal); err == nil {
+					if origRef, err := reference.ParseReference(origTotal); err == nil {
 						name = strings.TrimPrefix(origRef.Context().RepositoryStr(), consts.DefaultNamespace+"/")
 						version = origRef.Identifier()
-						if tag, ok := origRef.(gname.Tag); ok {
+						if tag, ok := origRef.(goname.Tag); ok {
 							version = tag.TagStr()
 						}
 					}

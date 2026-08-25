@@ -26,7 +26,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
@@ -105,7 +105,7 @@ func seedSignedImage(t *testing.T, host, repo, tag string, opts ...remote.Option
 		t.Fatalf("seedSignedImage LoadECDSASignerVerifier: %v", err)
 	}
 
-	digestRef, err := name.NewDigest(host+"/"+repo+"@"+hash.String(), name.Insecure)
+	digestRef, err := goname.NewDigest(host+"/"+repo+"@"+hash.String(), goname.Insecure)
 	if err != nil {
 		t.Fatalf("seedSignedImage NewDigest: %v", err)
 	}
@@ -130,7 +130,7 @@ func seedSignedImage(t *testing.T, host, repo, tag string, opts ...remote.Option
 		t.Fatalf("seedSignedImage AppendSignatures: %v", err)
 	}
 
-	sigRef, err := name.NewTag(host+"/"+repo+":"+strings.ReplaceAll(hash.String(), ":", "-")+".sig", name.Insecure)
+	sigRef, err := goname.NewTag(host+"/"+repo+":"+strings.ReplaceAll(hash.String(), ":", "-")+".sig", goname.Insecure)
 	if err != nil {
 		t.Fatalf("seedSignedImage NewTag (sig): %v", err)
 	}
@@ -224,9 +224,9 @@ func seedImage(t *testing.T, host, repo, tag string, opts ...remote.Option) gcrv
 	if err != nil {
 		t.Fatalf("seedImage random.Image: %v", err)
 	}
-	ref, err := name.NewTag(host+"/"+repo+":"+tag, name.Insecure)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
 	if err != nil {
-		t.Fatalf("seedImage name.NewTag: %v", err)
+		t.Fatalf("seedImage goname.NewTag: %v", err)
 	}
 	if err := remote.Write(ref, img, opts...); err != nil {
 		t.Fatalf("seedImage remote.Write: %v", err)
@@ -263,9 +263,9 @@ func seedIndex(t *testing.T, host, repo, tag string, opts ...remote.Option) gcrv
 			},
 		},
 	)
-	ref, err := name.NewTag(host+"/"+repo+":"+tag, name.Insecure)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
 	if err != nil {
-		t.Fatalf("seedIndex name.NewTag: %v", err)
+		t.Fatalf("seedIndex goname.NewTag: %v", err)
 	}
 	if err := remote.WriteIndex(ref, idx, opts...); err != nil {
 		t.Fatalf("seedIndex remote.WriteIndex: %v", err)
@@ -314,9 +314,9 @@ func seedIndexWithUnknown(t *testing.T, host, repo, tag string, opts ...remote.O
 			},
 		},
 	)
-	ref, err := name.NewTag(host+"/"+repo+":"+tag, name.Insecure)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
 	if err != nil {
-		t.Fatalf("seedIndexWithUnknown name.NewTag: %v", err)
+		t.Fatalf("seedIndexWithUnknown goname.NewTag: %v", err)
 	}
 	if err := remote.WriteIndex(ref, idx, opts...); err != nil {
 		t.Fatalf("seedIndexWithUnknown remote.WriteIndex: %v", err)
@@ -495,7 +495,7 @@ func seedCosignV2Artifacts(t *testing.T, host, repo string, baseImg gcrv1.Image,
 		if err != nil {
 			t.Fatalf("seedCosignV2Artifacts: random.Image (%s): %v", suffix, err)
 		}
-		ref, err := name.NewTag(host+"/"+repo+":"+tagPrefix+suffix, name.Insecure)
+		ref, err := goname.NewTag(host+"/"+repo+":"+tagPrefix+suffix, goname.Insecure)
 		if err != nil {
 			t.Fatalf("seedCosignV2Artifacts: NewTag (%s): %v", suffix, err)
 		}
@@ -539,7 +539,7 @@ func seedOCI11Referrer(t *testing.T, host, repo string, baseImg gcrv1.Image, opt
 	referrerImg = mutate.ConfigMediaType(referrerImg, gvtypes.MediaType(consts.OCIEmptyConfigMediaType))
 	referrerImg = mutate.Subject(referrerImg, baseDesc).(gcrv1.Image)
 
-	referrerTag, err := name.NewTag(host+"/"+repo+":bundle-referrer", name.Insecure)
+	referrerTag, err := goname.NewTag(host+"/"+repo+":bundle-referrer", goname.Insecure)
 	if err != nil {
 		t.Fatalf("seedOCI11Referrer: NewTag: %v", err)
 	}

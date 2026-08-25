@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/authn"
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -31,6 +31,7 @@ import (
 	ociremote "github.com/sigstore/cosign/v3/pkg/oci/remote"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 )
 
 // testOpts returns retry options for the constructors that plumb them to the
@@ -284,7 +285,7 @@ func seedSigTestImage(t *testing.T, host, repo string, withSigTag bool, ropts []
 	if err != nil {
 		t.Fatalf("random.Image: %v", err)
 	}
-	ref, err := gname.NewTag(host+"/"+repo+":latest", gname.Insecure)
+	ref, err := goname.NewTag(host+"/"+repo+":latest", goname.Insecure)
 	if err != nil {
 		t.Fatalf("NewTag: %v", err)
 	}
@@ -303,7 +304,7 @@ func seedSigTestImage(t *testing.T, host, repo string, withSigTag bool, ropts []
 	if err != nil {
 		t.Fatalf("random.Image (sig): %v", err)
 	}
-	sigRef, err := gname.NewTag(host+"/"+repo+":"+strings.ReplaceAll(hash.String(), ":", "-")+".sig", gname.Insecure)
+	sigRef, err := goname.NewTag(host+"/"+repo+":"+strings.ReplaceAll(hash.String(), ":", "-")+".sig", goname.Insecure)
 	if err != nil {
 		t.Fatalf("NewTag (sig): %v", err)
 	}
@@ -334,7 +335,7 @@ func realVerifyError(t *testing.T, ref string, ropts []remote.Option) error {
 	// installed, leaving cosign's registry reads outside the run's context.
 	v.co.RegistryClientOpts = append(v.co.RegistryClientOpts, ociremote.WithMoreRemoteOptions(ropts...))
 
-	r, err := gname.ParseReference(ref, gname.Insecure)
+	r, err := reference.ParseReference(ref, goname.Insecure)
 	if err != nil {
 		t.Fatalf("ParseReference(%q): %v", ref, err)
 	}

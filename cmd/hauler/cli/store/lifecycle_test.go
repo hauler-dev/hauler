@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -160,9 +160,9 @@ func TestLifecycle_Image_AddSaveLoadCopyRegistry(t *testing.T) {
 	}
 
 	// Step 6: Pull from registry 2 and compare digest to original.
-	dstRef, err := name.NewTag(dstHost+"/lifecycle/app:v1", name.Insecure)
+	dstRef, err := goname.NewTag(dstHost+"/lifecycle/app:v1", goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	desc, err := remote.Get(dstRef, dstOpts...)
 	if err != nil {

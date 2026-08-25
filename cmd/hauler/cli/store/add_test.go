@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -40,6 +40,7 @@ import (
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -293,11 +294,11 @@ func TestRewriteReference(t *testing.T) {
 			t.Fatalf("AddImage: %v", err)
 		}
 
-		oldRef, err := name.NewTag(host+"/src/repo:v1", name.Insecure)
+		oldRef, err := goname.NewTag(host+"/src/repo:v1", goname.Insecure)
 		if err != nil {
 			t.Fatalf("parse oldRef: %v", err)
 		}
-		newRef, err := name.NewTag(host+"/dst/repo:v2", name.Insecure)
+		newRef, err := goname.NewTag(host+"/dst/repo:v2", goname.Insecure)
 		if err != nil {
 			t.Fatalf("parse newRef: %v", err)
 		}
@@ -313,8 +314,8 @@ func TestRewriteReference(t *testing.T) {
 
 	t.Run("old ref not found returns error", func(t *testing.T) {
 		s := newTestStore(t)
-		oldRef, _ := name.NewTag("docker.io/missing/repo:v1")
-		newRef, _ := name.NewTag("docker.io/new/repo:v2")
+		oldRef, _ := goname.NewTag("docker.io/missing/repo:v1")
+		newRef, _ := goname.NewTag("docker.io/new/repo:v2")
 		rawRewrite := newRef.String()
 
 		err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite)
@@ -339,8 +340,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest") // → index.docker.io/library/nginx:latest
-		newRef, _ := name.NewTag("nginx:v2")     // → index.docker.io/library/nginx:v2
+		oldRef, _ := goname.NewTag("nginx:latest") // → index.docker.io/library/nginx:latest
+		newRef, _ := goname.NewTag("nginx:v2")     // → index.docker.io/library/nginx:v2
 		rawRewrite := "nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -357,8 +358,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
 		rawRewrite := "docker.io/nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -375,8 +376,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("index.docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("index.docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
 		rawRewrite := "index.docker.io/nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -395,8 +396,8 @@ func TestRewriteReference(t *testing.T) {
 			t.Fatalf("AddImage: %v", err)
 		}
 
-		oldRef, _ := name.NewTag(host+"/src/repo:v1", name.Insecure)
-		newRef, _ := name.NewTag("newrepo/img:v2") // defaults to index.docker.io
+		oldRef, _ := goname.NewTag(host+"/src/repo:v1", goname.Insecure)
+		newRef, _ := goname.NewTag("newrepo/img:v2") // defaults to index.docker.io
 		rawRewrite := "newrepo/img:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -418,8 +419,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("library/nginx:v2")
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("library/nginx:v2")
 		rawRewrite := "library/nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -436,8 +437,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("library/nginx:v2")
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("library/nginx:v2")
 		// AddImageCmd passes the pre-trim rewrite string through as rawRewrite, so a
 		// leading "/" must still be handled correctly here.
 		rawRewrite := "/library/nginx:v2"
@@ -473,8 +474,8 @@ func TestRewriteReferenceMatchesContainerdNameVintage(t *testing.T) {
 				consts.ContainerdImageNameKey: tc.containerdName,
 			})
 
-			oldRef, _ := name.ParseReference("docker.io/library/rewrite-legacy:v1")
-			newRef, _ := name.ParseReference("docker.io/library/rewrite-new:v1")
+			oldRef, _ := reference.ParseReference("docker.io/library/rewrite-legacy:v1")
+			newRef, _ := reference.ParseReference("docker.io/library/rewrite-new:v1")
 			if err := rewriteReference(ctx, s, oldRef, newRef, "docker.io/library/rewrite-new:v1"); err != nil {
 				t.Fatalf("rewriteReference should match %s: %v", tc.name, err)
 			}
@@ -495,7 +496,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "mychart:2.0.0"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}
@@ -508,7 +509,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "library/mychart:2.0.0"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}
@@ -521,7 +522,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "/library/mychart:2.0.0"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}
@@ -534,7 +535,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "myneworg/mychart"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}

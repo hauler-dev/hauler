@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
@@ -157,9 +157,9 @@ func TestExtractCmd_OciArtifactKindImage(t *testing.T) {
 	img = mutate.ConfigMediaType(img, gvtypes.MediaType(consts.FileLocalConfigMediaType))
 
 	ref := host + "/oci-artifacts/myfile:v1"
-	tag, err := name.NewTag(ref, name.Insecure)
+	tag, err := goname.NewTag(ref, goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if err := remote.Write(tag, img, rOpts...); err != nil {
 		t.Fatalf("remote.Write: %v", err)
@@ -240,9 +240,9 @@ func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
 	)
 
 	ref := host + "/binaries/mybinary:v1"
-	tag, err := name.NewTag(ref, name.Insecure)
+	tag, err := goname.NewTag(ref, goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if err := remote.WriteIndex(tag, idx, rOpts...); err != nil {
 		t.Fatalf("remote.WriteIndex: %v", err)
@@ -350,9 +350,9 @@ func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
 	)
 
 	ref := host + "/binaries/nested:v1"
-	tag, err := name.NewTag(ref, name.Insecure)
+	tag, err := goname.NewTag(ref, goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if err := remote.WriteIndex(tag, outerIdx, rOpts...); err != nil {
 		t.Fatalf("remote.WriteIndex: %v", err)
@@ -418,9 +418,9 @@ func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
 	img = mutate.ConfigMediaType(img, gvtypes.MediaType(ocispec.MediaTypeImageConfig))
 
 	ref := host + "/myapp/myimage:v1"
-	tag, err := name.NewTag(ref, name.Insecure)
+	tag, err := goname.NewTag(ref, goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if err := remote.Write(tag, img, rOpts...); err != nil {
 		t.Fatalf("remote.Write: %v", err)
@@ -488,9 +488,9 @@ func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
 	)
 
 	ref := host + "/myapp/multiarch:v1"
-	tag, err := name.NewTag(ref, name.Insecure)
+	tag, err := goname.NewTag(ref, goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if err := remote.WriteIndex(tag, idx, rOpts...); err != nil {
 		t.Fatalf("remote.WriteIndex: %v", err)

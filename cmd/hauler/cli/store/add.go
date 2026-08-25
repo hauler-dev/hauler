@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/errgroup"
 	"helm.sh/helm/v4/pkg/action"
@@ -303,8 +303,8 @@ func verifyAddImage(ctx context.Context, o *flags.AddImageOpts, ref string, rso 
 	if cfg.Empty() {
 		return "", nil
 	}
-
-	r, err := name.ParseReference(ref)
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
+	r, err := goname.ParseReference(ref)
 	if err != nil {
 		return "", &verifyError{stage: "unable to parse image reference", err: err}
 	}
@@ -400,7 +400,8 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 
 	l.Debugf("resolving image [%s] from local Docker daemon (rewrite=%q)", i.Name, rewrite)
 
-	r, err := name.ParseReference(i.Name)
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
+	r, err := goname.ParseReference(i.Name)
 	if err != nil {
 		if ignoreErrors {
 			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
@@ -424,13 +425,13 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		rawRewrite := rewrite
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
-			if tag, ok := r.(name.Tag); ok {
+			if tag, ok := r.(goname.Tag); ok {
 				rewrite = rewrite + ":" + tag.TagStr()
 			} else {
 				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
 			}
 		}
-		newRef, err := name.ParseReference(rewrite)
+		newRef, err := goname.ParseReference(rewrite)
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
@@ -494,7 +495,8 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 
 	log.BaseFromContext(ctx).Debugf("resolving image [%s] (verified=%t, platform=%q, excludeExtras=%t, insecureSkipTLSVerify=%t, caFile=%q, rewrite=%q, digest=%q)", i.Name, verified, platform, excludeExtras, insecureSkipTLSVerify, caFile, rewrite, pinnedDigest)
 
-	r, err := name.ParseReference(i.Name)
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
+	r, err := goname.ParseReference(i.Name)
 	if err != nil {
 		if ignoreErrors {
 			log.BaseFromContext(ctx).Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
@@ -544,14 +546,14 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		rawRewrite := rewrite
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
-			if tag, ok := r.(name.Tag); ok {
+			if tag, ok := r.(goname.Tag); ok {
 				rewrite = rewrite + ":" + tag.TagStr()
 			} else {
 				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
 			}
 		}
 		// rename image name in store
-		newRef, err := name.ParseReference(rewrite)
+		newRef, err := goname.ParseReference(rewrite)
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
@@ -603,7 +605,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	return nil
 }
 
-func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
+func rewriteReference(ctx context.Context, s *store.Layout, oldRef goname.Reference, newRef goname.Reference, rawRewrite string) error {
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()
 	newRefContext := newRef.Context()
@@ -611,11 +613,11 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	newRepo := newRefContext.RepositoryStr()
 
 	oldTag := oldRef.Identifier()
-	if tag, ok := oldRef.(name.Tag); ok {
+	if tag, ok := oldRef.(goname.Tag); ok {
 		oldTag = tag.TagStr()
 	}
 	newTag := newRef.Identifier()
-	if tag, ok := newRef.(name.Tag); ok {
+	if tag, ok := newRef.(goname.Tag); ok {
 		newTag = tag.TagStr()
 	}
 
@@ -1481,10 +1483,12 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 
 // rewriteChartReference retags a stored chart's index entry from ref to
 // rewrite. A rewrite that omits a tag inherits ref's.
-func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Reference, rewrite string) error {
+func rewriteChartReference(ctx context.Context, s *store.Layout, ref goname.Reference, rewrite string) error {
 	rewrite = strings.TrimPrefix(rewrite, "/")
 	rawRewrite := rewrite
-	newRef, err := name.ParseReference(rewrite)
+	// hauler reference helper used (default registry "") because charts stored with no registry reference
+	// this avoids the docker.io/library normalization behavior
+	newRef, err := reference.ParseReference(rewrite)
 	if err != nil {
 		// error... don't continue with a bad reference
 		return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
@@ -1492,12 +1496,12 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Refere
 
 	// if rewrite omits a tag... keep the existing tag
 	oldTag := ref.Identifier()
-	if tag, ok := ref.(name.Tag); ok {
+	if tag, ok := ref.(goname.Tag); ok {
 		oldTag = tag.TagStr()
 	}
 	if !strings.Contains(rewrite, ":") {
 		rewrite = strings.Join([]string{rewrite, oldTag}, ":")
-		newRef, err = name.ParseReference(rewrite)
+		newRef, err = reference.ParseReference(rewrite)
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
@@ -1514,7 +1518,7 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Refere
 		newRepo = strings.TrimPrefix(newRepo, "library/")
 	}
 	newTag := newRef.Identifier()
-	if tag, ok := newRef.(name.Tag); ok {
+	if tag, ok := newRef.(goname.Tag); ok {
 		newTag = tag.TagStr()
 	}
 

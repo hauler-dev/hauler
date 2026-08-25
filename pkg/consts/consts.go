@@ -132,6 +132,7 @@ const (
 	CarbideRegistry           = "rgcrprod.azurecr.us"
 	DefaultNamespace          = "hauler"
 	DefaultTag                = "latest"
+	DefaultRegistry           = ""
 	DefaultStoreName          = "store"
 	DefaultHaulerDirName      = ".hauler"
 	DefaultHaulerTempDirName  = "hauler"
