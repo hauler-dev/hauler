@@ -1484,6 +1484,8 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 func rewriteChartReference(ctx context.Context, s *store.Layout, ref goname.Reference, rewrite string) error {
 	rewrite = strings.TrimPrefix(rewrite, "/")
 	rawRewrite := rewrite
+	// hauler reference helper used (default registry "") because charts stored with no registry reference
+	// this avoids the docker.io/library normalization behavior
 	newRef, err := reference.ParseReference(rewrite)
 	if err != nil {
 		// error... don't continue with a bad reference
