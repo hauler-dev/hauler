@@ -486,6 +486,19 @@ func TestRewriteReferenceMatchesContainerdNameVintage(t *testing.T) {
 func TestRewriteChartReference(t *testing.T) {
 	ctx := newTestContext(t)
 
+	t.Run("rewrite prefix replaces the default chart reference", func(t *testing.T) {
+		s := newTestStore(t)
+		seedStoreDescriptor(t, s, map[string]string{
+			ocispec.AnnotationRefName: "library/mychart:1.0.0",
+		})
+
+		ref, _ := goname.NewTag("mychart:1.0.0")
+		if err := rewriteChartReference(ctx, s, ref, prefixChartRewrite("hauler", "mychart")); err != nil {
+			t.Fatalf("rewriteChartReference: %v", err)
+		}
+		assertArtifactInStore(t, s, "hauler/mychart:1.0.0")
+	})
+
 	// A chart rewritten to a bare single-segment name must not keep an erroneous
 	// "library/" prefix picked up from go-containerregistry's docker hub
 	// normalization, unless the rewrite explicitly asked for one.
@@ -2291,8 +2304,8 @@ func TestResolveChartJobs_PerChartFields(t *testing.T) {
 	if jobs[0].rewrite != "mirror/rancher" {
 		t.Errorf("jobs[0].rewrite = %q, want mirror/rancher", jobs[0].rewrite)
 	}
-	if jobs[1].rewrite != "" {
-		t.Errorf("jobs[1].rewrite = %q, want empty", jobs[1].rewrite)
+	if jobs[1].rewrite != "hauler/cert-manager" {
+		t.Errorf("jobs[1].rewrite = %q, want hauler/cert-manager", jobs[1].rewrite)
 	}
 	if !jobs[0].opts.AddImages || !jobs[0].opts.AddDependencies {
 		t.Errorf("jobs[0] add-images/add-dependencies = %v/%v, want true/true", jobs[0].opts.AddImages, jobs[0].opts.AddDependencies)
@@ -2314,6 +2327,72 @@ func TestResolveChartJobs_PerChartFields(t *testing.T) {
 		if jobs[i].depth != 0 {
 			t.Errorf("jobs[%d].depth = %d, want 0 for a top-level chart", i, jobs[i].depth)
 		}
+	}
+}
+
+func TestResolveChartJobs_RewriteAnnotationPrefixesCharts(t *testing.T) {
+	annotations := map[string]string{
+		consts.ChartAnnotationPrefix: "helm-charts/",
+		consts.ImageAnnotationPrefix: "registry-images/",
+	}
+	charts := []v1.Chart{
+		{Name: "my-chart-name", Version: "v0.1.1"},
+		{Name: "custom", Version: "1.0.0", Rewrite: "special/custom"},
+	}
+
+	jobs, err := resolveChartJobs(&flags.SyncOpts{}, annotations, "/manifests", charts)
+	if err != nil {
+		t.Fatalf("resolveChartJobs: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+
+	if jobs[0].rewrite != "helm-charts/my-chart-name" {
+		t.Errorf("annotation rewrite = %q, want helm-charts/my-chart-name", jobs[0].rewrite)
+	}
+	if jobs[0].chartPrefix != "helm-charts" {
+		t.Errorf("chartPrefix = %q, want helm-charts", jobs[0].chartPrefix)
+	}
+	if jobs[0].imagePrefix != "registry-images" {
+		t.Errorf("imagePrefix = %q, want registry-images", jobs[0].imagePrefix)
+	}
+	if jobs[1].rewrite != "special/custom" {
+		t.Errorf("per-chart rewrite = %q, want special/custom", jobs[1].rewrite)
+	}
+}
+
+func TestResolveChartJobs_DefaultAndEmptyChartPrefix(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		wantRewrite string
+	}{
+		{name: "absent uses default", wantRewrite: "hauler/mychart"},
+		{name: "empty disables default", annotations: map[string]string{consts.ChartAnnotationPrefix: ""}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			jobs, err := resolveChartJobs(&flags.SyncOpts{}, tc.annotations, "/manifests", []v1.Chart{{Name: "mychart"}})
+			if err != nil {
+				t.Fatalf("resolveChartJobs: %v", err)
+			}
+			if got := jobs[0].rewrite; got != tc.wantRewrite {
+				t.Errorf("rewrite = %q, want %q", got, tc.wantRewrite)
+			}
+		})
+	}
+}
+
+func TestResolveChartJobs_LegacyRewriteAnnotationIsIgnored(t *testing.T) {
+	annotations := map[string]string{"hauler.dev/rewrite": "legacy/"}
+	j, err := resolveChartJobs(&flags.SyncOpts{}, annotations, "/manifests", []v1.Chart{{Name: "my-chart-name"}})
+	if err != nil {
+		t.Fatalf("resolveChartJobs: %v", err)
+	}
+	if got := j[0].rewrite; got != "hauler/my-chart-name" {
+		t.Errorf("legacy annotation rewrite = %q, want hauler/my-chart-name", got)
 	}
 }
 
