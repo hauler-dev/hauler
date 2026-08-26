@@ -747,6 +747,61 @@ func TestStoreImage_Rewrite(t *testing.T) {
 	})
 }
 
+// TestStoreImage_TagAtDigest covers "repo:tag@sha256:..." refs: go-containerregistry
+// parses these as a Digest and silently drops the tag from Name(), so storeImage
+// must recover it via digestRefTag and record the tag-form annotation while still
+// fetching the pinned digest.
+func TestStoreImage_TagAtDigest(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	t.Run("repo:tag@digest stores under the tag, fetches the exact digest", func(t *testing.T) {
+		img := seedImage(t, host, "tagdigest/repo", "v1", rOpts...)
+		h, err := img.Digest()
+		if err != nil {
+			t.Fatalf("img.Digest: %v", err)
+		}
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		ref := host + "/tagdigest/repo:v1@" + h.String()
+		if err := storeImage(ctx, s, v1.Image{Name: ref}, "", false, rso, ro, "", "", false); err != nil {
+			t.Fatalf("storeImage tag@digest: %v", err)
+		}
+
+		// The store must record the tag form, not the tag-dropped digest form
+		// that r.Name() alone would have produced.
+		assertArtifactInStore(t, s, "tagdigest/repo:v1")
+		assertArtifactNotInStore(t, s, "tagdigest/repo@sha256")
+
+		if got := storedDigest(t, s, "tagdigest/repo:v1"); got != h.String() {
+			t.Errorf("stored digest = %q, want %q", got, h.String())
+		}
+	})
+
+	t.Run("rewrite without explicit tag on a tag@digest source inherits the source tag", func(t *testing.T) {
+		img := seedImage(t, host, "tagdigest/src", "v2", rOpts...)
+		h, err := img.Digest()
+		if err != nil {
+			t.Fatalf("img.Digest: %v", err)
+		}
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		ref := host + "/tagdigest/src:v2@" + h.String()
+		if err := storeImage(ctx, s, v1.Image{Name: ref}, "", false, rso, ro, "newrepo/img", "", false); err != nil {
+			t.Fatalf("storeImage with tagless rewrite on tag@digest source: %v", err)
+		}
+		// Tag is inherited from the source ("v2"), matching plain-tag rewrite
+		// behavior -- this is only possible once the source tag is recovered.
+		assertArtifactInStore(t, s, "newrepo/img:v2")
+	})
+}
+
 func TestStoreImage_MultiArch(t *testing.T) {
 	ctx := newTestContext(t)
 	host, rOpts := newLocalhostRegistry(t)
@@ -3297,6 +3352,61 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 		}
 		assertArtifactInStore(t, s, "tls/repo:v1")
 	})
+}
+
+// TestDigestRefTag covers digestRefTag's recovery of the tag component from a
+// "repo:tag@sha256:..." reference's original string, and the cases where
+// there is no tag to recover.
+func TestDigestRefTag(t *testing.T) {
+	const hex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	digestSuffix := "@sha256:" + hex
+
+	tests := []struct {
+		name    string
+		ref     string
+		wantOK  bool
+		wantTag string // TagStr(), only checked when wantOK
+	}{
+		{
+			name:    "repo with tag and digest recovers the tag",
+			ref:     "example.com/repo:v1" + digestSuffix,
+			wantOK:  true,
+			wantTag: "v1",
+		},
+		{
+			name:   "plain digest ref with no tag has nothing to recover",
+			ref:    "example.com/repo" + digestSuffix,
+			wantOK: false,
+		},
+		{
+			name:    "registry with port and a tag still recovers the tag",
+			ref:     "example.com:5000/repo:v1" + digestSuffix,
+			wantOK:  true,
+			wantTag: "v1",
+		},
+		{
+			name:   "registry with port and no tag is not mistaken for one",
+			ref:    "example.com:5000/repo" + digestSuffix,
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, err := goname.NewDigest(tt.ref)
+			if err != nil {
+				t.Fatalf("NewDigest(%q): %v", tt.ref, err)
+			}
+
+			tag, ok := digestRefTag(d)
+			if ok != tt.wantOK {
+				t.Fatalf("digestRefTag(%q) ok = %v, want %v", tt.ref, ok, tt.wantOK)
+			}
+			if ok && tag.TagStr() != tt.wantTag {
+				t.Errorf("digestRefTag(%q) tag = %q, want %q", tt.ref, tag.TagStr(), tt.wantTag)
+			}
+		})
+	}
 }
 
 // writeCAFile writes a valid self-signed cert PEM to a temp file and returns its

@@ -287,6 +287,82 @@ func TestPush_NormalizesLegacyKindInStoredDescriptor(t *testing.T) {
 	}
 }
 
+// TestOCIPusher_Push_KeysDigestEntryByFullDigestRef pins the exact nameMap
+// key ociPusher.Push derives for a digest-type push. AddIndex and
+// loadIndexLocked key a goname.Digest entry by key.Name() (registry/repo@digest);
+// Push must derive the identical key, or two same-repo digests pushed through
+// store.Layout.CopyAll (the copy/load-into-store path) collide on the same
+// digest-stripped key exactly as AddIndex's callers once did. This checks the
+// key directly rather than final survival, because loadIndexLocked's own
+// reload-before-write inside Push happens to re-derive a prior push's correct
+// key before a second push overwrites the wrong one -- masking the drift for
+// a two-push sequence without a test that inspects nameMap itself.
+func TestOCIPusher_Push_KeysDigestEntryByFullDigestRef(t *testing.T) {
+	dir := t.TempDir()
+	buildMinimalOCILayout(t, dir, nil)
+
+	o, err := NewOCI(dir)
+	if err != nil {
+		t.Fatalf("NewOCI: %v", err)
+	}
+	blobsDir := filepath.Join(dir, ocispec.ImageBlobsDir, "sha256")
+	if err := os.MkdirAll(blobsDir, 0755); err != nil {
+		t.Fatalf("mkdir blobs: %v", err)
+	}
+
+	manifest := ocispec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ocispec.MediaTypeImageManifest,
+		Config: ocispec.Descriptor{
+			MediaType: ocispec.MediaTypeImageConfig,
+			Digest:    fakeDigest("config0"),
+			Size:      2,
+		},
+	}
+	manifestData, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	manifestDigest := digest.FromBytes(manifestData)
+
+	const baseRef = "example.com/repo"
+	ref := baseRef + "@" + manifestDigest.String()
+	pusher, err := o.Pusher(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Pusher: %v", err)
+	}
+
+	desc := ocispec.Descriptor{
+		MediaType: ocispec.MediaTypeImageManifest,
+		Digest:    manifestDigest,
+		Size:      int64(len(manifestData)),
+		Annotations: map[string]string{
+			ocispec.AnnotationRefName: ref,
+			consts.KindAnnotationName: consts.KindAnnotationImage,
+		},
+	}
+
+	w, err := pusher.Push(context.Background(), desc)
+	if err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if _, err := w.Write(manifestData); err != nil {
+		t.Fatalf("Write manifest: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close writer: %v", err)
+	}
+
+	wantKey := ref + "-" + consts.KindAnnotationImage
+	if _, ok := o.nameMap.Load(wantKey); !ok {
+		t.Errorf("nameMap has no entry under the digest-inclusive key %q -- Push must key digest entries the same way AddIndex/loadIndexLocked do", wantKey)
+	}
+	staleKey := baseRef + "-" + consts.KindAnnotationImage
+	if _, ok := o.nameMap.Load(staleKey); ok {
+		t.Errorf("nameMap has a stray digest-stripped key %q -- Push's key derivation has drifted from AddIndex/loadIndexLocked's", staleKey)
+	}
+}
+
 // blobPathFor mirrors the layout convention used by OCI.ensureBlob, for
 // assertions against the final on-disk blob path.
 func blobPathFor(root string, d digest.Digest) string {
@@ -1609,6 +1685,230 @@ func TestOCI_AddIndexSkipsSaveWhenUnchanged(t *testing.T) {
 	}
 	if info2.ModTime().Equal(old) {
 		t.Error("index.json mtime unchanged after a genuinely different AddIndex; expected a write")
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestOCI_AddIndex_DistinctDigestsSameRepo*
+// --------------------------------------------------------------------------
+//
+// Before the fix, AddIndex and loadIndexLocked keyed a goname.Digest entry by
+// its repository alone (digest stripped), so two different digests of the
+// same repository collided in the map and the second AddIndex silently
+// deleted the first entry from index.json. See AddIndex's comment for the
+// hazard.
+
+// digestRefDescriptor builds a minimal descriptor keyed by a digest reference
+// (no tag) into the given repository, with the given kind.
+func digestRefDescriptor(repo string, digestHex string, kind string) ocispec.Descriptor {
+	return ocispec.Descriptor{
+		MediaType: ocispec.MediaTypeImageManifest,
+		Digest:    fakeDigest(digestHex),
+		Size:      100,
+		Annotations: map[string]string{
+			ocispec.AnnotationRefName: fmt.Sprintf("%s@%s", repo, fakeDigest(digestHex)),
+			consts.KindAnnotationName: kind,
+		},
+	}
+}
+
+// assertBothDigestsPresent walks o and requires both descA and descB's
+// digests to appear among the walked entries.
+func assertBothDigestsPresent(t *testing.T, o *OCI, descA, descB ocispec.Descriptor) {
+	t.Helper()
+
+	seen := map[string]bool{}
+	if err := o.Walk(func(_ string, desc ocispec.Descriptor) error {
+		seen[string(desc.Digest)] = true
+		return nil
+	}); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+
+	if !seen[string(descA.Digest)] {
+		t.Errorf("descriptor A (digest %s) missing after adding descriptor B for the same repo", descA.Digest)
+	}
+	if !seen[string(descB.Digest)] {
+		t.Errorf("descriptor B (digest %s) missing", descB.Digest)
+	}
+}
+
+// TestOCI_AddIndex_DistinctDigestsSameRepoBothSurvive verifies that adding
+// two descriptors that share a repository but carry different digests does
+// not clobber the first entry -- the historical bug keyed digest refs by
+// repository alone, so the second AddIndex silently deleted the first.
+func TestOCI_AddIndex_DistinctDigestsSameRepoBothSurvive(t *testing.T) {
+	dir := t.TempDir()
+	o := newTestOCI(t, dir)
+
+	descA := digestRefDescriptor("example.com/repo", "a", consts.KindAnnotationImage)
+	descB := digestRefDescriptor("example.com/repo", "b", consts.KindAnnotationImage)
+
+	if err := o.AddIndex(descA); err != nil {
+		t.Fatalf("AddIndex(A): %v", err)
+	}
+	if err := o.AddIndex(descB); err != nil {
+		t.Fatalf("AddIndex(B): %v", err)
+	}
+
+	assertBothDigestsPresent(t, o, descA, descB)
+
+	// Reload from disk with a fresh OCI to make sure both entries were
+	// actually persisted to index.json, not just held in memory.
+	fresh, err := NewOCI(dir)
+	if err != nil {
+		t.Fatalf("NewOCI: %v", err)
+	}
+	if err := fresh.LoadIndex(); err != nil {
+		t.Fatalf("LoadIndex: %v", err)
+	}
+	assertBothDigestsPresent(t, fresh, descA, descB)
+}
+
+// TestOCI_AddIndex_DistinctDigestsSameRepoSigsCoexist verifies the same fix
+// for sig-kind entries, which is how two digest-pinned adds of one repo's
+// signatures actually collide in practice.
+func TestOCI_AddIndex_DistinctDigestsSameRepoSigsCoexist(t *testing.T) {
+	dir := t.TempDir()
+	o := newTestOCI(t, dir)
+
+	descA := digestRefDescriptor("example.com/repo", "c", consts.KindAnnotationSigs)
+	descB := digestRefDescriptor("example.com/repo", "d", consts.KindAnnotationSigs)
+
+	if err := o.AddIndex(descA); err != nil {
+		t.Fatalf("AddIndex(A): %v", err)
+	}
+	if err := o.AddIndex(descB); err != nil {
+		t.Fatalf("AddIndex(B): %v", err)
+	}
+
+	assertBothDigestsPresent(t, o, descA, descB)
+}
+
+// TestOCI_AddIndex_TagAndDigestSameRepoCoexist is a regression guard: a tag
+// entry and a digest entry for the same repository must continue to coexist
+// (they always keyed distinctly -- the bug was digest-vs-digest only).
+func TestOCI_AddIndex_TagAndDigestSameRepoCoexist(t *testing.T) {
+	dir := t.TempDir()
+	o := newTestOCI(t, dir)
+
+	tagDesc := ocispec.Descriptor{
+		MediaType: ocispec.MediaTypeImageManifest,
+		Digest:    fakeDigest("e"),
+		Size:      100,
+		Annotations: map[string]string{
+			ocispec.AnnotationRefName: "example.com/repo:latest",
+			consts.KindAnnotationName: consts.KindAnnotationImage,
+		},
+	}
+	digestDesc := digestRefDescriptor("example.com/repo", "f", consts.KindAnnotationImage)
+
+	if err := o.AddIndex(tagDesc); err != nil {
+		t.Fatalf("AddIndex(tag): %v", err)
+	}
+	if err := o.AddIndex(digestDesc); err != nil {
+		t.Fatalf("AddIndex(digest): %v", err)
+	}
+
+	assertBothDigestsPresent(t, o, tagDesc, digestDesc)
+}
+
+// TestOCIPusher_Push_DistinctDigestsSameRepoBothSurvive covers the same
+// collision on the copy/load-into-store path: ociPusher.Push derived its
+// nameMap key from p.ref alone (the pre-"@" part of the ref passed to
+// Pusher), which store.Layout.CopyAll always strips to the bare repo for a
+// digest-sourced entry before re-appending the digest for verification --
+// see CopyAll's comment. That key must agree with AddIndex's (digest-inclusive,
+// via key.Name()) or two same-repo digests copied into a destination store
+// collide exactly as they did in AddIndex before that fix.
+func TestOCIPusher_Push_DistinctDigestsSameRepoBothSurvive(t *testing.T) {
+	dir := t.TempDir()
+	buildMinimalOCILayout(t, dir, nil)
+
+	o, err := NewOCI(dir)
+	if err != nil {
+		t.Fatalf("NewOCI: %v", err)
+	}
+
+	blobsDir := filepath.Join(dir, ocispec.ImageBlobsDir, "sha256")
+	if err := os.MkdirAll(blobsDir, 0755); err != nil {
+		t.Fatalf("mkdir blobs: %v", err)
+	}
+
+	// pushManifest mirrors the exact shape of store.Layout.CopyAll's Pusher
+	// call for a digest-sourced entry: baseRef carries no tag, and the ref
+	// handed to Pusher has the root manifest's own digest appended.
+	pushManifest := func(baseRef string, configHex string) ocispec.Descriptor {
+		t.Helper()
+		manifest := ocispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ocispec.MediaTypeImageManifest,
+			Config: ocispec.Descriptor{
+				MediaType: ocispec.MediaTypeImageConfig,
+				Digest:    fakeDigest(configHex),
+				Size:      2,
+			},
+		}
+		manifestData, err := json.Marshal(manifest)
+		if err != nil {
+			t.Fatalf("marshal manifest: %v", err)
+		}
+		manifestDigest := digest.FromBytes(manifestData)
+
+		ref := fmt.Sprintf("%s@%s", baseRef, manifestDigest.String())
+		pusher, err := o.Pusher(context.Background(), ref)
+		if err != nil {
+			t.Fatalf("Pusher(%s): %v", ref, err)
+		}
+
+		desc := ocispec.Descriptor{
+			MediaType: ocispec.MediaTypeImageManifest,
+			Digest:    manifestDigest,
+			Size:      int64(len(manifestData)),
+			Annotations: map[string]string{
+				ocispec.AnnotationRefName: ref,
+				consts.KindAnnotationName: consts.KindAnnotationImage,
+			},
+		}
+
+		w, err := pusher.Push(context.Background(), desc)
+		if err != nil {
+			t.Fatalf("Push: %v", err)
+		}
+		if _, err := w.Write(manifestData); err != nil {
+			t.Fatalf("Write manifest: %v", err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("Close writer: %v", err)
+		}
+		return desc
+	}
+
+	const repo = "example.com/repo"
+	descA := pushManifest(repo, "configA")
+	descB := pushManifest(repo, "configB")
+	if descA.Digest == descB.Digest {
+		t.Fatal("test setup produced identical digests -- the two pushes wouldn't be distinguishable")
+	}
+
+	// Fresh OCI so Walk reloads from disk rather than reading the nameMap the
+	// pushes above wrote into directly.
+	o2, err := NewOCI(dir)
+	if err != nil {
+		t.Fatalf("NewOCI second: %v", err)
+	}
+	seen := map[digest.Digest]bool{}
+	if err := o2.Walk(func(_ string, d ocispec.Descriptor) error {
+		seen[d.Digest] = true
+		return nil
+	}); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	if !seen[descA.Digest] {
+		t.Errorf("descriptor A (digest %s) missing after pushing descriptor B for the same repo", descA.Digest)
+	}
+	if !seen[descB.Digest] {
+		t.Errorf("descriptor B (digest %s) missing", descB.Digest)
 	}
 }
 

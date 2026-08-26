@@ -313,6 +313,76 @@ func TestLifecycle_DigestOnlyImage_AddSaveLoad(t *testing.T) {
 	assertArtifactInStore(t, storeB, hash.Hex)
 }
 
+// TestLifecycle_TwoDigestsSameRepo_AddSaveLoad covers the copy/load-into-store
+// path for two images that share a repository but have different digests --
+// the same shape as TestLifecycle_DigestOnlyImage_AddSaveLoad, doubled. Both
+// pkg/content's AddIndex/loadIndexLocked and ociPusher.Push (the mechanism
+// LoadCmd's CopyAll drives) must key a digest entry by its full digest, not
+// its repository alone, or the second image collides with the first on the
+// same nameMap key.
+func TestLifecycle_TwoDigestsSameRepo_AddSaveLoad(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, srcOpts := newLocalhostRegistry(t)
+	imgA := seedImage(t, srcHost, "lifecycle/tworepo", "va", srcOpts...)
+	imgB := seedImage(t, srcHost, "lifecycle/tworepo", "vb", srcOpts...)
+	hashA, err := imgA.Digest()
+	if err != nil {
+		t.Fatalf("imgA.Digest: %v", err)
+	}
+	hashB, err := imgB.Digest()
+	if err != nil {
+		t.Fatalf("imgB.Digest: %v", err)
+	}
+
+	storeA := newTestStore(t)
+	rso := defaultRootOpts(storeA.Root)
+	ro := defaultCliOpts()
+
+	refA := srcHost + "/lifecycle/tworepo@" + hashA.String()
+	refB := srcHost + "/lifecycle/tworepo@" + hashB.String()
+	if err := storeImage(ctx, storeA, v1.Image{Name: refA}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage A: %v", err)
+	}
+	if err := storeImage(ctx, storeA, v1.Image{Name: refB}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage B: %v", err)
+	}
+	assertArtifactInStore(t, storeA, hashA.Hex)
+	assertArtifactInStore(t, storeA, hashB.Hex)
+
+	if err := storeA.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "lifecycle-tworepo.tar.zst")
+	saveOpts := newSaveOpts(storeA.Root, archivePath)
+	if err := SaveCmd(ctx, saveOpts, storeA, defaultRootOpts(storeA.Root), defaultCliOpts()); err != nil {
+		t.Fatalf("SaveCmd: %v", err)
+	}
+
+	storeBDir := t.TempDir()
+	storeBPreLoad, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
+	}
+	loadOpts := &flags.LoadOpts{
+		StoreRootOpts: defaultRootOpts(storeBDir),
+		FileName:      []string{archivePath},
+	}
+	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+		t.Fatalf("LoadCmd: %v", err)
+	}
+
+	storeB, err := store.NewLayout(storeBDir)
+	if err != nil {
+		t.Fatalf("store.NewLayout(storeB): %v", err)
+	}
+
+	// Both same-repo digests must survive the copy/load-into-store path.
+	assertArtifactInStore(t, storeB, hashA.Hex)
+	assertArtifactInStore(t, storeB, hashB.Hex)
+}
+
 // TestLifecycle_Remove_ThenSave verifies that removing one artifact from a store
 // with two file artifacts, then saving/loading, results in only the retained
 // artifact being present.
