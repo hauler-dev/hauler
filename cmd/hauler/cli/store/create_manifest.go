@@ -105,13 +105,17 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		if fullRef, isImage := desc.Annotations[consts.ContainerdImageNameKey]; isImage {
 			name := fullRef
 			rewrite := ""
-			if orig, ok := desc.Annotations[consts.OriginalRefAnnotation]; ok && orig != "" && orig != fullRef {
+			if orig, ok := desc.Annotations[consts.OriginalRefAnnotation]; ok && orig != "" &&
+				reference.NormalizeContainerd(orig) != reference.NormalizeContainerd(fullRef) {
 				// The current ref differs from what was captured at the initial add,
 				// meaning --rewrite changed it since. Recover the original, pullable
 				// name and reapply the same rewrite so a resync reproduces this exact
 				// store layout. If there's no annotation at all (a store from before
 				// this was tracked) or it matches fullRef (never rewritten), fullRef
-				// is already the right, pullable name.
+				// is already the right, pullable name. The comparison normalizes both
+				// to containerd's canonical form first, so a purely cosmetic Docker Hub
+				// difference (e.g. index.docker.io vs docker.io) is not mistaken for a
+				// rewrite.
 				rewrite = fullRef
 				name = orig
 			}
