@@ -473,6 +473,34 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 	return nil
 }
 
+// digestRefTag recovers the tag component of a "repo:tag@sha256:..." image
+// reference. go-containerregistry parses such a string as a Digest, and
+// Digest.Name()/Context() drop the tag entirely with no accessor to recover
+// it, so this re-derives it from the "@"-delimited left half of the original
+// input string. ok is false for a plain "repo@sha256:..." ref, which has no
+// tag to recover and must be left on the digest-only path unchanged.
+func digestRefTag(d goname.Digest) (goname.Tag, bool) {
+	left, _, found := strings.Cut(d.String(), "@")
+	if !found {
+		return goname.Tag{}, false
+	}
+
+	// Mirror goname.NewTag's own repo-vs-host:port disambiguation: a colon
+	// only introduces a tag if it appears after the last "/" (otherwise it's
+	// part of a "host:port" registry authority with no tag at all).
+	colonIdx := strings.LastIndex(left, ":")
+	slashIdx := strings.LastIndex(left, "/")
+	if colonIdx < 0 || colonIdx < slashIdx {
+		return goname.Tag{}, false
+	}
+
+	tag, err := goname.NewTag(left)
+	if err != nil {
+		return goname.Tag{}, false
+	}
+	return tag, true
+}
+
 // storeImage fetches and stores image i. verified records whether
 // verification was both requested and actually succeeded for the exact bytes
 // being stored (pinnedDigest) -- callers compute it themselves rather than
@@ -507,6 +535,25 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		}
 	}
 
+	// effectiveRef is what names the artifact in the store, everywhere below.
+	// It's r itself except for "repo:tag@sha256:..." input: r parses as a
+	// Digest there, and Digest.Name() silently drops the tag (see
+	// digestRefTag), so without this the store would record the tag-less
+	// digest form and the human-readable name the user asked for would be
+	// lost. addPinnedDigest only gains a value here when the caller passed
+	// none in -- resolveAndVerify/verifyAddImage already HEAD the same
+	// digest ref before pinning, so an existing pin is left untouched.
+	effectiveRef := r
+	addPinnedDigest := pinnedDigest
+	if d, isDigest := r.(goname.Digest); isDigest {
+		if tag, ok := digestRefTag(d); ok {
+			effectiveRef = tag
+			if addPinnedDigest == "" {
+				addPinnedDigest = d.DigestStr()
+			}
+		}
+	}
+
 	// fetch image along with any associated signatures and attestations.
 	// A fresh store.ImageStats is built inside the closure on every attempt,
 	// not once outside it, so a failed attempt's partial layer/byte counts
@@ -518,7 +565,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	err = retry.Operation(ctx, rso, ro, func() error {
 		attemptStats := &store.ImageStats{}
 		var addErr error
-		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), r.Name(), platform, excludeExtras, pinnedDigest, insecureSkipTLSVerify, caFile)
+		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), effectiveRef.Name(), platform, excludeExtras, addPinnedDigest, insecureSkipTLSVerify, caFile)
 		if addErr == nil {
 			stats = attemptStats
 		}
@@ -526,7 +573,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	})
 	if err != nil {
 		if ignoreErrors {
-			log.BaseFromContext(ctx).Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
+			log.BaseFromContext(ctx).Warnf("unable to add image [%s] to store: %v... skipping...", effectiveRef.Name(), err)
 			return nil
 		} else if errors.Is(err, context.Canceled) {
 			// Under errgroup.WithContext fail-fast (runImageJobs), one real
@@ -534,10 +581,10 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 			// this at ERROR would produce N-1 alarming lines for something
 			// that isn't the actual failure -- the real error is reported by
 			// whichever job's storeImage call hit it first.
-			log.BaseFromContext(ctx).Debugf("unable to add image [%s] to store: %v", r.Name(), err)
+			log.BaseFromContext(ctx).Debugf("unable to add image [%s] to store: %v", effectiveRef.Name(), err)
 			return err
 		} else {
-			log.BaseFromContext(ctx).Errorf("unable to add image [%s] to store: %v", r.Name(), err)
+			log.BaseFromContext(ctx).Errorf("unable to add image [%s] to store: %v", effectiveRef.Name(), err)
 			return err
 		}
 	}
@@ -546,10 +593,10 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		rawRewrite := rewrite
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
-			if tag, ok := r.(goname.Tag); ok {
+			if tag, ok := effectiveRef.(goname.Tag); ok {
 				rewrite = rewrite + ":" + tag.TagStr()
 			} else {
-				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
+				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", effectiveRef.Name())
 			}
 		}
 		// rename image name in store
@@ -557,7 +604,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
+		if err := rewriteReference(ctx, s, effectiveRef, newRef, rawRewrite); err != nil {
 			return err
 		}
 	}
@@ -569,7 +616,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 			Type:      "image",
 			Command:   "store add image",
 			Args:      []string{i.Name},
-			Reference: r.Name(),
+			Reference: effectiveRef.Name(),
 			Digest:    imageDigest,
 		}
 		if auditLevel(ro) == "verbose" {
@@ -601,7 +648,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		l.Debugf("generated audit id of [none]")
 	}
 
-	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(r.Name(), stats, time.Since(start)))
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(effectiveRef.Name(), stats, time.Since(start)))
 	return nil
 }
 
