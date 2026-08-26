@@ -8,6 +8,9 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/consts"
+
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // newCreateManifestOpts returns a CreateManifestOpts writing to a fresh file
@@ -107,6 +110,68 @@ func TestCreateManifestCmd_ImageWithRewrite(t *testing.T) {
 	// recreates this exact layout.
 	if !strings.Contains(content, "rewrite: "+host+"/newrepo/img:v2") {
 		t.Errorf("expected rewrite %q in manifest, got:\n%s", host+"/newrepo/img:v2", content)
+	}
+}
+
+// TestCreateManifestCmd_ImageDockerHubNormalizationNoRewrite covers the case
+// where an image was added via a Docker Hub ref: the store records the original,
+// pullable ref as "index.docker.io/library/..." while the containerd lookup name
+// is normalized to "docker.io/library/...". These differ only by Docker Hub
+// registry normalization, not a --rewrite, so the manifest must recover the
+// image with no rewrite field rather than treating the normalized form as a
+// rewrite target.
+func TestCreateManifestCmd_ImageDockerHubNormalizationNoRewrite(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+	seedImage(t, host, "library/busybox", "v1", rOpts...)
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/library/busybox:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	// Rewrite the stored image's annotations to the exact pair a real Docker Hub
+	// add produces (see writeImage in pkg/store): the original ref keeps the
+	// pre-normalization "index.docker.io" host while the containerd name is the
+	// normalized "docker.io" form. The digest is untouched, so the blobs stay
+	// valid. This is the state we want CreateManifestCmd to treat as un-rewritten.
+	const (
+		origRef       = "index.docker.io/library/busybox:v1"
+		containerdRef = "docker.io/library/busybox:v1"
+	)
+	matched, err := s.OCI.UpdateAnnotations(
+		func(d ocispec.Descriptor) bool {
+			_, isImage := d.Annotations[consts.ContainerdImageNameKey]
+			return isImage
+		},
+		func(a map[string]string) {
+			a[consts.OriginalRefAnnotation] = origRef
+			a[consts.ContainerdImageNameKey] = containerdRef
+		},
+	)
+	if err != nil {
+		t.Fatalf("UpdateAnnotations: %v", err)
+	}
+	if matched != 1 {
+		t.Fatalf("expected to update exactly 1 image descriptor, updated %d", matched)
+	}
+
+	o := newCreateManifestOpts(t, rso)
+	if err := CreateManifestCmd(ctx, o, s); err != nil {
+		t.Fatalf("CreateManifestCmd: %v", err)
+	}
+
+	content := readManifest(t, o.Output)
+	// The image is recovered under its containerd (docker.io) name...
+	if !strings.Contains(content, "name: "+containerdRef) {
+		t.Errorf("expected image name %q in manifest, got:\n%s", containerdRef, content)
+	}
+	// ...and no rewrite is emitted, since index.docker.io vs docker.io is pure
+	// Docker Hub normalization, not an actual --rewrite.
+	if strings.Contains(content, "rewrite:") {
+		t.Errorf("did not expect a rewrite field for a Docker Hub normalization-only difference, got:\n%s", content)
 	}
 }
 
