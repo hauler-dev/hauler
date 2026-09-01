@@ -256,6 +256,26 @@ func findRefKeyByKind(t *testing.T, s *store.Layout, ref, kind string) string {
 	return key
 }
 
+// descriptorForKey walks the store's index and returns the descriptor stored
+// under the given nameMap key (as returned by findRefKey/findRefKeyByKind).
+func descriptorForKey(t *testing.T, s *store.Layout, key string) ocispec.Descriptor {
+	t.Helper()
+	var out ocispec.Descriptor
+	found := false
+	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
+		if reference == key {
+			out, found = desc, true
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("key %q not found in store", key)
+	}
+	return out
+}
+
 // readManifestBlob reads and parses an OCI manifest from the store's blob directory.
 func readManifestBlob(t *testing.T, root string, d digest.Digest) ocispec.Manifest {
 	t.Helper()
@@ -829,6 +849,77 @@ func seedImage(t *testing.T, host, repo, tag string, opts ...remote.Option) v1.I
 	return img
 }
 
+// seedMultiArchWithPlatformSig publishes a two-platform index at repo:tag,
+// plus cosign v2 sigs for BOTH the index digest and the amd64 child digest --
+// the registry.k8s.io/csi-attacher shape from the community report.
+func seedMultiArchWithPlatformSig(t *testing.T, host, repo, tag string, opts ...remote.Option) (idxDigest, childDigest v1.Hash) {
+	t.Helper()
+	amd64Img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm64Img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{Add: amd64Img, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: "amd64"}}},
+		mutate.IndexAddendum{Add: arm64Img, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: "arm64"}}},
+	)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(ref, idx, opts...); err != nil {
+		t.Fatal(err)
+	}
+	idxDigest, err = idx.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	childDigest, err = amd64Img.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []v1.Hash{idxDigest, childDigest} {
+		sigTag := strings.ReplaceAll(d.String(), ":", "-") + ".sig"
+		seedImage(t, host, repo, sigTag, opts...)
+	}
+	return idxDigest, childDigest
+}
+
+// TestAddImageMultiArchStoresPlatformSigs proves that a multi-arch pull
+// probes every child manifest for cosign artifacts, not just the index
+// digest -- registries that sign each platform image individually (e.g.
+// registry.k8s.io/csi-attacher) previously had their per-platform sigs
+// silently dropped.
+func TestAddImageMultiArchStoresPlatformSigs(t *testing.T) {
+	host, opts := newTestRegistry(t)
+	idxDigest, childDigest := seedMultiArchWithPlatformSig(t, host, "repro/multi", "v1", opts...)
+	s := newTestStore(t)
+
+	if _, err := s.AddImage(context.Background(), host+"/repro/multi:v1", "", false, "", false, "", opts...); err != nil {
+		t.Fatal(err)
+	}
+
+	// Index sig: plain kind, subject = index digest. AnnotationRefName carries
+	// the full tagged ref (see writeImage), not the bare repo path.
+	topKey := findRefKeyByKind(t, s, "repro/multi:v1", consts.KindAnnotationSigs)
+	topDesc := descriptorForKey(t, s, topKey)
+	if got := topDesc.Annotations[consts.SubjectDigestAnnotation]; got != idxDigest.String() {
+		t.Fatalf("top-level sig subject = %q, want %q", got, idxDigest.String())
+	}
+
+	// Platform sig: suffixed kind, subject = child digest. Both entries must
+	// coexist -- the pre-fix behavior was the second overwriting the first.
+	childKind := consts.KindAnnotationSigs + "/" + childDigest.Hex
+	childKey := findRefKeyByKind(t, s, "repro/multi:v1", childKind)
+	childDesc := descriptorForKey(t, s, childKey)
+	if got := childDesc.Annotations[consts.SubjectDigestAnnotation]; got != childDigest.String() {
+		t.Fatalf("platform sig subject = %q, want %q", got, childDigest.String())
+	}
+}
+
 // TestAddImagePinnedDigestIgnoresMovedTag proves the TOCTOU fix: once a caller
 // pins the digest it verified, a tag that moves to different content between
 // verification and the fetch cannot substitute its bytes into the store.
@@ -1059,6 +1150,94 @@ func TestIsNotFoundClassification(t *testing.T) {
 
 	if _, err := s.AddImage(context.Background(), host+"/repro/err500:v1", "", false, "", false, "", opts...); err == nil {
 		t.Fatal("AddImage succeeded despite 500 on sig probe")
+	}
+}
+
+// TestAddImageSubjectAnnotationOnArtifacts verifies that a top-level cosign
+// tag-convention artifact (here, a .sig) is stored with
+// consts.SubjectDigestAnnotation recording the base image's digest.
+func TestAddImageSubjectAnnotationOnArtifacts(t *testing.T) {
+	host, opts := newTestRegistry(t)
+	img := seedImage(t, host, "repro/subj", "v1", opts...)
+	d, err := img.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed a cosign v2 sig for the image's own digest (top-level subject).
+	sigTag := strings.ReplaceAll(d.String(), ":", "-") + ".sig"
+	seedImage(t, host, "repro/subj", sigTag, opts...)
+
+	s := newTestStore(t)
+	if _, err := s.AddImage(context.Background(), host+"/repro/subj:v1", "", false, "", false, "", opts...); err != nil {
+		t.Fatal(err)
+	}
+
+	// AnnotationRefName carries the full tagged ref (see writeImage), not the
+	// bare repo path.
+	key := findRefKeyByKind(t, s, "repro/subj:v1", consts.KindAnnotationSigs)
+	desc := descriptorForKey(t, s, key)
+	if got := desc.Annotations[consts.SubjectDigestAnnotation]; got != d.String() {
+		t.Fatalf("subject annotation = %q, want %q", got, d.String())
+	}
+}
+
+// TestAddImageIndexTypedReferrer verifies that an OCI 1.1 referrer whose
+// manifest is itself an image index (rather than a single-platform image)
+// is stored correctly with the subject annotation -- the strict error
+// semantics from Task 2 must not turn the index-vs-image branch into a
+// failed pull.
+func TestAddImageIndexTypedReferrer(t *testing.T) {
+	host, opts := newTestRegistry(t)
+	baseImg := seedImage(t, host, "repro/idxref", "v1", opts...)
+	baseDigest, err := baseImg.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseSize, err := baseImg.Size()
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseMT, err := baseImg.MediaType()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build an index referrer: an empty index whose manifest carries a
+	// subject descriptor pointing at the base image.
+	child, err := random.Image(64, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refIdx := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: child})
+	withSubject := mutate.Subject(refIdx, v1.Descriptor{
+		MediaType: baseMT,
+		Digest:    baseDigest,
+		Size:      baseSize,
+	}).(v1.ImageIndex)
+	d, err := withSubject.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dref, err := goname.NewDigest(host+"/repro/idxref@"+d.String(), goname.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(dref, withSubject, opts...); err != nil {
+		t.Fatal(err)
+	}
+
+	s := newTestStore(t)
+	if _, err := s.AddImage(context.Background(), host+"/repro/idxref:v1", "", false, "", false, "", opts...); err != nil {
+		t.Fatalf("AddImage failed on index-typed referrer: %v", err)
+	}
+
+	// The referrer must be stored under its referrers kind with the subject annotation.
+	// AnnotationRefName carries the full tagged ref (see writeImage), not the
+	// bare repo path.
+	key := findRefKeyByKind(t, s, "repro/idxref:v1", consts.KindAnnotationReferrers+"/"+d.Hex)
+	desc := descriptorForKey(t, s, key)
+	if got := desc.Annotations[consts.SubjectDigestAnnotation]; got != baseDigest.String() {
+		t.Fatalf("index referrer subject annotation = %q, want %q", got, baseDigest.String())
 	}
 }
 
