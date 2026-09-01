@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -990,4 +992,101 @@ func TestAddImage_OriginalRefAnnotation(t *testing.T) {
 			t.Errorf("expected the index artifact to have OriginalRefAnnotation=%q, none found", wantOriginalRef)
 		}
 	})
+}
+
+// artifactProbe401Registry serves images normally but returns 401 for cosign
+// tag-convention probes and the OCI referrers endpoint.
+func artifactProbe401Registry(t *testing.T) (string, []remote.Option) {
+	t.Helper()
+	inner := registry.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		if strings.Contains(p, "/referrers/") ||
+			strings.HasSuffix(p, ".sig") || strings.HasSuffix(p, ".att") || strings.HasSuffix(p, ".sbom") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	return host, []remote.Option{remote.WithTransport(srv.Client().Transport)}
+}
+
+func TestAddImageArtifactProbe401Fails(t *testing.T) {
+	host, opts := artifactProbe401Registry(t)
+	seedImage(t, host, "repro/api", "v1", opts...)
+	s := newTestStore(t)
+
+	_, err := s.AddImage(context.Background(), host+"/repro/api:v1", "", false, "", false, "", opts...)
+	if err == nil {
+		t.Fatal("AddImage succeeded despite 401 on artifact probes; want RelatedArtifactError")
+	}
+	var raErr *store.RelatedArtifactError
+	if !errors.As(err, &raErr) {
+		t.Fatalf("error %v is not a *store.RelatedArtifactError", err)
+	}
+}
+
+func TestAddImageArtifactProbe404Succeeds(t *testing.T) {
+	// The plain test registry has no sig tags and no referrers: every probe
+	// 404s, which must remain "unsigned image", not an error.
+	host, opts := newTestRegistry(t)
+	seedImage(t, host, "repro/absent", "v1", opts...)
+	s := newTestStore(t)
+
+	if _, err := s.AddImage(context.Background(), host+"/repro/absent:v1", "", false, "", false, "", opts...); err != nil {
+		t.Fatalf("AddImage failed on 404-only probes: %v", err)
+	}
+}
+
+func TestIsNotFoundClassification(t *testing.T) {
+	// Exercised through the exported surface: a 500-returning registry must
+	// fail AddImage the same way 401 does.
+	inner := registry.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".sig") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	opts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+	seedImage(t, host, "repro/err500", "v1", opts...)
+	s := newTestStore(t)
+
+	if _, err := s.AddImage(context.Background(), host+"/repro/err500:v1", "", false, "", false, "", opts...); err == nil {
+		t.Fatal("AddImage succeeded despite 500 on sig probe")
+	}
+}
+
+// TestAddImageReferrersEndpoint401Fails exercises referrer-error propagation
+// independently of the cosign tag probes (which 404 against the inner
+// registry): ggcr v0.22.0's fetchReferrers allows 404/400/406 through to the
+// tag fallback but propagates a 401 as *transport.Error.
+func TestAddImageReferrersEndpoint401Fails(t *testing.T) {
+	inner := registry.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/referrers/") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	opts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+	seedImage(t, host, "repro/ref401", "v1", opts...)
+	s := newTestStore(t)
+
+	_, err := s.AddImage(context.Background(), host+"/repro/ref401:v1", "", false, "", false, "", opts...)
+	if err == nil {
+		t.Fatal("AddImage succeeded despite 401 on the referrers endpoint")
+	}
+	var raErr *store.RelatedArtifactError
+	if !errors.As(err, &raErr) {
+		t.Fatalf("error %v is not a *store.RelatedArtifactError", err)
+	}
 }

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	ggcrtransport "github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/google/uuid"
 	"github.com/opencontainers/go-digest"
@@ -560,30 +563,75 @@ func (l *Layout) writeIndex(ctx context.Context, annotationRef goname.Reference,
 	return l.OCI.AddIndex(desc)
 }
 
+// isNotFound reports whether err is a definitive "artifact absent" registry
+// response: HTTP 404, or error code MANIFEST_UNKNOWN / NAME_UNKNOWN. Only
+// these may be treated as "unsigned image" -- a 401/403/429/5xx or timeout is
+// a failed retrieval, and swallowing it produces a silently incomplete store
+// indistinguishable from an unsigned one.
+func isNotFound(err error) bool {
+	var terr *ggcrtransport.Error
+	if !errors.As(err, &terr) {
+		return false
+	}
+	if terr.StatusCode == http.StatusNotFound {
+		return true
+	}
+	for _, diag := range terr.Errors {
+		if diag.Code == ggcrtransport.ManifestUnknownErrorCode || diag.Code == ggcrtransport.NameUnknownErrorCode {
+			return true
+		}
+	}
+	return false
+}
+
+// RelatedArtifactError reports a failure retrieving a sig/att/sbom/referrer
+// for an image that itself was already stored. Callers use errors.As to word
+// their messages accurately -- the image is in the store; the run failed on
+// its supply-chain artifacts.
+type RelatedArtifactError struct {
+	Ref     string // base image ref
+	Kind    string // dev.hauler kind being retrieved
+	Subject string // subject digest ("sha256:<hex>")
+	Err     error
+}
+
+func (e *RelatedArtifactError) Error() string {
+	return fmt.Sprintf("retrieving %s for %s (subject %s): %v", e.Kind, e.Ref, e.Subject, e.Err)
+}
+
+func (e *RelatedArtifactError) Unwrap() error { return e.Err }
+
 // saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/hash --
 // cosign v3 new-bundle-format sigs/attestations stored via the subject field, as opposed to the
-// legacy sha256-<hex>.sig/.att/.sbom tag convention. Missing referrers and fetch errors are
-// logged at debug level and silently skipped.
+// legacy sha256-<hex>.sig/.att/.sbom tag convention.
 func (l *Layout) saveReferrers(ctx context.Context, ref goname.Reference, hash v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
 	log := zerolog.Ctx(ctx)
 
 	imageDigestRef, err := goname.NewDigest(ref.Context().String() + "@" + hash.String())
 	if err != nil {
-		log.Debug().Err(err).Msgf("saveReferrers: could not construct digest ref for %s", ref.Name())
-		return nil
+		return fmt.Errorf("saveReferrers: constructing digest ref for %s: %w", ref.Name(), err)
 	}
 
+	// In ggcr v0.22.0, absent referrers never error: the API endpoint tolerates
+	// 404/400/406 via the tag-schema fallback, and a missing fallback tag yields
+	// empty.Index, nil. So any error here is a real failure; isNotFound is
+	// defense in depth against a future ggcr version that surfaces 404 directly.
 	idx, err := remote.Referrers(imageDigestRef, opts...)
 	if err != nil {
-		// Most registries that don't support the referrers API return 404; not an error.
-		log.Debug().Err(err).Msgf("no OCI referrers found for %s@%s", ref.Name(), hash)
-		return nil
+		if isNotFound(err) {
+			log.Debug().Err(err).Msgf("no OCI referrers found for %s@%s", ref.Name(), hash)
+			return nil
+		}
+		return &RelatedArtifactError{Ref: ref.Name(), Kind: consts.KindAnnotationReferrers, Subject: hash.String(), Err: err}
 	}
 
 	idxManifest, err := idx.IndexManifest()
 	if err != nil {
-		log.Debug().Err(err).Msgf("saveReferrers: could not read referrers index for %s", ref.Name())
-		return nil
+		if isNotFound(err) {
+			log.Debug().Err(err).Msgf("saveReferrers: could not read referrers index for %s", ref.Name())
+			return nil
+		}
+		return &RelatedArtifactError{Ref: ref.Name(), Kind: consts.KindAnnotationReferrers, Subject: hash.String(), Err: err}
 	}
 
 	for _, referrerDesc := range idxManifest.Manifests {
@@ -595,8 +643,12 @@ func (l *Layout) saveReferrers(ctx context.Context, ref goname.Reference, hash v
 
 		img, err := remote.Image(digestRef, opts...)
 		if err != nil {
-			log.Debug().Err(err).Msgf("saveReferrers: could not fetch referrer manifest %s", referrerDesc.Digest)
-			continue
+			if isNotFound(err) {
+				// A listed-but-404 referrer is a registry race, not a real failure.
+				log.Debug().Err(err).Msgf("saveReferrers: could not fetch referrer manifest %s", referrerDesc.Digest)
+				continue
+			}
+			return &RelatedArtifactError{Ref: ref.Name(), Kind: consts.KindAnnotationReferrers, Subject: hash.String(), Err: err}
 		}
 
 		// Skip referrers already saved via the cosign tag convention to avoid duplicates.
@@ -619,8 +671,9 @@ func (l *Layout) saveReferrers(ctx context.Context, ref goname.Reference, hash v
 }
 
 // saveRelatedArtifacts discovers and saves cosign-compatible signature, attestation, and SBOM
-// artifacts for the image identified by ref/hash, skipping missing ones silently. Returns the
-// set of saved manifest digest strings so saveReferrers can skip duplicates exposed via both paths.
+// artifacts for the image identified by ref/hash, skipping only definitively-absent ones (see
+// isNotFound). Returns the set of saved manifest digest strings so saveReferrers can skip
+// duplicates exposed via both paths.
 func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref goname.Reference, hash v1.Hash, opts ...remote.Option) (map[string]bool, error) {
 	saved := make(map[string]bool)
 
@@ -643,8 +696,11 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref goname.Reference,
 		}
 		img, err := remote.Image(artifactRef, opts...)
 		if err != nil {
-			// Artifact doesn't exist at this registry; skip silently.
-			continue
+			if isNotFound(err) {
+				// Definitive absence -- the common unsigned case.
+				continue
+			}
+			return saved, &RelatedArtifactError{Ref: ref.Name(), Kind: r.kind, Subject: hash.String(), Err: err}
 		}
 		if err := l.writeImage(ctx, ref, img, r.kind, ""); err != nil {
 			return saved, fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
