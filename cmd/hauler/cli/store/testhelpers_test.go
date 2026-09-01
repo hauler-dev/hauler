@@ -505,6 +505,67 @@ func seedCosignV2Artifacts(t *testing.T, host, repo string, baseImg gcrv1.Image,
 	}
 }
 
+// seedMultiArchWithPlatformSig publishes a two-platform index at repo:tag,
+// plus cosign v2 sigs for BOTH the index digest and the amd64 child digest --
+// the registry.k8s.io/csi-attacher shape from the community report. Duplicated
+// from pkg/store's test package (store_test.go) because that file lives in
+// package store_test and cannot be imported by this package's tests.
+func seedMultiArchWithPlatformSig(t *testing.T, host, repo, tag string, opts ...remote.Option) (idxDigest, childDigest gcrv1.Hash) {
+	t.Helper()
+	amd64Img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm64Img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{Add: amd64Img, Descriptor: gcrv1.Descriptor{Platform: &gcrv1.Platform{OS: "linux", Architecture: "amd64"}}},
+		mutate.IndexAddendum{Add: arm64Img, Descriptor: gcrv1.Descriptor{Platform: &gcrv1.Platform{OS: "linux", Architecture: "arm64"}}},
+	)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(ref, idx, opts...); err != nil {
+		t.Fatal(err)
+	}
+	idxDigest, err = idx.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	childDigest, err = amd64Img.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []gcrv1.Hash{idxDigest, childDigest} {
+		sigTag := strings.ReplaceAll(d.String(), ":", "-") + ".sig"
+		seedImage(t, host, repo, sigTag, opts...)
+	}
+	return idxDigest, childDigest
+}
+
+// stripSubjectAnnotations removes consts.SubjectDigestAnnotation from every
+// sig/att/sbom-kind descriptor in the store, simulating an archive written by
+// a hauler version that predates the subject annotation. UpdateAnnotations
+// applies the mutation and persists the index itself -- Walk only ever hands
+// callbacks a snapshot copy of a descriptor's annotations, so mutating one in
+// place there would silently no-op.
+func stripSubjectAnnotations(t *testing.T, s *store.Layout) {
+	t.Helper()
+	match := func(d ocispec.Descriptor) bool {
+		_, ok := consts.SigKindExt(d.Annotations[consts.KindAnnotationName])
+		return ok
+	}
+	apply := func(ann map[string]string) {
+		delete(ann, consts.SubjectDigestAnnotation)
+	}
+	if _, err := s.OCI.UpdateAnnotations(match, apply); err != nil {
+		t.Fatalf("stripSubjectAnnotations: %v", err)
+	}
+}
+
 // seedOCI11Referrer pushes a synthetic OCI 1.1 / cosign v3 Sigstore bundle manifest
 // whose subject field points at baseImg. The in-process registry auto-registers it in
 // the referrers index so remote.Referrers returns it.

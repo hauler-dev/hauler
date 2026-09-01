@@ -626,14 +626,15 @@ func resolveCtype(desc ocispec.Descriptor, configMediaType string) string {
 		ctype = "image"
 	}
 
-	switch {
-	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSigs:
+	kind := desc.Annotations[consts.KindAnnotationName]
+	switch ext, _ := consts.SigKindExt(kind); {
+	case ext == ".sig":
 		ctype = "sigs"
-	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationAtts:
+	case ext == ".att":
 		ctype = "atts"
-	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSboms:
+	case ext == ".sbom":
 		ctype = "sbom"
-	case strings.HasPrefix(desc.Annotations[consts.KindAnnotationName], consts.KindAnnotationReferrers):
+	case strings.HasPrefix(kind, consts.KindAnnotationReferrers):
 		ctype = "referrer"
 	}
 	return ctype

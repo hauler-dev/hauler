@@ -79,6 +79,41 @@ func TestCreateManifestCmd_Image(t *testing.T) {
 	}
 }
 
+// TestCreateManifestCmd_SuffixedSigKindSkipped confirms a subject-suffixed sig kind
+// ("dev.hauler/sigs/<hex>", written for a multi-arch image's child manifest) is
+// skipped like the plain form rather than falling through to the
+// ContainerdImageNameKey branch and being emitted as a second, duplicate image
+// entry -- the synthetic descriptor below carries the same ContainerdImageNameKey
+// as the real image specifically to catch that fallthrough.
+func TestCreateManifestCmd_SuffixedSigKindSkipped(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+	seedImage(t, host, "test/repo", "v1", rOpts...)
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	seedStoreDescriptor(t, s, map[string]string{
+		ocispec.AnnotationRefName:     "test/repo:v1",
+		consts.KindAnnotationName:     consts.KindAnnotationSigs + "/0123abcd",
+		consts.ContainerdImageNameKey: host + "/test/repo:v1",
+	})
+
+	o := newCreateManifestOpts(t, rso)
+	if err := CreateManifestCmd(ctx, o, s); err != nil {
+		t.Fatalf("CreateManifestCmd: %v", err)
+	}
+
+	content := readManifest(t, o.Output)
+	if got := strings.Count(content, "name: "+host+"/test/repo:v1"); got != 1 {
+		t.Errorf("expected exactly 1 image entry (suffixed sig kind must be skipped), got %d in:\n%s", got, content)
+	}
+}
+
 func TestCreateManifestCmd_ImageWithRewrite(t *testing.T) {
 	ctx := newTestContext(t)
 	host, rOpts := newLocalhostRegistry(t)

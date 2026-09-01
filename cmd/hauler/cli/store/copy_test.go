@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	goname "github.com/google/go-containerregistry/pkg/name"
+	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -248,6 +249,83 @@ func TestCopyCmd_Registry_SigTagDerivation(t *testing.T) {
 	}
 	if _, err := remote.Get(sigRef, dstOpts...); err != nil {
 		t.Errorf("sig not found at expected tag %s in target registry: %v", sigTag, err)
+	}
+}
+
+// TestCopyRegistryRoutesPlatformSigs seeds a multi-arch index whose amd64
+// child carries its own cosign sig distinct from the index-level sig (the
+// registry.k8s.io/csi-attacher shape), stores it, copies to a second
+// registry, and verifies BOTH sigs land on their own subject's cosign tag
+// rather than the child sig being dropped or misrouted to the index's tag.
+func TestCopyRegistryRoutesPlatformSigs(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, srcOpts := newLocalhostRegistry(t)
+	dstHost, dstOpts := newTestRegistry(t)
+	idxDigest, childDigest := seedMultiArchWithPlatformSig(t, srcHost, "repro/multi", "v1", srcOpts...)
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/repro/multi:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	o := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+		t.Fatalf("CopyCmd: %v", err)
+	}
+
+	for _, d := range []gcrv1.Hash{idxDigest, childDigest} {
+		sigRef, err := goname.NewTag(dstHost+"/repro/multi:"+strings.ReplaceAll(d.String(), ":", "-")+".sig", goname.Insecure)
+		if err != nil {
+			t.Fatalf("goname.NewTag: %v", err)
+		}
+		if _, err := remote.Head(sigRef, dstOpts...); err != nil {
+			t.Errorf("sig for subject %s not found at destination %s: %v", d, sigRef, err)
+		}
+	}
+}
+
+// TestCopyRegistryOldFormatSigFallback verifies that a store entry with a
+// plain sig kind and no subject annotation -- the shape an archive written
+// before the subject annotation was introduced would still carry -- still
+// routes via the refDigest pre-pass map rather than being dropped.
+func TestCopyRegistryOldFormatSigFallback(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, srcOpts := newLocalhostRegistry(t)
+	dstHost, dstOpts := newTestRegistry(t)
+
+	baseImg := seedImage(t, srcHost, "repro/old", "v1", srcOpts...)
+	seedCosignV2Artifacts(t, srcHost, "repro/old", baseImg, srcOpts...)
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/repro/old:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	// Simulate an old-format archive: strip the subject annotation from every
+	// sig-kind entry, mimicking a store written by an older hauler.
+	stripSubjectAnnotations(t, s)
+
+	o := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+		t.Fatalf("CopyCmd: %v", err)
+	}
+
+	d, err := baseImg.Digest()
+	if err != nil {
+		t.Fatalf("baseImg.Digest: %v", err)
+	}
+	sigRef, err := goname.NewTag(dstHost+"/repro/old:"+strings.ReplaceAll(d.String(), ":", "-")+".sig", goname.Insecure)
+	if err != nil {
+		t.Fatalf("goname.NewTag: %v", err)
+	}
+	if _, err := remote.Head(sigRef, dstOpts...); err != nil {
+		t.Errorf("old-format sig not routed via refDigest fallback: %v", err)
 	}
 }
 
