@@ -165,6 +165,28 @@ func newTestRegistry(t *testing.T) (host string, remoteOpts []remote.Option) {
 	return host, remoteOpts
 }
 
+// artifactProbe401Registry serves images normally but returns 401 for cosign
+// tag-convention probes and the OCI referrers endpoint, so a caller can
+// exercise the path where the image itself lands in the store but a
+// related-artifact probe fails. Duplicated from pkg/store/store_test.go --
+// that package's test helpers aren't reachable from this one.
+func artifactProbe401Registry(t *testing.T) (string, []remote.Option) {
+	t.Helper()
+	inner := registry.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		if strings.Contains(p, "/referrers/") ||
+			strings.HasSuffix(p, ".sig") || strings.HasSuffix(p, ".att") || strings.HasSuffix(p, ".sbom") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	return host, []remote.Option{remote.WithTransport(srv.Client().Transport)}
+}
+
 // recordingHandler records the path of every request it serves before
 // delegating. Concurrent handlers append to the same slice, so every method
 // takes mu.
