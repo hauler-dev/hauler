@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -46,7 +46,7 @@ func TestAddImage_ImageStatsAccumulation(t *testing.T) {
 		wantBytes += size
 	}
 
-	tag, err := gname.NewTag(host+"/test/image:v1", gname.Insecure)
+	tag, err := goname.NewTag(host+"/test/image:v1", goname.Insecure)
 	if err != nil {
 		t.Fatalf("new tag: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestAddImage_NoImageStatsInContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("random.Image: %v", err)
 	}
-	tag, err := gname.NewTag(host+"/test/image:v1", gname.Insecure)
+	tag, err := goname.NewTag(host+"/test/image:v1", goname.Insecure)
 	if err != nil {
 		t.Fatalf("new tag: %v", err)
 	}

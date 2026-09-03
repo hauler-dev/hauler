@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
@@ -31,9 +33,37 @@ import (
 )
 
 var (
-	_        artifacts.OCI = (*Chart)(nil)
-	settings               = cli.New()
+	_             artifacts.OCI  = (*Chart)(nil)
+	settings                     = cli.New()
+	chartKeychain authn.Keychain = authn.DefaultKeychain
 )
+
+// resolveRepoCredentials bridges Docker credentials (including those written
+// by `hauler login`) to Helm's legacy HTTP chart-repository downloader. Helm's
+// OCI client reads the Docker keychain itself, but the legacy downloader only
+// knows about ChartPathOptions.Username and Password.
+func resolveRepoCredentials(repoURL string) (string, string, error) {
+	u, err := url.Parse(repoURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", "", nil
+	}
+	reg, err := goname.NewRegistry(u.Host)
+	if err != nil {
+		return "", "", fmt.Errorf("parsing chart repository host %q: %w", u.Host, err)
+	}
+	auth, err := chartKeychain.Resolve(reg)
+	if err != nil {
+		return "", "", fmt.Errorf("resolving chart repository credentials for %q: %w", u.Host, err)
+	}
+	if auth == authn.Anonymous {
+		return "", "", nil
+	}
+	config, err := auth.Authorization()
+	if err != nil {
+		return "", "", fmt.Errorf("reading chart repository credentials for %q: %w", u.Host, err)
+	}
+	return config.Username, config.Password, nil
+}
 
 // chart implements the oci interface for chart api objects... api spec values are stored into the name, repo, and version fields
 type Chart struct {
@@ -76,6 +106,14 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	if registry.IsOCI(opts.RepoURL) {
 		chartRef = opts.RepoURL + "/" + name
 	} else if isUrl(opts.RepoURL) { // oci protocol registers as a valid url
+		if client.ChartPathOptions.Username == "" && client.ChartPathOptions.Password == "" {
+			username, password, err := resolveRepoCredentials(opts.RepoURL)
+			if err != nil {
+				return nil, err
+			}
+			client.ChartPathOptions.Username = username
+			client.ChartPathOptions.Password = password
+		}
 		client.ChartPathOptions.RepoURL = opts.RepoURL
 	} else { // handles cases like grafana and loki
 		chartRef = opts.RepoURL + "/" + name

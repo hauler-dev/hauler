@@ -12,6 +12,8 @@ import (
 	goauthn "github.com/google/go-containerregistry/pkg/authn"
 	goname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"hauler.dev/go/hauler/v2/pkg/reference"
 )
 
 var _ Target = (*RegistryTarget)(nil)
@@ -169,7 +171,7 @@ func (t *RegistryTarget) Pusher(ctx context.Context, ref string) (remotes.Pusher
 //
 //	"index.docker.io/library/nginx:latest" + "localhost:5000" → "localhost:5000/library/nginx:latest"
 func RewriteRefToRegistry(sourceRef string, targetRegistry string) (string, error) {
-	ref, err := goname.ParseReference(sourceRef)
+	ref, err := reference.ParseReference(sourceRef)
 	if err != nil {
 		return "", fmt.Errorf("parsing reference %q: %w", sourceRef, err)
 	}

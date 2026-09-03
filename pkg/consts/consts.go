@@ -71,6 +71,18 @@ const (
 	ImageAnnotationExcludeExtras = "hauler.dev/exclude-extras"
 	ImageRefKey                  = "org.opencontainers.image.ref.name"
 
+	// OriginalRefAnnotation preserves each artifact's original source reference at
+	// the time it's first added to the store (images, charts, and files alike,
+	// whether local or remote), regardless of whether --rewrite is ever applied, so
+	// tooling like `store create manifest` can always recover a pullable source even
+	// after the store's own ref/containerd-name annotations have since been
+	// overwritten by a rewrite. For images this is the fully qualified containerd
+	// image name (registry/repo:tag); for charts, which have no equivalent
+	// registry-qualified annotation, it's "repoURL|repo:tag" (see
+	// encodeOriginalChartRef in cmd/hauler/cli/store); for files it's the original
+	// URL or absolute local path.
+	OriginalRefAnnotation = "hauler.dev/original-ref"
+
 	// cosign keyless validation options
 	ImageAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
 	ImageAnnotationCertIdentityRegexp           = "hauler.dev/certificate-identity-regexp"
@@ -95,6 +107,7 @@ const (
 	// environment variables
 	HaulerDir             = "HAULER_DIR"
 	HaulerTempDir         = "HAULER_TEMP_DIR"
+	HaulerWorkDir         = "HAULER_WORK_DIR"
 	HaulerStoreDir        = "HAULER_STORE_DIR"
 	HaulerIgnoreErrors    = "HAULER_IGNORE_ERRORS"
 	HaulerRetries         = "HAULER_RETRIES"
@@ -110,10 +123,16 @@ const (
 	ImageManifestFile = "manifest.json"
 	ImageConfigFile   = "config.json"
 
+	// HaulerIndexFile is the full-fidelity index sidecar written into --containerd
+	// hauls, whose index.json is filtered to image content for containerd's OCI
+	// import path; store load prefers this file so non-image artifacts round-trip.
+	HaulerIndexFile = "hauler-index.json"
+
 	// other constraints
 	CarbideRegistry           = "rgcrprod.azurecr.us"
 	DefaultNamespace          = "hauler"
 	DefaultTag                = "latest"
+	DefaultRegistry           = ""
 	DefaultStoreName          = "store"
 	DefaultHaulerDirName      = ".hauler"
 	DefaultHaulerTempDirName  = "hauler"

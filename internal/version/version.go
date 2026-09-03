@@ -82,13 +82,12 @@ func getBuildInfo() *debug.BuildInfo {
 }
 
 func getGitVersion(bi *debug.BuildInfo) string {
-	if bi == nil {
-		return consts.Unknown
+	if gitVersion != consts.Unknown && gitVersion != "" {
+		return gitVersion
 	}
 
-	// TODO: remove this when the issue https://github.com/golang/go/issues/29228 is fixed
-	if bi.Main.Version == "(devel)" || bi.Main.Version == "" {
-		return gitVersion
+	if bi == nil || bi.Main.Version == "" {
+		return consts.Unknown
 	}
 
 	return bi.Main.Version

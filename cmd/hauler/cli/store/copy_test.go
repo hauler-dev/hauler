@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -153,9 +153,9 @@ func TestCopyCmd_Registry(t *testing.T) {
 	}
 
 	// Verify the image is reachable in the target registry.
-	dstRef, err := name.NewTag(dstHost+"/test/copy:v1", name.Insecure)
+	dstRef, err := goname.NewTag(dstHost+"/test/copy:v1", goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if _, err := remote.Get(dstRef, dstOpts...); err != nil {
 		t.Errorf("image not found in target registry after copy: %v", err)
@@ -191,18 +191,18 @@ func TestCopyCmd_Registry_OnlyFilter(t *testing.T) {
 	}
 
 	// repo1 must be in target.
-	ref1, err := name.NewTag(dstHost+"/myorg/repo1:v1", name.Insecure)
+	ref1, err := goname.NewTag(dstHost+"/myorg/repo1:v1", goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag repo1: %v", err)
+		t.Fatalf("goname.NewTag repo1: %v", err)
 	}
 	if _, err := remote.Get(ref1, dstOpts...); err != nil {
 		t.Errorf("repo1 should be in target registry but was not found: %v", err)
 	}
 
 	// repo2 must NOT be in target.
-	ref2, err := name.NewTag(dstHost+"/myorg/repo2:v1", name.Insecure)
+	ref2, err := goname.NewTag(dstHost+"/myorg/repo2:v1", goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag repo2: %v", err)
+		t.Fatalf("goname.NewTag repo2: %v", err)
 	}
 	if _, err := remote.Get(ref2, dstOpts...); err == nil {
 		t.Error("repo2 should NOT be in target registry after --only=repo1, but was found")
@@ -242,9 +242,9 @@ func TestCopyCmd_Registry_SigTagDerivation(t *testing.T) {
 	}
 	sigTag := strings.ReplaceAll(hash.String(), ":", "-") + ".sig"
 
-	sigRef, err := name.NewTag(dstHost+"/test/signed:"+sigTag, name.Insecure)
+	sigRef, err := goname.NewTag(dstHost+"/test/signed:"+sigTag, goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag sigRef: %v", err)
+		t.Fatalf("goname.NewTag sigRef: %v", err)
 	}
 	if _, err := remote.Get(sigRef, dstOpts...); err != nil {
 		t.Errorf("sig not found at expected tag %s in target registry: %v", sigTag, err)
@@ -364,9 +364,9 @@ func TestCopyCmd_Registry_IgnoreErrors_EnvVar_MultipleArtifacts(t *testing.T) {
 	}
 
 	for _, repo := range []string{"test/ignore-env-a", "test/ignore-env-b"} {
-		ref, err := name.NewTag(dstHost+"/"+repo+":v1", name.Insecure)
+		ref, err := goname.NewTag(dstHost+"/"+repo+":v1", goname.Insecure)
 		if err != nil {
-			t.Fatalf("name.NewTag %s: %v", repo, err)
+			t.Fatalf("goname.NewTag %s: %v", repo, err)
 		}
 		if _, err := remote.Get(ref, dstOpts...); err != nil {
 			t.Errorf("%s should be in target registry despite unrelated undeliverable artifact, but was not found: %v", repo, err)

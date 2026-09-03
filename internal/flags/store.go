@@ -144,3 +144,11 @@ func resolveHaulerDir(ro *CliRootOpts) string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, consts.DefaultHaulerDirName)
 }
+
+// ResolveWorkDir returns the configured output dir, or "" to mean the current directory (legacy behavior).
+func ResolveWorkDir(ro *CliRootOpts) string {
+	if ro != nil && ro.WorkDir != "" {
+		return ro.WorkDir
+	}
+	return os.Getenv(consts.HaulerWorkDir)
+}

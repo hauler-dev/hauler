@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	referencev3 "github.com/distribution/reference"
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	libv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
@@ -25,6 +25,7 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -45,35 +46,101 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 		return err
 	}
 
-	cwd, err := os.Getwd()
+	// Generated files go to a scratch dir and are mapped into the archive root,
+	// so save never mutates the live store (the old chdir flow wrote manifest.json
+	// into it and --containerd deleted its oci-layout permanently). The one
+	// deliberate exception is audit.log: at AuditLevel "standard" or "verbose"
+	// the audit.Append call below writes a portable entry to <StoreDir>/audit.log
+	// by design (#727) -- see TestSaveCmd_DoesNotMutateStore's audit subtest.
+	scratch, err := os.MkdirTemp(rso.TempOverride, consts.DefaultHaulerTempDirName)
 	if err != nil {
 		return err
 	}
-	defer os.Chdir(cwd)
-	if err := os.Chdir(o.StoreDir); err != nil {
+	defer os.RemoveAll(scratch)
+
+	if err := writeExportsManifest(ctx, o.StoreDir, scratch, o.Platform); err != nil {
 		return err
 	}
 
-	// create the manifest.json file
-	if err := writeExportsManifest(ctx, ".", o.Platform); err != nil {
-		return err
+	files := map[string]string{
+		filepath.Join(scratch, consts.ImageManifestFile): consts.ImageManifestFile,
 	}
 
-	// strip out the oci-layout file from the haul
-	// required for containerd to be able to interpret the haul correctly for all mediatypes and artifactypes
-	if o.ContainerdCompatibility {
-		if err := os.Remove(filepath.Join(".", ocispec.ImageLayoutFile)); err != nil {
-			if !os.IsNotExist(err) {
-				return err
-			}
-		} else {
-			l.Warnf("compatibility warning... containerd... removing 'oci-layout' file to support containerd importing of images")
+	// The live store never writes an oci-layout marker on disk (nothing in
+	// pkg/content/oci.go creates one), but containerd's OCI import path and
+	// the documented archive layout both require it. Generate it into
+	// scratch like the other derived files -- only when the store lacks one,
+	// so "oci-layout" is never mapped from two different source paths into
+	// the same archive entry.
+	layoutMarkerPath := filepath.Join(o.StoreDir, ocispec.ImageLayoutFile)
+	if _, err := os.Stat(layoutMarkerPath); os.IsNotExist(err) {
+		marker, err := json.Marshal(ocispec.ImageLayout{Version: ocispec.ImageLayoutVersion})
+		if err != nil {
+			return err
 		}
+		if err := os.WriteFile(filepath.Join(scratch, ocispec.ImageLayoutFile), marker, 0644); err != nil {
+			return err
+		}
+		files[filepath.Join(scratch, ocispec.ImageLayoutFile)] = ocispec.ImageLayoutFile
+	} else if err != nil {
+		return err
+	}
+
+	if o.ContainerdCompatibility {
+		dropped, err := writeContainerdIndexes(o.StoreDir, scratch)
+		if err != nil {
+			return err
+		}
+		files[filepath.Join(scratch, ocispec.ImageIndexFile)] = ocispec.ImageIndexFile
+		files[filepath.Join(scratch, consts.HaulerIndexFile)] = consts.HaulerIndexFile
+		if dropped > 0 {
+			l.Warnf("compatibility warning... containerd... excluded [%d] non-image artifacts from index.json (full index preserved as [%s]... requires a hauler version with sidecar support to load)", dropped, consts.HaulerIndexFile)
+		}
+	} else {
+		// Default mode drops nothing, but still normalizes io.containerd.image.name
+		// so a default haul of a legacy store (or one that went through --rewrite)
+		// carries CRI-resolvable names once oci-layout steers containerd onto the
+		// OCI import path (#744 amended §3). No sidecar: nothing was filtered.
+		if err := writeDefaultIndex(o.StoreDir, scratch); err != nil {
+			return err
+		}
+		files[filepath.Join(scratch, ocispec.ImageIndexFile)] = ocispec.ImageIndexFile
+	}
+
+	entries, err := os.ReadDir(o.StoreDir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		full := filepath.Join(o.StoreDir, name)
+		if name == consts.ImageManifestFile {
+			continue // always regenerated into scratch
+		}
+		if name == ocispec.ImageIndexFile {
+			// Always replaced by the scratch copy -- filtered+normalized in
+			// --containerd mode, normalized-only in default mode (see
+			// writeContainerdIndexes / writeDefaultIndex).
+			continue
+		}
+		if name == consts.HaulerIndexFile {
+			// Skip unconditionally, not just in --containerd mode: a stray sidecar
+			// already in the store dir would otherwise ride into a default haul,
+			// and store load prefers the sidecar over index.json -- silent data
+			// loss (#744 fix 3).
+			continue
+		}
+		if full == absOutputfile {
+			// Saving the archive into the store dir: ArchiveFiles removes
+			// absOutputfile before reading fileMap, so mapping it here would
+			// point at a path FilesFromDisk can no longer find.
+			continue
+		}
+		files[full] = name
 	}
 
 	// create the archive
-	err = archives.Archive(ctx, ".", absOutputfile, compression, archival)
-	if err != nil {
+	if err := archives.ArchiveFiles(ctx, files, absOutputfile, compression, archival); err != nil {
 		return err
 	}
 
@@ -163,7 +230,7 @@ type exports struct {
 	records map[string]tarball.Descriptor
 }
 
-func writeExportsManifest(ctx context.Context, dir string, platformStr string) error {
+func writeExportsManifest(ctx context.Context, dir string, outDir string, platformStr string) error {
 	l := log.FromContext(ctx)
 
 	// validate platform format
@@ -217,16 +284,17 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 		// from multi-arch indexes, rather than relying on the kind string for this.
 		switch {
 		case desc.MediaType.IsImage():
-			if err := x.record(ctx, idx, desc, refName); err != nil {
+			if err := x.record(ctx, idx, desc, refName, "", platform.String() != ""); err != nil {
 				return err
 			}
 		case desc.MediaType.IsIndex():
 			l.Debugf("index [%s]: digest=[%s]... type=[%s]... size=[%d]", refName, desc.Digest.String(), desc.MediaType, desc.Size)
 
-			// when no platform is inputted... warn the user of potential mismatch on import for docker
-			// required for docker to be able to interpret and load the image correctly
+			// when no platform is inputted... docker load keeps only one architecture per tag (last wins)
+			// containerd and OCI imports include all architectures and are unaffected
 			if platform.String() == "" {
-				l.Warnf("compatibility warning... docker... specify platform to prevent potential mismatch on import of index [%s]", refName)
+				l.Warnf("compatibility warning... docker... multi-arch index [%s] saved without --platform", refName)
+				l.Warnf("'docker load' keeps only one architecture per tag (last wins)... use --platform (i.e. linux/amd64) to select one... containerd and OCI imports include all architectures and are unaffected")
 			}
 
 			iix, err := idx.ImageIndex(desc.Digest)
@@ -253,7 +321,7 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 						continue
 					}
 
-					if err := x.record(ctx, iix, ixd, refName); err != nil {
+					if err := x.record(ctx, iix, ixd, refName, desc.Digest.String(), platform.String() != ""); err != nil {
 						return err
 					}
 				}
@@ -270,7 +338,95 @@ func writeExportsManifest(ctx context.Context, dir string, platformStr string) e
 		return err
 	}
 
-	return oci.WriteFile(consts.ImageManifestFile, buf.Bytes(), 0666)
+	return os.WriteFile(filepath.Join(outDir, consts.ImageManifestFile), buf.Bytes(), 0666)
+}
+
+// writeContainerdIndexes writes the two indexes a --containerd haul carries into
+// outDir: index.json filtered to image/imageIndex kinds with containerd names
+// normalized (containerd's OCI import path reads it -- non-image artifacts would
+// break the import, and un-normalized names miss CRI lookups, #744), and a
+// byte-identical full copy as consts.HaulerIndexFile so store load loses nothing.
+// The store's own files are never modified. Returns how many descriptors were
+// excluded from the filtered index.
+//
+// Kept iff kind is image/imageIndex AND ContainerdImageNameKey is present --
+// mirrors writeExportsManifest's predicate. The kind check alone isn't enough:
+// store.Layout.AddArtifact tags every artifact it writes, charts and files
+// included, with KindAnnotationImage and never sets ContainerdImageNameKey, so
+// only real images carry that annotation; the name check is what actually
+// separates them out.
+func writeContainerdIndexes(storeDir, outDir string) (int, error) {
+	data, err := os.ReadFile(filepath.Join(storeDir, ocispec.ImageIndexFile))
+	if err != nil {
+		return 0, err
+	}
+	if err := os.WriteFile(filepath.Join(outDir, consts.HaulerIndexFile), data, 0666); err != nil {
+		return 0, err
+	}
+
+	var idx ocispec.Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return 0, err
+	}
+	kept := idx.Manifests[:0:0]
+	for _, d := range idx.Manifests {
+		kind := d.Annotations[consts.KindAnnotationName]
+		if kind != consts.KindAnnotationImage && kind != consts.KindAnnotationIndex {
+			continue
+		}
+		if _, hasName := d.Annotations[consts.ContainerdImageNameKey]; !hasName {
+			continue
+		}
+		normalizeContainerdName(d.Annotations)
+		kept = append(kept, d)
+	}
+	dropped := len(idx.Manifests) - len(kept)
+	idx.Manifests = kept
+
+	out, err := json.Marshal(idx)
+	if err != nil {
+		return 0, err
+	}
+	return dropped, os.WriteFile(filepath.Join(outDir, ocispec.ImageIndexFile), out, 0666)
+}
+
+// normalizeContainerdName rewrites annotations' io.containerd.image.name through
+// reference.NormalizeContainerd in place, when present -- the v1-parity fix
+// (#744 §3) shared by both writeContainerdIndexes' filtered rewrite and
+// writeDefaultIndex's unfiltered one, so archives from stores populated by
+// older v2 versions (or run through --rewrite) still carry CRI-resolvable names.
+func normalizeContainerdName(annotations map[string]string) {
+	if name, ok := annotations[consts.ContainerdImageNameKey]; ok {
+		annotations[consts.ContainerdImageNameKey] = reference.NormalizeContainerd(name)
+	}
+}
+
+// writeDefaultIndex writes a normalized copy of storeDir's index.json into outDir
+// for default-mode (non-`--containerd`) saves: every descriptor is kept -- unlike
+// writeContainerdIndexes nothing is dropped, so default hauls carry no sidecar --
+// but io.containerd.image.name annotations are normalized where present. This
+// matters because save also restores the oci-layout marker for default hauls,
+// which steers `ctr images import` onto the OCI path where the annotation is
+// read verbatim (#744 amended §3). The store's own index.json is untouched.
+func writeDefaultIndex(storeDir, outDir string) error {
+	data, err := os.ReadFile(filepath.Join(storeDir, ocispec.ImageIndexFile))
+	if err != nil {
+		return err
+	}
+
+	var idx ocispec.Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return err
+	}
+	for i := range idx.Manifests {
+		normalizeContainerdName(idx.Manifests[i].Annotations)
+	}
+
+	out, err := json.Marshal(idx)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(outDir, ocispec.ImageIndexFile), out, 0666)
 }
 
 func (x *exports) describe() tarball.Manifest {
@@ -281,7 +437,7 @@ func (x *exports) describe() tarball.Manifest {
 	return m
 }
 
-func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1.Descriptor, refname string) error {
+func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1.Descriptor, refname string, parentDigest string, platformSpecified bool) error {
 	l := log.FromContext(ctx)
 
 	digest := desc.Digest.String()
@@ -329,14 +485,14 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 		}
 	}
 
-	ref, err := name.ParseReference(refname)
+	ref, err := reference.ParseReference(refname)
 	if err != nil {
 		return err
 	}
 
 	// record tags for the digest, eliminating dupes
 	switch tag := ref.(type) {
-	case name.Tag:
+	case goname.Tag:
 		named, err := referencev3.ParseNormalizedNamed(refname)
 		if err != nil {
 			return err
@@ -347,17 +503,28 @@ func (x *exports) record(ctx context.Context, index libv1.ImageIndex, desc libv1
 		slices.Sort(xd.RepoTags)
 		xd.RepoTags = slices.Compact(xd.RepoTags)
 		ref = tag.Digest(digest)
-	case name.Digest:
-		// For digest-only refs, derive a deterministic, docker-valid tag from
-		// the manifest digest so ctr/docker can import the image (#642).
-		// Convention mirrors copy.go:229: "sha256-<hex>".
+	case goname.Digest:
+		// For digest-only refs, derive a deterministic, docker-valid tag from the
+		// digest the user actually pinned (#642, #744). For a multi-arch index that
+		// is the PARENT index digest, not this child's; children disambiguate with
+		// an os-arch suffix because docker load keeps only the last of duplicate tags.
 		named, err := referencev3.ParseNormalizedNamed(tag.Repository.Name())
 		if err != nil {
 			return err
 		}
 		familiarRepo := referencev3.FamiliarName(named)
-		digestTag := strings.ReplaceAll(digest, ":", "-") // e.g. "sha256-498a..."
-		repotag := familiarRepo + ":" + digestTag
+		base := digest
+		suffix := ""
+		if parentDigest != "" {
+			base = parentDigest
+			if !platformSpecified && desc.Platform != nil {
+				suffix = "-" + desc.Platform.OS + "-" + desc.Platform.Architecture
+				if desc.Platform.Variant != "" {
+					suffix += "-" + desc.Platform.Variant
+				}
+			}
+		}
+		repotag := familiarRepo + ":" + strings.ReplaceAll(base, ":", "-") + suffix
 		xd.RepoTags = append(xd.RepoTags[:], repotag)
 		slices.Sort(xd.RepoTags)
 		xd.RepoTags = slices.Compact(xd.RepoTags)

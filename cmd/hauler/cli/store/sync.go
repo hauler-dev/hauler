@@ -15,7 +15,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/google/go-containerregistry/pkg/authn"
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/mitchellh/go-homedir"
@@ -53,7 +53,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			manifestLoc := fmt.Sprintf("%s/hauler/%s-manifest.yaml:%s", ProductRegistry, parts[0], tag)
 			fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
 
-			parsedRef, err := gname.ParseReference(manifestLoc)
+			parsedRef, err := goname.ParseReference(manifestLoc)
 			if err != nil {
 				return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
 			}
@@ -163,12 +163,14 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return fmt.Errorf("failed to fetch product manifest for [%s]: %w", productName, err)
 		}
-		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
+		// The manifest is output for the user, so it goes to workDir, not tempDir (removed when sync returns).
+		workDir := flags.ResolveWorkDir(ro)
+		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts, DestinationDir: workDir}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
 		if err != nil {
 			return err
 		}
 		fileName := fmt.Sprintf("%s-manifest.yaml", parts[0])
-		fi, err := os.Open(fileName)
+		fi, err := os.Open(filepath.Join(workDir, fileName))
 		if err != nil {
 			return err
 		}
@@ -834,7 +836,7 @@ func resolveAndVerify(ctx context.Context, cache *cosign.Cache, j imageJob, rso 
 	}
 	logVerifyInputs(ctx, j)
 
-	ref, err := gname.ParseReference(j.img.Name)
+	ref, err := goname.ParseReference(j.img.Name)
 	if err != nil {
 		return "", &verifyError{stage: "unable to parse image reference", err: err}
 	}
@@ -876,7 +878,7 @@ func resolveAndVerify(ctx context.Context, cache *cosign.Cache, j imageJob, rso 
 // retry.Operation checks ctx before every attempt and aborts its backoff on
 // cancellation, so a cancelled run still fails fast rather than sleeping out
 // the budget.
-func pinDigest(ctx context.Context, ref gname.Reference, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) (string, error) {
+func pinDigest(ctx context.Context, ref goname.Reference, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) (string, error) {
 	var pinned string
 	err := retry.Operation(ctx, rso, ro, func() error {
 		desc, headErr := remote.Head(ref,

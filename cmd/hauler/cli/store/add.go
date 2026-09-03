@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/errgroup"
 	"helm.sh/helm/v4/pkg/action"
@@ -128,6 +128,15 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 			resolvedPath = abs
 		}
 	}
+
+	// Preserve the original source (a URL for remote files, an absolute path for
+	// local ones) so `store create manifest` can recover it later; nothing else in
+	// the store retains it.
+	desc.Annotations[consts.OriginalRefAnnotation] = resolvedPath
+	if err := s.OCI.AddIndex(desc); err != nil {
+		return err
+	}
+
 	if auditLevel(ro) != "none" {
 		e := audit.Entry{
 			StoreID:           s.StoreID,
@@ -294,8 +303,8 @@ func verifyAddImage(ctx context.Context, o *flags.AddImageOpts, ref string, rso 
 	if cfg.Empty() {
 		return "", nil
 	}
-
-	r, err := name.ParseReference(ref)
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
+	r, err := goname.ParseReference(ref)
 	if err != nil {
 		return "", &verifyError{stage: "unable to parse image reference", err: err}
 	}
@@ -391,7 +400,8 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 
 	l.Debugf("resolving image [%s] from local Docker daemon (rewrite=%q)", i.Name, rewrite)
 
-	r, err := name.ParseReference(i.Name)
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
+	r, err := goname.ParseReference(i.Name)
 	if err != nil {
 		if ignoreErrors {
 			l.Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
@@ -415,13 +425,13 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 		rawRewrite := rewrite
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
-			if tag, ok := r.(name.Tag); ok {
+			if tag, ok := r.(goname.Tag); ok {
 				rewrite = rewrite + ":" + tag.TagStr()
 			} else {
 				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
 			}
 		}
-		newRef, err := name.ParseReference(rewrite)
+		newRef, err := goname.ParseReference(rewrite)
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
@@ -463,6 +473,34 @@ func storeLocalImage(ctx context.Context, s *store.Layout, i v1.Image, _ *flags.
 	return nil
 }
 
+// digestRefTag recovers the tag component of a "repo:tag@sha256:..." image
+// reference. go-containerregistry parses such a string as a Digest, and
+// Digest.Name()/Context() drop the tag entirely with no accessor to recover
+// it, so this re-derives it from the "@"-delimited left half of the original
+// input string. ok is false for a plain "repo@sha256:..." ref, which has no
+// tag to recover and must be left on the digest-only path unchanged.
+func digestRefTag(d goname.Digest) (goname.Tag, bool) {
+	left, _, found := strings.Cut(d.String(), "@")
+	if !found {
+		return goname.Tag{}, false
+	}
+
+	// Mirror goname.NewTag's own repo-vs-host:port disambiguation: a colon
+	// only introduces a tag if it appears after the last "/" (otherwise it's
+	// part of a "host:port" registry authority with no tag at all).
+	colonIdx := strings.LastIndex(left, ":")
+	slashIdx := strings.LastIndex(left, "/")
+	if colonIdx < 0 || colonIdx < slashIdx {
+		return goname.Tag{}, false
+	}
+
+	tag, err := goname.NewTag(left)
+	if err != nil {
+		return goname.Tag{}, false
+	}
+	return tag, true
+}
+
 // storeImage fetches and stores image i. verified records whether
 // verification was both requested and actually succeeded for the exact bytes
 // being stored (pinnedDigest) -- callers compute it themselves rather than
@@ -485,7 +523,8 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 
 	log.BaseFromContext(ctx).Debugf("resolving image [%s] (verified=%t, platform=%q, excludeExtras=%t, insecureSkipTLSVerify=%t, caFile=%q, rewrite=%q, digest=%q)", i.Name, verified, platform, excludeExtras, insecureSkipTLSVerify, caFile, rewrite, pinnedDigest)
 
-	r, err := name.ParseReference(i.Name)
+	// goname used in add so references such as 'add image nginx' resolve to docker hub
+	r, err := goname.ParseReference(i.Name)
 	if err != nil {
 		if ignoreErrors {
 			log.BaseFromContext(ctx).Warnf("unable to parse image [%s]: %v... skipping...", i.Name, err)
@@ -493,6 +532,25 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		} else {
 			log.BaseFromContext(ctx).Errorf("unable to parse image [%s]: %v", i.Name, err)
 			return err
+		}
+	}
+
+	// effectiveRef is what names the artifact in the store, everywhere below.
+	// It's r itself except for "repo:tag@sha256:..." input: r parses as a
+	// Digest there, and Digest.Name() silently drops the tag (see
+	// digestRefTag), so without this the store would record the tag-less
+	// digest form and the human-readable name the user asked for would be
+	// lost. addPinnedDigest only gains a value here when the caller passed
+	// none in -- resolveAndVerify/verifyAddImage already HEAD the same
+	// digest ref before pinning, so an existing pin is left untouched.
+	effectiveRef := r
+	addPinnedDigest := pinnedDigest
+	if d, isDigest := r.(goname.Digest); isDigest {
+		if tag, ok := digestRefTag(d); ok {
+			effectiveRef = tag
+			if addPinnedDigest == "" {
+				addPinnedDigest = d.DigestStr()
+			}
 		}
 	}
 
@@ -507,7 +565,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	err = retry.Operation(ctx, rso, ro, func() error {
 		attemptStats := &store.ImageStats{}
 		var addErr error
-		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), r.Name(), platform, excludeExtras, pinnedDigest, insecureSkipTLSVerify, caFile)
+		imageDigest, addErr = s.AddImage(store.WithImageStats(ctx, attemptStats), effectiveRef.Name(), platform, excludeExtras, addPinnedDigest, insecureSkipTLSVerify, caFile)
 		if addErr == nil {
 			stats = attemptStats
 		}
@@ -515,7 +573,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	})
 	if err != nil {
 		if ignoreErrors {
-			log.BaseFromContext(ctx).Warnf("unable to add image [%s] to store: %v... skipping...", r.Name(), err)
+			log.BaseFromContext(ctx).Warnf("unable to add image [%s] to store: %v... skipping...", effectiveRef.Name(), err)
 			return nil
 		} else if errors.Is(err, context.Canceled) {
 			// Under errgroup.WithContext fail-fast (runImageJobs), one real
@@ -523,10 +581,10 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 			// this at ERROR would produce N-1 alarming lines for something
 			// that isn't the actual failure -- the real error is reported by
 			// whichever job's storeImage call hit it first.
-			log.BaseFromContext(ctx).Debugf("unable to add image [%s] to store: %v", r.Name(), err)
+			log.BaseFromContext(ctx).Debugf("unable to add image [%s] to store: %v", effectiveRef.Name(), err)
 			return err
 		} else {
-			log.BaseFromContext(ctx).Errorf("unable to add image [%s] to store: %v", r.Name(), err)
+			log.BaseFromContext(ctx).Errorf("unable to add image [%s] to store: %v", effectiveRef.Name(), err)
 			return err
 		}
 	}
@@ -535,18 +593,18 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		rawRewrite := rewrite
 		rewrite = strings.TrimPrefix(rewrite, "/")
 		if !strings.Contains(rewrite, ":") {
-			if tag, ok := r.(name.Tag); ok {
+			if tag, ok := effectiveRef.(goname.Tag); ok {
 				rewrite = rewrite + ":" + tag.TagStr()
 			} else {
-				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", r.Name())
+				return fmt.Errorf("cannot rewrite digest reference [%s] without an explicit tag in the rewrite", effectiveRef.Name())
 			}
 		}
 		// rename image name in store
-		newRef, err := name.ParseReference(rewrite)
+		newRef, err := goname.ParseReference(rewrite)
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
-		if err := rewriteReference(ctx, s, r, newRef, rawRewrite); err != nil {
+		if err := rewriteReference(ctx, s, effectiveRef, newRef, rawRewrite); err != nil {
 			return err
 		}
 	}
@@ -558,7 +616,7 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 			Type:      "image",
 			Command:   "store add image",
 			Args:      []string{i.Name},
-			Reference: r.Name(),
+			Reference: effectiveRef.Name(),
 			Digest:    imageDigest,
 		}
 		if auditLevel(ro) == "verbose" {
@@ -590,11 +648,11 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		l.Debugf("generated audit id of [none]")
 	}
 
-	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(r.Name(), stats, time.Since(start)))
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(effectiveRef.Name(), stats, time.Since(start)))
 	return nil
 }
 
-func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Reference, newRef name.Reference, rawRewrite string) error {
+func rewriteReference(ctx context.Context, s *store.Layout, oldRef goname.Reference, newRef goname.Reference, rawRewrite string) error {
 	//TODO: improve string manipulation
 	oldRefContext := oldRef.Context()
 	newRefContext := newRef.Context()
@@ -602,17 +660,17 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 	newRepo := newRefContext.RepositoryStr()
 
 	oldTag := oldRef.Identifier()
-	if tag, ok := oldRef.(name.Tag); ok {
+	if tag, ok := oldRef.(goname.Tag); ok {
 		oldTag = tag.TagStr()
 	}
 	newTag := newRef.Identifier()
-	if tag, ok := newRef.(name.Tag); ok {
+	if tag, ok := newRef.(goname.Tag); ok {
 		newTag = tag.TagStr()
 	}
 
-	// ContainerdImageNameKey stores annotationRef.Name() verbatim, which includes the
-	// "index.docker.io" prefix for docker.io images. Do not strip "index." here or the
-	// comparison will never match images stored by writeImage/writeIndex.
+	// Stores written before the #744 fix carry "index.docker.io/..." containerd
+	// names; new writes are normalized to "docker.io/...". Normalize both sides
+	// of the comparison so rewrite matches either vintage.
 	oldRegistry := oldRefContext.RegistryStr()
 	newRegistry := newRefContext.RegistryStr()
 	// If user omitted a registry in the rewrite string, go-containerregistry defaults to
@@ -634,10 +692,16 @@ func rewriteReference(ctx context.Context, s *store.Layout, oldRef name.Referenc
 
 	log.BaseFromContext(ctx).Infof("rewriting [%s] to [%s]", oldTotalReg, newTotalReg)
 
+	// The write below still emits newTotalReg's un-normalized form (registry-preservation
+	// and library/-stripping above depend on go-containerregistry's literal "index.docker.io"
+	// default) -- only the match target is normalized, so lookup tolerates either vintage.
+	oldTotalRegNormalized := reference.NormalizeContainerd(oldTotalReg)
+
 	//find and update reference
 	matched, err := s.OCI.UpdateAnnotations(
 		func(d ocispec.Descriptor) bool {
-			return d.Annotations[ocispec.AnnotationRefName] == oldTotal && d.Annotations[consts.ContainerdImageNameKey] == oldTotalReg
+			return d.Annotations[ocispec.AnnotationRefName] == oldTotal &&
+				reference.NormalizeContainerd(d.Annotations[consts.ContainerdImageNameKey]) == oldTotalRegNormalized
 		},
 		func(a map[string]string) {
 			a[ocispec.AnnotationRefName] = newTotal
@@ -1171,6 +1235,16 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 		return nil, nil, err
 	}
 
+	// Charts have no registry-qualified annotation the way images do (via
+	// ContainerdImageNameKey), and RepoURL is otherwise never persisted anywhere in
+	// the store, so capture both here to maintain provenance regardless of whether
+	// --rewrite is ever applied. This must happen before rewriteChartReference so its
+	// retag of AnnotationRefName isn't clobbered by re-adding a pre-rewrite chartDesc.
+	chartDesc.Annotations[consts.OriginalRefAnnotation] = encodeOriginalChartRef(j.cfg.RepoURL, ref.Name())
+	if err := s.OCI.AddIndex(chartDesc); err != nil {
+		return nil, nil, err
+	}
+
 	if j.rewrite != "" {
 		if err := rewriteChartReference(ctx, s, ref, j.rewrite); err != nil {
 			return nil, nil, err
@@ -1456,10 +1530,12 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 
 // rewriteChartReference retags a stored chart's index entry from ref to
 // rewrite. A rewrite that omits a tag inherits ref's.
-func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Reference, rewrite string) error {
+func rewriteChartReference(ctx context.Context, s *store.Layout, ref goname.Reference, rewrite string) error {
 	rewrite = strings.TrimPrefix(rewrite, "/")
 	rawRewrite := rewrite
-	newRef, err := name.ParseReference(rewrite)
+	// hauler reference helper used (default registry "") because charts stored with no registry reference
+	// this avoids the docker.io/library normalization behavior
+	newRef, err := reference.ParseReference(rewrite)
 	if err != nil {
 		// error... don't continue with a bad reference
 		return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
@@ -1467,12 +1543,12 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Refere
 
 	// if rewrite omits a tag... keep the existing tag
 	oldTag := ref.Identifier()
-	if tag, ok := ref.(name.Tag); ok {
+	if tag, ok := ref.(goname.Tag); ok {
 		oldTag = tag.TagStr()
 	}
 	if !strings.Contains(rewrite, ":") {
 		rewrite = strings.Join([]string{rewrite, oldTag}, ":")
-		newRef, err = name.ParseReference(rewrite)
+		newRef, err = reference.ParseReference(rewrite)
 		if err != nil {
 			return fmt.Errorf("unable to parse rewrite name [%s]: %w", rewrite, err)
 		}
@@ -1489,7 +1565,7 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Refere
 		newRepo = strings.TrimPrefix(newRepo, "library/")
 	}
 	newTag := newRef.Identifier()
-	if tag, ok := newRef.(name.Tag); ok {
+	if tag, ok := newRef.(goname.Tag); ok {
 		newTag = tag.TagStr()
 	}
 
@@ -1515,4 +1591,13 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref name.Refere
 	}
 
 	return nil
+}
+
+// encodeOriginalChartRef combines a chart's source repoURL with its pre-rewrite
+// store "repo:tag" into a single string suitable for consts.OriginalRefAnnotation.
+// Charts have no registry-qualified annotation the way images do (via
+// ContainerdImageNameKey), so the repoURL has to be carried alongside the ref
+// itself for `store create manifest` to recover a fully pullable chart reference.
+func encodeOriginalChartRef(repoURL, total string) string {
+	return repoURL + "|" + total
 }

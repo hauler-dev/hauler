@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	ccontent "github.com/containerd/containerd/v2/core/content"
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
@@ -27,6 +27,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -450,7 +451,7 @@ func TestCopyDescriptorGraph_Index(t *testing.T) {
 		},
 	)
 
-	idxTag, err := gname.NewTag(host+"/test/multiarch:v1", gname.Insecure)
+	idxTag, err := goname.NewTag(host+"/test/multiarch:v1", goname.Insecure)
 	if err != nil {
 		t.Fatalf("new tag: %v", err)
 	}
@@ -702,7 +703,7 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 	}
 
 	// 2. Push a random base image.
-	baseTag, err := gname.NewTag(host+"/test/image:v1", gname.Insecure)
+	baseTag, err := goname.NewTag(host+"/test/image:v1", goname.Insecure)
 	if err != nil {
 		t.Fatalf("new tag: %v", err)
 	}
@@ -753,7 +754,7 @@ func TestAddImage_OCI11Referrers(t *testing.T) {
 
 	// Push the referrer under an arbitrary tag... the in-process registry auto-wires the
 	// subject field and makes the manifest discoverable via GET /v2/.../referrers/<digest>.
-	referrerTag, err := gname.NewTag(host+"/test/image:bundle-referrer", gname.Insecure)
+	referrerTag, err := goname.NewTag(host+"/test/image:bundle-referrer", goname.Insecure)
 	if err != nil {
 		t.Fatalf("referrer tag: %v", err)
 	}
@@ -816,7 +817,7 @@ func seedImage(t *testing.T, host, repo, tag string, opts ...remote.Option) v1.I
 	if err != nil {
 		t.Fatalf("random.Image: %v", err)
 	}
-	ref, err := gname.NewTag(host+"/"+repo+":"+tag, gname.Insecure)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
 	if err != nil {
 		t.Fatalf("new tag: %v", err)
 	}
@@ -843,7 +844,7 @@ func TestAddImagePinnedDigestIgnoresMovedTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("random.Image: %v", err)
 	}
-	ref, err := gname.ParseReference(host + "/test/pinned:v1")
+	ref, err := reference.ParseReference(host + "/test/pinned:v1")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -880,4 +881,113 @@ func TestAddImageEmptyPinResolvesTag(t *testing.T) {
 	if got != want.String() {
 		t.Fatalf("stored digest = %s, want %s", got, want.String())
 	}
+}
+
+// TestAddImage_OriginalRefAnnotation verifies that AddImage captures the original,
+// fully pullable containerd-style reference (registry/repo:tag) under
+// consts.OriginalRefAnnotation, for both single-platform images (writeImage) and
+// multi-platform indices (writeIndex), so that provenance survives even if the
+// ref/containerd-name annotations are later overwritten by a rewrite.
+func TestAddImage_OriginalRefAnnotation(t *testing.T) {
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+
+	remoteOpts := []remote.Option{
+		remote.WithTransport(srv.Client().Transport),
+	}
+
+	t.Run("single-platform image", func(t *testing.T) {
+		tag, err := goname.NewTag(host+"/test/image:v1", goname.Insecure)
+		if err != nil {
+			t.Fatalf("new tag: %v", err)
+		}
+		img, err := random.Image(512, 2)
+		if err != nil {
+			t.Fatalf("random image: %v", err)
+		}
+		if err := remote.Write(tag, img, remoteOpts...); err != nil {
+			t.Fatalf("push image: %v", err)
+		}
+
+		s, err := store.NewLayout(t.TempDir())
+		if err != nil {
+			t.Fatalf("new layout: %v", err)
+		}
+		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+
+		wantOriginalRef := tag.Name()
+		found := false
+		if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+			if desc.Annotations[consts.OriginalRefAnnotation] == wantOriginalRef {
+				found = true
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		if !found {
+			t.Errorf("expected an artifact with OriginalRefAnnotation=%q, none found", wantOriginalRef)
+		}
+	})
+
+	t.Run("multi-platform index", func(t *testing.T) {
+		amd64Img, err := random.Image(512, 2)
+		if err != nil {
+			t.Fatalf("random image amd64: %v", err)
+		}
+		arm64Img, err := random.Image(512, 2)
+		if err != nil {
+			t.Fatalf("random image arm64: %v", err)
+		}
+		idx := mutate.AppendManifests(
+			empty.Index,
+			mutate.IndexAddendum{
+				Add: amd64Img,
+				Descriptor: v1.Descriptor{
+					MediaType: types.OCIManifestSchema1,
+					Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+				},
+			},
+			mutate.IndexAddendum{
+				Add: arm64Img,
+				Descriptor: v1.Descriptor{
+					MediaType: types.OCIManifestSchema1,
+					Platform:  &v1.Platform{OS: "linux", Architecture: "arm64"},
+				},
+			},
+		)
+		tag, err := goname.NewTag(host+"/test/multiarch:v1", goname.Insecure)
+		if err != nil {
+			t.Fatalf("new tag: %v", err)
+		}
+		if err := remote.WriteIndex(tag, idx, remoteOpts...); err != nil {
+			t.Fatalf("push index: %v", err)
+		}
+
+		s, err := store.NewLayout(t.TempDir())
+		if err != nil {
+			t.Fatalf("new layout: %v", err)
+		}
+		if _, err := s.AddImage(context.Background(), tag.Name(), "", false, "", false, "", remoteOpts...); err != nil {
+			t.Fatalf("AddImage: %v", err)
+		}
+
+		wantOriginalRef := tag.Name()
+		found := false
+		if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+			if desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationIndex &&
+				desc.Annotations[consts.OriginalRefAnnotation] == wantOriginalRef {
+				found = true
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		if !found {
+			t.Errorf("expected the index artifact to have OriginalRefAnnotation=%q, none found", wantOriginalRef)
+		}
+	})
 }

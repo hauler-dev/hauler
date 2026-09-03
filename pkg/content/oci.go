@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sync/singleflight"
 
@@ -151,6 +151,34 @@ func (o *OCI) BlobConcurrency() int {
 	return o.blobConcurrency
 }
 
+// nameMapKey derives the nameMap key for an AnnotationRefName-shaped ref
+// (e.g. "repo:tag" or "repo@sha256:...") and a kind annotation. AddIndex,
+// loadIndexLocked, and ociPusher.Push must all derive this identically: a
+// goname.Digest keys by key.Name(), which retains the digest (registry/repo@digest),
+// so two different digests in one repository never collide on the same key --
+// key.Context().String() is repo-only and once made the second of two such
+// writes silently delete the first (see AddIndex's history). A goname.Tag
+// keys by its full string; tag entries never carry a digest suffix. ok is
+// false for the "--" placeholder ref or an unrecognized reference kind, both
+// of which callers treat as "nothing to store under this key."
+func nameMapKey(ref, kind string) (key string, ok bool, err error) {
+	parsed, err := reference.Parse(ref)
+	if err != nil {
+		return "", false, err
+	}
+	if strings.TrimSpace(parsed.String()) == "--" {
+		return "", false, nil
+	}
+	switch parsed.(type) {
+	case goname.Digest:
+		return fmt.Sprintf("%s-%s", parsed.Name(), kind), true, nil
+	case goname.Tag:
+		return fmt.Sprintf("%s-%s", parsed.String(), kind), true, nil
+	default:
+		return "", false, nil
+	}
+}
+
 // AddIndex adds a descriptor to the index and updates it
 //
 //	The descriptor must use AnnotationRefName to identify itself
@@ -161,22 +189,11 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 		return fmt.Errorf("descriptor must contain a reference from the annotation: %s", ocispec.AnnotationRefName)
 	}
 
-	key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
+	mapKey, ok, err := nameMapKey(desc.Annotations[ocispec.AnnotationRefName], desc.Annotations[consts.KindAnnotationName])
 	if err != nil {
 		return err
 	}
-
-	if strings.TrimSpace(key.String()) == "--" {
-		return nil
-	}
-
-	var mapKey string
-	switch key.(type) {
-	case name.Digest:
-		mapKey = fmt.Sprintf("%s-%s", key.Context().String(), desc.Annotations[consts.KindAnnotationName])
-	case name.Tag:
-		mapKey = fmt.Sprintf("%s-%s", key.String(), desc.Annotations[consts.KindAnnotationName])
-	default:
+	if !ok {
 		return nil
 	}
 
@@ -192,6 +209,13 @@ func (o *OCI) AddIndex(desc ocispec.Descriptor) error {
 		}
 	}
 
+	// Clone the annotations before storing: the caller keeps its own copy of
+	// desc (AddArtifact returns the very descriptor it passed here), and
+	// storeFile/fetchChart annotate that copy afterwards to record the
+	// original reference. Aliasing the same map into nameMap would let those
+	// unsynchronized writes race saveIndexLocked's iteration, and would also
+	// make the follow-up AddIndex compare equal to itself and skip the save.
+	desc.Annotations = maps.Clone(desc.Annotations)
 	o.nameMap.Store(mapKey, desc)
 	return o.saveIndexCheckpointLocked()
 }
@@ -258,12 +282,6 @@ func (o *OCI) loadIndexLocked() error {
 	}
 
 	for _, desc := range o.index.Manifests {
-		key, err := reference.Parse(desc.Annotations[ocispec.AnnotationRefName])
-		if err != nil {
-			// skip malformed entries rather than making the entire store unreadable
-			continue
-		}
-
 		// Set default kind if missing... normalize legacy dev.cosignproject.cosign values
 		kind := desc.Annotations[consts.KindAnnotationName]
 		kind = consts.NormalizeLegacyKind(kind)
@@ -278,13 +296,17 @@ func (o *OCI) loadIndexLocked() error {
 		normalized[consts.KindAnnotationName] = kind
 		desc.Annotations = normalized
 
-		if strings.TrimSpace(key.String()) != "--" {
-			switch key.(type) {
-			case name.Digest:
-				o.nameMap.Store(fmt.Sprintf("%s-%s", key.Context().String(), kind), desc)
-			case name.Tag:
-				o.nameMap.Store(fmt.Sprintf("%s-%s", key.String(), kind), desc)
-			}
+		// Must derive the same key AddIndex/ociPusher.Push would (see
+		// nameMapKey's comment), or an entry written this run and one loaded
+		// from a prior run collide under a different key than the one that
+		// wrote it.
+		mapKey, ok, err := nameMapKey(desc.Annotations[ocispec.AnnotationRefName], kind)
+		if err != nil {
+			// skip malformed entries rather than making the entire store unreadable
+			continue
+		}
+		if ok {
+			o.nameMap.Store(mapKey, desc)
 		}
 	}
 
@@ -771,6 +793,28 @@ type ociPusher struct {
 	digest string
 }
 
+// pusherRef reconstructs the AnnotationRefName-shaped string identifying a
+// push driven by Pusher(ctx, ref) -- e.g. "repo:tag" or "repo@sha256:..." --
+// so it can be handed to nameMapKey. store.Layout.CopyAll always appends the
+// root descriptor's own digest onto the destination ref for verification,
+// even for a tag-sourced entry (see its comment), so digest's mere presence
+// can't say whether the *original* ref carried a digest or a tag; only ref
+// (the part before "@") can, via the same repo-vs-host:port-vs-tag
+// disambiguation goname.NewTag applies internally -- checked here first so a
+// bare digest-sourced "repo" is never handed to nameMapKey as if it were a
+// tagless Tag reference, which would default it to a spurious ":latest".
+func pusherRef(ref, digest string) string {
+	colonIdx := strings.LastIndex(ref, ":")
+	slashIdx := strings.LastIndex(ref, "/")
+	if colonIdx >= 0 && colonIdx > slashIdx {
+		return ref
+	}
+	if digest == "" {
+		return ref
+	}
+	return ref + "@" + digest
+}
+
 // Push returns a content writer for the given resource identified
 // by the descriptor.
 func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Writer, error) {
@@ -785,7 +829,6 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 				p.oci.mu.Unlock()
 				return nil, err
 			}
-			// Use compound key format: "reference-kind"; normalize legacy values.
 			kind := d.Annotations[consts.KindAnnotationName]
 			kind = consts.NormalizeLegacyKind(kind)
 			if kind == "" {
@@ -797,8 +840,19 @@ func (p *ociPusher) Push(ctx context.Context, d ocispec.Descriptor) (ccontent.Wr
 			maps.Copy(normalizedAnnotations, d.Annotations)
 			normalizedAnnotations[consts.KindAnnotationName] = kind
 			d.Annotations = normalizedAnnotations
-			key := fmt.Sprintf("%s-%s", p.ref, kind)
-			p.oci.nameMap.Store(key, d)
+			// Must derive the same key AddIndex/loadIndexLocked would (see
+			// nameMapKey's comment) -- store.Layout.CopyAll always appends the
+			// root descriptor's digest onto the destination ref, even for a
+			// tag-sourced entry, so pusherRef -- not a bare "p.ref@p.digest" --
+			// decides whether that digest actually belongs in the key.
+			mapKey, ok, keyErr := nameMapKey(pusherRef(p.ref, p.digest), kind)
+			if keyErr != nil {
+				p.oci.mu.Unlock()
+				return nil, keyErr
+			}
+			if ok {
+				p.oci.nameMap.Store(mapKey, d)
+			}
 			err := p.oci.saveIndexCheckpointLocked()
 			p.oci.mu.Unlock()
 			if err != nil {

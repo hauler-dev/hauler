@@ -20,7 +20,7 @@ import (
 
 	"github.com/mitchellh/go-homedir"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
@@ -740,12 +740,12 @@ spec:
 	// Seed the product registry with the manifest as a file-artifact OCI image.
 	host, rOpts := newLocalhostRegistry(t)
 	img := buildProductManifestImage(t, manifestFileName, manifestYAML)
-	imgTag, err := name.NewTag(
+	imgTag, err := goname.NewTag(
 		fmt.Sprintf("%s/hauler/%s:%s", host, manifestFileName, productVersion),
-		name.Insecure,
+		goname.Insecure,
 	)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if err := remote.Write(imgTag, img, rOpts...); err != nil {
 		t.Fatalf("remote.Write product manifest image: %v", err)
@@ -1966,11 +1966,11 @@ func TestSyncImages_SharedLayerDownloadedOnce(t *testing.T) {
 				t.Fatalf("mutate.AppendLayers img2: %v", err)
 			}
 
-			ref1, err := name.NewTag(host+"/repo1:latest", name.Insecure)
+			ref1, err := goname.NewTag(host+"/repo1:latest", goname.Insecure)
 			if err != nil {
 				t.Fatalf("NewTag ref1: %v", err)
 			}
-			ref2, err := name.NewTag(host+"/repo2:latest", name.Insecure)
+			ref2, err := goname.NewTag(host+"/repo2:latest", goname.Insecure)
 			if err != nil {
 				t.Fatalf("NewTag ref2: %v", err)
 			}

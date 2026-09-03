@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -57,9 +57,9 @@ func seedInfoCheckImage(t *testing.T, host, repo, tag string) {
 	if err != nil {
 		t.Fatalf("random.Image: %v", err)
 	}
-	ref, err := name.NewTag(host+"/"+repo+":"+tag, name.Insecure)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
 	if err != nil {
-		t.Fatalf("name.NewTag: %v", err)
+		t.Fatalf("goname.NewTag: %v", err)
 	}
 	if err := remote.Write(ref, img); err != nil {
 		t.Fatalf("remote.Write: %v", err)

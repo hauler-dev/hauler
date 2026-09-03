@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -40,6 +40,7 @@ import (
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -251,6 +252,36 @@ func TestApplyDefaultRegistry(t *testing.T) {
 	}
 }
 
+func TestEncodeOriginalChartRef(t *testing.T) {
+	tests := []struct {
+		name    string
+		repoURL string
+		total   string
+		want    string
+	}{
+		{
+			name:    "repoURL and ref joined with pipe",
+			repoURL: "https://charts.example.com",
+			total:   "mychart:1.0.0",
+			want:    "https://charts.example.com|mychart:1.0.0",
+		},
+		{
+			name:    "empty repoURL still joined with pipe",
+			repoURL: "",
+			total:   "mychart:1.0.0",
+			want:    "|mychart:1.0.0",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := encodeOriginalChartRef(tc.repoURL, tc.total)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRewriteReference(t *testing.T) {
 	ctx := newTestContext(t)
 
@@ -263,11 +294,11 @@ func TestRewriteReference(t *testing.T) {
 			t.Fatalf("AddImage: %v", err)
 		}
 
-		oldRef, err := name.NewTag(host+"/src/repo:v1", name.Insecure)
+		oldRef, err := goname.NewTag(host+"/src/repo:v1", goname.Insecure)
 		if err != nil {
 			t.Fatalf("parse oldRef: %v", err)
 		}
-		newRef, err := name.NewTag(host+"/dst/repo:v2", name.Insecure)
+		newRef, err := goname.NewTag(host+"/dst/repo:v2", goname.Insecure)
 		if err != nil {
 			t.Fatalf("parse newRef: %v", err)
 		}
@@ -283,8 +314,8 @@ func TestRewriteReference(t *testing.T) {
 
 	t.Run("old ref not found returns error", func(t *testing.T) {
 		s := newTestStore(t)
-		oldRef, _ := name.NewTag("docker.io/missing/repo:v1")
-		newRef, _ := name.NewTag("docker.io/new/repo:v2")
+		oldRef, _ := goname.NewTag("docker.io/missing/repo:v1")
+		newRef, _ := goname.NewTag("docker.io/new/repo:v2")
 		rawRewrite := newRef.String()
 
 		err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite)
@@ -309,8 +340,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest") // → index.docker.io/library/nginx:latest
-		newRef, _ := name.NewTag("nginx:v2")     // → index.docker.io/library/nginx:v2
+		oldRef, _ := goname.NewTag("nginx:latest") // → index.docker.io/library/nginx:latest
+		newRef, _ := goname.NewTag("nginx:v2")     // → index.docker.io/library/nginx:v2
 		rawRewrite := "nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -327,8 +358,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
 		rawRewrite := "docker.io/nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -345,8 +376,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("index.docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("index.docker.io/nginx:v2") // → index.docker.io/library/nginx:v2
 		rawRewrite := "index.docker.io/nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -365,8 +396,8 @@ func TestRewriteReference(t *testing.T) {
 			t.Fatalf("AddImage: %v", err)
 		}
 
-		oldRef, _ := name.NewTag(host+"/src/repo:v1", name.Insecure)
-		newRef, _ := name.NewTag("newrepo/img:v2") // defaults to index.docker.io
+		oldRef, _ := goname.NewTag(host+"/src/repo:v1", goname.Insecure)
+		newRef, _ := goname.NewTag("newrepo/img:v2") // defaults to index.docker.io
 		rawRewrite := "newrepo/img:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -388,8 +419,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("library/nginx:v2")
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("library/nginx:v2")
 		rawRewrite := "library/nginx:v2"
 
 		if err := rewriteReference(ctx, s, oldRef, newRef, rawRewrite); err != nil {
@@ -406,8 +437,8 @@ func TestRewriteReference(t *testing.T) {
 			consts.ContainerdImageNameKey: "index.docker.io/library/nginx:latest",
 		})
 
-		oldRef, _ := name.NewTag("nginx:latest")
-		newRef, _ := name.NewTag("library/nginx:v2")
+		oldRef, _ := goname.NewTag("nginx:latest")
+		newRef, _ := goname.NewTag("library/nginx:v2")
 		// AddImageCmd passes the pre-trim rewrite string through as rawRewrite, so a
 		// leading "/" must still be handled correctly here.
 		rawRewrite := "/library/nginx:v2"
@@ -417,6 +448,39 @@ func TestRewriteReference(t *testing.T) {
 		}
 		assertAnnotationsInStore(t, s, "library/nginx:v2", "index.docker.io/library/nginx:v2")
 	})
+}
+
+// TestRewriteReferenceMatchesContainerdNameVintage covers the #744 vintage gap:
+// stores written by older hauler v2 carry "index.docker.io/..." in
+// ContainerdImageNameKey, while stores written after the containerd-name
+// normalization fix (Task 1/2) carry "docker.io/...". rewriteReference's match
+// predicate compared that annotation verbatim, so it must be taught to match
+// either vintage against a docker.io rewrite request.
+func TestRewriteReferenceMatchesContainerdNameVintage(t *testing.T) {
+	ctx := newTestContext(t)
+
+	tests := []struct {
+		name           string
+		containerdName string
+	}{
+		{"legacy index.docker.io form", "index.docker.io/library/rewrite-legacy:v1"},
+		{"normalized docker.io form", "docker.io/library/rewrite-legacy:v1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestStore(t)
+			seedStoreDescriptor(t, s, map[string]string{
+				ocispec.AnnotationRefName:     "library/rewrite-legacy:v1",
+				consts.ContainerdImageNameKey: tc.containerdName,
+			})
+
+			oldRef, _ := reference.ParseReference("docker.io/library/rewrite-legacy:v1")
+			newRef, _ := reference.ParseReference("docker.io/library/rewrite-new:v1")
+			if err := rewriteReference(ctx, s, oldRef, newRef, "docker.io/library/rewrite-new:v1"); err != nil {
+				t.Fatalf("rewriteReference should match %s: %v", tc.name, err)
+			}
+		})
+	}
 }
 
 func TestRewriteChartReference(t *testing.T) {
@@ -432,7 +496,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "mychart:2.0.0"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}
@@ -445,7 +509,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "library/mychart:2.0.0"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}
@@ -458,7 +522,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "/library/mychart:2.0.0"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}
@@ -471,7 +535,7 @@ func TestRewriteChartReference(t *testing.T) {
 			ocispec.AnnotationRefName: "library/mychart:1.0.0",
 		})
 
-		ref, _ := name.NewTag("mychart:1.0.0")
+		ref, _ := goname.NewTag("mychart:1.0.0")
 		if err := rewriteChartReference(ctx, s, ref, "myneworg/mychart"); err != nil {
 			t.Fatalf("rewriteChartReference: %v", err)
 		}
@@ -499,6 +563,8 @@ func TestStoreFile(t *testing.T) {
 			t.Fatalf("storeFile: %v", err)
 		}
 		assertArtifactInStore(t, s, filepath.Base(tmp.Name()))
+		// OriginalRefAnnotation must capture the resolved absolute local path.
+		assertOriginalRefInStore(t, s, filepath.Base(tmp.Name()), tmp.Name())
 	})
 
 	t.Run("HTTP URL stored under basename", func(t *testing.T) {
@@ -508,6 +574,8 @@ func TestStoreFile(t *testing.T) {
 			t.Fatalf("storeFile: %v", err)
 		}
 		assertArtifactInStore(t, s, "script.sh")
+		// OriginalRefAnnotation must capture the original URL, not the local basename.
+		assertOriginalRefInStore(t, s, "script.sh", url)
 	})
 
 	t.Run("name override changes stored ref", func(t *testing.T) {
@@ -638,6 +706,9 @@ func TestStoreImage_Rewrite(t *testing.T) {
 			t.Fatalf("storeImage with rewrite: %v", err)
 		}
 		assertArtifactInStore(t, s, "newrepo/img:v2")
+		// OriginalRefAnnotation must retain the pre-rewrite source reference,
+		// even though AnnotationRefName/ContainerdImageNameKey were rewritten.
+		assertOriginalRefInStore(t, s, "newrepo/img:v2", host+"/src/repo:v1")
 	})
 
 	t.Run("rewrite without tag inherits source tag", func(t *testing.T) {
@@ -673,6 +744,61 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		if !strings.Contains(err.Error(), "cannot rewrite digest reference") {
 			t.Errorf("unexpected error: %v", err)
 		}
+	})
+}
+
+// TestStoreImage_TagAtDigest covers "repo:tag@sha256:..." refs: go-containerregistry
+// parses these as a Digest and silently drops the tag from Name(), so storeImage
+// must recover it via digestRefTag and record the tag-form annotation while still
+// fetching the pinned digest.
+func TestStoreImage_TagAtDigest(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	t.Run("repo:tag@digest stores under the tag, fetches the exact digest", func(t *testing.T) {
+		img := seedImage(t, host, "tagdigest/repo", "v1", rOpts...)
+		h, err := img.Digest()
+		if err != nil {
+			t.Fatalf("img.Digest: %v", err)
+		}
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		ref := host + "/tagdigest/repo:v1@" + h.String()
+		if err := storeImage(ctx, s, v1.Image{Name: ref}, "", false, rso, ro, "", "", false); err != nil {
+			t.Fatalf("storeImage tag@digest: %v", err)
+		}
+
+		// The store must record the tag form, not the tag-dropped digest form
+		// that r.Name() alone would have produced.
+		assertArtifactInStore(t, s, "tagdigest/repo:v1")
+		assertArtifactNotInStore(t, s, "tagdigest/repo@sha256")
+
+		if got := storedDigest(t, s, "tagdigest/repo:v1"); got != h.String() {
+			t.Errorf("stored digest = %q, want %q", got, h.String())
+		}
+	})
+
+	t.Run("rewrite without explicit tag on a tag@digest source inherits the source tag", func(t *testing.T) {
+		img := seedImage(t, host, "tagdigest/src", "v2", rOpts...)
+		h, err := img.Digest()
+		if err != nil {
+			t.Fatalf("img.Digest: %v", err)
+		}
+
+		s := newTestStore(t)
+		rso := defaultRootOpts(s.Root)
+		ro := defaultCliOpts()
+
+		ref := host + "/tagdigest/src:v2@" + h.String()
+		if err := storeImage(ctx, s, v1.Image{Name: ref}, "", false, rso, ro, "newrepo/img", "", false); err != nil {
+			t.Fatalf("storeImage with tagless rewrite on tag@digest source: %v", err)
+		}
+		// Tag is inherited from the source ("v2"), matching plain-tag rewrite
+		// behavior -- this is only possible once the source tag is recovered.
+		assertArtifactInStore(t, s, "newrepo/img:v2")
 	})
 }
 
@@ -920,6 +1046,29 @@ func TestStoreChart_Rewrite(t *testing.T) {
 		t.Fatalf("AddChartCmd with rewrite: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/custom-chart")
+
+	// OriginalRefAnnotation must retain the pre-rewrite "repoURL|repo:tag" encoding
+	// (see encodeOriginalChartRef) regardless of the --rewrite applied above.
+	wantPrefix := chartTestdataDir + "|"
+	found := false
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.Contains(desc.Annotations[ocispec.AnnotationRefName], "myorg/custom-chart") {
+			original := desc.Annotations[consts.OriginalRefAnnotation]
+			if !strings.HasPrefix(original, wantPrefix) {
+				t.Errorf("OriginalRefAnnotation = %q, want prefix %q", original, wantPrefix)
+			}
+			if strings.Contains(original, "myorg/custom-chart") {
+				t.Errorf("OriginalRefAnnotation = %q must not contain the rewritten ref", original)
+			}
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if !found {
+		t.Fatal("expected to find rewritten chart artifact in store")
+	}
 }
 
 // seedChartWithImages builds a minimal Helm chart whose helm.sh/images
@@ -3203,6 +3352,61 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 		}
 		assertArtifactInStore(t, s, "tls/repo:v1")
 	})
+}
+
+// TestDigestRefTag covers digestRefTag's recovery of the tag component from a
+// "repo:tag@sha256:..." reference's original string, and the cases where
+// there is no tag to recover.
+func TestDigestRefTag(t *testing.T) {
+	const hex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	digestSuffix := "@sha256:" + hex
+
+	tests := []struct {
+		name    string
+		ref     string
+		wantOK  bool
+		wantTag string // TagStr(), only checked when wantOK
+	}{
+		{
+			name:    "repo with tag and digest recovers the tag",
+			ref:     "example.com/repo:v1" + digestSuffix,
+			wantOK:  true,
+			wantTag: "v1",
+		},
+		{
+			name:   "plain digest ref with no tag has nothing to recover",
+			ref:    "example.com/repo" + digestSuffix,
+			wantOK: false,
+		},
+		{
+			name:    "registry with port and a tag still recovers the tag",
+			ref:     "example.com:5000/repo:v1" + digestSuffix,
+			wantOK:  true,
+			wantTag: "v1",
+		},
+		{
+			name:   "registry with port and no tag is not mistaken for one",
+			ref:    "example.com:5000/repo" + digestSuffix,
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, err := goname.NewDigest(tt.ref)
+			if err != nil {
+				t.Fatalf("NewDigest(%q): %v", tt.ref, err)
+			}
+
+			tag, ok := digestRefTag(d)
+			if ok != tt.wantOK {
+				t.Fatalf("digestRefTag(%q) ok = %v, want %v", tt.ref, ok, tt.wantOK)
+			}
+			if ok && tag.TagStr() != tt.wantTag {
+				t.Errorf("digestRefTag(%q) tag = %q, want %q", tt.ref, tag.TagStr(), tt.wantTag)
+			}
+		})
+	}
 }
 
 // writeCAFile writes a valid self-signed cert PEM to a temp file and returns its

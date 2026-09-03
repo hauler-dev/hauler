@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	gname "github.com/google/go-containerregistry/pkg/name"
+	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
@@ -60,7 +60,7 @@ func pushAndAddImage(t *testing.T, s *store.Layout, host, repo, tag string, opts
 // descriptor as recorded in the store's index.
 func pushAndAddExistingImage(t *testing.T, s *store.Layout, host, repo, tag string, img gcrv1.Image, opts []remote.Option) ocispec.Descriptor {
 	t.Helper()
-	ref, err := gname.NewTag(host+"/"+repo+":"+tag, gname.Insecure)
+	ref, err := goname.NewTag(host+"/"+repo+":"+tag, goname.Insecure)
 	if err != nil {
 		t.Fatalf("NewTag: %v", err)
 	}
