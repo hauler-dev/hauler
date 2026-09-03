@@ -308,9 +308,14 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 	} else {
 		// Single-platform image, or the caller requested a specific platform.
 		//
-		// Under a platform filter the pinned digest is the index's while the stored
-		// digest is the selected child's. The child is content-addressed within the
-		// verified index, so the chain of trust holds.
+		// When the pin names an index and a platform is set, the pin came
+		// from tag verification, not from a user-typed digest: storeImage
+		// rejects that combination for a user-typed digest before calling
+		// AddImage (#779). The pinned digest is then the verified index's
+		// while the stored digest is the selected child's; the child is
+		// content-addressed within that index, so the chain of trust holds.
+		// A pin that already names a single-platform manifest also lands
+		// here, and then the pinned and stored digests agree.
 		imgOpts := append([]remote.Option{}, allOpts...)
 		if platform != "" {
 			p, err := parsePlatform(platform)

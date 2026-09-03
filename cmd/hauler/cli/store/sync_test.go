@@ -371,6 +371,93 @@ spec:
 	assertArtifactInStore(t, s, "myorg/myimage")
 }
 
+// The #779 rejection runs after platform precedence is resolved, so the CLI
+// flag, the per-image field, and the hauler.dev/platform annotation all
+// trigger it. --ignore-errors turns the failure into a skip.
+func TestProcessContent_Images_PlatformOnPinnedIndex(t *testing.T) {
+	host, rOpts := newLocalhostRegistry(t)
+	idx := seedIndex(t, host, "sync/pinned", "v1", rOpts...)
+	idxDigest, err := idx.Digest()
+	if err != nil {
+		t.Fatalf("idx.Digest: %v", err)
+	}
+	ref := host + "/sync/pinned@" + idxDigest.String()
+
+	plain := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Images
+metadata:
+  name: pinned
+spec:
+  images:
+    - name: %s
+`, ref)
+	perImage := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Images
+metadata:
+  name: pinned
+spec:
+  images:
+    - name: %s
+      platform: linux/amd64
+`, ref)
+	annotated := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Images
+metadata:
+  name: pinned
+  annotations:
+    hauler.dev/platform: linux/amd64
+spec:
+  images:
+    - name: %s
+`, ref)
+
+	cases := []struct {
+		name        string
+		manifest    string
+		cliPlatform string
+	}{
+		{name: "global --platform", manifest: plain, cliPlatform: "linux/amd64"},
+		{name: "per-image platform field", manifest: perImage},
+		{name: "hauler.dev/platform annotation", manifest: annotated},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+" fails the sync", func(t *testing.T) {
+			ctx := newTestContext(t)
+			s := newTestStore(t)
+			o := newSyncOpts(s.Root)
+			o.Platform = tc.cliPlatform
+			fi := writeManifestFile(t, tc.manifest)
+
+			err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{})
+			if err == nil {
+				t.Fatal("processContent accepted a platform on a digest-pinned index")
+			}
+			if !strings.Contains(err.Error(), "multi-platform index") {
+				t.Fatalf("error does not explain the rejection: %v", err)
+			}
+			if got := countArtifactsInStore(t, s); got != 0 {
+				t.Fatalf("store holds %d artifacts, want 0", got)
+			}
+		})
+	}
+
+	t.Run("--ignore-errors skips the image", func(t *testing.T) {
+		ctx := newTestContext(t)
+		s := newTestStore(t)
+		o := newSyncOpts(s.Root)
+		ro := defaultCliOpts()
+		ro.IgnoreErrors = true
+		fi := writeManifestFile(t, perImage)
+
+		if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+			t.Fatalf("processContent with --ignore-errors: %v", err)
+		}
+		if got := countArtifactsInStore(t, s); got != 0 {
+			t.Fatalf("store holds %d artifacts, want 0", got)
+		}
+	})
+}
+
 func TestProcessContent_UnsupportedKind(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
