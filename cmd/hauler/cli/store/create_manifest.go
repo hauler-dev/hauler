@@ -91,8 +91,9 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		}
 
 		kind := desc.Annotations[consts.KindAnnotationName]
+		_, isCosignArtifact := consts.SigKindExt(kind)
 		switch {
-		case kind == consts.KindAnnotationSigs, kind == consts.KindAnnotationAtts, kind == consts.KindAnnotationSboms:
+		case isCosignArtifact:
 			// cosign-related artifacts are rediscovered automatically when the
 			// parent image is re-added, so they don't need their own entry.
 			return nil

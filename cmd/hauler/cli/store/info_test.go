@@ -179,6 +179,23 @@ func TestNewItem(t *testing.T) {
 			wantType:       "referrer",
 		},
 		{
+			// Suffixed form written for a multi-arch image's child manifest
+			// (nameMapKey's <ref>-<kind> stays unique per subject); must label
+			// the same as the plain "KindAnnotationSigs → sigs" case above.
+			name:           "KindAnnotationSigs suffixed → sigs",
+			configMedia:    consts.DockerConfigJSON,
+			kindAnnotation: consts.KindAnnotationSigs + "/0123abcd",
+			typeFilter:     "all",
+			wantType:       "sigs",
+		},
+		{
+			name:           "KindAnnotationSboms suffixed → sbom",
+			configMedia:    consts.DockerConfigJSON,
+			kindAnnotation: consts.KindAnnotationSboms + "/0123abcd",
+			typeFilter:     "all",
+			wantType:       "sbom",
+		},
+		{
 			name:        "TypeFilter:image with chart → empty item",
 			configMedia: consts.ChartConfigMediaType,
 			typeFilter:  "image",

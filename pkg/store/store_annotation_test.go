@@ -37,7 +37,7 @@ func TestWriteImageNormalizesContainerdName(t *testing.T) {
 		t.Fatalf("ParseReference: %v", err)
 	}
 	// ref.Name() is "index.docker.io/library/busybox:v1"; the annotation must not be.
-	if err := l.writeImage(context.Background(), ref, img, consts.KindAnnotationImage, ""); err != nil {
+	if err := l.writeImage(context.Background(), ref, img, consts.KindAnnotationImage, "", ""); err != nil {
 		t.Fatalf("writeImage: %v", err)
 	}
 
@@ -100,7 +100,7 @@ func TestWriteIndexNormalizesContainerdName(t *testing.T) {
 		t.Fatalf("ParseReference: %v", err)
 	}
 	// ref.Name() is "index.docker.io/library/busybox@sha256:..."; the annotation must not be.
-	if err := l.writeIndex(context.Background(), ref, idx, consts.KindAnnotationIndex); err != nil {
+	if err := l.writeIndex(context.Background(), ref, idx, consts.KindAnnotationIndex, ""); err != nil {
 		t.Fatalf("writeIndex: %v", err)
 	}
 
@@ -181,7 +181,7 @@ func TestWriteImageAnnotationRefNameIsRegistryless(t *testing.T) {
 			}
 			// containerdName "" mirrors AddImage (store.go), which lets writeImage
 			// derive both annotations from ref.
-			if err := l.writeImage(context.Background(), ref, img, consts.KindAnnotationImage, ""); err != nil {
+			if err := l.writeImage(context.Background(), ref, img, consts.KindAnnotationImage, "", ""); err != nil {
 				t.Fatalf("writeImage: %v", err)
 			}
 

@@ -48,10 +48,11 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 		// For directory targets, extract files and charts (not images)
 		err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
 			// Skip cosign sig/att/sbom artifacts — they're registry-only metadata,
-			// not extractable as files or charts.
+			// not extractable as files or charts. SigKindExt matches both the
+			// plain kind (top-level artifact) and the subject-suffixed kind
+			// (per-platform artifact), so a child-subject sig is skipped too.
 			kind := desc.Annotations[consts.KindAnnotationName]
-			switch kind {
-			case consts.KindAnnotationSigs, consts.KindAnnotationAtts, consts.KindAnnotationSboms:
+			if _, ok := consts.SigKindExt(kind); ok {
 				l.Debugf("skipping cosign artifact [%s] for directory target", reference)
 				return nil
 			}
@@ -201,12 +202,6 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			return err
 		}
 
-		sigExts := map[string]string{
-			consts.KindAnnotationSigs:  ".sig",
-			consts.KindAnnotationAtts:  ".att",
-			consts.KindAnnotationSboms: ".sbom",
-		}
-
 		var fatalErr error
 		err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
 			if fatalErr != nil {
@@ -228,9 +223,17 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			// image's manifest digest rather than using AnnotationRefName directly.
 			destRef := baseRef
 			kind := desc.Annotations[consts.KindAnnotationName]
-			if ext, isSigKind := sigExts[kind]; isSigKind {
-				if imgDigest, ok := refDigest[baseRef]; ok {
-					digestTag := strings.ReplaceAll(imgDigest, ":", "-")
+			if ext, isSigKind := consts.SigKindExt(kind); isSigKind {
+				// Prefer the subject recorded at add time -- a per-platform sig must
+				// land on its own subject's tag, not the top-level index's. Old
+				// archives predate the annotation and only ever hold top-level
+				// artifacts, so the pre-pass map remains correct for them.
+				subject := desc.Annotations[consts.SubjectDigestAnnotation]
+				if subject == "" {
+					subject = refDigest[baseRef]
+				}
+				if subject != "" {
+					digestTag := strings.ReplaceAll(subject, ":", "-")
 					repo := repoFromBaseRef(baseRef)
 					destRef = repo + ":" + digestTag + ext
 				}

@@ -326,6 +326,55 @@ func TestWriteContainerdIndexes(t *testing.T) {
 	}
 }
 
+// TestWriteContainerdIndexesDropsSuffixedArtifactKinds pins writeContainerdIndexes'
+// exact kind == KindAnnotationImage/KindAnnotationIndex filter against subject-suffixed
+// cosign kinds ("dev.hauler/sigs/<hex>", written for a multi-arch image's child
+// manifest): the filter already drops them with no code change, since a suffixed
+// kind can never equal either exact match, but this is the compatibility contract
+// for `store save --containerd` -- its index.json is the one containerd actually
+// imports, so a regression here would leak sig/att/sbom entries into a real import.
+func TestWriteContainerdIndexesDropsSuffixedArtifactKinds(t *testing.T) {
+	s := newTestStore(t)
+	seedStoreDescriptor(t, s, map[string]string{
+		consts.KindAnnotationName:     consts.KindAnnotationImage,
+		ocispec.AnnotationRefName:     "repro/ctrd:v1",
+		consts.ContainerdImageNameKey: "example.com/repro/ctrd:v1",
+	})
+	seedStoreDescriptor(t, s, map[string]string{
+		consts.KindAnnotationName:     consts.KindAnnotationSigs + "/0123abcd",
+		ocispec.AnnotationRefName:     "repro/ctrd:v1",
+		consts.ContainerdImageNameKey: "example.com/repro/ctrd:v1",
+	})
+	if err := s.SaveIndex(); err != nil {
+		t.Fatal(err)
+	}
+
+	outDir := t.TempDir()
+	dropped, err := writeContainerdIndexes(s.Root, outDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped != 1 {
+		t.Fatalf("dropped = %d, want 1 (the suffixed sig entry)", dropped)
+	}
+	data, err := os.ReadFile(filepath.Join(outDir, ocispec.ImageIndexFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx ocispec.Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range idx.Manifests {
+		if _, ok := consts.SigKindExt(d.Annotations[consts.KindAnnotationName]); ok {
+			t.Fatalf("containerd sidecar index contains artifact entry with kind %q", d.Annotations[consts.KindAnnotationName])
+		}
+	}
+	if len(idx.Manifests) != 1 {
+		t.Fatalf("sidecar index has %d entries, want 1 (the image)", len(idx.Manifests))
+	}
+}
+
 // TestWriteDefaultIndex covers the default-mode (non-`--containerd`) archive
 // index rewrite added for #744 fix 1: every descriptor is kept (unlike
 // writeContainerdIndexes' filtered rewrite), but io.containerd.image.name
