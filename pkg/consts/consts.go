@@ -1,6 +1,9 @@
 package consts
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	// container media types
@@ -83,6 +86,12 @@ const (
 	// URL or absolute local path.
 	OriginalRefAnnotation = "hauler.dev/original-ref"
 
+	// SubjectDigestAnnotation records, on a sig/att/sbom/referrer index entry, the
+	// full digest ("sha256:<hex>") of the manifest the artifact belongs to. Copy
+	// derives the cosign destination tag from it; without it a per-platform sig
+	// would be routed to the top-level index's tag.
+	SubjectDigestAnnotation = "hauler.dev/subject-digest"
+
 	// cosign keyless validation options
 	ImageAnnotationCertIdentity                 = "hauler.dev/certificate-identity"
 	ImageAnnotationCertIdentityRegexp           = "hauler.dev/certificate-identity-regexp"
@@ -153,3 +162,21 @@ const (
 )
 
 var FileExcludePattern = fmt.Sprintf(`^%s/[.\-_]`, DefaultNamespace)
+
+// SigKindExt maps a cosign artifact kind to its tag-convention extension.
+// Kinds come in two shapes: plain ("dev.hauler/sigs") for an image's own
+// top-level artifact, and subject-suffixed ("dev.hauler/sigs/<hex>") for a
+// child manifest of a multi-arch index -- the suffix keeps nameMapKey's
+// <ref>-<kind> unique when one image carries artifacts for several subjects.
+func SigKindExt(kind string) (string, bool) {
+	for base, ext := range map[string]string{
+		KindAnnotationSigs:  ".sig",
+		KindAnnotationAtts:  ".att",
+		KindAnnotationSboms: ".sbom",
+	} {
+		if kind == base || strings.HasPrefix(kind, base+"/") {
+			return ext, true
+		}
+	}
+	return "", false
+}

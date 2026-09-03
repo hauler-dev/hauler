@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +19,9 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	ggcrtransport "github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/google/uuid"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -286,6 +290,10 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 	}
 
 	var imageDigest v1.Hash
+	// Non-nil only for the full-index path below; collectSubjectDigests walks
+	// it to probe every child manifest for cosign artifacts. Left nil for the
+	// platform-filtered and single-arch paths, which stay single-subject.
+	var savedIdx v1.ImageIndex
 
 	if idx, idxErr := desc.ImageIndex(); idxErr == nil && platform == "" {
 		// Multi-arch image with no platform filter: save the full index.
@@ -293,9 +301,10 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting index digest for %q: %w", ref, err)
 		}
-		if err := l.writeIndex(ctx, parsedRef, idx, consts.KindAnnotationIndex); err != nil {
+		if err := l.writeIndex(ctx, parsedRef, idx, consts.KindAnnotationIndex, ""); err != nil {
 			return "", err
 		}
+		savedIdx = idx
 	} else {
 		// Single-platform image, or the caller requested a specific platform.
 		//
@@ -318,17 +327,34 @@ func (l *Layout) AddImage(ctx context.Context, ref string, platform string, excl
 		if err != nil {
 			return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 		}
-		if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+		if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, "", ""); err != nil {
 			return "", err
 		}
 	}
 
 	if !excludeExtras {
-		savedDigests, err := l.saveRelatedArtifacts(ctx, parsedRef, imageDigest, allOpts...)
-		if err != nil {
-			return "", err
+		// One subject for a single-platform store; the index digest plus every
+		// child manifest for a full multi-arch store. Serial on purpose: sync
+		// already parallelizes across images, and serial probing bounds
+		// rate-limit bursts against one registry.
+		subjects := []v1.Hash{imageDigest}
+		if savedIdx != nil {
+			var err error
+			subjects, err = collectSubjectDigests(savedIdx)
+			if err != nil {
+				return "", err
+			}
 		}
-		return imageDigest.String(), l.saveReferrers(ctx, parsedRef, imageDigest, savedDigests, allOpts...)
+		saved := make(map[string]bool)
+		for i, subject := range subjects {
+			topLevel := i == 0
+			if err := l.saveRelatedArtifacts(ctx, parsedRef, subject, topLevel, saved, allOpts...); err != nil {
+				return "", err
+			}
+			if err := l.saveReferrers(ctx, parsedRef, subject, saved, allOpts...); err != nil {
+				return "", err
+			}
+		}
 	}
 	return imageDigest.String(), nil
 }
@@ -355,7 +381,7 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("getting image digest for %q: %w", ref, err)
 	}
 
-	if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, ""); err != nil {
+	if err := l.writeImage(ctx, parsedRef, img, consts.KindAnnotationImage, "", ""); err != nil {
 		return "", err
 	}
 	return d.String(), nil
@@ -436,8 +462,9 @@ func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 
 // writeImage writes all blobs for img and adds a descriptor entry to the OCI index with the
 // given annotationRef and kind. containerdName overrides the io.containerd.image.name annotation;
-// if empty it defaults to annotationRef.Name().
-func (l *Layout) writeImage(ctx context.Context, annotationRef goname.Reference, img v1.Image, kind string, containerdName string) error {
+// if empty it defaults to annotationRef.Name(). A non-empty subjectDigest records the base
+// image's digest this artifact is a sig/att/sbom/referrer of; empty omits the annotation.
+func (l *Layout) writeImage(ctx context.Context, annotationRef goname.Reference, img v1.Image, kind string, containerdName string, subjectDigest string) error {
 	if err := l.writeImageBlobs(ctx, img); err != nil {
 		return err
 	}
@@ -479,7 +506,54 @@ func (l *Layout) writeImage(ctx context.Context, annotationRef goname.Reference,
 			consts.OriginalRefAnnotation: originalRef,
 		},
 	}
+	if subjectDigest != "" {
+		desc.Annotations[consts.SubjectDigestAnnotation] = subjectDigest
+	}
 	return l.OCI.AddIndex(desc)
+}
+
+// collectSubjectDigests returns the index's own digest followed by every
+// manifest digest reachable through it, nested indexes included, deduplicated.
+// Buildx attestation-manifest children (unknown/unknown) are included on
+// purpose: "every manifest in the index" is the contract, and excluding them
+// would miss artifacts attached to them.
+func collectSubjectDigests(idx v1.ImageIndex) ([]v1.Hash, error) {
+	var out []v1.Hash
+	seen := make(map[v1.Hash]bool)
+	var walk func(v1.ImageIndex) error
+	walk = func(ix v1.ImageIndex) error {
+		d, err := ix.Digest()
+		if err != nil {
+			return fmt.Errorf("getting index digest: %w", err)
+		}
+		if seen[d] {
+			return nil
+		}
+		seen[d] = true
+		out = append(out, d)
+
+		manifest, err := ix.IndexManifest()
+		if err != nil {
+			return fmt.Errorf("getting index manifest: %w", err)
+		}
+		for _, child := range manifest.Manifests {
+			if childIdx, err := ix.ImageIndex(child.Digest); err == nil {
+				if err := walk(childIdx); err != nil {
+					return err
+				}
+				continue
+			}
+			if !seen[child.Digest] {
+				seen[child.Digest] = true
+				out = append(out, child.Digest)
+			}
+		}
+		return nil
+	}
+	if err := walk(idx); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // writeIndexBlobs recursively writes all child image blobs for an image index to the store's blob
@@ -517,8 +591,10 @@ func (l *Layout) writeIndexBlobs(ctx context.Context, idx v1.ImageIndex) error {
 }
 
 // writeIndex writes all blobs for an image index (including all child platform images) and adds
-// a descriptor entry to the OCI index with the given annotationRef and kind.
-func (l *Layout) writeIndex(ctx context.Context, annotationRef goname.Reference, idx v1.ImageIndex, kind string) error {
+// a descriptor entry to the OCI index with the given annotationRef and kind. subjectDigest follows
+// the same rule as writeImage's -- OCI 1.1 permits subject on image indexes too, so a referrer can
+// itself be an index.
+func (l *Layout) writeIndex(ctx context.Context, annotationRef goname.Reference, idx v1.ImageIndex, kind string, subjectDigest string) error {
 	if err := l.writeIndexBlobs(ctx, idx); err != nil {
 		return err
 	}
@@ -557,45 +633,87 @@ func (l *Layout) writeIndex(ctx context.Context, annotationRef goname.Reference,
 			consts.OriginalRefAnnotation: annotationRef.Name(),
 		},
 	}
+	if subjectDigest != "" {
+		desc.Annotations[consts.SubjectDigestAnnotation] = subjectDigest
+	}
 	return l.OCI.AddIndex(desc)
 }
 
-// saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/hash --
+// isNotFound reports whether err is a definitive "artifact absent" registry
+// response: HTTP 404, or error code MANIFEST_UNKNOWN / NAME_UNKNOWN. Only
+// these may be treated as "unsigned image" -- a 401/403/429/5xx or timeout is
+// a failed retrieval, and swallowing it produces a silently incomplete store
+// indistinguishable from an unsigned one.
+func isNotFound(err error) bool {
+	var terr *ggcrtransport.Error
+	if !errors.As(err, &terr) {
+		return false
+	}
+	if terr.StatusCode == http.StatusNotFound {
+		return true
+	}
+	for _, diag := range terr.Errors {
+		if diag.Code == ggcrtransport.ManifestUnknownErrorCode || diag.Code == ggcrtransport.NameUnknownErrorCode {
+			return true
+		}
+	}
+	return false
+}
+
+// RelatedArtifactError reports a failure retrieving a sig/att/sbom/referrer
+// for an image that itself was already stored. Callers use errors.As to word
+// their messages accurately -- the image is in the store; the run failed on
+// its supply-chain artifacts.
+type RelatedArtifactError struct {
+	Ref     string // base image ref
+	Kind    string // dev.hauler kind being retrieved
+	Subject string // subject digest ("sha256:<hex>")
+	Err     error
+}
+
+func (e *RelatedArtifactError) Error() string {
+	return fmt.Sprintf("retrieving %s for %s (subject %s): %v", e.Kind, e.Ref, e.Subject, e.Err)
+}
+
+func (e *RelatedArtifactError) Unwrap() error { return e.Err }
+
+// saveReferrers discovers and saves OCI 1.1 referrers for the image identified by ref/subject --
 // cosign v3 new-bundle-format sigs/attestations stored via the subject field, as opposed to the
-// legacy sha256-<hex>.sig/.att/.sbom tag convention. Missing referrers and fetch errors are
-// logged at debug level and silently skipped.
-func (l *Layout) saveReferrers(ctx context.Context, ref goname.Reference, hash v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
+// legacy sha256-<hex>.sig/.att/.sbom tag convention.
+func (l *Layout) saveReferrers(ctx context.Context, ref goname.Reference, subject v1.Hash, alreadySaved map[string]bool, opts ...remote.Option) error {
 	log := zerolog.Ctx(ctx)
 
-	imageDigestRef, err := goname.NewDigest(ref.Context().String() + "@" + hash.String())
+	imageDigestRef, err := goname.NewDigest(ref.Context().String() + "@" + subject.String())
 	if err != nil {
-		log.Debug().Err(err).Msgf("saveReferrers: could not construct digest ref for %s", ref.Name())
-		return nil
+		return fmt.Errorf("saveReferrers: constructing digest ref for %s: %w", ref.Name(), err)
 	}
 
+	// In ggcr v0.22.0, absent referrers never error: the API endpoint tolerates
+	// 404/400/406 via the tag-schema fallback, and a missing fallback tag yields
+	// empty.Index, nil. So any error here is a real failure; isNotFound is
+	// defense in depth against a future ggcr version that surfaces 404 directly.
 	idx, err := remote.Referrers(imageDigestRef, opts...)
 	if err != nil {
-		// Most registries that don't support the referrers API return 404; not an error.
-		log.Debug().Err(err).Msgf("no OCI referrers found for %s@%s", ref.Name(), hash)
-		return nil
+		if isNotFound(err) {
+			log.Debug().Err(err).Msgf("no OCI referrers found for %s@%s", ref.Name(), subject)
+			return nil
+		}
+		return &RelatedArtifactError{Ref: ref.Name(), Kind: consts.KindAnnotationReferrers, Subject: subject.String(), Err: err}
 	}
 
 	idxManifest, err := idx.IndexManifest()
 	if err != nil {
-		log.Debug().Err(err).Msgf("saveReferrers: could not read referrers index for %s", ref.Name())
-		return nil
+		if isNotFound(err) {
+			log.Debug().Err(err).Msgf("saveReferrers: could not read referrers index for %s", ref.Name())
+			return nil
+		}
+		return &RelatedArtifactError{Ref: ref.Name(), Kind: consts.KindAnnotationReferrers, Subject: subject.String(), Err: err}
 	}
 
 	for _, referrerDesc := range idxManifest.Manifests {
 		digestRef, err := goname.NewDigest(ref.Context().String() + "@" + referrerDesc.Digest.String())
 		if err != nil {
 			log.Debug().Err(err).Msgf("saveReferrers: could not construct digest ref for referrer %s", referrerDesc.Digest)
-			continue
-		}
-
-		img, err := remote.Image(digestRef, opts...)
-		if err != nil {
-			log.Debug().Err(err).Msgf("saveReferrers: could not fetch referrer manifest %s", referrerDesc.Digest)
 			continue
 		}
 
@@ -609,23 +727,58 @@ func (l *Layout) saveReferrers(ctx context.Context, ref goname.Reference, hash v
 
 		// Embed the referrer manifest digest in the kind annotation so that multiple
 		// referrers for the same base image each get a unique entry in the OCI index.
+		//
+		// OCI 1.1 permits subject on image indexes too, and Descriptor.Image() on
+		// an index digest doesn't fail cleanly: ggcr v0.22.0 silently resolves it
+		// to whichever child matches the default platform when one exists,
+		// mis-storing the referrer as an unrelated child manifest, and only
+		// errors when no child matches. Branch on the descriptor's declared type
+		// instead of trusting Image() to fail on an index.
 		kind := consts.KindAnnotationReferrers + "/" + referrerDesc.Digest.Hex
-		if err := l.writeImage(ctx, ref, img, kind, ""); err != nil {
-			return fmt.Errorf("saving OCI referrer %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
+		switch referrerDesc.MediaType {
+		case types.OCIImageIndex, types.DockerManifestList:
+			refIdx, err := remote.Index(digestRef, opts...)
+			if err != nil {
+				if isNotFound(err) {
+					log.Debug().Err(err).Msgf("saveReferrers: referrer index %s vanished", referrerDesc.Digest)
+					continue
+				}
+				return &RelatedArtifactError{Ref: ref.Name(), Kind: kind, Subject: subject.String(), Err: err}
+			}
+			if err := l.writeIndex(ctx, ref, refIdx, kind, subject.String()); err != nil {
+				return fmt.Errorf("saving OCI referrer index %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
+			}
+		case types.OCIManifestSchema1, types.DockerManifestSchema2:
+			img, err := remote.Image(digestRef, opts...)
+			if err != nil {
+				if isNotFound(err) {
+					log.Debug().Err(err).Msgf("saveReferrers: referrer manifest %s vanished", referrerDesc.Digest)
+					continue
+				}
+				return &RelatedArtifactError{Ref: ref.Name(), Kind: kind, Subject: subject.String(), Err: err}
+			}
+			if err := l.writeImage(ctx, ref, img, kind, "", subject.String()); err != nil {
+				return fmt.Errorf("saving OCI referrer %s for %s: %w", referrerDesc.Digest, ref.Name(), err)
+			}
+		default:
+			log.Warn().Msgf("skipping referrer %s for %s: unsupported media type %q", referrerDesc.Digest, ref.Name(), referrerDesc.MediaType)
+			continue
 		}
 		log.Debug().Msgf("saved OCI referrer %s (%s) for %s", referrerDesc.Digest, string(referrerDesc.ArtifactType), ref.Name())
 	}
 	return nil
 }
 
-// saveRelatedArtifacts discovers and saves cosign-compatible signature, attestation, and SBOM
-// artifacts for the image identified by ref/hash, skipping missing ones silently. Returns the
-// set of saved manifest digest strings so saveReferrers can skip duplicates exposed via both paths.
-func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref goname.Reference, hash v1.Hash, opts ...remote.Option) (map[string]bool, error) {
-	saved := make(map[string]bool)
-
-	// Cosign tag convention: "sha256:hexvalue" → "sha256-hexvalue.sig" / ".att" / ".sbom"
-	tagPrefix := strings.ReplaceAll(hash.String(), ":", "-")
+// saveRelatedArtifacts probes the cosign tag convention for subject and stores
+// whatever exists. topLevel selects the kind shape: plain for the stored
+// artifact's own digest, subject-suffixed for a child manifest of a multi-arch
+// index -- two artifacts with the same ref and plain kind would collide in
+// nameMapKey's <ref>-<kind> and the second AddIndex would silently replace the
+// first. saved is shared across all subjects of one AddImage call so a
+// manifest reachable via both the tag convention and the Referrers API is
+// stored once.
+func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref goname.Reference, subject v1.Hash, topLevel bool, saved map[string]bool, opts ...remote.Option) error {
+	tagPrefix := strings.ReplaceAll(subject.String(), ":", "-")
 
 	related := []struct {
 		tag  string
@@ -643,17 +796,23 @@ func (l *Layout) saveRelatedArtifacts(ctx context.Context, ref goname.Reference,
 		}
 		img, err := remote.Image(artifactRef, opts...)
 		if err != nil {
-			// Artifact doesn't exist at this registry; skip silently.
-			continue
+			if isNotFound(err) {
+				continue
+			}
+			return &RelatedArtifactError{Ref: ref.Name(), Kind: r.kind, Subject: subject.String(), Err: err}
 		}
-		if err := l.writeImage(ctx, ref, img, r.kind, ""); err != nil {
-			return saved, fmt.Errorf("saving %s for %s: %w", r.kind, ref.Name(), err)
+		kind := r.kind
+		if !topLevel {
+			kind = r.kind + "/" + subject.Hex
+		}
+		if err := l.writeImage(ctx, ref, img, kind, "", subject.String()); err != nil {
+			return fmt.Errorf("saving %s for %s: %w", kind, ref.Name(), err)
 		}
 		if d, err := img.Digest(); err == nil {
 			saved[d.String()] = true
 		}
 	}
-	return saved, nil
+	return nil
 }
 
 // parsePlatform parses a platform string in "os/arch[/variant]" format into a v1.Platform.
