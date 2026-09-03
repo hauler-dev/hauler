@@ -841,8 +841,16 @@ type chartJob struct {
 	cfg     v1.Chart
 	opts    flags.AddChartOpts // held by value; ChartOpts is allocated per job
 	rewrite string
-	parent  string // "" for a top-level chart, else the parent chart's ref
-	depth   int
+	// chartPrefix is the document-level chart prefix annotation. It is retained
+	// separately so dependent charts can receive the same prefix while still
+	// getting a target based on their own name.
+	chartPrefix string
+	// imagePrefix is the document-level image prefix annotation. It is kept
+	// separately because chart and discovered-image targets may use different
+	// namespaces in the store.
+	imagePrefix string
+	parent      string // "" for a top-level chart, else the parent chart's ref
+	depth       int
 }
 
 // resolveChartJobs produces one top-level chartJob per entry in charts,
@@ -866,6 +874,12 @@ type chartJob struct {
 // jobs sharing one pointee, and a per-chart RepoURL/Version write would land
 // in every other chart's options.
 func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifestDir string, charts []v1.Chart) ([]chartJob, error) {
+	chartPrefix, hasChartPrefix := annotations[consts.ChartAnnotationPrefix]
+	if !hasChartPrefix {
+		chartPrefix = "hauler"
+	}
+	chartPrefix = strings.Trim(chartPrefix, "/")
+
 	registry := o.Registry
 	if registry == "" {
 		registry = annotations[consts.ImageAnnotationRegistry]
@@ -892,6 +906,17 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 		chartUsername, chartPassword, err := resolveChartCreds(ch)
 		if err != nil {
 			return nil, err
+		}
+
+		rewrite := ch.Rewrite
+		imagePrefix := strings.Trim(annotations[consts.ImageAnnotationPrefix], "/")
+		// Keep the historical behavior when only chart-prefix is set: discovered
+		// images follow the chart prefix unless an explicit image-prefix is given.
+		if imagePrefix == "" {
+			imagePrefix = chartPrefix
+		}
+		if rewrite == "" && chartPrefix != "" {
+			rewrite = prefixChartRewrite(chartPrefix, ch.Name)
 		}
 
 		// caFile precedence: cli > per-chart > annotation.
@@ -931,11 +956,26 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 				Platform:        platform,
 				ValuesFiles:     valuesFiles,
 			},
-			rewrite: ch.Rewrite,
+			rewrite:     rewrite,
+			chartPrefix: chartPrefix,
+			imagePrefix: imagePrefix,
 		})
 	}
 
 	return jobs, nil
+}
+
+// prefixChartRewrite turns the document-level rewrite annotation into a
+// unique target for a chart. A document can contain several charts, so the
+// annotation is a prefix rather than one shared replacement reference.
+func prefixChartRewrite(prefix, chartName string) string {
+	return prefixArtifactRewrite(prefix, chartName)
+}
+
+// prefixArtifactRewrite applies a document-level rewrite prefix to an
+// artifact reference while preserving the artifact's tag or digest.
+func prefixArtifactRewrite(prefix, ref string) string {
+	return strings.Trim(prefix, "/") + "/" + strings.Trim(ref, "/")
 }
 
 // dedupeImageJobs collapses repeat pulls out of a chart tree's discovered
@@ -1461,6 +1501,10 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 			// there is no separate per-discovered-image TLS knob in a chart
 			// manifest, so the registry a chart's images live in is assumed
 			// to share the chart repo's trust configuration.
+			imageRewrite := ""
+			if j.imagePrefix != "" {
+				imageRewrite = prefixArtifactRewrite(j.imagePrefix, relocated)
+			}
 			imageJobs = append(imageJobs, imageJob{
 				img: v1.Image{
 					Name:                  relocated,
@@ -1469,6 +1513,7 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 				},
 				platform:      j.opts.Platform,
 				excludeExtras: j.opts.ExcludeExtras,
+				rewrite:       imageRewrite,
 			})
 		}
 	}
@@ -1509,11 +1554,18 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 				depChartOpts.Version = dep.Version
 			}
 
+			depRewrite := ""
+			if j.chartPrefix != "" {
+				depRewrite = prefixChartRewrite(j.chartPrefix, depCfg.Name)
+			}
 			deps = append(deps, chartJob{
-				cfg:    depCfg,
-				opts:   depOpts,
-				parent: ref.Name(),
-				depth:  j.depth + 1,
+				cfg:         depCfg,
+				opts:        depOpts,
+				rewrite:     depRewrite,
+				chartPrefix: j.chartPrefix,
+				imagePrefix: j.imagePrefix,
+				parent:      ref.Name(),
+				depth:       j.depth + 1,
 			})
 		}
 	}

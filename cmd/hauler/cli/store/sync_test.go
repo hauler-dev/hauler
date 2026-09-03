@@ -1135,6 +1135,36 @@ func TestResolveImageJobs_RewritePrecedence(t *testing.T) {
 	}
 }
 
+func TestResolveImageJobs_RewriteAnnotationPrefixesImages(t *testing.T) {
+	a := map[string]string{consts.ImageAnnotationPrefix: "helm-images/"}
+	images := []v1.Image{
+		{Name: "quay.io/example/image:v1.2.3"},
+		{Name: "quay.io/example/override:v1", Rewrite: "custom/override:v2"},
+	}
+
+	jobs, err := resolveImageJobs(&flags.SyncOpts{}, a, images)
+	if err != nil {
+		t.Fatalf("resolveImageJobs: %v", err)
+	}
+	if got := jobs[0].rewrite; got != "helm-images/quay.io/example/image:v1.2.3" {
+		t.Errorf("annotation rewrite = %q, want helm-images/quay.io/example/image:v1.2.3", got)
+	}
+	if got := jobs[1].rewrite; got != "custom/override:v2" {
+		t.Errorf("per-image rewrite = %q, want custom/override:v2", got)
+	}
+}
+
+func TestResolveImageJobs_LegacyRewriteAnnotationIsIgnored(t *testing.T) {
+	images := []v1.Image{{Name: "quay.io/example/image:v1"}}
+	j, err := resolveImageJobs(&flags.SyncOpts{}, map[string]string{"hauler.dev/rewrite": "legacy/"}, images)
+	if err != nil {
+		t.Fatalf("resolveImageJobs: %v", err)
+	}
+	if got := j[0].rewrite; got != "" {
+		t.Errorf("legacy annotation rewrite = %q, want empty", got)
+	}
+}
+
 func TestResolveImageJobs_ExcludeExtrasPrecedence(t *testing.T) {
 	tests := []struct {
 		name             string
