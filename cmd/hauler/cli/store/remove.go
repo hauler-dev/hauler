@@ -23,14 +23,15 @@ import (
 // does: from the manifest's config media type, since AddArtifact stores every non-image-command
 // artifact (files, charts) under the same "kind" annotation and can't distinguish them
 func artifactType(ctx context.Context, s *store.Layout, desc ocispec.Descriptor) string {
-	switch {
-	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSigs:
+	kind := desc.Annotations[consts.KindAnnotationName]
+	switch ext, _ := consts.SigKindExt(kind); {
+	case ext == ".sig":
 		return "sigs"
-	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationAtts:
+	case ext == ".att":
 		return "atts"
-	case desc.Annotations[consts.KindAnnotationName] == consts.KindAnnotationSboms:
+	case ext == ".sbom":
 		return "sbom"
-	case strings.HasPrefix(desc.Annotations[consts.KindAnnotationName], consts.KindAnnotationReferrers):
+	case strings.HasPrefix(kind, consts.KindAnnotationReferrers):
 		return "referrer"
 	case desc.MediaType == consts.OCIImageIndexSchema, desc.MediaType == consts.DockerManifestListSchema2:
 		return "image"

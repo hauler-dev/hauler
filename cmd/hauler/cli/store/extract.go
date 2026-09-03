@@ -104,8 +104,7 @@ func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref 
 		// they are never extractable to disk. Skip them silently at debug level,
 		// mirroring the same guard in copy.go (directory-target path).
 		kind := desc.Annotations[consts.KindAnnotationName]
-		switch kind {
-		case consts.KindAnnotationSigs, consts.KindAnnotationAtts, consts.KindAnnotationSboms:
+		if _, ok := consts.SigKindExt(kind); ok {
 			l.Debugf("skipping cosign artifact [%s] for extract", reference)
 			return nil
 		}

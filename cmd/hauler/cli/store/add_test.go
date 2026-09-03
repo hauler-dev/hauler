@@ -691,6 +691,40 @@ func TestStoreImage(t *testing.T) {
 	})
 }
 
+// TestStoreImageIgnoreErrorsRelatedArtifactWording verifies that when the
+// image itself lands in the store but a related-artifact probe fails (e.g. a
+// 401 on the cosign tag convention), --ignore-errors reports that the image
+// was stored -- not the generic "unable to add image ... skipping" wording,
+// which would misreport that nothing was written.
+func TestStoreImageIgnoreErrorsRelatedArtifactWording(t *testing.T) {
+	host, opts := artifactProbe401Registry(t)
+	seedImage(t, host, "repro/warn", "v1", opts...)
+
+	var buf bytes.Buffer
+	l := log.NewLogger(&buf)
+	ctx := l.WithContext(context.Background())
+
+	s := newTestStore(t)
+	rso, ro := defaultRootOpts(s.Root), defaultCliOpts()
+	ro.IgnoreErrors = true
+
+	img := v1.Image{Name: host + "/repro/warn:v1"}
+	if err := storeImage(ctx, s, img, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage with --ignore-errors returned error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "stored, but") {
+		t.Fatalf("warning does not say the image was stored; got: %s", out)
+	}
+	if strings.Contains(out, "unable to add image") {
+		t.Fatalf("misleading 'unable to add image' still logged for a related-artifact failure; got: %s", out)
+	}
+
+	// The image itself must be in the store.
+	assertArtifactInStore(t, s, "repro/warn")
+}
+
 func TestStoreImage_Rewrite(t *testing.T) {
 	ctx := newTestContext(t)
 	host, rOpts := newLocalhostRegistry(t)
