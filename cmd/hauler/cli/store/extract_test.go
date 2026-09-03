@@ -628,3 +628,46 @@ func TestExtractCmd_CosignArtifactsProduceNoContainerImageWarning(t *testing.T) 
 		t.Errorf("content mismatch: got %q, want %q", string(data), fileContent)
 	}
 }
+
+// TestExtractCmd_SuffixedSigKind_Skipped confirms a subject-suffixed sig kind
+// ("dev.hauler/sigs/<hex>", written for a multi-arch image's child manifest) is
+// skipped the same way as the plain form. The synthetic descriptor's digest has no
+// backing blob, so before the fix (an exact kind == consts.KindAnnotationSigs
+// comparison that misses the suffix) ExtractCmd would try to Fetch it and fail.
+func TestExtractCmd_SuffixedSigKind_Skipped(t *testing.T) {
+	var logBuf bytes.Buffer
+	ctx := newLogCaptureContext(&logBuf)
+	s := newTestStore(t)
+
+	fileContent := "suffixed-sig-filter test file content"
+	url := seedFileInHTTPServer(t, "suffixedsig.txt", fileContent)
+	if err := storeFile(ctx, s, v1.File{Path: url}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	baseRef := "hauler/suffixedsig.txt:latest"
+	seedStoreDescriptor(t, s, map[string]string{
+		ocispec.AnnotationRefName:     baseRef,
+		consts.KindAnnotationName:     consts.KindAnnotationSigs + "/0123abcd",
+		consts.ContainerdImageNameKey: "registry.example.com/" + baseRef,
+	})
+
+	destDir := t.TempDir()
+	eo := &flags.ExtractOpts{
+		StoreRootOpts:  defaultRootOpts(s.Root),
+		DestinationDir: destDir,
+	}
+
+	if err := ExtractCmd(ctx, eo, s, baseRef); err != nil {
+		t.Fatalf("ExtractCmd: %v", err)
+	}
+
+	outPath := filepath.Join(destDir, "suffixedsig.txt")
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("expected extracted file at %s: %v", outPath, err)
+	}
+	if string(data) != fileContent {
+		t.Errorf("content mismatch: got %q, want %q", string(data), fileContent)
+	}
+}

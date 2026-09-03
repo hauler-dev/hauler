@@ -8,6 +8,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 // --------------------------------------------------------------------------
@@ -69,6 +70,30 @@ func TestFormatReference(t *testing.T) {
 				t.Errorf("formatReference(%q) = %q, want %q", tc.ref, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestArtifactTypeSuffixedKinds confirms artifactType classifies subject-suffixed
+// cosign kinds ("dev.hauler/sigs/<hex>", etc, written for a multi-arch child
+// manifest so nameMapKey's <ref>-<kind> stays unique) the same as their plain form,
+// since it drove `store remove`'s audit-log Type field via an exact-match switch
+// that missed the suffix before consts.SigKindExt was adopted here.
+func TestArtifactTypeSuffixedKinds(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	cases := []struct {
+		kind string
+		want string
+	}{
+		{consts.KindAnnotationSigs + "/0123abcd", "sigs"},
+		{consts.KindAnnotationAtts + "/0123abcd", "atts"},
+		{consts.KindAnnotationSboms + "/0123abcd", "sbom"},
+	}
+	for _, c := range cases {
+		desc := ocispec.Descriptor{Annotations: map[string]string{consts.KindAnnotationName: c.kind}}
+		if got := artifactType(ctx, s, desc); got != c.want {
+			t.Errorf("artifactType(kind=%q) = %q, want %q", c.kind, got, c.want)
+		}
 	}
 }
 
