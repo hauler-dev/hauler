@@ -31,6 +31,7 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/artifacts/chart"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
 	"hauler.dev/go/hauler/v2/pkg/audit"
+	"hauler.dev/go/hauler/v2/pkg/config"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
 	"hauler.dev/go/hauler/v2/pkg/getter"
@@ -242,7 +243,7 @@ func AddImageCmd(ctx context.Context, o *flags.AddImageOpts, s *store.Layout, re
 	// through to here under --ignore-errors, so err == nil already rules out
 	// the failed-but-stored-anyway case without checking ignoreErrors again.
 	verified := err == nil && !addImageVerifyConfig(o).Empty()
-	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite, pinnedDigest, verified)
+	return storeImage(ctx, s, cfg, o.Platform, o.ExcludeExtras, rso, ro, o.Rewrite, pinnedDigest, verified, o.RegistriesFilePath)
 }
 
 // addImageVerifyConfig collapses o's verification flags into a cosign.Config,
@@ -507,7 +508,7 @@ func digestRefTag(d goname.Digest) (goname.Tag, bool) {
 // storeImage re-deriving it from i's verification fields, since under
 // --ignore-errors those fields stay set even after a failed check and i alone
 // can no longer distinguish "verified" from "verification requested."
-func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string, pinnedDigest string, verified bool) error {
+func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform string, excludeExtras bool, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, rewrite string, pinnedDigest string, verified bool, registriesFilePath string) error {
 	l := log.FromContext(ctx)
 
 	start := time.Now()
@@ -532,6 +533,53 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 		} else {
 			log.BaseFromContext(ctx).Errorf("unable to parse image [%s]: %v", i.Name, err)
 			return err
+		}
+	}
+
+	var registriesConfig *config.Registries
+	if registriesFilePath != "" {
+		log.BaseFromContext(ctx).Debugf("loading registries config [%s]", registriesFilePath)
+
+		registriesConfig, err = config.RegistriesConfigFromFile(registriesFilePath)
+		if err != nil {
+			log.BaseFromContext(ctx).Errorf("failed to load registries config: %v", err)
+			return err
+		}
+	}
+
+	ref, err := reference.Parse(r.Name())
+	if err != nil {
+		return err
+	}
+
+	registryStr := ref.Context().RegistryStr()
+
+	if registriesConfig != nil && len(registriesConfig.Mirrors) > 0 {
+		// check entry specific to registry
+		mirrorConf, ok := registriesConfig.Mirrors[registryStr]
+		if !ok {
+			// fallback to default
+			mirrorConf, ok = registriesConfig.Mirrors["*"]
+		}
+
+		if ok && len(mirrorConf.Endpoints) > 0 {
+			log.BaseFromContext(ctx).Debugf("relocating img %s to %s", r.Name(), mirrorConf.Endpoints[0])
+
+			// set rewrite to original image, as the registry config should only be used for pulling the image
+			if rewrite == "" {
+				rewrite = r.Name()
+			}
+
+			relocatedRef, err := reference.Relocate(r.Name(), mirrorConf.Endpoints[0])
+			if err != nil {
+				return fmt.Errorf("failed to relocate image %q to mirror %q: %w", r.Name(), mirrorConf.Endpoints[0], err)
+			}
+
+			// parse again to prevent issues with paths in the rewritten endpoint and mismatches in the rewrite matching
+			r, err = reference.Parse(relocatedRef.Name())
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -924,12 +972,13 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 					InsecureSkipTLSVerify: insecureSkipTLSVerify,
 					PlainHTTP:             ch.PlainHTTP,
 				},
-				AddImages:       ch.AddImages,
-				AddDependencies: ch.AddDependencies,
-				ExcludeExtras:   excludeExtras,
-				Registry:        registry,
-				Platform:        platform,
-				ValuesFiles:     valuesFiles,
+				AddImages:          ch.AddImages,
+				AddDependencies:    ch.AddDependencies,
+				ExcludeExtras:      excludeExtras,
+				Registry:           registry,
+				Platform:           platform,
+				ValuesFiles:        valuesFiles,
+				RegistriesFilePath: o.RegistriesFilePath,
 			},
 			rewrite: ch.Rewrite,
 		})
@@ -1467,8 +1516,9 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 					CaFile:                j.opts.ChartOpts.CaFile,
 					InsecureSkipTLSVerify: j.opts.ChartOpts.InsecureSkipTLSVerify,
 				},
-				platform:      j.opts.Platform,
-				excludeExtras: j.opts.ExcludeExtras,
+				platform:       j.opts.Platform,
+				excludeExtras:  j.opts.ExcludeExtras,
+				registriesPath: j.opts.RegistriesFilePath,
 			})
 		}
 	}

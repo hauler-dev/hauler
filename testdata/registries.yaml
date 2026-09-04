@@ -1,0 +1,5 @@
+---
+mirrors:
+  "registry01.io":
+    endpoint:
+      - "ghcr.io"

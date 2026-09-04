@@ -1,0 +1,4 @@
+---
+image: "registry01.io/hauler-dev/library/busybox:musl"
+labels:
+  product: "registry-config"
