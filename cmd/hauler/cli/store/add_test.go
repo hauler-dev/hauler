@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -621,6 +623,82 @@ func TestAddFileCmd(t *testing.T) {
 		t.Fatalf("AddFileCmd: %v", err)
 	}
 	assertArtifactInStore(t, s, "renamed.txt")
+}
+
+// newBareGitRepoFixture builds the minimal on-disk layout of a valid bare git repo, named repoName, under a fresh temp directory, and returns its path.
+func newBareGitRepoFixture(t *testing.T, repoName string) string {
+	t.Helper()
+
+	dir := filepath.Join(t.TempDir(), repoName)
+	if err := os.MkdirAll(filepath.Join(dir, "objects"), 0o755); err != nil {
+		t.Fatalf("failed to create objects dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/master\n"), 0o644); err != nil {
+		t.Fatalf("failed to write HEAD: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "refs", "heads"), 0o755); err != nil {
+		t.Fatalf("failed to create refs dir: %v", err)
+	}
+	sha := "0000000000000000000000000000000000000000"
+	if err := os.WriteFile(filepath.Join(dir, "refs", "heads", "master"), []byte(sha+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write ref: %v", err)
+	}
+
+	return dir
+}
+
+func TestAddGitCmd(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	repoDir := newBareGitRepoFixture(t, "myrepo.git")
+
+	o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root)}
+	if err := AddGitCmd(ctx, o, s, repoDir, defaultCliOpts()); err != nil {
+		t.Fatalf("AddGitCmd: %v", err)
+	}
+	assertArtifactInStore(t, s, "myrepo.git")
+}
+
+func TestAddGitCmd_RejectsPlainDirectory(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	notARepo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(notARepo, "notes.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("failed to write notes.txt: %v", err)
+	}
+
+	o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root)}
+	if err := AddGitCmd(ctx, o, s, notARepo, defaultCliOpts()); err == nil {
+		t.Fatal("expected AddGitCmd to reject a directory that is not a git repository at all, got nil")
+	}
+}
+
+// TestAddGitCmd_MirrorsNonBareRepo verifies AddGitCmd accepts a normal (non-bare) local working copy directly, without requiring the caller to bare-clone it themselves first.
+func TestAddGitCmd_MirrorsNonBareRepo(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	repoDir := t.TempDir()
+	repo, err := gogit.PlainInit(repoDir, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to get worktree: %v", err)
+	}
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+	if _, err := wt.Commit("initial commit", &gogit.CommitOptions{AllowEmptyCommits: true, Author: sig}); err != nil {
+		t.Fatalf("failed to commit: %v", err)
+	}
+
+	o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root)}
+	if err := AddGitCmd(ctx, o, s, repoDir, defaultCliOpts()); err != nil {
+		t.Fatalf("AddGitCmd: %v", err)
+	}
+	assertArtifactInStore(t, s, filepath.Base(repoDir))
 }
 
 func TestStoreImage(t *testing.T) {

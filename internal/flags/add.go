@@ -56,6 +56,37 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification for remote files")
 }
 
+// AddGitOpts mirrors AddFileOpts for a local bare repo directory (tarred by getter's directory support, same as AddFileOpts), and mirrors AddChartOpts's auth flags for a remote URL, which is cloned with go-git before being stored the same way.
+type AddGitOpts struct {
+	*StoreRootOpts
+	Name                  string
+	CaFile                string
+	InsecureSkipTLSVerify bool
+
+	Username string
+	Password string
+	CertFile string
+	KeyFile  string
+
+	SSHKey string
+}
+
+func (o *AddGitOpts) AddFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.StringVarP(&o.Name, "name", "n", "", "(Optional) Rewrite the name of the git repository")
+	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification for remote repositories")
+	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification for remote repositories")
+
+	f.StringVar(&o.Username, "username", "", "(Optional) Username to use for authentication (https:// URLs)")
+	f.StringVar(&o.Password, "password", "", "(Optional) Password or access token to use for authentication (https:// URLs)")
+	f.StringVar(&o.CertFile, "cert-file", "", "(Optional) Location of the TLS Certificate to use for client authentication")
+	f.StringVar(&o.KeyFile, "key-file", "", "(Optional) Location of the TLS Key to use for client authentication")
+	f.StringVar(&o.SSHKey, "ssh-key", "", "(Optional) Location of the SSH private key to use for authentication (git@/ssh:// URLs, defaults to ssh-agent when unset)")
+
+	cmd.MarkFlagsRequiredTogether("username", "password")
+	cmd.MarkFlagsRequiredTogether("cert-file", "key-file")
+}
+
 type AddChartOpts struct {
 	*StoreRootOpts
 
