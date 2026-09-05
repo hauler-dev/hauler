@@ -108,6 +108,32 @@ func TestExtractArchive(t *testing.T) {
 	}
 }
 
+// TestExtractArchive_RejectsPathTraversal is a Zip Slip regression test: an entry name escaping dir via "../" must be rejected, not written outside dir.
+func TestExtractArchive_RejectsPathTraversal(t *testing.T) {
+	outsideDir := t.TempDir()
+	dir := filepath.Join(outsideDir, "extract-root")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("failed to create extraction root: %v", err)
+	}
+
+	// Once stripTopLevel removes the "mydir/" prefix, this entry resolves one level above dir, into outsideDir.
+	files := map[string]string{"../malicious.txt": "traversal payload"}
+	archiveBytes := newArchiveFixture(t, "mydir", files)
+
+	archivePath := filepath.Join(t.TempDir(), "archive.tar.gz")
+	if err := os.WriteFile(archivePath, archiveBytes, 0o644); err != nil {
+		t.Fatalf("failed to write archive fixture: %v", err)
+	}
+
+	if err := extractArchive(archivePath, dir); err == nil {
+		t.Fatal("expected an error for a path-traversal entry, got nil")
+	}
+
+	if _, err := os.Stat(filepath.Join(outsideDir, "malicious.txt")); !os.IsNotExist(err) {
+		t.Fatal("archive entry escaped the extraction root and was written outside it")
+	}
+}
+
 // TestPush_UnpacksDirectoryContent verifies an AnnotationUnpack descriptor expands into a directory, replacing whatever stale content was already there.
 func TestPush_UnpacksDirectoryContent(t *testing.T) {
 	files := map[string]string{

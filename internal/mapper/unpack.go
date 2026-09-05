@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // unpackWriteCloser buffers writes to a temp file, then expands it as tar+gzip into dir on Close.
@@ -65,6 +66,12 @@ func extractArchive(archivePath, dir string) error {
 		target := filepath.Join(dir, stripTopLevel(hdr.Name))
 		if target == dir {
 			continue
+		}
+
+		// Reject an entry name that resolves outside dir, same guard as filestore.go's Push.
+		rel, err := filepath.Rel(dir, target)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("path_traversal_disallowed: %q resolves outside destination dir", hdr.Name)
 		}
 
 		switch hdr.Typeflag {
