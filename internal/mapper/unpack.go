@@ -41,6 +41,12 @@ func (u *unpackWriteCloser) Close() error {
 
 // extractArchive expands a tar+gzip archive into dir, stripping the archive's own top-level prefix directory.
 func extractArchive(archivePath, dir string) error {
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("unable to resolve destination dir: %w", err)
+	}
+	root = filepath.Clean(root)
+
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -63,14 +69,15 @@ func extractArchive(archivePath, dir string) error {
 			return fmt.Errorf("failed to read archive %s: %w", archivePath, err)
 		}
 
-		target := filepath.Join(dir, stripTopLevel(hdr.Name))
-		if target == dir {
+		entry := stripTopLevel(hdr.Name)
+		entry = filepath.Clean(strings.ReplaceAll(entry, "/", string(filepath.Separator)))
+		if entry == "." || entry == "" {
 			continue
 		}
 
-		// Reject an entry name that resolves outside dir, same guard as filestore.go's Push.
-		rel, err := filepath.Rel(dir, target)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		// Reject an entry name that resolves outside root, same guard as filestore.go's Push.
+		target := filepath.Clean(filepath.Join(root, entry))
+		if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
 			return fmt.Errorf("path_traversal_disallowed: %q resolves outside destination dir", hdr.Name)
 		}
 
