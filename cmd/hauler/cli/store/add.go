@@ -252,6 +252,9 @@ func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.La
 		if err := audit.Append(ro.HaulerDir, e); err != nil {
 			l.Warnf("failed to write audit entry: %v", err)
 		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
 	}
 
 	var stats *store.ImageStats
