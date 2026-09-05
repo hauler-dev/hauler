@@ -12,6 +12,12 @@ import (
 
 // ExtractRepo unpacks the tar+gzip blob getter's directory support produces for a directory source (see pkg/getter/directory.go) back into dir as a plain bare repo layout, since whatever objects/refs/packs the original repo directory had are preserved exactly, so NewGit never needs to understand git's pack format at all.
 func ExtractRepo(archivePath, dir string) error {
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("unable to resolve destination dir: %w", err)
+	}
+	root = filepath.Clean(root)
+
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("unable to open git repository archive: %w", err)
@@ -34,14 +40,15 @@ func ExtractRepo(archivePath, dir string) error {
 			return fmt.Errorf("failed to read git repository archive %s: %w", archivePath, err)
 		}
 
-		target := filepath.Join(dir, stripTopLevel(hdr.Name))
-		if target == dir {
+		entry := stripTopLevel(hdr.Name)
+		entry = filepath.Clean(strings.ReplaceAll(entry, "/", string(filepath.Separator)))
+		if entry == "." || entry == "" {
 			continue
 		}
 
-		// Reject an entry name that resolves outside dir, same guard as internal/mapper's Push.
-		rel, err := filepath.Rel(dir, target)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		// Reject an entry name that resolves outside root, same guard as internal/mapper's Push.
+		target := filepath.Clean(filepath.Join(root, entry))
+		if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
 			return fmt.Errorf("path_traversal_disallowed: %q resolves outside destination dir", hdr.Name)
 		}
 
