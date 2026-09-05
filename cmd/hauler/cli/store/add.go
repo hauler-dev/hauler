@@ -29,6 +29,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/chart"
+	"hauler.dev/go/hauler/v2/pkg/artifacts/directory"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
 	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
@@ -177,6 +178,90 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	}
 
 	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
+
+	return nil
+}
+
+// AddDirectoryCmd stores a local directory tree, tagged the same as a directory added via `store add file`.
+func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.Layout, path string, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding directory: %v", err)
+		}
+	}()
+
+	start := time.Now()
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+
+	d, err := directory.NewDirectory(path, directory.WithClient(getter.NewClient(getter.ClientOptions{})), directory.WithContext(ctx), directory.WithName(o.Name))
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to add directory [%s]: %v... skipping...", path, err)
+			return nil
+		}
+		return err
+	}
+
+	ref, err := reference.NewTagged(d.Name(path), consts.DefaultTag)
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to derive a store reference for directory [%s]: %v... skipping...", path, err)
+			return nil
+		}
+		return err
+	}
+
+	l.Infof("adding directory [%s] to the store", path)
+
+	var desc ocispec.Descriptor
+	err = retry.Operation(ctx, o.StoreRootOpts, ro, func() error {
+		var addErr error
+		desc, addErr = s.AddArtifact(ctx, d, ref.Name())
+		return addErr
+	})
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to add directory [%s] to store: %v... skipping...", path, err)
+			return nil
+		}
+		return err
+	}
+
+	resolvedPath := path
+	if abs, err := filepath.Abs(path); err == nil {
+		resolvedPath = abs
+	}
+	desc.Annotations[consts.OriginalRefAnnotation] = resolvedPath
+	if err := s.OCI.AddIndex(desc); err != nil {
+		return err
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:           s.StoreID,
+			Store:             s.Root,
+			Type:              "directory",
+			Command:           "store add directory",
+			Args:              []string{audit.SanitizeURL(path)},
+			Reference:         audit.SanitizeURL(resolvedPath),
+			PortableReference: audit.ShortFileRef(path),
+			Digest:            desc.Digest.String(),
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+	}
+
+	var stats *store.ImageStats
+	if size, sizeErr := d.Size(); sizeErr == nil {
+		stats = &store.ImageStats{}
+		stats.Layers.Store(1)
+		stats.Bytes.Store(size)
+	}
+
+	l.Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
 
 	return nil
 }
