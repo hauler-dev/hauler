@@ -5,6 +5,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -138,5 +141,73 @@ func TestNewFile_DefaultPort(t *testing.T) {
 	}
 	if srv == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+// TestNewFile_BasicAuthRequired verifies --basic-auth actually gates file access end-to-end.
+func TestNewFile_BasicAuthRequired(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "sample.txt"), []byte("hello world"), 0o644); err != nil {
+		t.Fatalf("failed to write sample file: %v", err)
+	}
+
+	ctx := context.Background()
+	opts := flags.ServeFilesOpts{
+		RootDir:   dir,
+		BasicAuth: writeHtpasswdFile(t, "testuser", "testpass"),
+	}
+
+	srv, err := NewFile(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	httpSrv, ok := srv.(*http.Server)
+	if !ok {
+		t.Fatalf("expected *http.Server, got %T", srv)
+	}
+
+	rec := httptest.NewRecorder()
+	httpSrv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/sample.txt", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without credentials, got %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sample.txt", nil)
+	req.SetBasicAuth("testuser", "testpass")
+	httpSrv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with valid credentials, got %d", rec.Code)
+	}
+	if rec.Body.String() != "hello world" {
+		t.Fatalf("got body %q, want %q", rec.Body.String(), "hello world")
+	}
+}
+
+// TestNewFile_NoBasicAuthByDefault verifies no credentials are required when --basic-auth isn't set.
+func TestNewFile_NoBasicAuthByDefault(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "sample.txt"), []byte("hello world"), 0o644); err != nil {
+		t.Fatalf("failed to write sample file: %v", err)
+	}
+
+	ctx := context.Background()
+	opts := flags.ServeFilesOpts{RootDir: dir}
+
+	srv, err := NewFile(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	httpSrv, ok := srv.(*http.Server)
+	if !ok {
+		t.Fatalf("expected *http.Server, got %T", srv)
+	}
+
+	rec := httptest.NewRecorder()
+	httpSrv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/sample.txt", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with no --basic-auth configured, got %d", rec.Code)
 	}
 }

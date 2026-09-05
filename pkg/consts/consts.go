@@ -147,9 +147,11 @@ const (
 	DefaultHaulerTempDirName  = "hauler"
 	DefaultRegistryRootDir    = "registry"
 	DefaultRegistryPort       = 5000
+	DefaultRegistryRealm      = "hauler-registry"
 	DefaultFileserverRootDir  = "fileserver"
 	DefaultFileserverPort     = 8080
 	DefaultFileserverTimeout  = 60
+	DefaultFileserverRealm    = "hauler-fileserver"
 	DefaultHaulerArchiveName  = "haul.tar.zst"
 	DefaultHaulerManifestName = "hauler-manifest.yaml"
 	DefaultStoreMetadataName  = "store.json"

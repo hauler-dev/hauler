@@ -119,6 +119,47 @@ func TestDefaultRegistryConfig_WithTLS(t *testing.T) {
 	}
 }
 
+func TestDefaultRegistryConfig_NoBasicAuthByDefault(t *testing.T) {
+	rootDir := t.TempDir()
+	o := &flags.ServeRegistryOpts{
+		Port:    consts.DefaultRegistryPort,
+		RootDir: rootDir,
+	}
+	rso := defaultRootOpts(rootDir)
+	ro := defaultCliOpts()
+
+	cfg := DefaultRegistryConfig(o, rso, ro)
+	if cfg.Auth != nil {
+		t.Errorf("Auth = %v, want nil when --basic-auth is not set", cfg.Auth)
+	}
+}
+
+// TestDefaultRegistryConfig_WithBasicAuth verifies --basic-auth produces an auth.htpasswd config block.
+func TestDefaultRegistryConfig_WithBasicAuth(t *testing.T) {
+	rootDir := t.TempDir()
+	o := &flags.ServeRegistryOpts{
+		Port:           consts.DefaultRegistryPort,
+		RootDir:        rootDir,
+		BasicAuth:      "/opt/hauler/registry-htpasswd",
+		BasicAuthRealm: "hauler-registry",
+	}
+	rso := defaultRootOpts(rootDir)
+	ro := defaultCliOpts()
+
+	cfg := DefaultRegistryConfig(o, rso, ro)
+
+	htpasswd := cfg.Auth["htpasswd"]
+	if htpasswd == nil {
+		t.Fatal("Auth[\"htpasswd\"] not set")
+	}
+	if htpasswd["path"] != o.BasicAuth {
+		t.Errorf("Auth[\"htpasswd\"][\"path\"] = %v, want %q", htpasswd["path"], o.BasicAuth)
+	}
+	if htpasswd["realm"] != o.BasicAuthRealm {
+		t.Errorf("Auth[\"htpasswd\"][\"realm\"] = %v, want %q", htpasswd["realm"], o.BasicAuthRealm)
+	}
+}
+
 func TestLoadConfig_ValidFile(t *testing.T) {
 	// Write a minimal valid distribution registry config.
 	cfg := `

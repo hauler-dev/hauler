@@ -11,9 +11,14 @@ import (
 	"strings"
 
 	"github.com/distribution/distribution/v3/configuration"
+	_ "github.com/distribution/distribution/v3/registry/auth/htpasswd"
+	_ "github.com/distribution/distribution/v3/registry/auth/silly"
+	_ "github.com/distribution/distribution/v3/registry/auth/token"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/base"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/middleware/redirect"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/middleware/rewrite"
 	"gopkg.in/yaml.v3"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -71,6 +76,15 @@ func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts,
 		cfg.HTTP.TLS.Key = o.TLSKey
 	}
 
+	if o.BasicAuth != "" {
+		cfg.Auth = configuration.Auth{
+			"htpasswd": configuration.Parameters{
+				"realm": o.BasicAuthRealm,
+				"path":  o.BasicAuth,
+			},
+		}
+	}
+
 	cfg.HTTP.Addr = fmt.Sprintf(":%d", o.Port)
 	cfg.HTTP.Headers = http.Header{
 		"X-Content-Type-Options": []string{"nosniff"},
@@ -108,6 +122,8 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 			return err
 		}
 		cfg = ucfg
+	} else if o.BasicAuth != "" {
+		l.Infof("using basic auth via htpasswd file [%s] (realm [%s])", o.BasicAuth, o.BasicAuthRealm)
 	}
 
 	l.Infof("starting registry on port [%d]", o.Port)
@@ -160,6 +176,10 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	f, err := server.NewFile(ctx, *o)
 	if err != nil {
 		return err
+	}
+
+	if o.BasicAuth != "" {
+		l.Infof("using basic auth via htpasswd file [%s] (realm [%s])", o.BasicAuth, o.BasicAuthRealm)
 	}
 
 	if o.TLSCert != "" && o.TLSKey != "" {
