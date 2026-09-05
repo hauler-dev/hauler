@@ -29,6 +29,9 @@ const (
 	FileDirectoryConfigMediaType = "application/vnd.content.hauler.file.directory.config.v1+json"
 	FileHttpConfigMediaType      = "application/vnd.content.hauler.file.http.config.v1+json"
 
+	// git media types
+	GitRepoConfigMediaType = "application/vnd.content.hauler.git.repo.config.v1+json"
+
 	// wasm media types
 	WasmArtifactLayerMediaType = "application/vnd.wasm.content.layer.v1+wasm"
 	WasmConfigMediaType        = "application/vnd.wasm.config.v1+json"
@@ -147,9 +150,15 @@ const (
 	DefaultHaulerTempDirName  = "hauler"
 	DefaultRegistryRootDir    = "registry"
 	DefaultRegistryPort       = 5000
+	DefaultRegistryRealm      = "hauler-registry"
 	DefaultFileserverRootDir  = "fileserver"
 	DefaultFileserverPort     = 8080
 	DefaultFileserverTimeout  = 60
+	DefaultFileserverRealm    = "hauler-fileserver"
+	DefaultGitRootDir         = "git"
+	DefaultGitPort            = 8081
+	DefaultGitTimeout         = 60
+	DefaultGitRealm           = "hauler-git"
 	DefaultHaulerArchiveName  = "haul.tar.zst"
 	DefaultHaulerManifestName = "hauler-manifest.yaml"
 	DefaultStoreMetadataName  = "store.json"

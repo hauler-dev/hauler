@@ -187,6 +187,7 @@ func addStoreServe(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comma
 	cmd.AddCommand(
 		addStoreServeRegistry(rso, ro),
 		addStoreServeFiles(rso, ro),
+		addStoreServeGit(rso, ro),
 	)
 
 	return cmd
@@ -230,6 +231,29 @@ func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.
 			}
 
 			return store.ServeFilesCmd(ctx, o, s, ro)
+		},
+	}
+
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreServeGit(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.ServeGitOpts{StoreRootOpts: rso}
+
+	cmd := &cobra.Command{
+		Use:   "git",
+		Short: "Serve the Git Server",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := o.Store(ctx, ro)
+			if err != nil {
+				return err
+			}
+
+			return store.ServeGitCmd(ctx, o, s, ro)
 		},
 	}
 
@@ -343,6 +367,7 @@ func addStoreAdd(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command
 		addStoreAddFile(rso, ro),
 		addStoreAddImage(rso, ro),
 		addStoreAddChart(rso, ro),
+		addStoreAddGit(rso, ro),
 	)
 
 	return cmd
@@ -372,6 +397,40 @@ func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 			}
 
 			return store.AddFileCmd(ctx, o, s, args[0], ro)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreAddGit(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.AddGitOpts{StoreRootOpts: rso}
+
+	cmd := &cobra.Command{
+		Use:   "git",
+		Short: "Add a git repo to the store",
+		Example: `  # add an existing local bare repo
+  hauler store add git myrepo.git
+
+  # clone and add a remote repo in one step
+  hauler store add git https://github.com/example/myrepo.git
+
+  # clone a private repo using a username/access token
+  hauler store add git https://github.com/example/myrepo.git --username me --password $TOKEN
+
+  # clone over SSH
+  hauler store add git git@github.com:example/myrepo.git --ssh-key ~/.ssh/id_ed25519`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := o.Store(ctx, ro)
+			if err != nil {
+				return err
+			}
+
+			return store.AddGitCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
