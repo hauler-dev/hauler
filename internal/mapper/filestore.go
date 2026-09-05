@@ -101,6 +101,21 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 		return nil, errors.Wrap(err, fmt.Sprintf("creating directory for %s", fullFileName))
 	}
 
+	// Directory sourced content is a tar+gzip archive, not a file's raw bytes, so expand it into fullFileName instead of writing it there as one file
+	if desc.Annotations[content.AnnotationUnpack] == "true" {
+		if err := os.RemoveAll(fullFileName); err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("clearing destination directory %s", fullFileName))
+		}
+		if err := os.MkdirAll(fullFileName, 0755); err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("creating directory %s", fullFileName))
+		}
+		uw, err := newUnpackWriteCloser(fullFileName)
+		if err != nil {
+			return nil, errors.Wrap(err, "preparing to unpack directory archive")
+		}
+		return content.NewIoContentWriter(uw, content.WithOutputHash(desc.Digest.String())), nil
+	}
+
 	// Create the file
 	f, err := os.OpenFile(fullFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {

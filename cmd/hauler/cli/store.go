@@ -343,6 +343,7 @@ func addStoreAdd(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command
 		addStoreAddFile(rso, ro),
 		addStoreAddImage(rso, ro),
 		addStoreAddChart(rso, ro),
+		addStoreAddDirectory(rso, ro),
 	)
 
 	return cmd
@@ -372,6 +373,34 @@ func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 			}
 
 			return store.AddFileCmd(ctx, o, s, args[0], ro)
+		},
+	}
+	o.AddFlags(cmd)
+
+	return cmd
+}
+
+func addStoreAddDirectory(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
+	o := &flags.AddDirectoryOpts{StoreRootOpts: rso}
+
+	cmd := &cobra.Command{
+		Use:   "directory",
+		Short: "Add a directory to the store",
+		Example: `  # add a local directory
+  hauler store add directory ./mydir
+
+  # add a local directory and assign a new name
+  hauler store add directory ./mydir --name mydir-v2`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			s, err := o.Store(ctx, ro)
+			if err != nil {
+				return err
+			}
+
+			return store.AddDirectoryCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
