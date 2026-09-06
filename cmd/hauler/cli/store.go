@@ -244,7 +244,7 @@ func addStoreServeGit(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 
 	cmd := &cobra.Command{
 		Use:   "git",
-		Short: "Serve the Git Server",
+		Short: "(EXPERIMENTAL) Serve the Git Server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -409,7 +409,7 @@ func addStoreAddGit(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 
 	cmd := &cobra.Command{
 		Use:   "git",
-		Short: "Add a git repo to the store",
+		Short: "(EXPERIMENTAL) Add a git repo to the store",
 		Example: `  # add an existing local bare repo
   hauler store add git myrepo.git
 
