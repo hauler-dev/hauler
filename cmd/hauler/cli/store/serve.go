@@ -17,6 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/internal/repodata"
 	"hauler.dev/go/hauler/v2/internal/server"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/store"
@@ -157,6 +158,14 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 		return err
 	}
 
+	if o.GenerateRepodata {
+		rpmCount, debCount, err := prepareRepodata(o.RootDir)
+		if err != nil {
+			return err
+		}
+		l.Infof("generated repodata for [%d] rpm and [%d] deb package(s)", rpmCount, debCount)
+	}
+
 	f, err := server.NewFile(ctx, *o)
 	if err != nil {
 		return err
@@ -175,4 +184,54 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	}
 
 	return nil
+}
+
+// prepareRepodata moves top-level .rpm/.deb files under rootDir into their own rpms/ and debs/ subdirectories and generates each package manager's repo metadata there.
+func prepareRepodata(rootDir string) (rpmCount, debCount int, err error) {
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+
+		lower := strings.ToLower(e.Name())
+		switch {
+		case strings.HasSuffix(lower, ".rpm"):
+			if err := moveInto(rootDir, e.Name(), "rpms"); err != nil {
+				return 0, 0, err
+			}
+			rpmCount++
+		case strings.HasSuffix(lower, ".deb"):
+			if err := moveInto(rootDir, e.Name(), "debs"); err != nil {
+				return 0, 0, err
+			}
+			debCount++
+		}
+	}
+
+	if rpmCount > 0 {
+		if err := repodata.GenerateRPMRepo(filepath.Join(rootDir, "rpms")); err != nil {
+			return 0, 0, fmt.Errorf("generating rpm repodata: %w", err)
+		}
+	}
+	if debCount > 0 {
+		if err := repodata.GenerateDebRepo(filepath.Join(rootDir, "debs")); err != nil {
+			return 0, 0, fmt.Errorf("generating deb repodata: %w", err)
+		}
+	}
+
+	return rpmCount, debCount, nil
+}
+
+// moveInto relocates rootDir/name into rootDir/subdir/name, creating subdir if needed.
+func moveInto(rootDir, name, subdir string) error {
+	destDir := filepath.Join(rootDir, subdir)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	return os.Rename(filepath.Join(rootDir, name), filepath.Join(destDir, name))
 }
