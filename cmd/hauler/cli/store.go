@@ -385,7 +385,7 @@ func addStoreAddDirectory(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobr
 
 	cmd := &cobra.Command{
 		Use:   "directory",
-		Short: "Add a directory to the store",
+		Short: "(EXPERIMENTAL) Add a directory to the store",
 		Example: `  # add a local directory
   hauler store add directory ./mydir
 
