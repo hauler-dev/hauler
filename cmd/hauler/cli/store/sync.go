@@ -867,6 +867,37 @@ func resolveAndVerify(ctx context.Context, cache *cosign.Cache, j imageJob, rso 
 	return pinned, nil
 }
 
+// headDescriptor resolves ref with one HEAD under the --retries budget and
+// returns its descriptor. The TLS knobs only replace the transport when set,
+// so a caller passing neither keeps the default transport unchanged.
+func headDescriptor(ctx context.Context, ref goname.Reference, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, insecureSkipTLSVerify bool, caFile string) (*gv1.Descriptor, error) {
+	opts := []remote.Option{
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+		remote.WithContext(ctx),
+	}
+	if insecureSkipTLSVerify || caFile != "" {
+		tr, err := content.BuildTransport(insecureSkipTLSVerify, caFile)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, remote.WithTransport(tr))
+	}
+
+	var desc *gv1.Descriptor
+	err := retry.Operation(ctx, rso, ro, func() error {
+		d, headErr := remote.Head(ref, opts...)
+		if headErr != nil {
+			return headErr
+		}
+		desc = d
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return desc, nil
+}
+
 // pinDigest resolves ref to the digest its tag currently names, under the
 // caller's --retries budget. Every caller that verifies before storing goes
 // through it, so the pin is retried on exactly one code path.
@@ -879,22 +910,11 @@ func resolveAndVerify(ctx context.Context, cache *cosign.Cache, j imageJob, rso 
 // cancellation, so a cancelled run still fails fast rather than sleeping out
 // the budget.
 func pinDigest(ctx context.Context, ref goname.Reference, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) (string, error) {
-	var pinned string
-	err := retry.Operation(ctx, rso, ro, func() error {
-		desc, headErr := remote.Head(ref,
-			remote.WithAuthFromKeychain(authn.DefaultKeychain),
-			remote.WithContext(ctx),
-		)
-		if headErr != nil {
-			return headErr
-		}
-		pinned = desc.Digest.String()
-		return nil
-	})
+	desc, err := headDescriptor(ctx, ref, rso, ro, false, "")
 	if err != nil {
 		return "", err
 	}
-	return pinned, nil
+	return desc.Digest.String(), nil
 }
 
 // verifyError names which step of resolveAndVerify failed. A bad reference, an
