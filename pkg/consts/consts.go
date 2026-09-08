@@ -138,15 +138,17 @@ const (
 	HaulerIndexFile = "hauler-index.json"
 
 	// other constraints
-	CarbideRegistry           = "rgcrprod.azurecr.us"
-	DefaultNamespace          = "hauler"
-	DefaultTag                = "latest"
-	DefaultRegistry           = ""
-	DefaultStoreName          = "store"
-	DefaultHaulerDirName      = ".hauler"
-	DefaultHaulerTempDirName  = "hauler"
-	DefaultRegistryRootDir    = "registry"
-	DefaultRegistryPort       = 5000
+	CarbideRegistry          = "rgcrprod.azurecr.us"
+	DefaultNamespace         = "hauler"
+	DefaultTag               = "latest"
+	DefaultRegistry          = ""
+	DefaultStoreName         = "store"
+	DefaultHaulerDirName     = ".hauler"
+	DefaultHaulerTempDirName = "hauler"
+	DefaultRegistryRootDir   = "registry"
+	DefaultRegistryPort      = 5000
+	DefaultRegistryCatalogMaxEntries = 1000
+	DefaultRegistryTagsMaxEntries = 1000
 	DefaultFileserverRootDir  = "fileserver"
 	DefaultFileserverPort     = 8080
 	DefaultFileserverTimeout  = 60
