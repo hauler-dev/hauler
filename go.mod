@@ -12,7 +12,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/google/go-containerregistry v0.22.0
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
 	github.com/mattn/go-isatty v0.0.24
 	github.com/mholt/archives v0.1.5
@@ -27,8 +26,14 @@ require (
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
+<<<<<<< HEAD
 	golang.org/x/mod v0.40.0
 	golang.org/x/sync v0.22.0
+=======
+	golang.org/x/crypto v0.55.0
+	golang.org/x/mod v0.41.0
+	golang.org/x/sync v0.23.0
+>>>>>>> 1453b17 (added/fixed basic auth with registry and fileserver (#782))
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 	helm.sh/helm/v4 v4.2.4
@@ -191,6 +196,7 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.18 // indirect
 	github.com/googleapis/gax-go/v2 v2.23.0 // indirect
+	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/gosuri/uitable v0.0.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -332,8 +338,12 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
+<<<<<<< HEAD
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
+=======
+	golang.org/x/net v0.58.0 // indirect
+>>>>>>> 1453b17 (added/fixed basic auth with registry and fileserver (#782))
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
