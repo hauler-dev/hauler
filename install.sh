@@ -13,6 +13,9 @@
 #     - curl -sfL https://get.hauler.dev | HAULER_VERSION=1.0.0 bash
 #     - HAULER_VERSION=1.0.0 ./install.sh
 #
+#   Install from a Local Directory
+#     - HAULER_LOCAL_INSTALL=/path/to/dir ./install.sh
+#
 #   Set Install Directory
 #     - curl -sfL https://get.hauler.dev | HAULER_INSTALL_DIR=/usr/local/bin bash
 #     - HAULER_INSTALL_DIR=/usr/local/bin ./install.sh
@@ -95,12 +98,24 @@ fi
 
 # set version environment variable
 if [ -z "${HAULER_VERSION}" ]; then
-    # attempt to retrieve the latest version from GitHub
-    HAULER_VERSION=$(curl -sI https://github.com/hauler-dev/hauler/releases/latest | grep -i location | sed -e 's#.*tag/v##' -e 's/^[[:space:]]*//g' -e 's/[[:space:]]*$//g')
+    if [ -n "${HAULER_LOCAL_INSTALL}" ]; then
+        # derive the version from the staged checksums file
+        shopt -s nullglob
+        CHECKSUM_CANDIDATES=("${HAULER_LOCAL_INSTALL}"/hauler_*_checksums.txt)
+        shopt -u nullglob
+        CHECKSUMS_FILE="${CHECKSUM_CANDIDATES[0]:-}"
+        if [ -z "${CHECKSUMS_FILE}" ]; then
+            fatal "No hauler_<version>_checksums.txt found in HAULER_LOCAL_INSTALL: ${HAULER_LOCAL_INSTALL}"
+        fi
+        HAULER_VERSION=$(basename "${CHECKSUMS_FILE}" | sed -e 's/^hauler_//' -e 's/_checksums\.txt$//')
+    else
+        # attempt to retrieve the latest version from GitHub
+        HAULER_VERSION=$(curl -sI https://github.com/hauler-dev/hauler/releases/latest | grep -i location | sed -e 's#.*tag/v##' -e 's/^[[:space:]]*//g' -e 's/[[:space:]]*$//g')
+    fi
 
     # exit if the version could not be detected
     if [ -z "${HAULER_VERSION}" ]; then
-        fatal "HAULER_VERSION is unable to be detected and/or retrieved from GitHub. Please set: HAULER_VERSION"
+        fatal "HAULER_VERSION is unable to be detected and/or retrieved. Please set: HAULER_VERSION"
     fi
 fi
 
@@ -156,17 +171,30 @@ chmod -R 777 "${HAULER_DIR}" || fatal "Failed to Update Permissions of Hauler Di
 # change to hauler directory
 cd "${HAULER_DIR}" || fatal "Failed to Change Directory to Hauler Directory: ${HAULER_DIR}"
 
-# start hauler artifacts download
-info "Starting Download..."
+# start hauler artifacts local copy or remote download
+if [ -n "${HAULER_LOCAL_INSTALL}" ]; then
+    # start hauler artifacts copy
+    info "Starting Local Copy..."
+    verbose "- Local Directory: ${HAULER_LOCAL_INSTALL}"
 
-# download the checksum file
-if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_checksums.txt"; then
-    fatal "Failed to Download: hauler_${HAULER_VERSION}_checksums.txt"
-fi
+    # copy the checksum file
+    cp "${HAULER_LOCAL_INSTALL}/hauler_${HAULER_VERSION}_checksums.txt" . || fatal "Failed to Copy: hauler_${HAULER_VERSION}_checksums.txt"
 
-# download the archive file
-if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"; then
-    fatal "Failed to Download: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
+    # copy the archive file
+    cp "${HAULER_LOCAL_INSTALL}/hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz" . || fatal "Failed to Copy: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
+else
+    # start hauler artifacts download
+    info "Starting Download..."
+
+    # download the checksum file
+    if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_checksums.txt"; then
+        fatal "Failed to Download: hauler_${HAULER_VERSION}_checksums.txt"
+    fi
+
+    # download the archive file
+    if ! curl -sfOL "https://github.com/hauler-dev/hauler/releases/download/v${HAULER_VERSION}/hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"; then
+        fatal "Failed to Download: hauler_${HAULER_VERSION}_${PLATFORM}_${ARCH}.tar.gz"
+    fi
 fi
 
 # start hauler checksum verification
