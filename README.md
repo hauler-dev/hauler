@@ -61,8 +61,9 @@ brew install hauler
 
 ### Windows
 
-```bash
-# coming soon
+```powershell
+# installs latest release
+irm https://get.hauler.dev/install.ps1 | iex
 ```
 
 ## Acknowledgements
