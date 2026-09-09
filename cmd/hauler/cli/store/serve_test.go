@@ -97,6 +97,18 @@ func TestDefaultRegistryConfig(t *testing.T) {
 	if len(cfg.Validation.Manifests.URLs.Allow) == 0 {
 		t.Error("Validation.Manifests.URLs.Allow is empty, want at least one rule")
 	}
+
+	// Catalog/Tags entry caps. configuration.Parse applies these defaults
+	// when a config is loaded from YAML, but a hand-built Configuration (as
+	// produced here) leaves them at the zero value unless set explicitly.
+	// A zero Catalog.MaxEntries makes GET /v2/_catalog always return an
+	// empty repository list, regardless of what's actually stored.
+	if cfg.Catalog.MaxEntries != consts.DefaultRegistryCatalogMaxEntries {
+		t.Errorf("Catalog.MaxEntries = %d, want %d", cfg.Catalog.MaxEntries, consts.DefaultRegistryCatalogMaxEntries)
+	}
+	if cfg.Tags.MaxTags != consts.DefaultRegistryTagsMaxEntries {
+		t.Errorf("Tags.MaxTags = %d, want %d", cfg.Tags.MaxTags, consts.DefaultRegistryTagsMaxEntries)
+	}
 }
 
 func TestDefaultRegistryConfig_WithTLS(t *testing.T) {
