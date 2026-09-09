@@ -4,20 +4,17 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
-	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 // NewFile returns a fileserver
 // TODO: Better configs
 func NewFile(ctx context.Context, cfg flags.ServeFilesOpts) (Server, error) {
-	r := mux.NewRouter()
-	r.PathPrefix("/").Handler(handlers.LoggingHandler(os.Stdout, http.StripPrefix("/", http.FileServer(http.Dir(cfg.RootDir)))))
 	if cfg.RootDir == "" {
 		cfg.RootDir = "."
 	}
@@ -29,6 +26,23 @@ func NewFile(ctx context.Context, cfg flags.ServeFilesOpts) (Server, error) {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = consts.DefaultFileserverTimeout
 	}
+
+	if cfg.BasicAuthRealm == "" {
+		cfg.BasicAuthRealm = consts.DefaultFileserverRealm
+	}
+
+	r := mux.NewRouter()
+	r.Use(loggingMiddleware(log.FromContext(ctx)))
+
+	if cfg.BasicAuth != "" {
+		auth, err := loadHtpasswd(cfg.BasicAuth)
+		if err != nil {
+			return nil, err
+		}
+		r.Use(basicAuthMiddleware(auth, cfg.BasicAuthRealm))
+	}
+
+	r.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir(cfg.RootDir))))
 
 	srv := &http.Server{
 		Handler:      r,
