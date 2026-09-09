@@ -7,7 +7,7 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
-// ImageCopyOpts holds flags for `hauler copy` -- not to be confused with CopyOpts (`store copy`).
+// ImageCopyOpts holds flags for `hauler copy`, distinct from CopyOpts (`store copy`).
 type ImageCopyOpts struct {
 	InsecureSkipTLSVerify bool
 	PlainHTTP             bool
