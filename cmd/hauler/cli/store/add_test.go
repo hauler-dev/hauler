@@ -665,7 +665,7 @@ func TestStoreImage(t *testing.T) {
 			ro := defaultCliOpts()
 			ro.IgnoreErrors = tc.ignoreErrors
 
-			err := storeImage(ctx, s, v1.Image{Name: tc.imageName}, "", false, rso, ro, "", "", false)
+			err := storeImage(ctx, s, v1.Image{Name: tc.imageName}, "", false, rso, ro, "", "", false, "")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -682,7 +682,7 @@ func TestStoreImage(t *testing.T) {
 
 		t.Setenv(consts.HaulerIgnoreErrors, "true")
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/nonexistent/image:missing"}, "", false, rso, ro, "", "", false)
+		err := storeImage(ctx, s, v1.Image{Name: host + "/nonexistent/image:missing"}, "", false, rso, ro, "", "", false, "")
 		if err != nil {
 			t.Fatalf("expected nil with HAULER_IGNORE_ERRORS=true, got: %v", err)
 		}
@@ -736,7 +736,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2", "", false)
+		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2", "", false, "")
 		if err != nil {
 			t.Fatalf("storeImage with rewrite: %v", err)
 		}
@@ -752,7 +752,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v3"}, "", false, rso, ro, "newrepo/img", "", false)
+		err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v3"}, "", false, rso, ro, "newrepo/img", "", false, "")
 		if err != nil {
 			t.Fatalf("storeImage with tagless rewrite: %v", err)
 		}
@@ -772,7 +772,7 @@ func TestStoreImage_Rewrite(t *testing.T) {
 		ro := defaultCliOpts()
 
 		digestRef := host + "/src/repo@" + h.String()
-		err = storeImage(ctx, s, v1.Image{Name: digestRef}, "", false, rso, ro, "newrepo/img", "", false)
+		err = storeImage(ctx, s, v1.Image{Name: digestRef}, "", false, rso, ro, "newrepo/img", "", false, "")
 		if err == nil {
 			t.Fatal("expected error for digest ref rewrite without explicit tag, got nil")
 		}
@@ -846,7 +846,7 @@ func TestStoreImage_MultiArch(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage multi-arch index: %v", err)
 	}
 	// Full index (both platforms) must be stored as an index, not a single image.
@@ -862,7 +862,7 @@ func TestStoreImage_PlatformFilter(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v2"}, "linux/amd64", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v2"}, "linux/amd64", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage with platform filter: %v", err)
 	}
 	// Platform filter resolves a single manifest from the index → stored as a single image.
@@ -964,7 +964,7 @@ func TestStoreImage_CosignV2Artifacts(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertArtifactKindInStore(t, s, "test/signed:v1", consts.KindAnnotationSigs)
@@ -983,7 +983,7 @@ func TestStoreImage_CosignV3Referrer(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	assertReferrerInStore(t, s, "test/image:v1")
@@ -1002,7 +1002,7 @@ func TestStoreImage_ExcludeExtras(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", true, rso, ro, "", "", false); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v1"}, "", true, rso, ro, "", "", false, ""); err != nil {
 			t.Fatalf("storeImage with excludeExtras: %v", err)
 		}
 
@@ -1040,7 +1040,7 @@ func TestStoreImage_ExcludeExtras(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", true, rso, ro, "", "", false); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/image:v1"}, "", true, rso, ro, "", "", false, ""); err != nil {
 			t.Fatalf("storeImage with excludeExtras: %v", err)
 		}
 
@@ -1075,7 +1075,7 @@ func TestStoreImage_ExcludeExtras(t *testing.T) {
 		rso := defaultRootOpts(s.Root)
 		ro := defaultCliOpts()
 
-		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v2"}, "", false, rso, ro, "", "", false); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/test/signed:v2"}, "", false, rso, ro, "", "", false, ""); err != nil {
 			t.Fatalf("storeImage without excludeExtras: %v", err)
 		}
 
@@ -2092,7 +2092,7 @@ func TestStoreImage_RetryDoesNotDoubleCountStats(t *testing.T) {
 	ro := defaultCliOpts()
 
 	cfg := v1.Image{Name: host + "/test/retry-stats:v1"}
-	if err := storeImage(ctx, s, cfg, "", true /* excludeExtras: keep this to just the image's own layers */, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, cfg, "", true /* excludeExtras: keep this to just the image's own layers */, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -3421,7 +3421,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 		insecure := false
 		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
-			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false, "")
 		if err == nil {
 			t.Fatal("expected error from unreadable caFile, got nil")
 		}
@@ -3439,7 +3439,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 		insecure := false
 		img := v1.Image{Name: ref, CaFile: junk, InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
-			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false, "")
 		if err == nil {
 			t.Fatal("expected error from non-PEM caFile, got nil")
 		}
@@ -3453,7 +3453,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 		insecure := true
 		img := v1.Image{Name: ref, CaFile: missingCA, InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
-			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false, "")
 		if err != nil {
 			t.Fatalf("insecure should ignore caFile, got: %v", err)
 		}
@@ -3465,7 +3465,7 @@ func TestStoreImage_CAFileAndInsecure(t *testing.T) {
 		insecure := false
 		img := v1.Image{Name: ref, CaFile: writeCAFile(t), InsecureSkipTLSVerify: insecure}
 		err := storeImage(ctx, s, img, "", false,
-			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+			defaultRootOpts(s.Root), defaultCliOpts(), "", "", false, "")
 		if err != nil {
 			t.Fatalf("valid caFile should be accepted, got: %v", err)
 		}
