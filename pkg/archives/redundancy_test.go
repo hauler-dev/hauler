@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -160,6 +161,22 @@ func TestSplitArchiveRedundant_TooManyLosses(t *testing.T) {
 
 	if _, err := JoinChunks(ctx, chunks[tooMany], t.TempDir()); err == nil {
 		t.Fatal("expected an error when losses exceed the parity budget, got nil")
+	}
+}
+
+// TestSplitArchiveRedundant_TotalShardsOverLimit confirms a combined data+parity total over 256 is rejected with a clear error, not the raw reedsolomon one, even when the data shard count alone is within bounds.
+func TestSplitArchiveRedundant_TotalShardsOverLimit(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "haul.tar.zst")
+	newTestArchive(t, archivePath, 200)
+
+	_, err := SplitArchiveRedundant(ctx, archivePath, 1, 50)
+	if err == nil {
+		t.Fatal("expected an error when data+parity shards exceed 256, got nil")
+	}
+	if !strings.Contains(err.Error(), "256 shard limit") {
+		t.Fatalf("expected a clear 256-shard-limit error, got: %v", err)
 	}
 }
 

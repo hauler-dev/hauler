@@ -145,6 +145,9 @@ func SplitArchiveRedundant(ctx context.Context, archivePath string, maxBytes int
 	}
 	parityShards := parityShardCount(dataShards, redundancyPercent)
 	totalShards := dataShards + parityShards
+	if totalShards > 256 {
+		return nil, fmt.Errorf("archive requires %d data and %d parity shards (%d total), which exceeds the 256 shard limit; use a larger --chunk-size or a lower --redundancy-percent", dataShards, parityShards, totalShards)
+	}
 
 	enc, err := reedsolomon.NewStream(dataShards, parityShards)
 	if err != nil {
