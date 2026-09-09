@@ -652,6 +652,8 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 			rewrite := ""
 			if i.Rewrite != "" {
 				rewrite = i.Rewrite
+			} else if prefix := strings.Trim(a[consts.ImageAnnotationPrefix], "/"); prefix != "" {
+				rewrite = prefixArtifactRewrite(prefix, i.Name)
 			}
 			jobs = append(jobs, imageJob{img: i, local: true, rewrite: rewrite})
 			continue
@@ -755,6 +757,8 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 		rewrite := ""
 		if i.Rewrite != "" {
 			rewrite = i.Rewrite
+		} else if prefix := strings.Trim(a[consts.ImageAnnotationPrefix], "/"); prefix != "" {
+			rewrite = prefixArtifactRewrite(prefix, i.Name)
 		}
 
 		excludeExtras := resolveBoolFlag(i.ExcludeExtras, a[consts.ImageAnnotationExcludeExtras] == "true", o.ExcludeExtras, o.ExcludeExtrasChanged)

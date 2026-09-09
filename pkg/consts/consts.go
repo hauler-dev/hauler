@@ -70,7 +70,8 @@ const (
 	ImageAnnotationPlatform      = "hauler.dev/platform"
 	ImageAnnotationRegistry      = "hauler.dev/registry"
 	ImageAnnotationTlog          = "hauler.dev/use-tlog-verify"
-	ImageAnnotationRewrite       = "hauler.dev/rewrite"
+	ImageAnnotationPrefix        = "hauler.dev/image-prefix"
+	ChartAnnotationPrefix        = "hauler.dev/chart-prefix"
 	ImageAnnotationExcludeExtras = "hauler.dev/exclude-extras"
 	ImageRefKey                  = "org.opencontainers.image.ref.name"
 
