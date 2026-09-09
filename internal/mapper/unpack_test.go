@@ -89,7 +89,7 @@ func TestExtractArchive(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	if err := extractArchive(archivePath, dir); err != nil {
+	if err := extractArchive(context.Background(), archivePath, dir); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
@@ -105,6 +105,54 @@ func TestExtractArchive(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(dir, "mydir")); !os.IsNotExist(err) {
 		t.Errorf("expected the archive's top-level prefix directory to be stripped, but %s exists", filepath.Join(dir, "mydir"))
+	}
+}
+
+// TestExtractArchive_SkipsSymlinks confirms a symlink entry is skipped rather than extracted, and that skipping it doesn't fail extraction of the rest of the archive.
+func TestExtractArchive_SkipsSymlinks(t *testing.T) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(zw)
+
+	if err := tw.WriteHeader(&tar.Header{Name: "mydir", Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+		t.Fatalf("failed to write archive dir header: %v", err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "mydir/link", Typeflag: tar.TypeSymlink, Linkname: "a.txt", Mode: 0o777}); err != nil {
+		t.Fatalf("failed to write symlink header: %v", err)
+	}
+	content := "hello"
+	if err := tw.WriteHeader(&tar.Header{Name: "mydir/a.txt", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(content))}); err != nil {
+		t.Fatalf("failed to write archive header for a.txt: %v", err)
+	}
+	if _, err := tw.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write archive content for a.txt: %v", err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("failed to close tar writer: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("failed to close gzip writer: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "archive.tar.gz")
+	if err := os.WriteFile(archivePath, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("failed to write archive fixture: %v", err)
+	}
+
+	dir := t.TempDir()
+	if err := extractArchive(context.Background(), archivePath, dir); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if _, err := os.Lstat(filepath.Join(dir, "link")); !os.IsNotExist(err) {
+		t.Errorf("expected symlink entry to be skipped, but %s exists", filepath.Join(dir, "link"))
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "a.txt"))
+	if err != nil {
+		t.Fatalf("failed to read extracted a.txt: %v", err)
+	}
+	if string(got) != content {
+		t.Errorf("a.txt = %q, want %q", got, content)
 	}
 }
 
@@ -125,7 +173,7 @@ func TestExtractArchive_RejectsPathTraversal(t *testing.T) {
 		t.Fatalf("failed to write archive fixture: %v", err)
 	}
 
-	if err := extractArchive(archivePath, dir); err == nil {
+	if err := extractArchive(context.Background(), archivePath, dir); err == nil {
 		t.Fatal("expected an error for a path-traversal entry, got nil")
 	}
 

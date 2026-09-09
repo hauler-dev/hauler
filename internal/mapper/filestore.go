@@ -109,7 +109,7 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 		if err := os.MkdirAll(fullFileName, 0755); err != nil {
 			return nil, errors.Wrap(err, fmt.Sprintf("creating directory %s", fullFileName))
 		}
-		uw, err := newUnpackWriteCloser(fullFileName)
+		uw, err := newUnpackWriteCloser(ctx, fullFileName)
 		if err != nil {
 			return nil, errors.Wrap(err, "preparing to unpack directory archive")
 		}

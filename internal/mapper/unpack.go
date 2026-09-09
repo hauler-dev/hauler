@@ -3,25 +3,29 @@ package mapper
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 // unpackWriteCloser buffers writes to a temp file, then expands it as tar+gzip into dir on Close.
 type unpackWriteCloser struct {
+	ctx context.Context
 	dir string
 	tmp *os.File
 }
 
-func newUnpackWriteCloser(dir string) (*unpackWriteCloser, error) {
+func newUnpackWriteCloser(ctx context.Context, dir string) (*unpackWriteCloser, error) {
 	tmp, err := os.CreateTemp("", "hauler-unpack")
 	if err != nil {
 		return nil, err
 	}
-	return &unpackWriteCloser{dir: dir, tmp: tmp}, nil
+	return &unpackWriteCloser{ctx: ctx, dir: dir, tmp: tmp}, nil
 }
 
 func (u *unpackWriteCloser) Write(p []byte) (int, error) {
@@ -36,11 +40,11 @@ func (u *unpackWriteCloser) Close() error {
 		return err
 	}
 
-	return extractArchive(tmpPath, u.dir)
+	return extractArchive(u.ctx, tmpPath, u.dir)
 }
 
 // extractArchive expands a tar+gzip archive into dir, stripping the archive's own top-level prefix directory.
-func extractArchive(archivePath, dir string) error {
+func extractArchive(ctx context.Context, archivePath, dir string) error {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("unable to resolve destination dir: %w", err)
@@ -99,6 +103,8 @@ func extractArchive(archivePath, dir string) error {
 				return fmt.Errorf("failed to write %s from archive: %w", target, err)
 			}
 			out.Close()
+		default:
+			log.FromContext(ctx).Debugf("skipping archive entry [%s] with unsupported type [%d]", hdr.Name, hdr.Typeflag)
 		}
 	}
 
