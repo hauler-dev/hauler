@@ -224,7 +224,36 @@ func prepareRepodata(rootDir string) (rpmCount, debCount int, err error) {
 		}
 	}
 
-	return rpmCount, debCount, nil
+	// Report the repo's total package count, not just what moved this run, since a
+	// restart with no new top-level files leaves earlier runs' packages in place.
+	rpmTotal, err := countPackages(filepath.Join(rootDir, "rpms"), ".rpm")
+	if err != nil {
+		return 0, 0, err
+	}
+	debTotal, err := countPackages(filepath.Join(rootDir, "debs"), ".deb")
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return rpmTotal, debTotal, nil
+}
+
+// countPackages counts files with ext directly under dir, or 0 if dir doesn't exist yet.
+func countPackages(dir, ext string) (int, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ext) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // moveInto relocates rootDir/name into rootDir/subdir/name, creating subdir if needed.
