@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,6 +56,71 @@ func TestIOStatsCountsWrittenAndCached(t *testing.T) {
 	}
 	if st.BlobBytesWritten != int64(len("hello world")) {
 		t.Fatalf("BlobBytesWritten = %d after cache hit, want unchanged", st.BlobBytesWritten)
+	}
+}
+
+// TestBlobCountersCreditEveryCallerOnSharedDigest is a regression test for a bug where a singleflight follower's counters stayed uncredited since only the leader's ctx ever ran.
+func TestBlobCountersCreditEveryCallerOnSharedDigest(t *testing.T) {
+	o, err := NewOCI(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewOCI: %v", err)
+	}
+
+	body := "shared blob content"
+	dg := digest.FromString(body)
+
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	var openOnce sync.Once
+	open := func() (io.ReadCloser, error) {
+		openOnce.Do(func() { close(started) })
+		<-proceed
+		return io.NopCloser(strings.NewReader(body)), nil
+	}
+
+	var statsA, statsB struct {
+		Cached, Written atomic.Int64
+	}
+	ctxA := WithBlobCounters(context.Background(), &statsA.Cached, &statsA.Written)
+	ctxB := WithBlobCounters(context.Background(), &statsB.Cached, &statsB.Written)
+
+	var wg sync.WaitGroup
+	var errA, errB error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		errA = o.WriteBlob(ctxA, dg, int64(len(body)), open)
+	}()
+
+	<-started // A is now blocked in open(), holding the flight open
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		errB = o.WriteBlob(ctxB, dg, int64(len(body)), open)
+	}()
+
+	// Give B's goroutine time to join A's flight as a follower, same pattern as TestIOStatsRecordsLockWait.
+	time.Sleep(50 * time.Millisecond)
+	close(proceed)
+	wg.Wait()
+
+	if errA != nil {
+		t.Fatalf("WriteBlob (A): %v", errA)
+	}
+	if errB != nil {
+		t.Fatalf("WriteBlob (B): %v", errB)
+	}
+
+	if st := o.Stats().Snapshot(); st.BlobsWritten != 1 {
+		t.Fatalf("BlobsWritten = %d, want 1 (only one real write for the shared digest)", st.BlobsWritten)
+	}
+
+	if total := statsA.Cached.Load() + statsA.Written.Load(); total != 1 {
+		t.Errorf("caller A's counters totaled %d, want 1", total)
+	}
+	if total := statsB.Cached.Load() + statsB.Written.Load(); total != 1 {
+		t.Errorf("caller B's counters totaled %d, want 1 (a follower's per-operation counters must be credited too)", total)
 	}
 }
 
