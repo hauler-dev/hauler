@@ -14,6 +14,8 @@ import (
 	dockermetrics "github.com/docker/go-metrics"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 func NewRegistry(ctx context.Context, cfg *configuration.Configuration) (*registry.Registry, error) {
@@ -60,6 +62,13 @@ func NewTempRegistry(ctx context.Context, root string) *tmpRegistryServer {
 	}
 
 	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
+
+	// Set these two limits here, not through configuration.Parse. This
+	// Configuration struct is built by hand, so distribution cannot apply
+	// its own default of 1000. Without this line, MaxEntries stays 0, and
+	// GET /v2/_catalog always returns an empty list.
+	cfg.Catalog.MaxEntries = consts.DefaultRegistryCatalogMaxEntries
+	cfg.Tags.MaxTags = consts.DefaultRegistryTagsMaxEntries
 
 	cfg.Log.Level = "error"
 	cfg.HTTP.Headers = http.Header{

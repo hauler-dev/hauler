@@ -545,12 +545,44 @@ func storeImage(ctx context.Context, s *store.Layout, i v1.Image, platform strin
 	// digest ref before pinning, so an existing pin is left untouched.
 	effectiveRef := r
 	addPinnedDigest := pinnedDigest
-	if d, isDigest := r.(goname.Digest); isDigest {
+	d, isDigest := r.(goname.Digest)
+	if isDigest {
 		if tag, ok := digestRefTag(d); ok {
 			effectiveRef = tag
 			if addPinnedDigest == "" {
 				addPinnedDigest = d.DigestStr()
 			}
+		}
+	}
+
+	// A platform filter on a digest-pinned index would store only the
+	// selected child while naming it by the index digest, and store copy
+	// then pushes the child under its own digest -- the pinned digest is
+	// never pullable from the target (#779). Only this layer can tell a
+	// user-typed digest from a pin that resolveAndVerify/verifyAddImage
+	// derived from a tag, and a verified tag with a platform must keep
+	// working, so the check cannot move into AddImage.
+	if isDigest && platform != "" {
+		desc, headErr := headDescriptor(ctx, d, rso, ro, insecureSkipTLSVerify, caFile)
+		switch {
+		case headErr != nil && ignoreErrors:
+			log.BaseFromContext(ctx).Warnf("unable to resolve digest-pinned image [%s]: %v... skipping...", i.Name, headErr)
+			return nil
+		case errors.Is(headErr, context.Canceled):
+			log.BaseFromContext(ctx).Debugf("unable to resolve digest-pinned image [%s]: %v", i.Name, headErr)
+			return headErr
+		case headErr != nil:
+			log.BaseFromContext(ctx).Errorf("unable to resolve digest-pinned image [%s]: %v", i.Name, headErr)
+			return headErr
+		}
+		if desc.MediaType.IsIndex() {
+			rejectErr := fmt.Errorf("platform %s cannot be applied to digest-pinned image %s: the pinned digest is a multi-platform index, and storing one platform would leave that digest unpullable. Remove the platform (flag, per-image field, or hauler.dev/platform annotation), or pin the platform-specific child digest instead", platform, i.Name)
+			if ignoreErrors {
+				log.BaseFromContext(ctx).Warnf("%v... skipping...", rejectErr)
+				return nil
+			}
+			log.BaseFromContext(ctx).Errorf("%v", rejectErr)
+			return rejectErr
 		}
 	}
 
