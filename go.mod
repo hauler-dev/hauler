@@ -1,6 +1,6 @@
 module hauler.dev/go/hauler/v2
 
-go 1.26.7
+go 1.27.0
 
 require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
@@ -23,7 +23,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.35.1
 	github.com/sigstore/cosign/v3 v3.1.3
-	github.com/sigstore/sigstore v1.10.9
+	github.com/sigstore/sigstore v1.10.10
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
@@ -150,7 +150,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.1 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.26.0 // indirect
@@ -268,11 +268,11 @@ require (
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sassoftware/relic/v8 v8.2.0 // indirect
-	github.com/secure-systems-lab/go-securesystemslib v0.11.0 // indirect
+	github.com/secure-systems-lab/go-securesystemslib v0.11.1 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shibumi/go-pathspec v1.3.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/sigstore/protobuf-specs v0.5.1 // indirect
+	github.com/sigstore/protobuf-specs v0.5.2 // indirect
 	github.com/sigstore/rekor v1.5.4 // indirect
 	github.com/sigstore/rekor-tiles/v2 v2.3.0 // indirect
 	github.com/sigstore/sigstore-go v1.2.2 // indirect
