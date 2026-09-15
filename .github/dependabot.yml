@@ -11,4 +11,10 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    target-branch: "release/2.1"
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
     target-branch: "release/2.0"
