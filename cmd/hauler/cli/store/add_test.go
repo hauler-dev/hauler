@@ -29,6 +29,7 @@ import (
 	"github.com/dustin/go-humanize"
 	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
+	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -866,6 +867,90 @@ func TestStoreImage_PlatformFilter(t *testing.T) {
 	}
 	// Platform filter resolves a single manifest from the index → stored as a single image.
 	assertArtifactKindInStore(t, s, "test/multiarch:v2", consts.KindAnnotationImage)
+}
+
+// A platform filter on a digest-pinned multi-arch index would store only the
+// child under the index's digest, leaving the pinned digest unpullable after
+// copy (#779). Both digest forms are rejected; --ignore-errors warns and skips.
+func TestStoreImage_PlatformOnPinnedIndexRejected(t *testing.T) {
+	host, rOpts := newLocalhostRegistry(t)
+	idx := seedIndex(t, host, "pinned/multiarch", "v1", rOpts...)
+	idxDigest, err := idx.Digest()
+	if err != nil {
+		t.Fatalf("idx.Digest: %v", err)
+	}
+
+	cases := []struct{ name, ref string }{
+		{name: "plain repo@digest", ref: host + "/pinned/multiarch@" + idxDigest.String()},
+		{name: "repo:tag@digest", ref: host + "/pinned/multiarch:v1@" + idxDigest.String()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("fails and stores nothing", func(t *testing.T) {
+				ctx := newTestContext(t)
+				s := newTestStore(t)
+				err := storeImage(ctx, s, v1.Image{Name: tc.ref}, "linux/amd64", false, defaultRootOpts(s.Root), defaultCliOpts(), "", "", false)
+				if err == nil {
+					t.Fatal("storeImage accepted a platform on a digest-pinned index")
+				}
+				if !strings.Contains(err.Error(), "multi-platform index") {
+					t.Fatalf("error does not explain the rejection: %v", err)
+				}
+				if got := countArtifactsInStore(t, s); got != 0 {
+					t.Fatalf("store holds %d artifacts, want 0", got)
+				}
+			})
+
+			t.Run("--ignore-errors warns and skips", func(t *testing.T) {
+				var buf bytes.Buffer
+				ctx := log.NewLogger(&buf).WithContext(context.Background())
+				s := newTestStore(t)
+				ro := defaultCliOpts()
+				ro.IgnoreErrors = true
+				if err := storeImage(ctx, s, v1.Image{Name: tc.ref}, "linux/amd64", false, defaultRootOpts(s.Root), ro, "", "", false); err != nil {
+					t.Fatalf("storeImage with --ignore-errors returned error: %v", err)
+				}
+				out := buf.String()
+				if !strings.Contains(out, "multi-platform index") || !strings.Contains(out, "skipping") {
+					t.Fatalf("expected a WARN naming the skipped image; got: %s", out)
+				}
+				if got := countArtifactsInStore(t, s); got != 0 {
+					t.Fatalf("store holds %d artifacts, want 0", got)
+				}
+			})
+		})
+	}
+}
+
+// A digest that already names a single-platform child is stored as before:
+// the user pinned exactly the bytes a platform pull would select.
+func TestStoreImage_PlatformOnPinnedChildPassesThrough(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+	idx := seedIndex(t, host, "pinned/child", "v1", rOpts...)
+	im, err := idx.IndexManifest()
+	if err != nil {
+		t.Fatalf("IndexManifest: %v", err)
+	}
+	var childDigest gcrv1.Hash
+	for _, m := range im.Manifests {
+		if m.Platform != nil && m.Platform.Architecture == "amd64" {
+			childDigest = m.Digest
+		}
+	}
+	if childDigest.String() == "" {
+		t.Fatal("seedIndex produced no linux/amd64 child")
+	}
+
+	s := newTestStore(t)
+	ref := host + "/pinned/child@" + childDigest.String()
+	if err := storeImage(ctx, s, v1.Image{Name: ref}, "linux/amd64", false, defaultRootOpts(s.Root), defaultCliOpts(), "", "", false); err != nil {
+		t.Fatalf("storeImage on a pinned single-platform child: %v", err)
+	}
+	assertArtifactKindInStore(t, s, "pinned/child@", consts.KindAnnotationImage)
+	if got := storedDigest(t, s, "pinned/child@"); got != childDigest.String() {
+		t.Errorf("stored digest = %q, want %q", got, childDigest.String())
+	}
 }
 
 func TestStoreImage_CosignV2Artifacts(t *testing.T) {

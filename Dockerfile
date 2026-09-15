@@ -8,6 +8,8 @@ COPY $TARGETPLATFORM/hauler /hauler
 RUN echo "hauler:x:1001:1001::/home/hauler:" > /etc/passwd \
 && echo "hauler:x:1001:hauler" > /etc/group \
 && mkdir /home/hauler \
+&& mkdir /home/hauler/.hauler \
+&& mkdir /home/hauler/.docker \
 && mkdir /store \
 && mkdir /fileserver \
 && mkdir /registry
@@ -26,6 +28,7 @@ COPY --from=builder --chown=hauler:hauler /fileserver/. /fileserver
 COPY --from=builder --chown=hauler:hauler /hauler /hauler
 
 USER hauler
+ENV HOME=/home/hauler
 ENTRYPOINT [ "/hauler" ]
 
 # debug stage
@@ -38,4 +41,5 @@ COPY --from=builder --chown=hauler:hauler /home/hauler/. /home/hauler
 COPY --from=builder --chown=hauler:hauler /hauler /usr/local/bin/hauler
 
 USER hauler
+ENV HOME=/home/hauler
 WORKDIR /home/hauler
