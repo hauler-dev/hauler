@@ -1,7 +1,15 @@
-name: Refresh Hauler Testdata
+name: Testdata Workflow
 
 on:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   refresh-testdata:
@@ -13,8 +21,15 @@ jobs:
       - name: Clean Up Actions Tools Cache
         run: rm -rf /opt/hostedtoolcache
 
-      - name: Checkout Repository
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Fetch Hauler Binary
         run: curl -sfL https://get.hauler.dev | bash
