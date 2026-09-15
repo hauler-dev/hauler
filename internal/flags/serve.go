@@ -26,8 +26,8 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.RootDir, "directory", consts.DefaultRegistryRootDir, "(Optional) Directory to use for backend. Defaults to $PWD/registry")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "(Optional) Location of the registry config file (overrides all flags)")
 	f.BoolVar(&o.ReadOnly, "readonly", true, "(Optional) Run the registry as readonly")
-	f.StringVar(&o.BasicAuth, "basic-auth", "", "(Optional) Location of the htpasswd file to use for basic authentication")
-	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultRegistryRealm, "(Optional) Realm to use for basic authentication")
+	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
+	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultRegistryRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
 
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authenication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authenication")
@@ -54,8 +54,8 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f.IntVarP(&o.Port, "port", "p", consts.DefaultFileserverPort, "(Optional) Set the port to use for incoming connections")
 	f.IntVar(&o.Timeout, "timeout", consts.DefaultFileserverTimeout, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
 	f.StringVar(&o.RootDir, "directory", consts.DefaultFileserverRootDir, "(Optional) Directory to use for backend. (defaults to $PWD/fileserver)")
-	f.StringVar(&o.BasicAuth, "basic-auth", "", "(Optional) Location of the htpasswd file to use for basic authentication")
-	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultFileserverRealm, "(Optional) Realm to use for basic authentication")
+	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
+	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultFileserverRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
 
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authenication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authenication")

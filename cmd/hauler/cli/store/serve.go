@@ -98,6 +98,13 @@ func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts,
 	cfg.Log.Level = configuration.Loglevel(ro.LogLevel)
 	cfg.Validation.Manifests.URLs.Allow = []string{".+"}
 
+	// configuration.Parse applies these defaults when the config comes from
+	// YAML, but they are left as zero-values when the struct is built by
+	// hand, as we do here. A zero Catalog.MaxEntries makes GET /v2/_catalog
+	// always return an empty repository list, so set both explicitly.
+	cfg.Catalog.MaxEntries = consts.DefaultRegistryCatalogMaxEntries
+	cfg.Tags.MaxTags = consts.DefaultRegistryTagsMaxEntries
+
 	return cfg
 }
 

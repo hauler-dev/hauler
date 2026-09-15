@@ -141,36 +141,41 @@ const (
 	HaulerIndexFile = "hauler-index.json"
 
 	// other constraints
-	CarbideRegistry           = "rgcrprod.azurecr.us"
-	DefaultNamespace          = "hauler"
-	DefaultTag                = "latest"
-	DefaultRegistry           = ""
-	DefaultStoreName          = "store"
-	DefaultHaulerDirName      = ".hauler"
-	DefaultHaulerTempDirName  = "hauler"
-	DefaultRegistryRootDir    = "registry"
-	DefaultRegistryPort       = 5000
-	DefaultRegistryRealm      = "hauler-registry"
-	DefaultFileserverRootDir  = "fileserver"
-	DefaultFileserverPort     = 8080
-	DefaultFileserverTimeout  = 60
-	DefaultFileserverRealm    = "hauler-fileserver"
-	DefaultGitRootDir         = "git"
-	DefaultGitPort            = 8081
-	DefaultGitTimeout         = 60
-	DefaultGitRealm           = "hauler-git"
-	DefaultHaulerArchiveName  = "haul.tar.zst"
-	DefaultHaulerManifestName = "hauler-manifest.yaml"
-	DefaultStoreMetadataName  = "store.json"
-	DefaultStoreInventoryName = "stores.json"
-	DefaultRetries            = 3
-	RetriesInterval           = 5
-	DefaultConcurrency        = 5
-	DefaultBlobConcurrency    = 16
-	CustomTimeFormat          = "2006-01-02 15:04:05"
+	CarbideRegistry                  = "rgcrprod.azurecr.us"
+	DefaultNamespace                 = "hauler"
+	DefaultTag                       = "latest"
+	DefaultRegistry                  = ""
+	DefaultStoreName                 = "store"
+	DefaultHaulerDirName             = ".hauler"
+	DefaultHaulerTempDirName         = "hauler"
+	DefaultRegistryRootDir           = "registry"
+	DefaultRegistryPort              = 5000
+	DefaultRegistryRealm             = "hauler-registry"
+	DefaultRegistryCatalogMaxEntries = 1000
+	DefaultRegistryTagsMaxEntries    = 1000
+	DefaultFileserverRootDir         = "fileserver"
+	DefaultFileserverPort            = 8080
+	DefaultFileserverTimeout         = 60
+	DefaultFileserverRealm           = "hauler-fileserver"
+	DefaultGitRootDir                = "git"
+	DefaultGitPort                   = 8090
+	DefaultGitTimeout                = 60
+	DefaultGitRealm                  = "hauler-git"
+	DefaultHaulerArchiveName         = "haul.tar.zst"
+	DefaultHaulerManifestName        = "hauler-manifest.yaml"
+	DefaultStoreMetadataName         = "store.json"
+	DefaultStoreInventoryName        = "stores.json"
+	DefaultRetries                   = 3
+	RetriesInterval                  = 5
+	DefaultConcurrency               = 5
+	DefaultBlobConcurrency           = 16
+	CustomTimeFormat                 = "2006-01-02 15:04:05"
 )
 
 var FileExcludePattern = fmt.Sprintf(`^%s/[.\-_]`, DefaultNamespace)
+
+// ContentTypeFilters lists the values `store info --type` and `store copy --type` accept, kept in one place so the two commands can't drift apart when a new content type is added.
+var ContentTypeFilters = []string{"image", "chart", "file", "sigs", "atts", "sbom", "referrer", "all"}
 
 // SigKindExt maps a cosign artifact kind to its tag-convention extension.
 // Kinds come in two shapes: plain ("dev.hauler/sigs") for an image's own
