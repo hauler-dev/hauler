@@ -2,9 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +16,9 @@ import (
 	"github.com/distribution/distribution/v3/configuration"
 	// Register the filesystem storage driver for the distribution registry.
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/random"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 )
@@ -138,5 +145,138 @@ func TestNewFile_DefaultPort(t *testing.T) {
 	}
 	if srv == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+// TestNewFile_BasicAuthRequired verifies --basic-auth actually gates file access end-to-end.
+func TestNewFile_BasicAuthRequired(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "sample.txt"), []byte("hello world"), 0o644); err != nil {
+		t.Fatalf("failed to write sample file: %v", err)
+	}
+
+	ctx := context.Background()
+	opts := flags.ServeFilesOpts{
+		RootDir:   dir,
+		BasicAuth: writeHtpasswdFile(t, "testuser", "testpass"),
+	}
+
+	srv, err := NewFile(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	httpSrv, ok := srv.(*http.Server)
+	if !ok {
+		t.Fatalf("expected *http.Server, got %T", srv)
+	}
+
+	rec := httptest.NewRecorder()
+	httpSrv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/sample.txt", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without credentials, got %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sample.txt", nil)
+	req.SetBasicAuth("testuser", "testpass")
+	httpSrv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with valid credentials, got %d", rec.Code)
+	}
+	if rec.Body.String() != "hello world" {
+		t.Fatalf("got body %q, want %q", rec.Body.String(), "hello world")
+	}
+}
+
+// TestNewFile_NoBasicAuthByDefault verifies no credentials are required when --basic-auth isn't set.
+func TestNewFile_NoBasicAuthByDefault(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "sample.txt"), []byte("hello world"), 0o644); err != nil {
+		t.Fatalf("failed to write sample file: %v", err)
+	}
+
+	ctx := context.Background()
+	opts := flags.ServeFilesOpts{RootDir: dir}
+
+	srv, err := NewFile(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	httpSrv, ok := srv.(*http.Server)
+	if !ok {
+		t.Fatalf("expected *http.Server, got %T", srv)
+	}
+
+	rec := httptest.NewRecorder()
+	httpSrv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/sample.txt", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with no --basic-auth configured, got %d", rec.Code)
+	}
+}
+
+// This test guards against a past bug. NewTempRegistry builds its
+// Configuration struct by hand, so it must set Catalog.MaxEntries itself.
+// Without that line, MaxEntries stays 0. That makes GET /v2/_catalog always
+// return an empty list, no matter how much content the test pushes. It also
+// makes the registry reject any explicit page size (?n=) with
+// PAGINATION_NUMBER_INVALID, because the requested size is always larger
+// than the zero-value limit.
+func TestNewTempRegistry_CatalogListsPushedRepositories(t *testing.T) {
+	ctx := context.Background()
+	srv := NewTempRegistry(ctx, t.TempDir())
+
+	if err := srv.Start(); err != nil {
+		t.Fatalf("failed to start temp registry: %v", err)
+	}
+	t.Cleanup(srv.Stop)
+
+	repo := "library/regression"
+	ref, err := name.NewTag(srv.Registry()+"/"+repo+":latest", name.WithDefaultRegistry(""))
+	if err != nil {
+		t.Fatalf("name.NewTag: %v", err)
+	}
+
+	img, err := random.Image(512, 2)
+	if err != nil {
+		t.Fatalf("random.Image: %v", err)
+	}
+
+	if err := remote.Write(ref, img); err != nil {
+		t.Fatalf("remote.Write: %v", err)
+	}
+
+	for _, path := range []string{"/v2/_catalog", "/v2/_catalog?n=100"} {
+		resp, err := http.Get("http://" + srv.Registry() + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("expected 200 from %s, got %d: %s", path, resp.StatusCode, body)
+		}
+
+		var out struct {
+			Repositories []string `json:"repositories"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatalf("decode catalog response from %s: %v", path, err)
+		}
+
+		found := false
+		for _, r := range out.Repositories {
+			if r == repo {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected %q in catalog repositories from %s, got %v", repo, path, out.Repositories)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,10 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofrs/flock"
 	zlog "github.com/rs/zerolog/log"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
+
+// inventoryLockTimeout bounds how long updateStoreInventory waits for the inventory lock, since it's a best-effort bookkeeping step that must never hang a store command over a stuck lock.
+const inventoryLockTimeout = 5 * time.Second
 
 // inventoryEntry is a store's last-known location, keyed by StoreID
 type inventoryEntry struct {
@@ -55,9 +60,23 @@ func saveInventory(haulerDir string, inv storeInventory) error {
 	return os.Rename(tmp, inventoryPath(haulerDir))
 }
 
-// updateStoreInventory records storeID's path in <haulerDir>/stores.json and
-// prunes any other entries that no longer contain the store they claim
+// updateStoreInventory records storeID's path in <haulerDir>/stores.json, pruning stale entries, under a lock so concurrent hauler processes can't drop each other's update.
 func updateStoreInventory(haulerDir, storeID, path string) {
+	if err := os.MkdirAll(haulerDir, 0o755); err != nil {
+		zlog.Warn().Err(err).Msg("failed to create hauler directory for store inventory... store id lookup may not find this store later")
+		return
+	}
+
+	fl := flock.New(inventoryPath(haulerDir) + ".lock")
+	ctx, cancel := context.WithTimeout(context.Background(), inventoryLockTimeout)
+	defer cancel()
+	locked, err := fl.TryLockContext(ctx, 50*time.Millisecond)
+	if err != nil || !locked {
+		zlog.Warn().Err(err).Msg("failed to lock store inventory... store id lookup may not find this store later")
+		return
+	}
+	defer fl.Unlock()
+
 	inv := loadInventory(haulerDir)
 
 	for id, entry := range inv {

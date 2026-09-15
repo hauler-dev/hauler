@@ -33,6 +33,11 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 		return fmt.Errorf("store index not found: run 'hauler store add/sync/load' first")
 	}
 
+	// A caller that constructs CopyOpts directly (tests, or any future programmatic use) rather than through the CLI flag parser leaves TypeFilter at its zero value, which should behave as "all" rather than matching nothing.
+	if o.TypeFilter == "" {
+		o.TypeFilter = "all"
+	}
+
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
 	components := strings.SplitN(targetRef, "://", 2)
@@ -108,6 +113,11 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 						continue
 					}
 
+					if ctype := resolveCtype(desc, m.Config.MediaType); o.TypeFilter != "all" && ctype != o.TypeFilter {
+						l.Debugf("skipping manifest in index [%s] (not matching --type filter)", reference)
+						continue
+					}
+
 					// Create mapper and extract
 					mapperStore, err := mapper.FromManifest(m, components[1])
 					if err != nil {
@@ -145,6 +155,12 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 					m.Config.MediaType == ocispec.MediaTypeImageConfig {
 					rc.Close()
 					l.Debugf("skipping image [%s] for directory target", reference)
+					return nil
+				}
+
+				if ctype := resolveCtype(desc, m.Config.MediaType); o.TypeFilter != "all" && ctype != o.TypeFilter {
+					rc.Close()
+					l.Debugf("skipping [%s] (not matching --type filter)", reference)
 					return nil
 				}
 
@@ -218,6 +234,17 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				l.Debugf("skipping [%s] (not matching --only filter)", baseRef)
 				return nil
 			}
+			if o.TypeFilter != "all" {
+				ctype, err := resolveCopyCtype(ctx, s, desc)
+				if err != nil {
+					l.Warnf("failed to resolve content type for [%s]: %v", baseRef, err)
+					return nil
+				}
+				if ctype != o.TypeFilter {
+					l.Debugf("skipping [%s] (not matching --type filter)", baseRef)
+					return nil
+				}
+			}
 
 			// For sig/att/sbom descriptors, derive the cosign tag from the parent
 			// image's manifest digest rather than using AnnotationRefName directly.
@@ -289,6 +316,26 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 
 	l.Infof("copied artifacts to [%s]", components[1])
 	return nil
+}
+
+// resolveCopyCtype classifies desc the same way `store info` does, fetching and decoding its manifest unless the kind annotation alone already identifies a sig/att/sbom/referrer (KindAnnotationName's "image"/"imageIndex" values are set generically by AddArtifact for any top-level artifact, not just real images, so they can't be trusted to skip the fetch the way a sig/att/sbom/referrer kind can).
+func resolveCopyCtype(ctx context.Context, s *store.Layout, desc ocispec.Descriptor) (string, error) {
+	if ctype := resolveCtype(desc, ""); ctype != "image" {
+		return ctype, nil
+	}
+
+	rc, err := s.Fetch(ctx, desc)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	var m ocispec.Manifest
+	if err := json.NewDecoder(rc).Decode(&m); err != nil {
+		return "", err
+	}
+
+	return resolveCtype(desc, m.Config.MediaType), nil
 }
 
 // repoFromBaseRef strips any digest and/or tag from a stored ref name, yielding

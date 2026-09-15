@@ -210,6 +210,50 @@ func TestCopyCmd_Registry_OnlyFilter(t *testing.T) {
 	}
 }
 
+// TestCopyCmd_Registry_TypeFilter verifies --type restricts a registry copy to just the matching content type, leaving other types out of the target.
+func TestCopyCmd_Registry_TypeFilter(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	seedImage(t, srcHost, "myorg/animage", "v1")
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/myorg/animage:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+	if err := AddChartCmd(ctx, newAddChartOpts(chartTestdataDir, ""), s, "rancher-cluster-templates-0.5.2.tgz", rso, ro); err != nil {
+		t.Fatalf("AddChartCmd: %v", err)
+	}
+
+	dstHost, dstOpts := newTestRegistry(t)
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+		TypeFilter:    "image",
+	}
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+		t.Fatalf("CopyCmd with --type image: %v", err)
+	}
+
+	imgRef, err := goname.NewTag(dstHost+"/myorg/animage:v1", goname.Insecure)
+	if err != nil {
+		t.Fatalf("goname.NewTag image: %v", err)
+	}
+	if _, err := remote.Get(imgRef, dstOpts...); err != nil {
+		t.Errorf("image should be in target registry but was not found: %v", err)
+	}
+
+	chartRef, err := goname.NewTag(dstHost+"/hauler/rancher-cluster-templates:0.5.2", goname.Insecure)
+	if err != nil {
+		t.Fatalf("goname.NewTag chart: %v", err)
+	}
+	if _, err := remote.Get(chartRef, dstOpts...); err == nil {
+		t.Error("chart should NOT be in target registry after --type image, but was found")
+	}
+}
+
 // TestCopyCmd_Registry_SigTagDerivation seeds a base image along with cosign
 // v2 signature artifacts, adds everything to the store via AddImage (which
 // auto-discovers the .sig/.att/.sbom tags), then copies to a target registry
@@ -686,5 +730,43 @@ func TestCopyCmd_Dir_Charts(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Errorf("no .tgz found in destDir after chart copy... found: %v", names)
+	}
+}
+
+// TestCopyCmd_Dir_TypeFilter verifies --type restricts a directory copy to just the matching content type, leaving other types out of destDir.
+func TestCopyCmd_Dir_TypeFilter(t *testing.T) {
+	ctx := newTestContext(t)
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	if err := AddChartCmd(ctx, newAddChartOpts(chartTestdataDir, ""), s, "rancher-cluster-templates-0.5.2.tgz", rso, ro); err != nil {
+		t.Fatalf("AddChartCmd: %v", err)
+	}
+	content := "hello from hauler file"
+	url := seedFileInHTTPServer(t, "data.txt", content)
+	if err := storeFile(ctx, s, v1.File{Path: url}, ro, rso); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	destDir := t.TempDir()
+	o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), TypeFilter: "file"}
+	if err := CopyCmd(ctx, o, s, "dir://"+destDir, ro); err != nil {
+		t.Fatalf("CopyCmd with --type file: %v", err)
+	}
+
+	if _, err := os.ReadFile(filepath.Join(destDir, "data.txt")); err != nil {
+		t.Errorf("file should be in destDir after --type file, but was not found: %v", err)
+	}
+
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tgz") || strings.HasSuffix(e.Name(), ".tar.gz") {
+			t.Errorf("chart %q should NOT be in destDir after --type file, but was found", e.Name())
+		}
 	}
 }

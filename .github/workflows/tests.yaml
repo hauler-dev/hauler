@@ -9,6 +9,13 @@ on:
     branches:
       - "**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     name: Unit Tests
@@ -20,7 +27,7 @@ jobs:
         run: rm -rf /opt/hostedtoolcache
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -30,14 +37,16 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Set Up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           check-latest: true
 
       - name: Install Go Releaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
+          distribution: goreleaser
+          version: "~> v2"
           install-only: true
 
       - name: Install Dependencies
@@ -51,13 +60,13 @@ jobs:
           make build-all
 
       - name: Upload Hauler Binaries
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: hauler-binaries
           path: dist/*
 
       - name: Upload Coverage Report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.out
@@ -73,7 +82,7 @@ jobs:
         run: rm -rf /opt/hostedtoolcache
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -90,7 +99,7 @@ jobs:
           sudo apt-get install -y jq
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: hauler-binaries
           path: dist
@@ -512,7 +521,7 @@ jobs:
           hauler store info
 
       - name: Upload Hauler Report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: hauler-report
           path: hauler-report.txt
