@@ -97,6 +97,18 @@ func TestDefaultRegistryConfig(t *testing.T) {
 	if len(cfg.Validation.Manifests.URLs.Allow) == 0 {
 		t.Error("Validation.Manifests.URLs.Allow is empty, want at least one rule")
 	}
+
+	// Catalog/Tags entry caps. configuration.Parse applies these defaults
+	// when a config is loaded from YAML, but a hand-built Configuration (as
+	// produced here) leaves them at the zero value unless set explicitly.
+	// A zero Catalog.MaxEntries makes GET /v2/_catalog always return an
+	// empty repository list, regardless of what's actually stored.
+	if cfg.Catalog.MaxEntries != consts.DefaultRegistryCatalogMaxEntries {
+		t.Errorf("Catalog.MaxEntries = %d, want %d", cfg.Catalog.MaxEntries, consts.DefaultRegistryCatalogMaxEntries)
+	}
+	if cfg.Tags.MaxTags != consts.DefaultRegistryTagsMaxEntries {
+		t.Errorf("Tags.MaxTags = %d, want %d", cfg.Tags.MaxTags, consts.DefaultRegistryTagsMaxEntries)
+	}
 }
 
 func TestDefaultRegistryConfig_WithTLS(t *testing.T) {
@@ -116,6 +128,47 @@ func TestDefaultRegistryConfig_WithTLS(t *testing.T) {
 	}
 	if cfg.HTTP.TLS.Key != o.TLSKey {
 		t.Errorf("TLS.Key = %q, want %q", cfg.HTTP.TLS.Key, o.TLSKey)
+	}
+}
+
+func TestDefaultRegistryConfig_NoBasicAuthByDefault(t *testing.T) {
+	rootDir := t.TempDir()
+	o := &flags.ServeRegistryOpts{
+		Port:    consts.DefaultRegistryPort,
+		RootDir: rootDir,
+	}
+	rso := defaultRootOpts(rootDir)
+	ro := defaultCliOpts()
+
+	cfg := DefaultRegistryConfig(o, rso, ro)
+	if cfg.Auth != nil {
+		t.Errorf("Auth = %v, want nil when --basic-auth is not set", cfg.Auth)
+	}
+}
+
+// TestDefaultRegistryConfig_WithBasicAuth verifies --basic-auth produces an auth.htpasswd config block.
+func TestDefaultRegistryConfig_WithBasicAuth(t *testing.T) {
+	rootDir := t.TempDir()
+	o := &flags.ServeRegistryOpts{
+		Port:           consts.DefaultRegistryPort,
+		RootDir:        rootDir,
+		BasicAuth:      "/opt/hauler/registry-htpasswd",
+		BasicAuthRealm: "hauler-registry",
+	}
+	rso := defaultRootOpts(rootDir)
+	ro := defaultCliOpts()
+
+	cfg := DefaultRegistryConfig(o, rso, ro)
+
+	htpasswd := cfg.Auth["htpasswd"]
+	if htpasswd == nil {
+		t.Fatal("Auth[\"htpasswd\"] not set")
+	}
+	if htpasswd["path"] != o.BasicAuth {
+		t.Errorf("Auth[\"htpasswd\"][\"path\"] = %v, want %q", htpasswd["path"], o.BasicAuth)
+	}
+	if htpasswd["realm"] != o.BasicAuthRealm {
+		t.Errorf("Auth[\"htpasswd\"][\"realm\"] = %v, want %q", htpasswd["realm"], o.BasicAuthRealm)
 	}
 }
 

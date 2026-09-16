@@ -264,7 +264,8 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.InfoOpts{StoreRootOpts: rso}
 
-	var allowedValues = []string{"image", "chart", "file", "rpm", "deb", "sigs", "atts", "sbom", "referrer", "all"}
+	// info additionally recognizes "rpm" and "deb", refinements of the "file" ctype that only packageFileType (below) resolves; store copy doesn't distinguish them yet, so they're not in consts.ContentTypeFilters.
+	allowedValues := []string{"image", "chart", "file", "rpm", "deb", "sigs", "atts", "sbom", "referrer", "all"}
 
 	cmd := &cobra.Command{
 		Use:     "info",
@@ -307,6 +308,8 @@ func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.CopyOpts{StoreRootOpts: rso}
 
+	allowedValues := consts.ContentTypeFilters
+
 	cmd := &cobra.Command{
 		Use:   "copy",
 		Short: "Copy all store content to another location",
@@ -322,7 +325,12 @@ func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 				return err
 			}
 
-			return store.CopyCmd(ctx, o, s, args[0], ro)
+			for _, allowed := range allowedValues {
+				if o.TypeFilter == allowed {
+					return store.CopyCmd(ctx, o, s, args[0], ro)
+				}
+			}
+			return fmt.Errorf("type must be one of %v", allowedValues)
 		},
 	}
 	o.AddFlags(cmd)
