@@ -212,11 +212,22 @@ const LogFileName = "audit.log"
 // once without it.
 var appendMu sync.Mutex
 
+// ensureDir creates dir, tolerating a concurrent creator: os.MkdirAll can still surface the raw "file exists" error from its own EEXIST self-heal check under a fast concurrent creator on some filesystems, so re-stat before treating the failure as real
+func ensureDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		if fi, statErr := os.Stat(dir); statErr == nil && fi.IsDir() {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func appendLine(dir string, v any) error {
 	appendMu.Lock()
 	defer appendMu.Unlock()
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := ensureDir(dir); err != nil {
 		return fmt.Errorf("audit: ensure dir: %w", err)
 	}
 	data, err := json.Marshal(v)
@@ -248,7 +259,7 @@ func MergeStoreLog(tempDir, destDir string) error {
 	appendMu.Lock()
 	defer appendMu.Unlock()
 
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
+	if err := ensureDir(destDir); err != nil {
 		return fmt.Errorf("audit: ensure dir: %w", err)
 	}
 	f, err := os.OpenFile(filepath.Join(destDir, LogFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
