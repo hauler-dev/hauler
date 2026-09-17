@@ -2,6 +2,7 @@ package flags
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/spf13/cobra"
 	"hauler.dev/go/hauler/v2/pkg/consts"
@@ -9,11 +10,15 @@ import (
 
 // ImageCopyOpts holds flags for `hauler copy`, distinct from CopyOpts (`store copy`).
 type ImageCopyOpts struct {
-	InsecureSkipTLSVerify bool
-	PlainHTTP             bool
-	CaFile                string
-	Retries               int
-	Platform              string
+	InsecureSkipTLSVerify          bool
+	PlainHTTP                      bool
+	CaFile                         string
+	Retries                        int
+	Platform                       string
+	AllTags                        bool
+	NoClobber                      bool
+	Jobs                           int
+	AllowNondistributableArtifacts bool
 }
 
 func (o *ImageCopyOpts) AddFlags(cmd *cobra.Command) {
@@ -24,4 +29,8 @@ func (o *ImageCopyOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.IntVarP(&o.Retries, "retries", "r", 0, fmt.Sprintf("Set the number of retries for operations (0 uses HAULER_RETRIES, otherwise defaults to %d)", consts.DefaultRetries))
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image... i.e. linux/amd64 (defaults to all)")
+	f.BoolVar(&o.AllTags, "all-tags", false, "(Optional) Copy all tags from the source repository to the destination")
+	f.BoolVar(&o.NoClobber, "no-clobber", false, "(Optional) Avoid overwriting existing tags at the destination")
+	f.IntVar(&o.Jobs, "jobs", runtime.GOMAXPROCS(0), "(Optional) Maximum number of concurrent copies (only applies with --all-tags)")
+	f.BoolVar(&o.AllowNondistributableArtifacts, "allow-nondistributable-artifacts", false, "(Optional) Allow pushing non-distributable (foreign) layers")
 }
