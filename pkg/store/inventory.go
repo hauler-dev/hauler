@@ -30,6 +30,17 @@ func inventoryPath(haulerDir string) string {
 	return filepath.Join(haulerDir, consts.DefaultStoreInventoryName)
 }
 
+// ensureDir creates dir, tolerating a concurrent creator: os.MkdirAll can still surface the raw "file exists" error from its own EEXIST self-heal check under a fast concurrent creator on some filesystems, so re-stat before treating the failure as real
+func ensureDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		if fi, statErr := os.Stat(dir); statErr == nil && fi.IsDir() {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func loadInventory(haulerDir string) storeInventory {
 	inv := storeInventory{}
 	p := inventoryPath(haulerDir)
@@ -45,7 +56,7 @@ func loadInventory(haulerDir string) storeInventory {
 }
 
 func saveInventory(haulerDir string, inv storeInventory) error {
-	if err := os.MkdirAll(haulerDir, 0o755); err != nil {
+	if err := ensureDir(haulerDir); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(inv, "", "  ")
@@ -62,7 +73,7 @@ func saveInventory(haulerDir string, inv storeInventory) error {
 
 // updateStoreInventory records storeID's path in <haulerDir>/stores.json, pruning stale entries, under a lock so concurrent hauler processes can't drop each other's update.
 func updateStoreInventory(haulerDir, storeID, path string) {
-	if err := os.MkdirAll(haulerDir, 0o755); err != nil {
+	if err := ensureDir(haulerDir); err != nil {
 		zlog.Warn().Err(err).Msg("failed to create hauler directory for store inventory... store id lookup may not find this store later")
 		return
 	}
