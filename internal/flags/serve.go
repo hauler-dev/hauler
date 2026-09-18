@@ -38,11 +38,12 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 type ServeFilesOpts struct {
 	*StoreRootOpts
 
-	Port           int
-	Timeout        int
-	RootDir        string
-	BasicAuth      string
-	BasicAuthRealm string
+	Port             int
+	Timeout          int
+	RootDir          string
+	GenerateRepodata bool
+	BasicAuth        string
+	BasicAuthRealm   string
 
 	TLSCert string
 	TLSKey  string
@@ -54,6 +55,7 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f.IntVarP(&o.Port, "port", "p", consts.DefaultFileserverPort, "(Optional) Set the port to use for incoming connections")
 	f.IntVar(&o.Timeout, "timeout", consts.DefaultFileserverTimeout, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
 	f.StringVar(&o.RootDir, "directory", consts.DefaultFileserverRootDir, "(Optional) Directory to use for backend. (defaults to $PWD/fileserver)")
+	f.BoolVar(&o.GenerateRepodata, "generate-repodata", false, "(EXPERIMENTAL) (Optional) Generate rpm and deb repository metadata, served under rpms/ and debs/")
 	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
 	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultFileserverRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
 

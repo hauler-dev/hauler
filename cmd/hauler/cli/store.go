@@ -264,7 +264,8 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	o := &flags.InfoOpts{StoreRootOpts: rso}
 
-	allowedValues := consts.ContentTypeFilters
+	// info additionally recognizes "rpm" and "deb", refinements of the "file" ctype that only packageFileType (below) resolves; store copy doesn't distinguish them yet, so they're not in consts.ContentTypeFilters.
+	allowedValues := []string{"image", "chart", "file", "rpm", "deb", "sigs", "atts", "sbom", "referrer", "all"}
 
 	cmd := &cobra.Command{
 		Use:     "info",

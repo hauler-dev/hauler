@@ -595,6 +595,12 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		return item{}
 	}
 
+	if ctype == "file" {
+		if pkgType := packageFileType(refName); pkgType != "" {
+			ctype = pkgType
+		}
+	}
+
 	if o.TypeFilter != "all" && ctype != o.TypeFilter {
 		return item{}
 	}
@@ -638,6 +644,22 @@ func resolveCtype(desc ocispec.Descriptor, configMediaType string) string {
 		ctype = "referrer"
 	}
 	return ctype
+}
+
+// packageFileType refines a "file" ctype into "rpm" or "deb" when refName's stored filename has that extension, or returns "" to leave it as a plain file.
+func packageFileType(refName string) string {
+	repo := refName
+	if i := strings.LastIndex(repo, ":"); i >= 0 {
+		repo = repo[:i]
+	}
+	switch {
+	case strings.HasSuffix(strings.ToLower(repo), ".rpm"):
+		return "rpm"
+	case strings.HasSuffix(strings.ToLower(repo), ".deb"):
+		return "deb"
+	default:
+		return ""
+	}
 }
 
 // fallbackItem builds a synthetic failure row directly from desc's index
