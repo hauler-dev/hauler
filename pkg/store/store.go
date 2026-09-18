@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/errdefs"
+	"github.com/gofrs/flock"
 	"github.com/google/go-containerregistry/pkg/authn"
 	goname "github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -111,20 +113,49 @@ type storeMetadata struct {
 	HaulerVersion string `json:"hauler-version"`
 }
 
-// loadOrCreateStoreID returns the persistent store identity from <rootdir>/store.json,
-// creating the file with a fresh UUID on first use.
+// storeIDLockTimeout bounds how long loadOrCreateStoreID waits for the store metadata lock, since it's a best-effort guard that must never hang a store command over a stuck lock.
+const storeIDLockTimeout = 5 * time.Second
+
+// readStoreID reads and validates an existing <rootdir>/store.json, reporting whether a usable StoreID was found
+func readStoreID(metaPath string) (string, bool) {
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return "", false
+	}
+	var m storeMetadata
+	if uerr := json.Unmarshal(data, &m); uerr != nil {
+		zlog.Warn().Err(uerr).Str("path", metaPath).Msg("failed to parse store metadata... generating new store id")
+		return "", false
+	}
+	if m.StoreID == "" {
+		zlog.Warn().Str("path", metaPath).Msg("store metadata missing store-id... generating new store id")
+		return "", false
+	}
+	return m.StoreID, true
+}
+
+// loadOrCreateStoreID returns the persistent store identity from <rootdir>/store.json, creating the file with a fresh UUID on first use under its own per-store flock (separate from inventory.go's stores.json lock) so a losing concurrent creator picks up the winner's persisted id instead of minting its own.
 func loadOrCreateStoreID(rootdir string) string {
 	metaPath := filepath.Join(rootdir, consts.DefaultStoreMetadataName)
-	if data, err := os.ReadFile(metaPath); err == nil {
-		var m storeMetadata
-		if uerr := json.Unmarshal(data, &m); uerr == nil && m.StoreID != "" {
-			return m.StoreID
-		} else if uerr != nil {
-			zlog.Warn().Err(uerr).Str("path", metaPath).Msg("failed to parse store metadata... generating new store id")
-		} else {
-			zlog.Warn().Str("path", metaPath).Msg("store metadata missing store-id... generating new store id")
+
+	if id, ok := readStoreID(metaPath); ok {
+		return id
+	}
+
+	fl := flock.New(metaPath + ".lock")
+	ctx, cancel := context.WithTimeout(context.Background(), storeIDLockTimeout)
+	locked, err := fl.TryLockContext(ctx, 50*time.Millisecond)
+	cancel()
+	if err != nil || !locked {
+		zlog.Warn().Err(err).Msg("failed to lock store metadata... a concurrent process may generate a conflicting store id")
+	} else {
+		defer fl.Unlock()
+		// a concurrent process may have created store.json while we waited for the lock
+		if id, ok := readStoreID(metaPath); ok {
+			return id
 		}
 	}
+
 	m := storeMetadata{
 		StoreID:       uuid.New().String(),
 		HaulerVersion: version.GetVersionInfo().GitVersion,
