@@ -1,0 +1,12 @@
+apiVersion: content.hauler.cattle.io/v1
+kind: Charts
+metadata:
+  name: hauler-content-charts-example
+spec:
+  charts:
+    - name: chart-with-file-dependency-chart-1.0.0.tgz
+      repoURL: testdata
+      add-dependencies: false
+      add-images: true
+      valuesFiles: 
+        - "image-with-required-registry-config.yaml"
