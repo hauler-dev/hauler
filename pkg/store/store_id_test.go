@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
@@ -81,6 +82,57 @@ func TestStoreID_MissingFieldRegenerates(t *testing.T) {
 	}
 	if s.StoreID == "" {
 		t.Fatal("expected a freshly generated StoreID when store-id field is missing")
+	}
+}
+
+// TestStoreID_ConcurrentFirstOpenReturnsSameID is a regression test for a race where concurrent processes opening the same brand-new store directory could each mint and persist their own store-id, leaving a loser with an in-memory id that never matches store.json on disk.
+func TestStoreID_ConcurrentFirstOpenReturnsSameID(t *testing.T) {
+	root := t.TempDir()
+
+	const n = 20
+	ids := make([]string, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			s, err := store.NewLayout(root)
+			errs[i] = err
+			if err == nil {
+				ids[i] = s.StoreID
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: NewLayout: %v", i, err)
+		}
+	}
+	for i, id := range ids {
+		if id == "" {
+			t.Fatalf("goroutine %d: got empty StoreID", i)
+		}
+		if id != ids[0] {
+			t.Errorf("goroutine %d: StoreID %q does not match goroutine 0's %q", i, id, ids[0])
+		}
+	}
+
+	metaPath := filepath.Join(root, consts.DefaultStoreMetadataName)
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var m struct {
+		StoreID string `json:"store-id"`
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal store metadata: %v", err)
+	}
+	if m.StoreID != ids[0] {
+		t.Errorf("persisted store-id %q does not match the StoreID every NewLayout call returned %q", m.StoreID, ids[0])
 	}
 }
 
