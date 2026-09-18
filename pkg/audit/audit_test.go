@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -286,5 +287,61 @@ func TestBuildGlobal_IgnoreErrorsReflectsEnvVar(t *testing.T) {
 	}
 	if ro.IgnoreErrors {
 		t.Fatal("expected BuildGlobal to not mutate ro.IgnoreErrors")
+	}
+}
+
+// TestEnsureDir_CreatesMissing verifies ensureDir creates a not-yet-existing directory
+func TestEnsureDir_CreatesMissing(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "dir")
+	if err := ensureDir(dir); err != nil {
+		t.Fatalf("ensureDir: %v", err)
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		t.Fatalf("expected %s to exist as a directory, stat err: %v", dir, err)
+	}
+}
+
+// TestEnsureDir_AlreadyExistsIsNoop verifies ensureDir is a no-op against an existing directory
+func TestEnsureDir_AlreadyExistsIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	if err := ensureDir(dir); err != nil {
+		t.Fatalf("ensureDir on existing dir: %v", err)
+	}
+}
+
+// TestEnsureDir_ExistingFileReturnsError verifies a real conflict (path exists as a file, not a directory) still surfaces
+func TestEnsureDir_ExistingFileReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := ensureDir(path); err == nil {
+		t.Fatal("expected ensureDir to return an error when path exists as a regular file")
+	}
+}
+
+// TestEnsureDir_ConcurrentFirstCreationSucceeds is a regression test for the mkdir race behind "audit: ensure dir: ...: file exists": many callers racing to create the same not-yet-existing directory must all succeed
+func TestEnsureDir_ConcurrentFirstCreationSucceeds(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "shared", "dir")
+
+	const n = 50
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = ensureDir(dir)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: ensureDir returned error: %v", i, err)
+		}
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		t.Fatalf("expected %s to exist as a directory, stat err: %v", dir, err)
 	}
 }
