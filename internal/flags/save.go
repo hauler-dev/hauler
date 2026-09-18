@@ -11,6 +11,7 @@ type SaveOpts struct {
 	Platform                string
 	ContainerdCompatibility bool
 	ChunkSize               string
+	RedundancyPercent       int
 }
 
 func (o *SaveOpts) AddFlags(cmd *cobra.Command) {
@@ -19,6 +20,7 @@ func (o *SaveOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.FileName, "filename", "f", consts.DefaultHaulerArchiveName, "(Optional) Specify the name of outputted haul")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform for runtime imports... i.e. linux/amd64 (unspecified implies all)")
 	f.BoolVar(&o.ContainerdCompatibility, "containerd", false, "(Optional) Enable import compatibility with containerd... filters index.json to image content, preserving the full index as a sidecar")
-	f.StringVar(&o.ChunkSize, "chunk-size", "", "(Optional) Split the output archive into chunks of the specified size (e.g. 1G, 500M, 2048M)")
+	f.StringVar(&o.ChunkSize, "chunk-size", "", "(Optional) Split the output archive into chunks of the specified size (i.e. 1G, 500M, 2048M)")
+	f.IntVar(&o.RedundancyPercent, "redundancy-percent", 0, "(EXPERIMENTAL) (Optional) Percentage of recovery data to embed across chunks for byte level redundancy (requires --chunk-size)")
 
 }

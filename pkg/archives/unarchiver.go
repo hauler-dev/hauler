@@ -249,6 +249,14 @@ func JoinChunks(ctx context.Context, archivePath, tempDir string) (string, error
 			_, idxJ, _ := chunkInfo(matches[j])
 			return idxI < idxJ
 		})
+
+		// A redundant chunk set carries its own header on every shard, so detection and repair happen transparently here regardless of how the caller asked to load the archive.
+		if header, ok, err := isRedundantChunkSet(matches); err != nil {
+			return "", fmt.Errorf("failed to inspect chunk set for redundancy: %w", err)
+		} else if ok {
+			return reconstructAndJoin(ctx, matches, tempDir, filepath.Base(base), header)
+		}
+
 		return joinFiles(ctx, matches, tempDir, filepath.Base(base))
 	}
 

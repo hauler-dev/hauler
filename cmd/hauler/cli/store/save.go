@@ -144,6 +144,13 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 		return err
 	}
 
+	if o.RedundancyPercent < 0 || o.RedundancyPercent > 100 {
+		return fmt.Errorf("--redundancy-percent must be between 0 and 100, received %d", o.RedundancyPercent)
+	}
+	if o.RedundancyPercent > 0 && o.ChunkSize == "" {
+		return fmt.Errorf("--redundancy-percent requires --chunk-size")
+	}
+
 	if o.ChunkSize != "" {
 		if o.ContainerdCompatibility == true {
 			l.Warnf("compatibility warning... stores split by chunk size must be imported using `hauler store load` to rejoin before import to containerd")
@@ -152,7 +159,13 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
-		chunks, err := archives.SplitArchive(ctx, absOutputfile, maxBytes)
+
+		var chunks []string
+		if o.RedundancyPercent > 0 {
+			chunks, err = archives.SplitArchiveRedundant(ctx, absOutputfile, maxBytes, o.RedundancyPercent)
+		} else {
+			chunks, err = archives.SplitArchive(ctx, absOutputfile, maxBytes)
+		}
 		if err != nil {
 			return err
 		}
@@ -176,9 +189,10 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
-				"platform":   o.Platform,
-				"containerd": o.ContainerdCompatibility,
-				"chunk-size": o.ChunkSize,
+				"platform":           o.Platform,
+				"containerd":         o.ContainerdCompatibility,
+				"chunk-size":         o.ChunkSize,
+				"redundancy-percent": o.RedundancyPercent,
 			}
 		}
 		if err := audit.Append(ro.HaulerDir, e); err != nil {
