@@ -108,6 +108,7 @@ const (
 	ChartsContentKind = "Charts"
 	FilesContentKind  = "Files"
 	// DriverContentKind = "Driver"
+	DirectoriesContentKind = "Directories"
 
 	// content groups
 	ContentGroup    = "content.hauler.cattle.io"
@@ -168,7 +169,7 @@ const (
 var FileExcludePattern = fmt.Sprintf(`^%s/[.\-_]`, DefaultNamespace)
 
 // ContentTypeFilters lists the values `store info --type` and `store copy --type` accept, kept in one place so the two commands can't drift apart when a new content type is added.
-var ContentTypeFilters = []string{"image", "chart", "file", "sigs", "atts", "sbom", "referrer", "all"}
+var ContentTypeFilters = []string{"image", "chart", "file", "directory", "sigs", "atts", "sbom", "referrer", "all"}
 
 // SigKindExt maps a cosign artifact kind to its tag-convention extension.
 // Kinds come in two shapes: plain ("dev.hauler/sigs") for an image's own

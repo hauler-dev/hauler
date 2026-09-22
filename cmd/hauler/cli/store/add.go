@@ -28,6 +28,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/chart"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/directory"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
@@ -86,6 +87,8 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 		NameOverride:          fi.Name,
 		InsecureSkipTLSVerify: fi.InsecureSkipTLSVerify,
 		CAFile:                fi.CaFile,
+		// Only used when Path is a local directory, which is stored as a single archive in the format its name implies.
+		ArchiveFormat: archives.FormatFromName(fi.Name),
 	}
 
 	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)), file.WithContext(ctx))
@@ -182,7 +185,7 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	return nil
 }
 
-// AddDirectoryCmd stores a local directory tree, tagged the same as a directory added via `store add file`.
+// AddDirectoryCmd stores a local directory tree as a directory artifact that extracts back into the same tree.
 func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.Layout, path string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
@@ -192,45 +195,65 @@ func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.La
 		}
 	}()
 
+	l.Infof("adding directory [%s] to the store", path)
+
+	return storeDirectory(ctx, s, v1.Directory{Path: path, Name: o.Name}, ro, o.StoreRootOpts)
+}
+
+func storeDirectory(ctx context.Context, s *store.Layout, di v1.Directory, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
+	l := log.FromContext(ctx)
+
 	start := time.Now()
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
-	d, err := directory.NewDirectory(path, directory.WithClient(getter.NewClient(getter.ClientOptions{})), directory.WithContext(ctx), directory.WithName(o.Name))
-	if err != nil {
-		if ignoreErrors {
-			l.Warnf("unable to add directory [%s]: %v... skipping...", path, err)
-			return nil
-		}
+	if err := ctx.Err(); err != nil {
+		log.BaseFromContext(ctx).Debugf("skipping directory [%s]: %v", di.Path, err)
 		return err
 	}
 
-	ref, err := reference.NewTagged(d.Name(path), consts.DefaultTag)
+	d, err := directory.NewDirectory(di.Path, directory.WithClient(getter.NewClient(getter.ClientOptions{NameOverride: di.Name})), directory.WithContext(ctx))
 	if err != nil {
 		if ignoreErrors {
-			l.Warnf("unable to derive a store reference for directory [%s]: %v... skipping...", path, err)
+			log.BaseFromContext(ctx).Warnf("unable to add directory [%s]: %v... skipping...", di.Path, err)
 			return nil
 		}
+		log.BaseFromContext(ctx).Errorf("unable to add directory [%s]: %v", di.Path, err)
 		return err
 	}
 
-	l.Infof("adding directory [%s] to the store", path)
+	ref, err := reference.NewTagged(d.Name(di.Path), consts.DefaultTag)
+	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to derive a store reference for directory [%s]: %v... skipping...", di.Path, err)
+			return nil
+		}
+		log.BaseFromContext(ctx).Errorf("unable to derive a store reference for directory [%s]: %v", di.Path, err)
+		return err
+	}
+
+	log.BaseFromContext(ctx).Debugf("adding directory [%s] to the store as [%s]", di.Path, ref.Name())
 
 	var desc ocispec.Descriptor
-	err = retry.Operation(ctx, o.StoreRootOpts, ro, func() error {
+	err = retry.Operation(ctx, rso, ro, func() error {
 		var addErr error
 		desc, addErr = s.AddArtifact(ctx, d, ref.Name())
 		return addErr
 	})
 	if err != nil {
 		if ignoreErrors {
-			l.Warnf("unable to add directory [%s] to store: %v... skipping...", path, err)
+			log.BaseFromContext(ctx).Warnf("unable to add directory [%s] to store: %v... skipping...", di.Path, err)
 			return nil
+		} else if errors.Is(err, context.Canceled) {
+			// A sibling job's failure cancelled this one, see storeFile's identical branch.
+			log.BaseFromContext(ctx).Debugf("unable to add directory [%s] to store: %v", di.Path, err)
+			return err
 		}
+		log.BaseFromContext(ctx).Errorf("unable to add directory [%s] to store: %v", di.Path, err)
 		return err
 	}
 
-	resolvedPath := path
-	if abs, err := filepath.Abs(path); err == nil {
+	resolvedPath := di.Path
+	if abs, err := filepath.Abs(di.Path); err == nil {
 		resolvedPath = abs
 	}
 	desc.Annotations[consts.OriginalRefAnnotation] = resolvedPath
@@ -244,10 +267,19 @@ func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.La
 			Store:             s.Root,
 			Type:              "directory",
 			Command:           "store add directory",
-			Args:              []string{audit.SanitizeURL(path)},
+			Args:              []string{audit.SanitizeURL(di.Path)},
 			Reference:         audit.SanitizeURL(resolvedPath),
-			PortableReference: audit.ShortFileRef(path),
+			PortableReference: audit.ShortFileRef(di.Path),
 			Digest:            desc.Digest.String(),
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"name": di.Name,
+			}
 		}
 		if err := audit.Append(ro.HaulerDir, e); err != nil {
 			l.Warnf("failed to write audit entry: %v", err)
@@ -264,7 +296,7 @@ func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.La
 		stats.Bytes.Store(size)
 	}
 
-	l.Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
 
 	return nil
 }

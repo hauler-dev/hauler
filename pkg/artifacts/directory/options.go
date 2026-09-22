@@ -19,10 +19,3 @@ func WithContext(ctx context.Context) Option {
 		d.ctx = ctx
 	}
 }
-
-// WithName overrides the derived artifact name.
-func WithName(name string) Option {
-	return func(d *Directory) {
-		d.nameOverride = name
-	}
-}

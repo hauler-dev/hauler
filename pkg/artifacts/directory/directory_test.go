@@ -5,7 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/getter"
 )
 
 func newDirFixture(t *testing.T) string {
@@ -36,7 +40,8 @@ func TestNewDirectory_RejectsMissingPath(t *testing.T) {
 }
 
 func TestDirectory_Manifest(t *testing.T) {
-	d, err := NewDirectory(newDirFixture(t))
+	dir := newDirFixture(t)
+	d, err := NewDirectory(dir)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -50,6 +55,13 @@ func TestDirectory_Manifest(t *testing.T) {
 	}
 	if len(m.Layers) != 1 {
 		t.Fatalf("expected 1 layer, got %d", len(m.Layers))
+	}
+	ann := m.Layers[0].Annotations
+	if ann[content.AnnotationUnpack] != "true" {
+		t.Errorf("expected the unpack annotation extract relies on, got %v", ann)
+	}
+	if got, want := ann[ocispec.AnnotationTitle], filepath.Base(dir); got != want {
+		t.Errorf("layer title = %q, want %q", got, want)
 	}
 }
 
@@ -67,7 +79,7 @@ func TestDirectory_Name(t *testing.T) {
 	})
 
 	t.Run("explicit override wins", func(t *testing.T) {
-		d, err := NewDirectory(dir, WithName("custom-name"))
+		d, err := NewDirectory(dir, named("custom-name"))
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -89,5 +101,38 @@ func TestDirectory_Size(t *testing.T) {
 	}
 	if size <= 0 {
 		t.Errorf("Size() = %d, want > 0", size)
+	}
+}
+
+// TestNewDirectory_DotPathUsesRealName is a regression test: "." used to yield the name "." and a prefix-less archive.
+func TestNewDirectory_DotPathUsesRealName(t *testing.T) {
+	dir := newDirFixture(t)
+	t.Chdir(dir)
+
+	d, err := NewDirectory(".")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if got, want := d.Name("."), filepath.Base(dir); got != want {
+		t.Errorf("Name() = %q, want %q", got, want)
+	}
+}
+
+// named overrides the derived name the same way storeDirectory does, through the getter client.
+func named(name string) Option {
+	return WithClient(getter.NewClient(getter.ClientOptions{NameOverride: name}))
+}
+
+func TestNewDirectory_NameValidation(t *testing.T) {
+	dir := newDirFixture(t)
+	for _, name := range []string{".", "..", "../escape", "a/b", `a\b`, "/"} {
+		if _, err := NewDirectory(dir, named(name)); err == nil {
+			t.Errorf("expected name %q to be rejected", name)
+		}
+	}
+	for _, name := range []string{"mydir", "my-dir.v2", ".config"} {
+		if _, err := NewDirectory(dir, named(name)); err != nil {
+			t.Errorf("expected name %q to be accepted, got: %v", name, err)
+		}
 	}
 }

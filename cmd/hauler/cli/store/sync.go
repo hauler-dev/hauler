@@ -175,7 +175,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			return err
 		}
 		defer fi.Close()
-		err = processContent(ctx, fi, o, s, rso, ro, targetStores)
+		err = processContent(ctx, fi, o, s, rso, ro, targetStores, true)
 		if err != nil {
 			return err
 		}
@@ -188,7 +188,8 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
 
 			haulPath := fileName
-			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
+			remote := strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://")
+			if remote {
 				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
 
 				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
@@ -225,7 +226,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			}
 			defer fi.Close()
 
-			err = processContent(ctx, fi, o, s, rso, ro, targetStores)
+			err = processContent(ctx, fi, o, s, rso, ro, targetStores, remote)
 			if err != nil {
 				return err
 			}
@@ -301,7 +302,8 @@ func resolveBoolFlag(item, annTrue, global, cliChanged bool) bool {
 	return global || item || annTrue
 }
 
-func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout) error {
+// processContent syncs every document in fi; remote marks a manifest fetched over the network, which may not reference local directories.
+func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout, remote bool) error {
 	l := log.FromContext(ctx)
 
 	reader := yaml.NewYAMLReader(bufio.NewReader(fi))
@@ -348,6 +350,38 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
 				jobs := resolveFileJobs(o, a, cfg.Spec.Files)
 				if err := runFileJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
+					return err
+				}
+
+			default:
+				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
+			}
+
+		case consts.DirectoriesContentKind:
+			switch gvk.Version {
+			case "v1":
+				if remote {
+					return fmt.Errorf("refusing [kind=%s] from a remote manifest... directories are local only, sync it from a local manifest file instead", gvk.Kind)
+				}
+				var cfg v1.Directories
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+				a := cfg.GetAnnotations()
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
+				if err != nil {
+					return err
+				}
+				docRso, err := resolveDocRetries(a, rso, o.RetriesChanged)
+				if err != nil {
+					return err
+				}
+				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
+				jobs, err := resolveDirectoryJobs(filepath.Dir(fi.Name()), cfg.Spec.Directories)
+				if err != nil {
+					return err
+				}
+				if err := runDirectoryJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
 				}
 
@@ -415,7 +449,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			}
 
 		default:
-			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Images, Charts]", gvk.Kind)
+			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Directories, Images, Charts]", gvk.Kind)
 		}
 	}
 	return nil
@@ -1260,6 +1294,63 @@ func runFileJobsWith(ctx context.Context, s *store.Layout, jobs []fileJob, concu
 			jctx = log.WithBaseLogger(jctx, baseLogger)
 			jctx = file.WithLayerCacheContext(jctx, cache)
 			err := storeFile(jctx, s, j.file, ro, rso)
+			if progress != nil {
+				progress.Finished(name)
+			}
+			return err
+		})
+	}
+	return g.Wait()
+}
+
+// resolveDirectoryJobs resolves each directory's path against manifestDir and rejects any entry that isn't a local directory.
+func resolveDirectoryJobs(manifestDir string, dirs []v1.Directory) ([]v1.Directory, error) {
+	jobs := make([]v1.Directory, 0, len(dirs))
+	for _, d := range dirs {
+		if d.Path == "" {
+			return nil, fmt.Errorf("directory entry is missing required field [path]")
+		}
+		if strings.Contains(d.Path, "://") {
+			return nil, fmt.Errorf("directory [%s] must be a local path, not a URL", d.Path)
+		}
+		if !filepath.IsAbs(d.Path) {
+			d.Path = filepath.Join(manifestDir, d.Path)
+		}
+		jobs = append(jobs, d)
+	}
+	return jobs, nil
+}
+
+// runDirectoryJobs stores directory jobs concurrently with the same fail-fast, progress, and --ignore-errors semantics as runFileJobs.
+func runDirectoryJobs(ctx context.Context, s *store.Layout, jobs []v1.Directory, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
+	l := log.FromContext(ctx)
+
+	baseLogger := l
+	if progress != nil && len(jobs) > 0 {
+		baseLogger = log.NewLogger(progress)
+		progress.Start()
+		defer progress.Stop()
+	}
+
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+	for _, j := range jobs {
+		g.Go(func() error {
+			name := j.Name
+			if name == "" {
+				name = j.Path
+			}
+			if progress != nil {
+				progress.Began(name)
+			}
+			jl := baseLogger.With(log.Fields{"directory": name})
+			jctx := jl.WithContext(gctx)
+			jctx = log.WithBaseLogger(jctx, baseLogger)
+			err := storeDirectory(jctx, s, j, ro, rso)
 			if progress != nil {
 				progress.Finished(name)
 			}

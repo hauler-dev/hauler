@@ -82,6 +82,7 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 	var images []manifestImage
 	var charts []manifestChart
 	var files []manifestFile
+	var dirs []manifestFile
 	chartsMissingRepoURL := false
 
 	if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
@@ -192,7 +193,11 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 			if orig, ok := desc.Annotations[consts.OriginalRefAnnotation]; ok && orig != "" {
 				path = orig
 			}
-			files = append(files, manifestFile{Path: path, Name: name})
+			if m.Config.MediaType == consts.FileDirectoryConfigMediaType {
+				dirs = append(dirs, manifestFile{Path: path, Name: name})
+			} else {
+				files = append(files, manifestFile{Path: path, Name: name})
+			}
 
 		default:
 			l.Warnf("skipping unrecognized artifact [%s] with config media type [%s]", refName, m.Config.MediaType)
@@ -203,7 +208,7 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 		return err
 	}
 
-	if len(images) == 0 && len(charts) == 0 && len(files) == 0 {
+	if len(images) == 0 && len(charts) == 0 && len(files) == 0 && len(dirs) == 0 {
 		return fmt.Errorf("store contains no content to build a manifest from")
 	}
 
@@ -235,6 +240,13 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 			return err
 		}
 	}
+	if len(dirs) > 0 {
+		if err := writeDoc(&out, "", consts.DirectoriesContentKind, base+"-directories", struct {
+			Directories []manifestFile `yaml:"directories"`
+		}{dirs}); err != nil {
+			return err
+		}
+	}
 
 	if toStdout {
 		if _, err := os.Stdout.Write([]byte(out.String())); err != nil {
@@ -251,7 +263,7 @@ func CreateManifestCmd(ctx context.Context, o *flags.CreateManifestOpts, s *stor
 	if abs, err := filepath.Abs(o.Output); err == nil {
 		outPath = abs
 	}
-	l.Infof("wrote manifest with [%d] image(s), [%d] chart(s), [%d] file(s) to [%s]", len(images), len(charts), len(files), outPath)
+	l.Infof("wrote manifest with [%d] image(s), [%d] chart(s), [%d] file(s), [%d] directory(s) to [%s]", len(images), len(charts), len(files), len(dirs), outPath)
 
 	return nil
 }

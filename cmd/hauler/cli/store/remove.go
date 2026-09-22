@@ -51,8 +51,10 @@ func artifactType(ctx context.Context, s *store.Layout, desc ocispec.Descriptor)
 	switch m.Config.MediaType {
 	case consts.ChartConfigMediaType:
 		return "chart"
-	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType, consts.FileDirectoryConfigMediaType:
+	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType:
 		return "file"
+	case consts.FileDirectoryConfigMediaType:
+		return "directory"
 	default:
 		return "image"
 	}

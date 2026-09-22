@@ -2,7 +2,6 @@ package getter
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"io"
 	"net/url"
@@ -13,16 +12,28 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 
+	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
 
 type directory struct {
 	*File
+	format string
 }
 
-func NewDirectory() *directory {
-	return &directory{File: NewFile()}
+// NewDirectory returns a directory getter that archives as format, see archives.Compressor.
+func NewDirectory(format string) *directory {
+	return &directory{File: NewFile(), format: format}
+}
+
+// Name resolves the path first so "." or "../x" yields the real directory name rather than a dot segment.
+func (d directory) Name(u *url.URL) string {
+	p := d.path(u)
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return filepath.Base(p)
 }
 
 func (d directory) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
@@ -32,7 +43,12 @@ func (d directory) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) 
 	}
 
 	digester := digest.Canonical.Digester()
-	zw := gzip.NewWriter(io.MultiWriter(tmpfile, digester.Hash()))
+	zw, err := archives.Compressor(d.format).OpenWriter(io.MultiWriter(tmpfile, digester.Hash()))
+	if err != nil {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+		return nil, err
+	}
 
 	tarDigester := digest.Canonical.Digester()
 	if err := tarDir(d.path(u), d.Name(u), io.MultiWriter(zw, tarDigester.Hash()), false); err != nil {
