@@ -3,8 +3,18 @@ package git
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 )
+
+// ValidateName rejects repository names that would be served or extracted onto or outside their root directory, e.g. "." or "..".
+func ValidateName(name string) error {
+	if name == "" || name == "." || name == ".." || path.IsAbs(name) || path.Clean(name) != name || strings.HasPrefix(name, "../") || strings.Contains(name, `\`) {
+		return fmt.Errorf("invalid git repository name [%s]", name)
+	}
+	return nil
+}
 
 // ValidateBareRepo reports whether dir looks like a bare git repository
 // missing a HEAD file, an objects directory, or a refs directory or a packed-refs file

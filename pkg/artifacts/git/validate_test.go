@@ -105,3 +105,16 @@ func TestValidateBareRepo(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateName(t *testing.T) {
+	for _, name := range []string{"", ".", "..", "../x", "a/../b", "./a", "/abs", `a\b`} {
+		if err := ValidateName(name); err == nil {
+			t.Errorf("ValidateName(%q) = nil, want an error", name)
+		}
+	}
+	for _, name := range []string{"myrepo", "myrepo.git", "org/myrepo", ".hidden"} {
+		if err := ValidateName(name); err != nil {
+			t.Errorf("ValidateName(%q) = %v, want nil", name, err)
+		}
+	}
+}

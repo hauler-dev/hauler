@@ -661,6 +661,21 @@ func TestAddGitCmd(t *testing.T) {
 	assertArtifactInStore(t, s, "myrepo.git")
 }
 
+// TestAddGitCmd_RejectsUnsafeName guards against names like ".." that `store serve git` would resolve onto or outside its root directory.
+func TestAddGitCmd_RejectsUnsafeName(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	repoDir := newBareGitRepoFixture(t, "myrepo.git")
+
+	for _, name := range []string{".", ".."} {
+		o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root), Name: name}
+		if err := AddGitCmd(ctx, o, s, repoDir, defaultCliOpts()); err == nil {
+			t.Errorf("expected AddGitCmd to reject --name %q, got nil", name)
+		}
+	}
+	assertArtifactNotInStore(t, s, "hauler/.")
+}
+
 func TestAddGitCmd_RejectsPlainDirectory(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)

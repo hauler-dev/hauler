@@ -56,6 +56,17 @@ func (o *AddFileOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification for remote files")
 }
 
+// AddDirectoryOpts is local path only
+type AddDirectoryOpts struct {
+	*StoreRootOpts
+	Name string
+}
+
+func (o *AddDirectoryOpts) AddFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.StringVarP(&o.Name, "name", "n", "", "(Optional) Rewrite the name of the directory")
+}
+
 // AddGitOpts mirrors AddFileOpts for a local bare repo directory (tarred by getter's directory support, same as AddFileOpts), and mirrors AddChartOpts's auth flags for a remote URL, which is cloned with go-git before being stored the same way.
 type AddGitOpts struct {
 	*StoreRootOpts

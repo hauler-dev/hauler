@@ -14,6 +14,7 @@ import (
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/content"
 )
 
@@ -96,9 +97,21 @@ func (g *Git) clone(url string) (string, func(), error) {
 	}
 	// Neither case leaves Auth nil: a public HTTPS repo, or an SSH URL falling back to ssh-agent/default key discovery, same as the git CLI.
 
-	if _, err := gogit.PlainCloneContext(g.ctx, dir, true, opts); err != nil {
+	repo, err := gogit.PlainCloneContext(g.ctx, dir, true, opts)
+	if err != nil {
 		cleanup()
-		return "", nil, fmt.Errorf("cloning [%s]: %w", url, err)
+		return "", nil, fmt.Errorf("cloning [%s]: %w", audit.SanitizeURL(url), err)
+	}
+
+	// The clone records its URL as origin in the repo's own config, so strip any embedded credentials before it's archived.
+	cfg, err := repo.Config()
+	if err == nil && cfg.Remotes["origin"] != nil {
+		cfg.Remotes["origin"].URLs = []string{audit.SanitizeURL(url)}
+		err = repo.SetConfig(cfg)
+	}
+	if err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("sanitizing origin for [%s]: %w", audit.SanitizeURL(url), err)
 	}
 
 	return dir, cleanup, nil

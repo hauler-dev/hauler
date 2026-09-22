@@ -10,6 +10,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/getter"
 )
 
 // newNonBareRepoFixture creates a real, valid (non-bare) git repository with one commit, and returns its path.
@@ -121,7 +122,7 @@ func TestGit_Name(t *testing.T) {
 	})
 
 	t.Run("WithName takes precedence", func(t *testing.T) {
-		g := NewGit(dir, WithName("renamed"))
+		g := NewGit(dir, WithClient(getter.NewClient(getter.ClientOptions{NameOverride: "renamed"})))
 		if got := g.Name(dir); got != "renamed" {
 			t.Errorf("Name() = %q, want %q", got, "renamed")
 		}

@@ -20,13 +20,6 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-// WithName overrides the derived artifact name, taking precedence over both a URL-derived name and the client's own naming.
-func WithName(name string) Option {
-	return func(g *Git) {
-		g.nameOverride = name
-	}
-}
-
 // WithUsername sets the username used to clone a https:// URL.
 func WithUsername(username string) Option {
 	return func(g *Git) {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -26,6 +25,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/internal/server"
+	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/reference"
@@ -216,12 +216,12 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 		return err
 	}
 
-	repos, err := extractGitRepos(ctx, s, o.RootDir)
+	repos, err := extractGitRepos(ctx, s, o.RootDir, ro)
 	if err != nil {
 		return err
 	}
 	if len(repos) == 0 {
-		return fmt.Errorf("no git repositories found in the store, add one with `hauler store add git <bundle>`")
+		return fmt.Errorf("no git repositories found in the store, add one with `hauler store add git <repo>`")
 	}
 	l.Infof("found [%d] git repository(s) in the store", len(repos))
 
@@ -249,10 +249,13 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 	return nil
 }
 
-// extractGitRepos walks the store for artifacts tagged consts.GitRepoConfigMediaType (via `store add git`), extracting each into its own subdirectory of rootDir, and returns the name -> directory map NewGit needs to serve them.
-func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string) (map[string]string, error) {
-	repos := map[string]string{}
+// extractGitRepos extracts every git artifact into rootDir through the same directory copy fileserver uses, and returns the name -> directory map NewGit needs to serve them.
+func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string, ro *flags.CliRootOpts) (map[string]string, error) {
+	if err := CopyCmd(ctx, &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}, TypeFilter: "git"}, s, "directory://"+rootDir, ro); err != nil {
+		return nil, err
+	}
 
+	repos := map[string]string{}
 	err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
 		// Walk yields synthetic composite keys too (e.g. "<ref>-<kind>" for cosign referrer bookkeeping), so skip anything without a proper ref name, same as CreateManifestCmd.
 		refName, ok := desc.Annotations[ocispec.AnnotationRefName]
@@ -281,40 +284,14 @@ func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string) (map[
 			return nil
 		}
 		name := strings.TrimPrefix(ref.Context().RepositoryStr(), consts.DefaultNamespace+"/")
-
-		blobRC, err := s.Fetch(ctx, m.Layers[0])
-		if err != nil {
-			return fmt.Errorf("fetching git repository blob for [%s]: %w", name, err)
-		}
-		defer blobRC.Close()
-
-		archivePath := filepath.Join(rootDir, name+".tar.gz")
-		if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
-			return err
-		}
-		af, err := os.Create(archivePath)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(af, blobRC); err != nil {
-			af.Close()
-			return fmt.Errorf("writing git repository archive for [%s]: %w", name, err)
-		}
-		af.Close()
-
-		// Clear stale content before extracting so a repo re-served after an update (e.g. loose objects consolidated into a new pack by git gc on the source) never mixes old and new object state.
-		repoDir := filepath.Join(rootDir, name)
-		if err := os.RemoveAll(repoDir); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(repoDir, 0o755); err != nil {
-			return err
-		}
-		if err := server.ExtractRepo(archivePath, repoDir); err != nil {
-			return fmt.Errorf("extracting git repository for [%s]: %w", name, err)
+		// A store loaded from elsewhere can carry any name, and it becomes a URL path, so never serve one that resolves outside rootDir.
+		if err := gitartifact.ValidateName(name); err != nil {
+			log.FromContext(ctx).Warnf("skipping git repository [%s]: %v", refName, err)
+			return nil
 		}
 
-		repos[name] = repoDir
+		// The directory copy extracts each repo under its layer title, which `store add git` sets to the same name.
+		repos[name] = filepath.Join(rootDir, m.Layers[0].Annotations[ocispec.AnnotationTitle])
 		return nil
 	})
 

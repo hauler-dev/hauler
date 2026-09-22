@@ -609,7 +609,12 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	}
 }
 
-// resolveCtype computes the human-readable content type ("image", "chart", "file", "git", "sigs", "atts", "sbom", "referrer") for a descriptor, from its manifest's config media type (may be empty on the --check fallback-row path, where it defaults to "image" unless the kind annotation says otherwise).
+// resolveCtype computes the human-readable content type ("image", "chart", "file", "directory", "git",
+// "sigs", "atts", "sbom", "referrer") for a descriptor. configMediaType is the
+// manifest's config media type and is used to distinguish image/chart/file when the
+// kind annotation doesn't already identify a more specific type; it may be empty
+// when the manifest could not be decoded (the --check fallback-row path), in which
+// case ctype defaults to "image" unless the kind annotation says otherwise.
 func resolveCtype(desc ocispec.Descriptor, configMediaType string) string {
 	var ctype string
 	switch configMediaType {
@@ -617,6 +622,8 @@ func resolveCtype(desc ocispec.Descriptor, configMediaType string) string {
 		ctype = "chart"
 	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType:
 		ctype = "file"
+	case consts.FileDirectoryConfigMediaType:
+		ctype = "directory"
 	case consts.GitRepoConfigMediaType:
 		ctype = "git"
 	default:

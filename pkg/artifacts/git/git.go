@@ -9,6 +9,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/getter"
 )
@@ -27,8 +28,7 @@ type Git struct {
 	manifest *gv1.Manifest
 	ctx      context.Context
 
-	nameOverride string
-	auth         cloneAuth
+	auth cloneAuth
 
 	// cloneCleanup removes a URL's temp clone directory; deferred to Close since client.LayerFrom's opener reads it lazily, after compute returns.
 	cloneCleanup func()
@@ -53,10 +53,7 @@ func NewGit(path string, opts ...Option) *Git {
 
 // Name is the name of the git repository's reference.
 func (g *Git) Name(path string) string {
-	if g.nameOverride != "" {
-		return g.nameOverride
-	}
-	if IsGitURL(path) {
+	if g.client.Options.NameOverride == "" && IsGitURL(path) {
 		return deriveGitName(path)
 	}
 	return g.client.Name(path)
@@ -98,19 +95,10 @@ func (g *Git) Close() error {
 
 // Size returns the compressed byte size of the repository's single layer, computing the content if needed.
 func (g *Git) Size() (int64, error) {
-	layers, err := g.Layers()
-	if err != nil {
+	if err := g.compute(); err != nil {
 		return 0, err
 	}
-	var total int64
-	for _, l := range layers {
-		sz, err := l.Size()
-		if err != nil {
-			return 0, err
-		}
-		total += sz
-	}
-	return total, nil
+	return g.blob.Size()
 }
 
 func (g *Git) compute() error {
@@ -158,7 +146,8 @@ func (g *Git) compute() error {
 	annotations[ocispec.AnnotationTitle] = g.Name(g.Path)
 	layer.Annotations = annotations
 
-	cfg := artifacts.ToConfig(gitConfig{Reference: g.Path}, artifacts.WithConfigMediaType(consts.GitRepoConfigMediaType))
+	// Strip any credentials embedded in a clone URL so they never land in the store or a saved haul.
+	cfg := artifacts.ToConfig(gitConfig{Reference: audit.SanitizeURL(g.Path)}, artifacts.WithConfigMediaType(consts.GitRepoConfigMediaType))
 	cfgDesc, err := partial.Descriptor(cfg)
 	if err != nil {
 		return err

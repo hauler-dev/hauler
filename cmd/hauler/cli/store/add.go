@@ -28,7 +28,9 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/chart"
+	"hauler.dev/go/hauler/v2/pkg/artifacts/directory"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/audit"
@@ -86,6 +88,8 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 		NameOverride:          fi.Name,
 		InsecureSkipTLSVerify: fi.InsecureSkipTLSVerify,
 		CAFile:                fi.CaFile,
+		// Only used when Path is a local directory, which is stored as a single archive in the format its name implies.
+		ArchiveFormat: archives.FormatFromName(fi.Name),
 	}
 
 	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)), file.WithContext(ctx))
@@ -182,6 +186,122 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	return nil
 }
 
+// AddDirectoryCmd stores a local directory tree as a directory artifact that extracts back into the same tree.
+func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.Layout, path string, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding directory: %v", err)
+		}
+	}()
+
+	l.Infof("adding directory [%s] to the store", path)
+
+	return storeDirectory(ctx, s, v1.Directory{Path: path, Name: o.Name}, ro, o.StoreRootOpts)
+}
+
+func storeDirectory(ctx context.Context, s *store.Layout, di v1.Directory, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
+	l := log.FromContext(ctx)
+
+	start := time.Now()
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+
+	if err := ctx.Err(); err != nil {
+		log.BaseFromContext(ctx).Debugf("skipping directory [%s]: %v", di.Path, err)
+		return err
+	}
+
+	d, err := directory.NewDirectory(di.Path, directory.WithClient(getter.NewClient(getter.ClientOptions{NameOverride: di.Name})), directory.WithContext(ctx))
+	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to add directory [%s]: %v... skipping...", di.Path, err)
+			return nil
+		}
+		log.BaseFromContext(ctx).Errorf("unable to add directory [%s]: %v", di.Path, err)
+		return err
+	}
+
+	ref, err := reference.NewTagged(d.Name(di.Path), consts.DefaultTag)
+	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to derive a store reference for directory [%s]: %v... skipping...", di.Path, err)
+			return nil
+		}
+		log.BaseFromContext(ctx).Errorf("unable to derive a store reference for directory [%s]: %v", di.Path, err)
+		return err
+	}
+
+	log.BaseFromContext(ctx).Debugf("adding directory [%s] to the store as [%s]", di.Path, ref.Name())
+
+	var desc ocispec.Descriptor
+	err = retry.Operation(ctx, rso, ro, func() error {
+		var addErr error
+		desc, addErr = s.AddArtifact(ctx, d, ref.Name())
+		return addErr
+	})
+	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to add directory [%s] to store: %v... skipping...", di.Path, err)
+			return nil
+		} else if errors.Is(err, context.Canceled) {
+			// A sibling job's failure cancelled this one, see storeFile's identical branch.
+			log.BaseFromContext(ctx).Debugf("unable to add directory [%s] to store: %v", di.Path, err)
+			return err
+		}
+		log.BaseFromContext(ctx).Errorf("unable to add directory [%s] to store: %v", di.Path, err)
+		return err
+	}
+
+	resolvedPath := di.Path
+	if abs, err := filepath.Abs(di.Path); err == nil {
+		resolvedPath = abs
+	}
+	desc.Annotations[consts.OriginalRefAnnotation] = resolvedPath
+	if err := s.OCI.AddIndex(desc); err != nil {
+		return err
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:           s.StoreID,
+			Store:             s.Root,
+			Type:              "directory",
+			Command:           "store add directory",
+			Args:              []string{audit.SanitizeURL(di.Path)},
+			Reference:         audit.SanitizeURL(resolvedPath),
+			PortableReference: audit.ShortFileRef(di.Path),
+			Digest:            desc.Digest.String(),
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"name": di.Name,
+			}
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
+	}
+
+	var stats *store.ImageStats
+	if size, sizeErr := d.Size(); sizeErr == nil {
+		stats = &store.ImageStats{}
+		stats.Layers.Store(1)
+		stats.Bytes.Store(size)
+	}
+
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
+
+	return nil
+}
+
 // AddGitCmd stores a git repository directory the same way AddFileCmd stores a directory, just tagged with consts.GitRepoConfigMediaType so `store serve git` can find it later.
 func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
@@ -195,10 +315,13 @@ func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path s
 	start := time.Now()
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
+	// Never log or store credentials embedded in a clone URL.
+	display := audit.SanitizeURL(path)
+
 	if gitartifact.IsGitURL(path) {
-		l.Infof("cloning [%s]", path)
+		l.Infof("cloning [%s]", display)
 	} else if gitartifact.IsNonBareRepo(path) {
-		l.Infof("mirroring local working copy [%s] into a bare repository", path)
+		l.Infof("mirroring local working copy [%s] into a bare repository", display)
 	}
 
 	copts := getter.ClientOptions{
@@ -210,7 +333,6 @@ func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path s
 	g := gitartifact.NewGit(path,
 		gitartifact.WithClient(getter.NewClient(copts)),
 		gitartifact.WithContext(ctx),
-		gitartifact.WithName(o.Name),
 		gitartifact.WithUsername(o.Username),
 		gitartifact.WithPassword(o.Password),
 		gitartifact.WithCertFile(o.CertFile),
@@ -225,16 +347,24 @@ func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path s
 		}
 	}()
 
-	ref, err := reference.NewTagged(g.Name(path), consts.DefaultTag)
-	if err != nil {
+	if err := gitartifact.ValidateName(g.Name(path)); err != nil {
 		if ignoreErrors {
-			l.Warnf("unable to derive a store reference for git repository [%s]: %v... skipping...", path, err)
+			l.Warnf("unable to add git repository [%s]: %v... skipping...", display, err)
 			return nil
 		}
 		return err
 	}
 
-	l.Infof("adding git repository [%s] to the store", path)
+	ref, err := reference.NewTagged(g.Name(path), consts.DefaultTag)
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to derive a store reference for git repository [%s]: %v... skipping...", display, err)
+			return nil
+		}
+		return err
+	}
+
+	l.Infof("adding git repository [%s] to the store", display)
 
 	var desc ocispec.Descriptor
 	err = retry.Operation(ctx, o.StoreRootOpts, ro, func() error {
@@ -244,14 +374,14 @@ func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path s
 	})
 	if err != nil {
 		if ignoreErrors {
-			l.Warnf("unable to add git repository [%s] to store: %v... skipping...", path, err)
+			l.Warnf("unable to add git repository [%s] to store: %v... skipping...", display, err)
 			return nil
 		}
 		return err
 	}
 
-	resolvedPath := path
-	if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") && !gitartifact.IsGitURL(path) {
+	resolvedPath := display
+	if !gitartifact.IsGitURL(path) {
 		if abs, err := filepath.Abs(path); err == nil {
 			resolvedPath = abs
 		}

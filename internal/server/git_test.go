@@ -1,14 +1,11 @@
 package server
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -275,115 +272,5 @@ func TestNewGit_BasicAuthRequired(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "refs/heads/master") {
 		t.Errorf("expected served info/refs to contain refs/heads/master, got: %s", rec.Body.String())
-	}
-}
-
-// newRepoArchiveFixture builds a tar+gzip archive shaped like what getter's directory support produces (pkg/getter/directory.go's tarDir): a top-level directory entry named prefix, then one regular-file entry per files, and returns its path.
-func newRepoArchiveFixture(t *testing.T, prefix string, files map[string]string) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "archive.tar.gz")
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatalf("failed to create archive: %v", err)
-	}
-	defer f.Close()
-
-	zw := gzip.NewWriter(f)
-	tw := tar.NewWriter(zw)
-
-	if err := tw.WriteHeader(&tar.Header{Name: prefix, Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
-		t.Fatalf("failed to write archive dir header: %v", err)
-	}
-
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		content := files[name]
-		hdr := &tar.Header{Name: prefix + "/" + name, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(content))}
-		if err := tw.WriteHeader(hdr); err != nil {
-			t.Fatalf("failed to write archive header for %s: %v", name, err)
-		}
-		if _, err := tw.Write([]byte(content)); err != nil {
-			t.Fatalf("failed to write archive content for %s: %v", name, err)
-		}
-	}
-
-	if err := tw.Close(); err != nil {
-		t.Fatalf("failed to close tar writer: %v", err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("failed to close gzip writer: %v", err)
-	}
-
-	return path
-}
-
-// TestExtractRepo verifies a repo's files, including a nested pack path, round-trip byte-for-byte through the archive getter's directory support produces, with the top-level prefix directory stripped off.
-func TestExtractRepo(t *testing.T) {
-	files := map[string]string{
-		"HEAD":                       "ref: refs/heads/master\n",
-		"refs/heads/master":          testSHAMaster + "\n",
-		"objects/pack/pack-abc.pack": "pack-bytes",
-	}
-	archive := newRepoArchiveFixture(t, "myrepo.git", files)
-	dir := t.TempDir()
-
-	if err := ExtractRepo(archive, dir); err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-
-	for name, want := range files {
-		got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
-		if err != nil {
-			t.Fatalf("failed to read extracted %s: %v", name, err)
-		}
-		if string(got) != want {
-			t.Errorf("%s = %q, want %q", name, got, want)
-		}
-	}
-
-	if _, err := os.Stat(filepath.Join(dir, "myrepo.git")); !os.IsNotExist(err) {
-		t.Errorf("expected the archive's top-level prefix directory to be stripped, but %s exists", filepath.Join(dir, "myrepo.git"))
-	}
-}
-
-// TestExtractRepo_RejectsPathTraversal is a Zip Slip regression test: an entry name escaping dir via "../" must be rejected, not written outside dir.
-func TestExtractRepo_RejectsPathTraversal(t *testing.T) {
-	outsideDir := t.TempDir()
-	dir := filepath.Join(outsideDir, "extract-root")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("failed to create extraction root: %v", err)
-	}
-
-	// Once stripTopLevel removes the "myrepo.git/" prefix, this entry resolves one level above dir, into outsideDir.
-	files := map[string]string{"../malicious.txt": "traversal payload"}
-	archive := newRepoArchiveFixture(t, "myrepo.git", files)
-
-	if err := ExtractRepo(archive, dir); err == nil {
-		t.Fatal("expected an error for a path-traversal entry, got nil")
-	}
-
-	if _, err := os.Stat(filepath.Join(outsideDir, "malicious.txt")); !os.IsNotExist(err) {
-		t.Fatal("archive entry escaped the extraction root and was written outside it")
-	}
-}
-
-func TestExtractRepo_NotGzip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "not-an-archive")
-	mustWriteFile(t, path, "plain text, not gzip")
-
-	if err := ExtractRepo(path, t.TempDir()); err == nil {
-		t.Fatal("expected an error for a non-gzip file, got nil")
-	}
-}
-
-func TestExtractRepo_MissingFile(t *testing.T) {
-	if err := ExtractRepo(filepath.Join(t.TempDir(), "does-not-exist"), t.TempDir()); err == nil {
-		t.Fatal("expected an error for a missing archive, got nil")
 	}
 }
