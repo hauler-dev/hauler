@@ -33,6 +33,14 @@ import (
 func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
+	// Reject bad flags before building the archive, which can take a long time for a large store.
+	if o.RedundancyPercent < 0 || o.RedundancyPercent > 100 {
+		return fmt.Errorf("invalid --redundancy-percent [%d]... must be between 0 and 100", o.RedundancyPercent)
+	}
+	if o.RedundancyPercent > 0 && o.ChunkSize == "" {
+		return fmt.Errorf("--redundancy-percent requires --chunk-size")
+	}
+
 	// maps to handle compression and archival types
 	compressionMap := archives.CompressionMap
 	archivalMap := archives.ArchivalMap
@@ -152,7 +160,13 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 		if err != nil {
 			return err
 		}
-		chunks, err := archives.SplitArchive(ctx, absOutputfile, maxBytes)
+
+		var chunks []string
+		if o.RedundancyPercent > 0 {
+			chunks, err = archives.SplitArchiveRedundant(ctx, absOutputfile, maxBytes, o.RedundancyPercent)
+		} else {
+			chunks, err = archives.SplitArchive(ctx, absOutputfile, maxBytes)
+		}
 		if err != nil {
 			return err
 		}
@@ -176,9 +190,10 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 			e.System = &sys
 			e.Global = &g
 			e.Flags = map[string]any{
-				"platform":   o.Platform,
-				"containerd": o.ContainerdCompatibility,
-				"chunk-size": o.ChunkSize,
+				"platform":           o.Platform,
+				"containerd":         o.ContainerdCompatibility,
+				"chunk-size":         o.ChunkSize,
+				"redundancy-percent": o.RedundancyPercent,
 			}
 		}
 		if err := audit.Append(ro.HaulerDir, e); err != nil {
