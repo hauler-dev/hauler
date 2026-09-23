@@ -85,8 +85,21 @@ func TestStripCredentials(t *testing.T) {
 	tests := map[string]string{
 		"https://user:token@example.com/notes.txt?download=1": "https://example.com/notes.txt?download=1",
 		"https://token@example.com/notes.txt":                 "https://example.com/notes.txt",
-		"https://example.com/notes.txt?X-Amz-Signature=abc":   "https://example.com/notes.txt?X-Amz-Signature=abc",
+		"https://example.com/notes.txt?X-Amz-Signature=abc":   "https://example.com/notes.txt",
 		"./local/notes.txt":                                   "./local/notes.txt",
+		// AWS SigV4 drops the whole query, including an otherwise harmless param
+		"https://bucket.s3.amazonaws.com/a.txt?versionId=v%2B1&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA%2F20260923&X-Amz-Date=20260923T000000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Security-Token=TOKEN&X-Amz-Signature=abc": "https://bucket.s3.amazonaws.com/a.txt",
+		// AWS SigV2 and CloudFront
+		"https://bucket.s3.amazonaws.com/a.txt?AWSAccessKeyId=AKIA&Expires=1790000000&Signature=abc%3D":          "https://bucket.s3.amazonaws.com/a.txt",
+		"https://d111.cloudfront.net/a.txt?Expires=1790000000&Signature=abc&Key-Pair-Id=K2&Policy=eyJ&dl=1#frag": "https://d111.cloudfront.net/a.txt",
+		// GCS V4 and V2
+		"https://storage.googleapis.com/b/a.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=sa&X-Goog-Signature=abc": "https://storage.googleapis.com/b/a.txt",
+		"https://storage.googleapis.com/b/a.txt?GoogleAccessId=sa&Expires=1790000000&Signature=abc":                          "https://storage.googleapis.com/b/a.txt",
+		// Azure SAS, combined with credentials in the URL
+		"https://user:token@acct.blob.core.windows.net/c/a.txt?sv=2022-11-02&ss=b&srt=o&sp=r&se=2026-10-01T00:00:00Z&st=2026-09-23T00:00:00Z&spr=https&sig=abc%3D": "https://acct.blob.core.windows.net/c/a.txt",
+		// unsigned URLs keep their whole query, even generic names like expires and st
+		"https://example.com/a.txt?expires=never&st=1&policy=open": "https://example.com/a.txt?expires=never&st=1&policy=open",
+		"https://example.com/a.txt?version=1.2":                    "https://example.com/a.txt?version=1.2",
 	}
 	for in, want := range tests {
 		if got := getter.StripCredentials(in); got != want {
@@ -109,7 +122,7 @@ func TestHttp_NoCredentialsInConfigOrErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "SECRET-TOKEN") {
+	if strings.Contains(string(raw), "SECRET-TOKEN") || strings.Contains(string(raw), "SECRET-SIG") {
 		t.Errorf("config blob contains credentials: %s", raw)
 	}
 
