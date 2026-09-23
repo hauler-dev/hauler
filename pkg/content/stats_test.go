@@ -122,6 +122,13 @@ func TestBlobCountersCreditEveryCallerOnSharedDigest(t *testing.T) {
 	if total := statsB.Cached.Load() + statsB.Written.Load(); total != 1 {
 		t.Errorf("caller B's counters totaled %d, want 1 (a follower's per-operation counters must be credited too)", total)
 	}
+	// One real download means exactly one caller fetched it and the one that waited on it counts it as cached.
+	if written := statsA.Written.Load() + statsB.Written.Load(); written != 1 {
+		t.Errorf("callers fetched %d times in total, want 1 to match the single real write", written)
+	}
+	if cached := statsA.Cached.Load() + statsB.Cached.Load(); cached != 1 {
+		t.Errorf("callers cached %d times in total, want 1", cached)
+	}
 }
 
 func TestIOStatsPeakInFlightNeverExceedsCeiling(t *testing.T) {
