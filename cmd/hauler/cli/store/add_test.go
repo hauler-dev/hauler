@@ -3552,3 +3552,54 @@ func writeCAFile(t *testing.T) string {
 	}
 	return p
 }
+
+// credentials embedded in a remote file URL never reach the logs or the store, while the rest of the URL is kept for re-sync.
+func TestStoreFile_NoCredentialsLeak(t *testing.T) {
+	raw := seedFileInHTTPServer(t, "notes.txt", "payload")
+	withCreds := strings.Replace(raw, "http://", "http://someuser:SECRET-TOKEN@", 1)
+
+	s := newTestStore(t)
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.DebugLevel).WithContext(context.Background())
+	ro := defaultCliOpts()
+	ro.LogLevel = "debug"
+	rso := defaultRootOpts(s.Root)
+
+	if err := storeFile(ctx, s, v1.File{Path: withCreds}, ro, rso); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+	// A failing fetch exercises the error and retry log paths too.
+	_ = storeFile(ctx, s, v1.File{Path: strings.Replace(withCreds, "notes.txt", "missing.txt", 1)}, ro, rso)
+
+	if strings.Contains(logs.String(), "SECRET-TOKEN") {
+		t.Errorf("logs contain credentials:\n%s", logs.String())
+	}
+	if err := filepath.Walk(s.Root, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(data, []byte("SECRET-TOKEN")) {
+			t.Errorf("store file %s contains credentials", p)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var original string
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.Contains(desc.Annotations[ocispec.AnnotationRefName], "notes.txt") {
+			original = desc.Annotations[consts.OriginalRefAnnotation]
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if want := raw; original != want {
+		t.Errorf("original ref = %q, want %q so a re-sync can still fetch it", original, want)
+	}
+}

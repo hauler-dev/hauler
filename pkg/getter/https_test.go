@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,5 +59,46 @@ func TestHttp_Open_HonorsContextCancellation(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Open did not return within 5s of ctx cancellation... ctx is not wired into the request")
+	}
+}
+
+func TestStripCredentials(t *testing.T) {
+	tests := map[string]string{
+		"https://user:token@example.com/notes.txt?download=1": "https://example.com/notes.txt?download=1",
+		"https://token@example.com/notes.txt":                 "https://example.com/notes.txt",
+		"https://example.com/notes.txt?X-Amz-Signature=abc":   "https://example.com/notes.txt?X-Amz-Signature=abc",
+		"./local/notes.txt":                                   "./local/notes.txt",
+	}
+	for in, want := range tests {
+		if got := getter.StripCredentials(in); got != want {
+			t.Errorf("StripCredentials(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// credentials embedded in a remote file URL never reach the stored config or an error message.
+func TestHttp_NoCredentialsInConfigOrErrors(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	u, err := url.Parse(strings.Replace(srv.URL, "http://", "http://user:SECRET-TOKEN@", 1) + "/missing.txt?sig=SECRET-SIG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := getter.NewHttp(false, "")
+
+	raw, err := h.Config(u).Raw()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "SECRET-TOKEN") {
+		t.Errorf("config blob contains credentials: %s", raw)
+	}
+
+	_, err = h.Open(context.Background(), u)
+	if err == nil {
+		t.Fatal("expected a 404 error, got nil")
+	}
+	if strings.Contains(err.Error(), "SECRET-TOKEN") || strings.Contains(err.Error(), "SECRET-SIG") {
+		t.Errorf("error message contains credentials: %v", err)
 	}
 }
