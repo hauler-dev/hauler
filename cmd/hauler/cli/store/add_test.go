@@ -608,6 +608,29 @@ func TestStoreFile(t *testing.T) {
 	})
 }
 
+// a remote file behind a query-string URL is stored under its plain filename, while the full URL is kept for re-sync.
+func TestStoreFile_QueryStringURL(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	remote := seedFileInHTTPServer(t, "notes.txt", "payload") + "?X-Amz-Signature=abc%2Fdef&X-Amz-Expires=300"
+
+	if err := storeFile(ctx, s, v1.File{Path: remote}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
+		t.Fatalf("storeFile with a query-string URL: %v", err)
+	}
+	var original string
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.Contains(desc.Annotations[ocispec.AnnotationRefName], "hauler/notes.txt:") {
+			original = desc.Annotations[consts.OriginalRefAnnotation]
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if original != remote {
+		t.Errorf("hauler/notes.txt original ref = %q, want %q", original, remote)
+	}
+}
+
 func TestAddFileCmd(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
