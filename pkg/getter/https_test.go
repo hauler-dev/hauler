@@ -11,6 +11,25 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/getter"
 )
 
+// a remote file's name never carries the URL's query or fragment, so presigned and query-string URLs still yield a valid reference.
+func TestHttp_Name_IgnoresQueryAndFragment(t *testing.T) {
+	h := getter.NewHttp(false, "")
+	for _, raw := range []string{
+		"https://example.com/files/notes.txt",
+		"https://example.com/files/notes.txt?download=1",
+		"https://example.com/files/notes.txt?X-Amz-Signature=abc%2Fdef&X-Amz-Expires=300",
+		"https://example.com/files/notes.txt#section",
+	} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := h.Name(u); got != "notes.txt" {
+			t.Errorf("Name(%q) = %q, want %q", raw, got, "notes.txt")
+		}
+	}
+}
+
 // TestHttp_Open_HonorsContextCancellation proves that Http.Open actually
 // wires the ctx argument into the outgoing HTTP request (via
 // http.NewRequestWithContext), rather than accepting-but-ignoring it. A
