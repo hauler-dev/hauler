@@ -2,6 +2,8 @@ package getter_test
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -132,5 +134,33 @@ func TestHttp_NoCredentialsInConfigOrErrors(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "SECRET-TOKEN") || strings.Contains(err.Error(), "SECRET-SIG") {
 		t.Errorf("error message contains credentials: %v", err)
+	}
+}
+
+// a network level failure (nothing listening) never puts credentials or a presigned query in the error, which net/http only masks the password of.
+func TestHttp_NoCredentialsInNetworkErrors(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	u, err := url.Parse("http://user:SECRET-TOKEN@" + addr + "/notes.txt?X-Amz-Credential=AKIA-SECRET-KEY&X-Amz-Signature=SECRET-SIG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = getter.NewHttp(false, "").Open(context.Background(), u)
+	if err == nil {
+		t.Fatal("expected a connection error, got nil")
+	}
+	for _, secret := range []string{"SECRET-TOKEN", "AKIA-SECRET-KEY", "SECRET-SIG", "user"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("error message contains %s: %v", secret, err)
+		}
+	}
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		t.Errorf("expected a *url.Error so callers can still inspect it, got %T", err)
 	}
 }
