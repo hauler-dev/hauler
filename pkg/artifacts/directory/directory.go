@@ -37,7 +37,7 @@ func NewDirectory(path string, opts ...Option) (*Directory, error) {
 		return nil, fmt.Errorf("unable to access [%s]: %w", path, err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("[%s] is not a directory (use `store add file` for a single file)", path)
+		return nil, fmt.Errorf("[%s] is not a directory (use `hauler store add file` for a single file)", path)
 	}
 
 	d := &Directory{
