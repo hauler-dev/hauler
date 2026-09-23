@@ -634,27 +634,6 @@ func (o *OCI) ensureBlob(alg string, hex string) (string, error) {
 // on a distinct, still-live ctx -- if that error is context.Canceled but
 // this caller's ctx isn't done, WriteBlob retries once on the caller's own
 // ctx rather than propagate a cancellation that wasn't its own.
-// noteBlobCached records a cache hit on the store-wide IOStats.
-func (o *OCI) noteBlobCached() {
-	o.stats.BlobsCached.Add(1)
-}
-
-// noteBlobWritten is noteBlobCached's counterpart for an actual write.
-func (o *OCI) noteBlobWritten() {
-	o.stats.BlobsWritten.Add(1)
-}
-
-// creditCaller applies a WriteBlob outcome to ctx's per-operation counters (if any), once per caller rather than once per actual write.
-func creditCaller(ctx context.Context, cached bool) {
-	c := blobCountersFromContext(ctx)
-	switch {
-	case cached && c.Cached != nil:
-		c.Cached.Add(1)
-	case !cached && c.Written != nil:
-		c.Written.Add(1)
-	}
-}
-
 func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -692,9 +671,32 @@ func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64,
 	return err
 }
 
+// noteBlobCached records a cache hit on the store-wide IOStats.
+func (o *OCI) noteBlobCached() {
+	o.stats.BlobsCached.Add(1)
+}
+
+// noteBlobWritten is noteBlobCached's counterpart for an actual write.
+func (o *OCI) noteBlobWritten() {
+	o.stats.BlobsWritten.Add(1)
+}
+
+// creditCaller applies a WriteBlob outcome to ctx's per-operation counters (if any), once per caller rather than once per actual write.
+func creditCaller(ctx context.Context, cached bool) {
+	c := blobCountersFromContext(ctx)
+	switch {
+	case cached && c.Cached != nil:
+		c.Cached.Add(1)
+	case !cached && c.Written != nil:
+		c.Written.Add(1)
+	}
+}
+
 // writeBlobShared dedupes concurrent writers of expected via this OCI's singleflight.Group, crediting every caller's own ctx after Do() resolves so a follower's counters aren't skipped just because it didn't do the writing.
 func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) error {
+	ran := false
 	v, err, _ := o.sf.Do(expected.String(), func() (interface{}, error) {
+		ran = true
 		// Acquired inside the singleflight func, not around sf.Do: losers
 		// merely waiting on Do() must not hold a permit for someone else's
 		// write.
@@ -712,7 +714,8 @@ func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expecte
 	})
 	if err == nil {
 		cached, _ := v.(bool)
-		creditCaller(ctx, cached)
+		// Only the caller whose func ran did the write, so everyone who waited on it reuses that download and counts it as cached.
+		creditCaller(ctx, cached || !ran)
 	}
 	return err
 }
