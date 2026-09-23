@@ -218,12 +218,28 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
+	// layerCtx carries per-layer Cached/Written counters, same as writeImageBlobs's identical layerCtx.
+	layerCtx := ctx
+	if stats := imageStatsFromContext(ctx); stats != nil {
+		var totalBytes int64
+		for _, lyr := range layers {
+			size, err := lyr.Size()
+			if err != nil {
+				return ocispec.Descriptor{}, err
+			}
+			totalBytes += size
+		}
+		stats.Layers.Add(int64(len(layers)))
+		stats.Bytes.Add(totalBytes)
+		layerCtx = content.WithBlobCounters(ctx, &stats.Cached, &stats.Written)
+	}
+
 	// errgroup.WithContext, not a zero-value Group: Wait() on a zero-value
 	// group never cancels siblings on failure, so other layers would keep
 	// downloading after one fails. gctx is cancelled the moment any
 	// writeLayer errors, which content.OCI.WriteBlob observes (via ctx.Err()
 	// and the wrapped reader) to abort in-flight writes promptly.
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(layerCtx)
 	for _, lyr := range layers {
 		lyr := lyr
 		g.Go(func() error {
@@ -457,6 +473,8 @@ func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 		return fmt.Errorf("getting layers: %w", err)
 	}
 
+	// layerCtx carries per-layer Cached/Written counters; config/manifest blobs below keep the plain ctx so they don't inflate the layer count.
+	layerCtx := ctx
 	if stats := imageStatsFromContext(ctx); stats != nil {
 		var totalBytes int64
 		for _, lyr := range layers {
@@ -468,11 +486,12 @@ func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 		}
 		stats.Layers.Add(int64(len(layers)))
 		stats.Bytes.Add(totalBytes)
+		layerCtx = content.WithBlobCounters(ctx, &stats.Cached, &stats.Written)
 	}
 
 	// See AddArtifact's identical errgroup.WithContext conversion for why this
 	// can't stay a zero-value errgroup.Group.
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(layerCtx)
 	for _, lyr := range layers {
 		lyr := lyr
 		g.Go(func() error { return l.writeLayer(gctx, lyr) })

@@ -651,11 +651,13 @@ func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64,
 	if info, err := os.Stat(blobPath); err == nil {
 		if size > 0 {
 			if info.Size() == size {
-				o.stats.BlobsCached.Add(1)
+				o.noteBlobCached()
+				creditCaller(ctx, true)
 				return nil
 			}
 		} else if info.Size() > 0 {
-			o.stats.BlobsCached.Add(1)
+			o.noteBlobCached()
+			creditCaller(ctx, true)
 			return nil
 		}
 	}
@@ -669,10 +671,32 @@ func (o *OCI) WriteBlob(ctx context.Context, expected digest.Digest, size int64,
 	return err
 }
 
-// writeBlobShared dedupes concurrent writers of expected via this OCI's
-// singleflight.Group so only one actually streams content.
+// noteBlobCached records a cache hit on the store-wide IOStats.
+func (o *OCI) noteBlobCached() {
+	o.stats.BlobsCached.Add(1)
+}
+
+// noteBlobWritten is noteBlobCached's counterpart for an actual write.
+func (o *OCI) noteBlobWritten() {
+	o.stats.BlobsWritten.Add(1)
+}
+
+// creditCaller applies a WriteBlob outcome to ctx's per-operation counters (if any), once per caller rather than once per actual write.
+func creditCaller(ctx context.Context, cached bool) {
+	c := blobCountersFromContext(ctx)
+	switch {
+	case cached && c.Cached != nil:
+		c.Cached.Add(1)
+	case !cached && c.Written != nil:
+		c.Written.Add(1)
+	}
+}
+
+// writeBlobShared dedupes concurrent writers of expected via this OCI's singleflight.Group, crediting every caller's own ctx after Do() resolves so a follower's counters aren't skipped just because it didn't do the writing.
 func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) error {
-	_, err, _ := o.sf.Do(expected.String(), func() (interface{}, error) {
+	ran := false
+	v, err, _ := o.sf.Do(expected.String(), func() (interface{}, error) {
+		ran = true
 		// Acquired inside the singleflight func, not around sf.Do: losers
 		// merely waiting on Do() must not hold a permit for someone else's
 		// write.
@@ -686,34 +710,38 @@ func (o *OCI) writeBlobShared(ctx context.Context, dir, blobPath string, expecte
 			o.stats.exitBlob()
 			o.blobSem.Release(1)
 		}()
-		return nil, o.writeBlobOnce(ctx, dir, blobPath, expected, size, open)
+		return o.writeBlobOnce(ctx, dir, blobPath, expected, size, open)
 	})
+	if err == nil {
+		cached, _ := v.(bool)
+		// Only the caller whose func ran did the write, so everyone who waited on it reuses that download and counts it as cached.
+		creditCaller(ctx, cached || !ran)
+	}
 	return err
 }
 
-// writeBlobOnce performs the temp-file-then-rename write. Only ever invoked
-// by the singleflight winner, which already holds a blobSem permit.
-func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) (err error) {
+// writeBlobOnce performs the temp-file-then-rename write and reports whether it was actually a cache hit, for writeBlobShared to credit to every caller sharing the flight.
+func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected digest.Digest, size int64, open func() (io.ReadCloser, error)) (cached bool, err error) {
 	// Re-check under the flight: a prior, already-completed flight may have
 	// written this blob while we were waiting to start.
 	if info, statErr := os.Stat(blobPath); statErr == nil {
 		if size > 0 && info.Size() == size {
-			o.stats.BlobsCached.Add(1)
-			return nil
+			o.noteBlobCached()
+			return true, nil
 		}
 		if size <= 0 && info.Size() > 0 {
-			o.stats.BlobsCached.Add(1)
-			return nil
+			o.noteBlobCached()
+			return true, nil
 		}
 	}
 
 	if err := ctx.Err(); err != nil {
-		return err
+		return false, err
 	}
 
 	tmp, err := os.CreateTemp(dir, expected.Hex()+".tmp-*")
 	if err != nil {
-		return err
+		return false, err
 	}
 	tmpPath := tmp.Name()
 	// Unconditional cleanup: harmless ENOENT after a successful rename, and
@@ -723,7 +751,7 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 	rc, err := open()
 	if err != nil {
 		tmp.Close()
-		return err
+		return false, err
 	}
 
 	// See ctxReader's doc comment: this makes io.Copy below abort between
@@ -736,43 +764,43 @@ func (o *OCI) writeBlobOnce(ctx context.Context, dir, blobPath string, expected 
 
 	if copyErr != nil {
 		tmp.Close()
-		return copyErr
+		return false, copyErr
 	}
 	if closeReadErr != nil {
 		tmp.Close()
-		return closeReadErr
+		return false, closeReadErr
 	}
 	if size > 0 && n != size {
 		tmp.Close()
-		return fmt.Errorf("content: short/long write for %s: wrote %d bytes, expected %d: %w", expected, n, size, ErrDigestMismatch)
+		return false, fmt.Errorf("content: short/long write for %s: wrote %d bytes, expected %d: %w", expected, n, size, ErrDigestMismatch)
 	}
 
 	got := dg.Digest()
 	if got != expected {
 		tmp.Close()
-		return fmt.Errorf("content: digest mismatch for blob: expected %s, got %s (%d bytes): %w", expected, got, n, ErrDigestMismatch)
+		return false, fmt.Errorf("content: digest mismatch for blob: expected %s, got %s (%d bytes): %w", expected, got, n, ErrDigestMismatch)
 	}
 
 	// Commit: chmod 0600->0644 (see saveIndexLocked), fsync, then rename.
 	if err := tmp.Chmod(0644); err != nil {
 		tmp.Close()
-		return err
+		return false, err
 	}
 	if err := tmp.Sync(); err != nil {
 		tmp.Close()
-		return err
+		return false, err
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		return false, err
 	}
 	// os.Rename silently replaces an existing target, which is correct: the
 	// content is digest-identical to whatever's already at blobPath.
 	if err := os.Rename(tmpPath, blobPath); err != nil {
-		return err
+		return false, err
 	}
-	o.stats.BlobsWritten.Add(1)
+	o.noteBlobWritten()
 	o.stats.BlobBytesWritten.Add(n)
-	return nil
+	return false, nil
 }
 
 // path and IndexExists are lock-free too -- see Fetch's doc comment.

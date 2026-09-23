@@ -104,10 +104,16 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 
 	log.BaseFromContext(ctx).Debugf("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
 
+	// A fresh store.ImageStats is built inside the closure per attempt, same as storeImage.
 	var desc ocispec.Descriptor
+	var stats *store.ImageStats
 	err = retry.Operation(ctx, rso, ro, func() error {
+		attemptStats := &store.ImageStats{}
 		var addErr error
-		desc, addErr = s.AddArtifact(ctx, f, ref.Name())
+		desc, addErr = s.AddArtifact(store.WithImageStats(ctx, attemptStats), f, ref.Name())
+		if addErr == nil {
+			stats = attemptStats
+		}
 		return addErr
 	})
 	if err != nil {
@@ -167,17 +173,6 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 		l.Debugf("generated audit id of [%s]", audit.ID())
 	} else {
 		l.Debugf("generated audit id of [none]")
-	}
-
-	// stats.Layers is always 1 here: File.Layers() always returns exactly
-	// one layer (pkg/artifacts/file/file.go). f.Size() costs nothing extra
-	// on the success path -- compute() already ran (and memoized its result)
-	// inside the AddArtifact call above.
-	var stats *store.ImageStats
-	if size, sizeErr := f.Size(); sizeErr == nil {
-		stats = &store.ImageStats{}
-		stats.Layers.Store(1)
-		stats.Bytes.Store(size)
 	}
 
 	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
@@ -493,12 +488,7 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 	return runChartJobs(ctx, s, []chartJob{job}, o.Concurrency, rso, ro, newProgressRenderer(o.NoProgress, ro.LogLevel))
 }
 
-// formatAddedLine formats the completion line logged after an artifact
-// (image or file) is added to the store. When stats has at least one layer
-// recorded, it includes layer count and human-readable total blob size;
-// otherwise it falls back to an elapsed-only line and must never print
-// "0 layers" (stats == nil covers storeLocalImage, whose s.AddLocalImage
-// path never populates ImageStats).
+// formatAddedLine formats the completion line logged after an artifact is added, falling back to an elapsed-only line when stats is nil or has zero layers.
 func formatAddedLine(ref string, stats *store.ImageStats, elapsed time.Duration) string {
 	if stats != nil {
 		if layers := stats.Layers.Load(); layers > 0 {
@@ -506,7 +496,17 @@ func formatAddedLine(ref string, stats *store.ImageStats, elapsed time.Duration)
 			if layers != 1 {
 				unit = "layers"
 			}
-			return fmt.Sprintf("✓ added %s (%d %s, %s, %.1fs)", ref, layers, unit, humanize.Bytes(uint64(stats.Bytes.Load())), elapsed.Seconds())
+			line := fmt.Sprintf("✓ added %s (%d %s, %s, %.1fs", ref, layers, unit, humanize.Bytes(uint64(stats.Bytes.Load())), elapsed.Seconds())
+			written, cached := stats.Written.Load(), stats.Cached.Load()
+			switch {
+			case written > 0 && cached > 0:
+				line += fmt.Sprintf(", %d fetched, %d cached", written, cached)
+			case cached > 0:
+				line += fmt.Sprintf(", %d cached", cached)
+			case written > 0:
+				line += fmt.Sprintf(", %d fetched", written)
+			}
+			return line + ")"
 		}
 	}
 	return fmt.Sprintf("✓ added %s (%.1fs)", ref, elapsed.Seconds())
@@ -1374,10 +1374,16 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 		return nil, nil, err
 	}
 
+	// A fresh store.ImageStats is built inside the closure per attempt, same as storeImage.
 	var chartDesc ocispec.Descriptor
+	var stats *store.ImageStats
 	err = retry.Operation(ctx, rso, ro, func() error {
+		attemptStats := &store.ImageStats{}
 		var addErr error
-		chartDesc, addErr = s.AddArtifact(ctx, chrt, ref.Name())
+		chartDesc, addErr = s.AddArtifact(store.WithImageStats(ctx, attemptStats), chrt, ref.Name())
+		if addErr == nil {
+			stats = attemptStats
+		}
 		return addErr
 	})
 	if err != nil {
@@ -1667,19 +1673,6 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 				parent: ref.Name(),
 				depth:  j.depth + 1,
 			})
-		}
-	}
-
-	// Chart.Layers() always returns exactly one layer, the chart archive
-	// itself. Re-deriving it costs a re-read (and, for an already-expanded
-	// directory chart, a re-tar) of at most ~1MB; anything unexpected falls
-	// back to nil stats and formatAddedLine's elapsed-only form.
-	var stats *store.ImageStats
-	if layers, layersErr := chrt.Layers(); layersErr == nil && len(layers) == 1 {
-		if size, sizeErr := layers[0].Size(); sizeErr == nil {
-			stats = &store.ImageStats{}
-			stats.Layers.Store(1)
-			stats.Bytes.Store(size)
 		}
 	}
 
