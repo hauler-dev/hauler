@@ -52,7 +52,7 @@ func (u *unpackWriteCloser) Close() error {
 	// Never touch the destination with content that failed verification.
 	if u.expected != "" {
 		if got := u.digester.Digest(); got != u.expected {
-			return fmt.Errorf("digest mismatch for directory archive: expected %s, got %s", u.expected, got)
+			return fmt.Errorf("digest mismatch for directory archive... expected [%s] but got [%s]", u.expected, got)
 		}
 	}
 
@@ -63,12 +63,12 @@ func (u *unpackWriteCloser) Close() error {
 func replaceDir(ctx context.Context, archivePath, dir string) error {
 	parent := filepath.Dir(dir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return fmt.Errorf("creating parent of %s: %w", dir, err)
+		return fmt.Errorf("failed to create parent directory for [%s]: %w", dir, err)
 	}
 
 	staging, err := os.MkdirTemp(parent, "."+filepath.Base(dir)+".hauler-extract-")
 	if err != nil {
-		return fmt.Errorf("creating staging directory for %s: %w", dir, err)
+		return fmt.Errorf("failed to create staging directory for [%s]: %w", dir, err)
 	}
 
 	if err := extractArchive(ctx, archivePath, staging); err != nil {
@@ -78,11 +78,11 @@ func replaceDir(ctx context.Context, archivePath, dir string) error {
 
 	if err := os.RemoveAll(dir); err != nil {
 		os.RemoveAll(staging)
-		return fmt.Errorf("clearing destination directory %s: %w", dir, err)
+		return fmt.Errorf("failed to clear destination directory [%s]: %w", dir, err)
 	}
 	if err := os.Rename(staging, dir); err != nil {
 		os.RemoveAll(staging)
-		return fmt.Errorf("moving extracted directory into %s: %w", dir, err)
+		return fmt.Errorf("failed to move extracted directory into [%s]: %w", dir, err)
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func openTarStream(ctx context.Context, r io.Reader) (io.ReadCloser, error) {
 	case archives.Tar:
 		return io.NopCloser(input), nil
 	default:
-		return nil, fmt.Errorf("unsupported archive type %T", identified)
+		return nil, fmt.Errorf("unsupported archive type [%T]", identified)
 	}
 }
 
@@ -125,7 +125,7 @@ func extractArchive(ctx context.Context, archivePath, dir string) error {
 
 	root, err := filepath.Abs(dir)
 	if err != nil {
-		return fmt.Errorf("unable to resolve destination dir: %w", err)
+		return fmt.Errorf("failed to resolve destination directory: %w", err)
 	}
 	root = filepath.Clean(root)
 
@@ -137,7 +137,7 @@ func extractArchive(ctx context.Context, archivePath, dir string) error {
 
 	zr, err := openTarStream(ctx, f)
 	if err != nil {
-		return fmt.Errorf("unable to read %s as a tar archive: %w", archivePath, err)
+		return fmt.Errorf("unable to read [%s] as a tar archive: %w", archivePath, err)
 	}
 	defer zr.Close()
 
@@ -151,7 +151,7 @@ func extractArchive(ctx context.Context, archivePath, dir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read archive %s: %w", archivePath, err)
+			return fmt.Errorf("failed to read archive [%s]: %w", archivePath, err)
 		}
 
 		// Reject an entry name that resolves outside root, same guard as filestore.go's Push.
@@ -168,7 +168,7 @@ func extractArchive(ctx context.Context, archivePath, dir string) error {
 			dirs = append(dirs, dirMeta{path: target, mode: hdr.FileInfo().Mode() & preservedModeBits, modTime: hdr.ModTime})
 		case tar.TypeReg:
 			if target == root {
-				return fmt.Errorf("archive entry %q is a file at the destination root", hdr.Name)
+				return fmt.Errorf("archive entry [%s] is a file at the destination root", hdr.Name)
 			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 				return err
@@ -214,7 +214,7 @@ func writeFile(r io.Reader, target string, hdr *tar.Header) error {
 	}
 	if _, err := io.Copy(out, r); err != nil {
 		out.Close()
-		return fmt.Errorf("failed to write %s from archive: %w", target, err)
+		return fmt.Errorf("failed to write [%s] from archive: %w", target, err)
 	}
 	if err := out.Close(); err != nil {
 		return err

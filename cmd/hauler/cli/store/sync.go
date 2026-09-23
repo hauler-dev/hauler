@@ -363,7 +363,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			switch gvk.Version {
 			case "v1":
 				if remote {
-					return fmt.Errorf("refusing [kind=%s] from a remote manifest... directories are local only, sync it from a local manifest file instead", gvk.Kind)
+					return fmt.Errorf("refusing [kind=%s] from a remote manifest... directories are local only... sync from a local manifest instead", gvk.Kind)
 				}
 				var cfg v1.Directories
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
