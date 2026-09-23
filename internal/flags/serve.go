@@ -62,3 +62,32 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 
 	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
 }
+
+// ServeGitOpts mirrors ServeFilesOpts, since every git-kind artifact in the store gets extracted under RootDir (one subdirectory each) and served, same as fileserver does for files.
+type ServeGitOpts struct {
+	*StoreRootOpts
+
+	Port           int
+	Timeout        int
+	RootDir        string
+	BasicAuth      string
+	BasicAuthRealm string
+
+	TLSCert string
+	TLSKey  string
+}
+
+func (o *ServeGitOpts) AddFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+
+	f.IntVarP(&o.Port, "port", "p", consts.DefaultGitPort, "(EXPERIMENTAL) (Optional) Set the port to use for incoming connections")
+	f.IntVar(&o.Timeout, "timeout", consts.DefaultGitTimeout, "(EXPERIMENTAL) (Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
+	f.StringVar(&o.RootDir, "directory", consts.DefaultGitRootDir, "(EXPERIMENTAL) (Optional) Directory to use for backend. (defaults to $PWD/git)")
+	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
+	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultGitRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
+
+	f.StringVar(&o.TLSCert, "tls-cert", "", "(EXPERIMENTAL) (Optional) Location of the TLS Certificate to use for server authentication")
+	f.StringVar(&o.TLSKey, "tls-key", "", "(EXPERIMENTAL) (Optional) Location of the TLS Key to use for server authentication")
+
+	cmd.MarkFlagsRequiredTogether("tls-cert", "tls-key")
+}

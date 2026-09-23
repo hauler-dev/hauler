@@ -55,6 +55,8 @@ func artifactType(ctx context.Context, s *store.Layout, desc ocispec.Descriptor)
 		return "file"
 	case consts.FileDirectoryConfigMediaType:
 		return "directory"
+	case consts.GitRepoConfigMediaType:
+		return "git"
 	default:
 		return "image"
 	}

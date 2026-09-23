@@ -26,6 +26,8 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
+	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
@@ -389,6 +391,38 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
 			}
 
+		case consts.GitContentKind:
+			switch gvk.Version {
+			case "v1":
+				var cfg v1.Git
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+				a := cfg.GetAnnotations()
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
+				if err != nil {
+					return err
+				}
+				docRso, err := resolveDocRetries(a, rso, o.RetriesChanged)
+				if err != nil {
+					return err
+				}
+				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
+				jobs, err := resolveGitJobs(filepath.Dir(fi.Name()), cfg.Spec.Git, remote, docRso)
+				if err != nil {
+					return err
+				}
+				// Sequential on purpose: git clones install their https client process-wide, so concurrent clones with different TLS settings would race.
+				for _, j := range jobs {
+					if err := AddGitCmd(ctx, j.opts, docStore, j.path, ro); err != nil {
+						return err
+					}
+				}
+
+			default:
+				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
+			}
+
 		case consts.ImagesContentKind:
 			switch gvk.Version {
 			case "v1":
@@ -449,7 +483,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			}
 
 		default:
-			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Directories, Images, Charts]", gvk.Kind)
+			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Directories, Git, Images, Charts]", gvk.Kind)
 		}
 	}
 	return nil
@@ -532,12 +566,12 @@ func resolveChartCreds(ch v1.Chart) (username, password string, err error) {
 		return "", "", nil
 	}
 	if ch.UsernameEnv == "" || ch.PasswordEnv == "" {
-		return "", "", fmt.Errorf("chart %q: usernameEnv and passwordEnv must both be set or both be empty", ch.Name)
+		return "", "", fmt.Errorf("%s: usernameEnv and passwordEnv must both be set or both be empty", ch.Name)
 	}
 	username = os.Getenv(ch.UsernameEnv)
 	password = os.Getenv(ch.PasswordEnv)
 	if username == "" || password == "" {
-		return "", "", fmt.Errorf("chart %q: env vars %q and %q must both be set and non-empty", ch.Name, ch.UsernameEnv, ch.PasswordEnv)
+		return "", "", fmt.Errorf("%s: env vars %q and %q must both be set and non-empty", ch.Name, ch.UsernameEnv, ch.PasswordEnv)
 	}
 	return username, password, nil
 }
@@ -1301,6 +1335,50 @@ func runFileJobsWith(ctx context.Context, s *store.Layout, jobs []fileJob, concu
 		})
 	}
 	return g.Wait()
+}
+
+// gitJob is one Git manifest entry resolved into the path and options AddGitCmd takes.
+type gitJob struct {
+	path string
+	opts *flags.AddGitOpts
+}
+
+// resolveGitJobs resolves relative local paths against manifestDir and env-var credentials, and refuses local paths or any credentials from a remote manifest, which could otherwise read local repos or send local secrets to a server of its choosing.
+func resolveGitJobs(manifestDir string, repos []v1.GitRepo, remote bool, rso *flags.StoreRootOpts) ([]gitJob, error) {
+	jobs := make([]gitJob, 0, len(repos))
+	for _, r := range repos {
+		if r.Path == "" {
+			return nil, fmt.Errorf("git entry is missing required field [path]")
+		}
+		isURL := gitartifact.IsGitURL(r.Path)
+		if remote && !isURL {
+			return nil, fmt.Errorf("git repository [%s] must be a remote URL when synced from a remote manifest", r.Path)
+		}
+		if remote && (r.UsernameEnv != "" || r.PasswordEnv != "" || r.SSHKey != "" || r.CertFile != "" || r.KeyFile != "" || r.CaFile != "") {
+			return nil, fmt.Errorf("git repository [%s] cannot use credentials from a remote manifest", audit.SanitizeURL(r.Path))
+		}
+		if !isURL && !filepath.IsAbs(r.Path) {
+			r.Path = filepath.Join(manifestDir, r.Path)
+		}
+
+		username, password, err := resolveChartCreds(v1.Chart{Name: fmt.Sprintf("git repository [%s]", audit.SanitizeURL(r.Path)), UsernameEnv: r.UsernameEnv, PasswordEnv: r.PasswordEnv})
+		if err != nil {
+			return nil, err
+		}
+
+		jobs = append(jobs, gitJob{path: r.Path, opts: &flags.AddGitOpts{
+			StoreRootOpts:         rso,
+			Name:                  r.Name,
+			CaFile:                r.CaFile,
+			InsecureSkipTLSVerify: r.InsecureSkipTLSVerify,
+			Username:              username,
+			Password:              password,
+			CertFile:              r.CertFile,
+			KeyFile:               r.KeyFile,
+			SSHKey:                r.SSHKey,
+		}})
+	}
+	return jobs, nil
 }
 
 // resolveDirectoryJobs resolves each directory's path against manifestDir and rejects any entry that isn't a local directory.

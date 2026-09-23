@@ -561,3 +561,26 @@ func TestCreateManifestCmd_Directory(t *testing.T) {
 		t.Errorf("expected a Files doc with mydir.tar.zst, got:\n%s", content)
 	}
 }
+
+// git artifacts round trip into a Git doc keyed by spec.git.
+func TestCreateManifestCmd_Git(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	repoDir := newBareGitRepoFixture(t, "myrepo.git")
+
+	if err := AddGitCmd(ctx, &flags.AddGitOpts{StoreRootOpts: rso}, s, repoDir, defaultCliOpts()); err != nil {
+		t.Fatalf("AddGitCmd: %v", err)
+	}
+
+	o := newCreateManifestOpts(t, rso)
+	if err := CreateManifestCmd(ctx, o, s); err != nil {
+		t.Fatalf("CreateManifestCmd: %v", err)
+	}
+	content := readManifest(t, o.Output)
+	for _, want := range []string{"kind: Git\n", "    git:\n", "path: " + repoDir, "name: myrepo.git"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("expected %q in manifest, got:\n%s", want, content)
+		}
+	}
+}

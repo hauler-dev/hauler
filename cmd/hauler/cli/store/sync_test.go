@@ -3342,3 +3342,74 @@ func TestStoreFile_DirectoryFormatFollowsName(t *testing.T) {
 		}
 	}
 }
+
+// a Git doc stores local repos, resolving a relative path against the manifest's own directory.
+func TestProcessContent_Git_v1(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	fi := writeManifestFile(t, `apiVersion: content.hauler.cattle.io/v1
+kind: Git
+metadata:
+  name: test-git
+spec:
+  git:
+    - path: ./syncrepo.git
+    - path: ./syncrepo.git
+      name: renamed-repo
+`)
+	if err := os.Rename(newBareGitRepoFixture(t, "syncrepo.git"), filepath.Join(filepath.Dir(fi.Name()), "syncrepo.git")); err != nil {
+		t.Fatal(err)
+	}
+
+	o := newSyncOpts(s.Root)
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, false); err != nil {
+		t.Fatalf("processContent Git v1: %v", err)
+	}
+	for _, ref := range []string{"hauler/syncrepo.git:", "hauler/renamed-repo:"} {
+		assertArtifactInStore(t, s, ref)
+		if got := artifactManifest(t, s, ref).Config.MediaType; got != consts.GitRepoConfigMediaType {
+			t.Errorf("%s config media type = %q, want %q", ref, got, consts.GitRepoConfigMediaType)
+		}
+	}
+}
+
+func TestResolveGitJobs(t *testing.T) {
+	t.Setenv("TEST_GIT_USER", "me")
+	t.Setenv("TEST_GIT_TOKEN", "secret")
+
+	jobs, err := resolveGitJobs("/manifests", []v1.GitRepo{
+		{Path: "rel.git"},
+		{Path: "https://example.com/org/repo.git", Name: "n", UsernameEnv: "TEST_GIT_USER", PasswordEnv: "TEST_GIT_TOKEN"},
+	}, false, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if jobs[0].path != filepath.Join("/manifests", "rel.git") {
+		t.Errorf("relative path = %q, want it resolved against the manifest dir", jobs[0].path)
+	}
+	if jobs[1].path != "https://example.com/org/repo.git" || jobs[1].opts.Username != "me" || jobs[1].opts.Password != "secret" || jobs[1].opts.Name != "n" {
+		t.Errorf("unexpected URL job: path=%q opts=%+v", jobs[1].path, jobs[1].opts)
+	}
+
+	bad := map[string]struct {
+		repo   v1.GitRepo
+		remote bool
+	}{
+		"missing path":                    {repo: v1.GitRepo{}},
+		"only one credential env":         {repo: v1.GitRepo{Path: "https://example.com/r.git", UsernameEnv: "TEST_GIT_USER"}},
+		"unset credential env":            {repo: v1.GitRepo{Path: "https://example.com/r.git", UsernameEnv: "TEST_GIT_USER", PasswordEnv: "TEST_GIT_UNSET"}},
+		"local path from remote manifest": {repo: v1.GitRepo{Path: "/srv/private.git"}, remote: true},
+		"credentials from remote":         {repo: v1.GitRepo{Path: "https://example.com/r.git", UsernameEnv: "TEST_GIT_USER", PasswordEnv: "TEST_GIT_TOKEN"}, remote: true},
+		"ssh key from remote":             {repo: v1.GitRepo{Path: "git@example.com:org/r.git", SSHKey: "/home/me/.ssh/id_ed25519"}, remote: true},
+	}
+	for name, tt := range bad {
+		if _, err := resolveGitJobs("/manifests", []v1.GitRepo{tt.repo}, tt.remote, nil); err == nil {
+			t.Errorf("%s: expected an error, got nil", name)
+		}
+	}
+
+	if _, err := resolveGitJobs("/manifests", []v1.GitRepo{{Path: "https://example.com/r.git"}}, true, nil); err != nil {
+		t.Errorf("a plain URL from a remote manifest should be allowed, got: %v", err)
+	}
+}

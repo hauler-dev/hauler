@@ -17,7 +17,7 @@ func (o *InfoOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.StringVarP(&o.OutputFormat, "output", "o", "table", "(Optional) Specify the output format (table | json)")
-	f.StringVar(&o.TypeFilter, "type", "all", "(Optional) Filter on content type (image | chart | file | directory | sigs | atts | sbom | referrer)")
+	f.StringVar(&o.TypeFilter, "type", "all", "(Optional) Filter on content type (image | chart | file | directory | git | sigs | atts | sbom | referrer)")
 	f.BoolVar(&o.ListRepos, "list-repos", false, "(Optional) List all repository names")
 	f.BoolVar(&o.ShowDigests, "digests", false, "(Optional) Show digests of each artifact in the output table")
 	f.BoolVar(&o.Check, "check", false,
