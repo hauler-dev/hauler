@@ -564,3 +564,101 @@ func TestClearDir(t *testing.T) {
 		t.Errorf("clearDir: expected empty dir, found: %s", strings.Join(names, ", "))
 	}
 }
+
+// serveRedundantChunks splits the test haul into redundant chunks, serves them over HTTP except where unreachable reports true, and returns every chunk URL.
+func serveRedundantChunks(t *testing.T, unreachable func(name string) bool) []string {
+	t.Helper()
+	data, err := os.ReadFile(testHaulArchive)
+	if err != nil {
+		t.Fatalf("read test archive: %v", err)
+	}
+	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+	if err := os.WriteFile(archivePath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chunks, err := archives.SplitArchiveRedundant(context.Background(), archivePath, int64(len(data)/4+100), 50)
+	if err != nil {
+		t.Fatalf("SplitArchiveRedundant: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := filepath.Base(r.URL.Path)
+		if unreachable != nil && unreachable(name) {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(filepath.Dir(archivePath), name))
+	}))
+	t.Cleanup(srv.Close)
+
+	urls := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		urls = append(urls, srv.URL+"/"+filepath.Base(c))
+	}
+	return urls
+}
+
+// a remote redundant chunk set with one unreachable chunk still loads, repaired from parity, instead of failing on the download.
+func TestLoadCmd_RemoteRedundantChunks_OneUnreachable(t *testing.T) {
+	ctx := newTestContext(t)
+	urls := serveRedundantChunks(t, func(name string) bool { return name == "haul.tar.zst.002" })
+
+	destDir := t.TempDir()
+	s, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
+	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+		t.Fatalf("LoadCmd with one unreachable chunk: %v", err)
+	}
+	loaded, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countArtifactsInStore(t, loaded) == 0 {
+		t.Error("expected artifacts in store after repairing the missing chunk")
+	}
+}
+
+// a remote chunk set where nothing can be downloaded still fails instead of silently loading nothing.
+func TestLoadCmd_RemoteChunks_AllUnreachable(t *testing.T) {
+	ctx := newTestContext(t)
+	urls := serveRedundantChunks(t, func(string) bool { return true })
+
+	destDir := t.TempDir()
+	s, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
+	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err == nil {
+		t.Fatal("expected LoadCmd to fail when no chunk could be downloaded, got nil")
+	}
+}
+
+// a remote chunk set behind presigned-style URLs loads, since the query string no longer ends up in the downloaded chunk's filename.
+func TestLoadCmd_RemoteChunks_PresignedURLs(t *testing.T) {
+	ctx := newTestContext(t)
+	urls := serveRedundantChunks(t, nil)
+	for i := range urls {
+		urls[i] += "?X-Amz-Signature=abc%2Fdef&X-Amz-Expires=300"
+	}
+
+	destDir := t.TempDir()
+	s, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
+	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+		t.Fatalf("LoadCmd with presigned-style chunk URLs: %v", err)
+	}
+	loaded, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countArtifactsInStore(t, loaded) == 0 {
+		t.Error("expected artifacts in store after loading presigned chunk URLs")
+	}
+}

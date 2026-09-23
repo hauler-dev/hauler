@@ -33,6 +33,14 @@ import (
 func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
+	// Reject bad flags before building the archive, which can take a long time for a large store.
+	if o.RedundancyPercent < 0 || o.RedundancyPercent > 100 {
+		return fmt.Errorf("invalid --redundancy-percent [%d]... must be between 0 and 100", o.RedundancyPercent)
+	}
+	if o.RedundancyPercent > 0 && o.ChunkSize == "" {
+		return fmt.Errorf("--redundancy-percent requires --chunk-size")
+	}
+
 	// maps to handle compression and archival types
 	compressionMap := archives.CompressionMap
 	archivalMap := archives.ArchivalMap
@@ -142,13 +150,6 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 	// create the archive
 	if err := archives.ArchiveFiles(ctx, files, absOutputfile, compression, archival); err != nil {
 		return err
-	}
-
-	if o.RedundancyPercent < 0 || o.RedundancyPercent > 100 {
-		return fmt.Errorf("--redundancy-percent must be between 0 and 100, received %d", o.RedundancyPercent)
-	}
-	if o.RedundancyPercent > 0 && o.ChunkSize == "" {
-		return fmt.Errorf("--redundancy-percent requires --chunk-size")
 	}
 
 	if o.ChunkSize != "" {
