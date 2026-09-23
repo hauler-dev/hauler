@@ -146,3 +146,13 @@ func TestNewChart_VerifyOnUnsignedChartFails(t *testing.T) {
 		t.Fatalf("expected provenance error, got: %v", err)
 	}
 }
+
+// a local chart path added without --repo is used as is, not turned into an absolute "/<path>".
+func TestNewChart_LocalPathWithoutRepo(t *testing.T) {
+	t.Chdir("../../../testdata")
+	for _, name := range []string{"rancher-cluster-templates-0.5.2.tgz", "./rancher-cluster-templates-0.5.2.tgz"} {
+		if _, err := chart.NewChart(name, &action.ChartPathOptions{}); err != nil {
+			t.Errorf("NewChart(%q) without a repo: %v", name, err)
+		}
+	}
+}
