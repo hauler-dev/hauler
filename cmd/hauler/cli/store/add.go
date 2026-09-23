@@ -65,7 +65,7 @@ func AddFileCmd(ctx context.Context, o *flags.AddFileOpts, s *store.Layout, refe
 		cfg.Name = o.Name
 	}
 
-	l.Infof("adding file [%s] to the store", reference)
+	l.Infof("adding file [%s] to the store", audit.SanitizeURL(reference))
 
 	return storeFile(ctx, s, cfg, ro, o.StoreRootOpts)
 }
@@ -76,8 +76,11 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	start := time.Now()
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
 
+	// Never log credentials or a presigned URL's query string embedded in a remote file's URL.
+	display := audit.SanitizeURL(fi.Path)
+
 	if err := ctx.Err(); err != nil {
-		log.BaseFromContext(ctx).Debugf("skipping file [%s]: %v", fi.Path, err)
+		log.BaseFromContext(ctx).Debugf("skipping file [%s]: %v", display, err)
 		return err
 	}
 
@@ -91,14 +94,14 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	ref, err := reference.NewTagged(f.Name(fi.Path), consts.DefaultTag)
 	if err != nil {
 		if ignoreErrors {
-			log.BaseFromContext(ctx).Warnf("unable to derive a store reference for file [%s]: %v... skipping...", fi.Path, err)
+			log.BaseFromContext(ctx).Warnf("unable to derive a store reference for file [%s]: %v... skipping...", display, err)
 			return nil
 		}
-		log.BaseFromContext(ctx).Errorf("unable to derive a store reference for file [%s]: %v", fi.Path, err)
+		log.BaseFromContext(ctx).Errorf("unable to derive a store reference for file [%s]: %v", display, err)
 		return err
 	}
 
-	log.BaseFromContext(ctx).Debugf("adding file [%s] to the store as [%s]", fi.Path, ref.Name())
+	log.BaseFromContext(ctx).Debugf("adding file [%s] to the store as [%s]", display, ref.Name())
 
 	var desc ocispec.Descriptor
 	err = retry.Operation(ctx, rso, ro, func() error {
@@ -108,21 +111,21 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 	})
 	if err != nil {
 		if ignoreErrors {
-			log.BaseFromContext(ctx).Warnf("unable to add file [%s] to store: %v... skipping...", fi.Path, err)
+			log.BaseFromContext(ctx).Warnf("unable to add file [%s] to store: %v... skipping...", display, err)
 			return nil
 		} else if errors.Is(err, context.Canceled) {
 			// Under errgroup.WithContext fail-fast (runFileJobs), one real
 			// failure cancels every other in-flight file's context -- see
 			// storeImage's identical branch for the full rationale.
-			log.BaseFromContext(ctx).Debugf("unable to add file [%s] to store: %v", fi.Path, err)
+			log.BaseFromContext(ctx).Debugf("unable to add file [%s] to store: %v", display, err)
 			return err
 		} else {
-			log.BaseFromContext(ctx).Errorf("unable to add file [%s] to store: %v", fi.Path, err)
+			log.BaseFromContext(ctx).Errorf("unable to add file [%s] to store: %v", display, err)
 			return err
 		}
 	}
 
-	resolvedPath := fi.Path
+	resolvedPath := getter.StripCredentials(fi.Path)
 	if !strings.HasPrefix(fi.Path, "http://") && !strings.HasPrefix(fi.Path, "https://") {
 		if abs, err := filepath.Abs(fi.Path); err == nil {
 			resolvedPath = abs
@@ -1280,7 +1283,7 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 	// the store, so capture both here to maintain provenance regardless of whether
 	// --rewrite is ever applied. This must happen before rewriteChartReference so its
 	// retag of AnnotationRefName isn't clobbered by re-adding a pre-rewrite chartDesc.
-	chartDesc.Annotations[consts.OriginalRefAnnotation] = encodeOriginalChartRef(j.cfg.RepoURL, ref.Name())
+	chartDesc.Annotations[consts.OriginalRefAnnotation] = encodeOriginalChartRef(getter.StripCredentials(j.cfg.RepoURL), ref.Name())
 	if err := s.OCI.AddIndex(chartDesc); err != nil {
 		return nil, nil, err
 	}

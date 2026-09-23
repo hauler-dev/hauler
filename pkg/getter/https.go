@@ -44,7 +44,7 @@ func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("unexpected status fetching %s: %s", u.String(), resp.Status)
+		return nil, fmt.Errorf("unexpected status fetching %s: %s", redactURL(u), resp.Status)
 	}
 	return resp.Body, nil
 }
@@ -59,9 +59,26 @@ func (h Http) Detect(u *url.URL) bool {
 
 func (h *Http) Config(u *url.URL) artifacts.Config {
 	c := &httpConfig{
-		config{Reference: u.String()},
+		config{Reference: StripCredentials(u.String())},
 	}
 	return artifacts.ToConfig(c, artifacts.WithConfigMediaType(consts.FileHttpConfigMediaType))
+}
+
+// StripCredentials removes any user:password from a URL, keeping its query so a re-sync from `store create manifest` can still fetch it.
+func StripCredentials(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = nil
+	return u.String()
+}
+
+// redactURL drops credentials, query, and fragment so none of them end up in an error message.
+func redactURL(u *url.URL) string {
+	c := *u
+	c.User, c.RawQuery, c.Fragment = nil, "", ""
+	return c.String()
 }
 
 type httpConfig struct {
