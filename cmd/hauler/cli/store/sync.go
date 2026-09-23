@@ -26,6 +26,8 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
+	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
@@ -175,7 +177,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			return err
 		}
 		defer fi.Close()
-		err = processContent(ctx, fi, o, s, rso, ro, targetStores)
+		err = processContent(ctx, fi, o, s, rso, ro, targetStores, true)
 		if err != nil {
 			return err
 		}
@@ -188,7 +190,8 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
 
 			haulPath := fileName
-			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
+			remote := strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://")
+			if remote {
 				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
 
 				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
@@ -225,7 +228,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			}
 			defer fi.Close()
 
-			err = processContent(ctx, fi, o, s, rso, ro, targetStores)
+			err = processContent(ctx, fi, o, s, rso, ro, targetStores, remote)
 			if err != nil {
 				return err
 			}
@@ -301,7 +304,8 @@ func resolveBoolFlag(item, annTrue, global, cliChanged bool) bool {
 	return global || item || annTrue
 }
 
-func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout) error {
+// processContent syncs every document in fi; remote marks a manifest fetched over the network, which may not reference local directories.
+func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout, remote bool) error {
 	l := log.FromContext(ctx)
 
 	reader := yaml.NewYAMLReader(bufio.NewReader(fi))
@@ -349,6 +353,70 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				jobs := resolveFileJobs(o, a, cfg.Spec.Files)
 				if err := runFileJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
 					return err
+				}
+
+			default:
+				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
+			}
+
+		case consts.DirectoriesContentKind:
+			switch gvk.Version {
+			case "v1":
+				if remote {
+					return fmt.Errorf("refusing [kind=%s] from a remote manifest... directories are local only... sync from a local manifest instead", gvk.Kind)
+				}
+				var cfg v1.Directories
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+				a := cfg.GetAnnotations()
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
+				if err != nil {
+					return err
+				}
+				docRso, err := resolveDocRetries(a, rso, o.RetriesChanged)
+				if err != nil {
+					return err
+				}
+				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
+				jobs, err := resolveDirectoryJobs(filepath.Dir(fi.Name()), cfg.Spec.Directories)
+				if err != nil {
+					return err
+				}
+				if err := runDirectoryJobs(ctx, docStore, jobs, o.Concurrency, docRso, ro, newSyncProgress(o, ro)); err != nil {
+					return err
+				}
+
+			default:
+				return fmt.Errorf("unsupported version [%s] for kind [%s]... valid versions are [v1]", gvk.Version, gvk.Kind)
+			}
+
+		case consts.GitContentKind:
+			switch gvk.Version {
+			case "v1":
+				var cfg v1.Git
+				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+				a := cfg.GetAnnotations()
+				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
+				if err != nil {
+					return err
+				}
+				docRso, err := resolveDocRetries(a, rso, o.RetriesChanged)
+				if err != nil {
+					return err
+				}
+				l.Infof("syncing content [%s] with [kind=%s] to store [%s]", gvk.GroupVersion(), gvk.Kind, docStore.Root)
+				jobs, err := resolveGitJobs(filepath.Dir(fi.Name()), cfg.Spec.Git, remote, docRso)
+				if err != nil {
+					return err
+				}
+				// Sequential on purpose: git clones install their https client process-wide, so concurrent clones with different TLS settings would race.
+				for _, j := range jobs {
+					if err := AddGitCmd(ctx, j.opts, docStore, j.path, ro); err != nil {
+						return err
+					}
 				}
 
 			default:
@@ -415,7 +483,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			}
 
 		default:
-			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Images, Charts]", gvk.Kind)
+			return fmt.Errorf("unsupported kind [%s]... valid kinds are [Files, Directories, Git, Images, Charts]", gvk.Kind)
 		}
 	}
 	return nil
@@ -498,12 +566,12 @@ func resolveChartCreds(ch v1.Chart) (username, password string, err error) {
 		return "", "", nil
 	}
 	if ch.UsernameEnv == "" || ch.PasswordEnv == "" {
-		return "", "", fmt.Errorf("chart %q: usernameEnv and passwordEnv must both be set or both be empty", ch.Name)
+		return "", "", fmt.Errorf("%s: usernameEnv and passwordEnv must both be set or both be empty", ch.Name)
 	}
 	username = os.Getenv(ch.UsernameEnv)
 	password = os.Getenv(ch.PasswordEnv)
 	if username == "" || password == "" {
-		return "", "", fmt.Errorf("chart %q: env vars %q and %q must both be set and non-empty", ch.Name, ch.UsernameEnv, ch.PasswordEnv)
+		return "", "", fmt.Errorf("%s: env vars %q and %q must both be set and non-empty", ch.Name, ch.UsernameEnv, ch.PasswordEnv)
 	}
 	return username, password, nil
 }
@@ -1260,6 +1328,107 @@ func runFileJobsWith(ctx context.Context, s *store.Layout, jobs []fileJob, concu
 			jctx = log.WithBaseLogger(jctx, baseLogger)
 			jctx = file.WithLayerCacheContext(jctx, cache)
 			err := storeFile(jctx, s, j.file, ro, rso)
+			if progress != nil {
+				progress.Finished(name)
+			}
+			return err
+		})
+	}
+	return g.Wait()
+}
+
+// gitJob is one Git manifest entry resolved into the path and options AddGitCmd takes.
+type gitJob struct {
+	path string
+	opts *flags.AddGitOpts
+}
+
+// resolveGitJobs resolves relative local paths against manifestDir and env-var credentials, and refuses local paths or any credentials from a remote manifest, which could otherwise read local repos or send local secrets to a server of its choosing.
+func resolveGitJobs(manifestDir string, repos []v1.GitRepo, remote bool, rso *flags.StoreRootOpts) ([]gitJob, error) {
+	jobs := make([]gitJob, 0, len(repos))
+	for _, r := range repos {
+		if r.Path == "" {
+			return nil, fmt.Errorf("git entry is missing required field [path]")
+		}
+		isURL := gitartifact.IsGitURL(r.Path)
+		if remote && !isURL {
+			return nil, fmt.Errorf("git repository [%s] must be a remote URL when synced from a remote manifest", r.Path)
+		}
+		if remote && (r.UsernameEnv != "" || r.PasswordEnv != "" || r.SSHKey != "" || r.CertFile != "" || r.KeyFile != "" || r.CaFile != "") {
+			return nil, fmt.Errorf("git repository [%s] cannot use credentials from a remote manifest", audit.SanitizeURL(r.Path))
+		}
+		if !isURL && !filepath.IsAbs(r.Path) {
+			r.Path = filepath.Join(manifestDir, r.Path)
+		}
+
+		username, password, err := resolveChartCreds(v1.Chart{Name: fmt.Sprintf("git repository [%s]", audit.SanitizeURL(r.Path)), UsernameEnv: r.UsernameEnv, PasswordEnv: r.PasswordEnv})
+		if err != nil {
+			return nil, err
+		}
+
+		jobs = append(jobs, gitJob{path: r.Path, opts: &flags.AddGitOpts{
+			StoreRootOpts:         rso,
+			Name:                  r.Name,
+			CaFile:                r.CaFile,
+			InsecureSkipTLSVerify: r.InsecureSkipTLSVerify,
+			Username:              username,
+			Password:              password,
+			CertFile:              r.CertFile,
+			KeyFile:               r.KeyFile,
+			SSHKey:                r.SSHKey,
+		}})
+	}
+	return jobs, nil
+}
+
+// resolveDirectoryJobs resolves each directory's path against manifestDir and rejects any entry that isn't a local directory.
+func resolveDirectoryJobs(manifestDir string, dirs []v1.Directory) ([]v1.Directory, error) {
+	jobs := make([]v1.Directory, 0, len(dirs))
+	for _, d := range dirs {
+		if d.Path == "" {
+			return nil, fmt.Errorf("directory entry is missing required field [path]")
+		}
+		if strings.Contains(d.Path, "://") {
+			return nil, fmt.Errorf("directory [%s] must be a local path, not a URL", d.Path)
+		}
+		if !filepath.IsAbs(d.Path) {
+			d.Path = filepath.Join(manifestDir, d.Path)
+		}
+		jobs = append(jobs, d)
+	}
+	return jobs, nil
+}
+
+// runDirectoryJobs stores directory jobs concurrently with the same fail-fast, progress, and --ignore-errors semantics as runFileJobs.
+func runDirectoryJobs(ctx context.Context, s *store.Layout, jobs []v1.Directory, concurrency int, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, progress *log.Renderer) error {
+	l := log.FromContext(ctx)
+
+	baseLogger := l
+	if progress != nil && len(jobs) > 0 {
+		baseLogger = log.NewLogger(progress)
+		progress.Start()
+		defer progress.Stop()
+	}
+
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+	for _, j := range jobs {
+		g.Go(func() error {
+			name := j.Name
+			if name == "" {
+				name = j.Path
+			}
+			if progress != nil {
+				progress.Began(name)
+			}
+			jl := baseLogger.With(log.Fields{"directory": name})
+			jctx := jl.WithContext(gctx)
+			jctx = log.WithBaseLogger(jctx, baseLogger)
+			err := storeDirectory(jctx, s, j, ro, rso)
 			if progress != nil {
 				progress.Finished(name)
 			}

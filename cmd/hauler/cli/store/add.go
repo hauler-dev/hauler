@@ -28,8 +28,11 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/chart"
+	"hauler.dev/go/hauler/v2/pkg/artifacts/directory"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
+	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
@@ -88,6 +91,8 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 		NameOverride:          fi.Name,
 		InsecureSkipTLSVerify: fi.InsecureSkipTLSVerify,
 		CAFile:                fi.CaFile,
+		// Only used when Path is a local directory, which is stored as a single archive in the format its name implies.
+		ArchiveFormat: archives.FormatFromName(fi.Name),
 	}
 
 	f := file.NewFile(fi.Path, file.WithClient(getter.NewClient(copts)), file.WithContext(ctx))
@@ -103,10 +108,16 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 
 	log.BaseFromContext(ctx).Debugf("adding file [%s] to the store as [%s]", display, ref.Name())
 
+	// A fresh store.ImageStats is built inside the closure per attempt, same as storeImage.
 	var desc ocispec.Descriptor
+	var stats *store.ImageStats
 	err = retry.Operation(ctx, rso, ro, func() error {
+		attemptStats := &store.ImageStats{}
 		var addErr error
-		desc, addErr = s.AddArtifact(ctx, f, ref.Name())
+		desc, addErr = s.AddArtifact(store.WithImageStats(ctx, attemptStats), f, ref.Name())
+		if addErr == nil {
+			stats = attemptStats
+		}
 		return addErr
 	})
 	if err != nil {
@@ -168,18 +179,243 @@ func storeFile(ctx context.Context, s *store.Layout, fi v1.File, ro *flags.CliRo
 		l.Debugf("generated audit id of [none]")
 	}
 
-	// stats.Layers is always 1 here: File.Layers() always returns exactly
-	// one layer (pkg/artifacts/file/file.go). f.Size() costs nothing extra
-	// on the success path -- compute() already ran (and memoized its result)
-	// inside the AddArtifact call above.
+	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
+
+	return nil
+}
+
+// AddDirectoryCmd stores a local directory tree as a directory artifact that extracts back into the same tree.
+func AddDirectoryCmd(ctx context.Context, o *flags.AddDirectoryOpts, s *store.Layout, path string, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding directory: %v", err)
+		}
+	}()
+
+	l.Infof("adding directory [%s] to the store", path)
+
+	return storeDirectory(ctx, s, v1.Directory{Path: path, Name: o.Name}, ro, o.StoreRootOpts)
+}
+
+func storeDirectory(ctx context.Context, s *store.Layout, di v1.Directory, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
+	l := log.FromContext(ctx)
+
+	start := time.Now()
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+
+	if err := ctx.Err(); err != nil {
+		log.BaseFromContext(ctx).Debugf("skipping directory [%s]: %v", di.Path, err)
+		return err
+	}
+
+	d, err := directory.NewDirectory(di.Path, directory.WithClient(getter.NewClient(getter.ClientOptions{NameOverride: di.Name})), directory.WithContext(ctx))
+	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to add directory [%s]: %v... skipping...", di.Path, err)
+			return nil
+		}
+		log.BaseFromContext(ctx).Errorf("unable to add directory [%s]: %v", di.Path, err)
+		return err
+	}
+
+	ref, err := reference.NewTagged(d.Name(di.Path), consts.DefaultTag)
+	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to derive a store reference for directory [%s]: %v... skipping...", di.Path, err)
+			return nil
+		}
+		log.BaseFromContext(ctx).Errorf("unable to derive a store reference for directory [%s]: %v", di.Path, err)
+		return err
+	}
+
+	log.BaseFromContext(ctx).Debugf("adding directory [%s] to the store as [%s]", di.Path, ref.Name())
+
+	var desc ocispec.Descriptor
+	err = retry.Operation(ctx, rso, ro, func() error {
+		var addErr error
+		desc, addErr = s.AddArtifact(ctx, d, ref.Name())
+		return addErr
+	})
+	if err != nil {
+		if ignoreErrors {
+			log.BaseFromContext(ctx).Warnf("unable to add directory [%s] to store: %v... skipping...", di.Path, err)
+			return nil
+		} else if errors.Is(err, context.Canceled) {
+			// A sibling job's failure cancelled this one, see storeFile's identical branch.
+			log.BaseFromContext(ctx).Debugf("unable to add directory [%s] to store: %v", di.Path, err)
+			return err
+		}
+		log.BaseFromContext(ctx).Errorf("unable to add directory [%s] to store: %v", di.Path, err)
+		return err
+	}
+
+	resolvedPath := di.Path
+	if abs, err := filepath.Abs(di.Path); err == nil {
+		resolvedPath = abs
+	}
+	desc.Annotations[consts.OriginalRefAnnotation] = resolvedPath
+	if err := s.OCI.AddIndex(desc); err != nil {
+		return err
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:           s.StoreID,
+			Store:             s.Root,
+			Type:              "directory",
+			Command:           "store add directory",
+			Args:              []string{audit.SanitizeURL(di.Path)},
+			Reference:         audit.SanitizeURL(resolvedPath),
+			PortableReference: audit.ShortFileRef(di.Path),
+			Digest:            desc.Digest.String(),
+		}
+		if auditLevel(ro) == "verbose" {
+			sys := audit.BuildSystem()
+			g := audit.BuildGlobal(ro, rso)
+			e.System = &sys
+			e.Global = &g
+			e.Flags = map[string]any{
+				"name": di.Name,
+			}
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
+	}
+
 	var stats *store.ImageStats
-	if size, sizeErr := f.Size(); sizeErr == nil {
+	if size, sizeErr := d.Size(); sizeErr == nil {
 		stats = &store.ImageStats{}
 		stats.Layers.Store(1)
 		stats.Bytes.Store(size)
 	}
 
 	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
+
+	return nil
+}
+
+// AddGitCmd stores a git repository directory the same way AddFileCmd stores a directory, just tagged with consts.GitRepoConfigMediaType so `store serve git` can find it later.
+func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path string, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
+	defer func() {
+		if err := s.OCI.SaveIndex(); err != nil {
+			l.Warnf("failed to save index durably after adding git repository: %v", err)
+		}
+	}()
+
+	start := time.Now()
+	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+
+	// Never log or store credentials embedded in a clone URL.
+	display := audit.SanitizeURL(path)
+
+	if gitartifact.IsGitURL(path) {
+		l.Infof("cloning [%s]", display)
+	} else if gitartifact.IsNonBareRepo(path) {
+		l.Infof("mirroring local working copy [%s] into a bare repository", display)
+	}
+
+	copts := getter.ClientOptions{
+		NameOverride:          o.Name,
+		InsecureSkipTLSVerify: o.InsecureSkipTLSVerify,
+		CAFile:                o.CaFile,
+	}
+
+	g := gitartifact.NewGit(path,
+		gitartifact.WithClient(getter.NewClient(copts)),
+		gitartifact.WithContext(ctx),
+		gitartifact.WithUsername(o.Username),
+		gitartifact.WithPassword(o.Password),
+		gitartifact.WithCertFile(o.CertFile),
+		gitartifact.WithKeyFile(o.KeyFile),
+		gitartifact.WithCaFile(o.CaFile),
+		gitartifact.WithInsecureSkipTLSVerify(o.InsecureSkipTLSVerify),
+		gitartifact.WithSSHKey(o.SSHKey),
+	)
+	defer func() {
+		if err := g.Close(); err != nil {
+			l.Warnf("failed to clean up git clone: %v", err)
+		}
+	}()
+
+	if err := gitartifact.ValidateName(g.Name(path)); err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to add git repository [%s]: %v... skipping...", display, err)
+			return nil
+		}
+		return err
+	}
+
+	ref, err := reference.NewTagged(g.Name(path), consts.DefaultTag)
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to derive a store reference for git repository [%s]: %v... skipping...", display, err)
+			return nil
+		}
+		return err
+	}
+
+	l.Infof("adding git repository [%s] to the store", display)
+
+	var desc ocispec.Descriptor
+	err = retry.Operation(ctx, o.StoreRootOpts, ro, func() error {
+		var addErr error
+		desc, addErr = s.AddArtifact(ctx, g, ref.Name())
+		return addErr
+	})
+	if err != nil {
+		if ignoreErrors {
+			l.Warnf("unable to add git repository [%s] to store: %v... skipping...", display, err)
+			return nil
+		}
+		return err
+	}
+
+	resolvedPath := display
+	if !gitartifact.IsGitURL(path) {
+		if abs, err := filepath.Abs(path); err == nil {
+			resolvedPath = abs
+		}
+	}
+	desc.Annotations[consts.OriginalRefAnnotation] = resolvedPath
+	if err := s.OCI.AddIndex(desc); err != nil {
+		return err
+	}
+
+	if auditLevel(ro) != "none" {
+		e := audit.Entry{
+			StoreID:           s.StoreID,
+			Store:             s.Root,
+			Type:              "git",
+			Command:           "store add git",
+			Args:              []string{audit.SanitizeURL(path)},
+			Reference:         audit.SanitizeURL(resolvedPath),
+			PortableReference: audit.ShortFileRef(path),
+			Digest:            desc.Digest.String(),
+		}
+		if err := audit.Append(ro.HaulerDir, e); err != nil {
+			l.Warnf("failed to write audit entry: %v", err)
+		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
+	} else {
+		l.Debugf("generated audit id of [none]")
+	}
+
+	var stats *store.ImageStats
+	if size, sizeErr := g.Size(); sizeErr == nil {
+		stats = &store.ImageStats{}
+		stats.Layers.Store(1)
+		stats.Bytes.Store(size)
+	}
+
+	l.Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
 
 	return nil
 }
@@ -376,12 +612,7 @@ func AddChartCmd(ctx context.Context, o *flags.AddChartOpts, s *store.Layout, ch
 	return runChartJobs(ctx, s, []chartJob{job}, o.Concurrency, rso, ro, newProgressRenderer(o.NoProgress, ro.LogLevel))
 }
 
-// formatAddedLine formats the completion line logged after an artifact
-// (image or file) is added to the store. When stats has at least one layer
-// recorded, it includes layer count and human-readable total blob size;
-// otherwise it falls back to an elapsed-only line and must never print
-// "0 layers" (stats == nil covers storeLocalImage, whose s.AddLocalImage
-// path never populates ImageStats).
+// formatAddedLine formats the completion line logged after an artifact is added, falling back to an elapsed-only line when stats is nil or has zero layers.
 func formatAddedLine(ref string, stats *store.ImageStats, elapsed time.Duration) string {
 	if stats != nil {
 		if layers := stats.Layers.Load(); layers > 0 {
@@ -389,7 +620,17 @@ func formatAddedLine(ref string, stats *store.ImageStats, elapsed time.Duration)
 			if layers != 1 {
 				unit = "layers"
 			}
-			return fmt.Sprintf("✓ added %s (%d %s, %s, %.1fs)", ref, layers, unit, humanize.Bytes(uint64(stats.Bytes.Load())), elapsed.Seconds())
+			line := fmt.Sprintf("✓ added %s (%d %s, %s, %.1fs", ref, layers, unit, humanize.Bytes(uint64(stats.Bytes.Load())), elapsed.Seconds())
+			written, cached := stats.Written.Load(), stats.Cached.Load()
+			switch {
+			case written > 0 && cached > 0:
+				line += fmt.Sprintf(", %d fetched, %d cached", written, cached)
+			case cached > 0:
+				line += fmt.Sprintf(", %d cached", cached)
+			case written > 0:
+				line += fmt.Sprintf(", %d fetched", written)
+			}
+			return line + ")"
 		}
 	}
 	return fmt.Sprintf("✓ added %s (%.1fs)", ref, elapsed.Seconds())
@@ -1257,10 +1498,16 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 		return nil, nil, err
 	}
 
+	// A fresh store.ImageStats is built inside the closure per attempt, same as storeImage.
 	var chartDesc ocispec.Descriptor
+	var stats *store.ImageStats
 	err = retry.Operation(ctx, rso, ro, func() error {
+		attemptStats := &store.ImageStats{}
 		var addErr error
-		chartDesc, addErr = s.AddArtifact(ctx, chrt, ref.Name())
+		chartDesc, addErr = s.AddArtifact(store.WithImageStats(ctx, attemptStats), chrt, ref.Name())
+		if addErr == nil {
+			stats = attemptStats
+		}
 		return addErr
 	})
 	if err != nil {
@@ -1550,19 +1797,6 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 				parent: ref.Name(),
 				depth:  j.depth + 1,
 			})
-		}
-	}
-
-	// Chart.Layers() always returns exactly one layer, the chart archive
-	// itself. Re-deriving it costs a re-read (and, for an already-expanded
-	// directory chart, a re-tar) of at most ~1MB; anything unexpected falls
-	// back to nil stats and formatAddedLine's elapsed-only form.
-	var stats *store.ImageStats
-	if layers, layersErr := chrt.Layers(); layersErr == nil && len(layers) == 1 {
-		if size, sizeErr := layers[0].Size(); sizeErr == nil {
-			stats = &store.ImageStats{}
-			stats.Layers.Store(1)
-			stats.Bytes.Store(size)
 		}
 	}
 

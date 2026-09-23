@@ -27,10 +27,16 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	"helm.sh/helm/v4/pkg/action"
@@ -622,6 +628,97 @@ func TestAddFileCmd(t *testing.T) {
 		t.Fatalf("AddFileCmd: %v", err)
 	}
 	assertArtifactInStore(t, s, "renamed.txt")
+}
+
+// newBareGitRepoFixture builds the minimal on-disk layout of a valid bare git repo, named repoName, under a fresh temp directory, and returns its path.
+func newBareGitRepoFixture(t *testing.T, repoName string) string {
+	t.Helper()
+
+	dir := filepath.Join(t.TempDir(), repoName)
+	if err := os.MkdirAll(filepath.Join(dir, "objects"), 0o755); err != nil {
+		t.Fatalf("failed to create objects dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/master\n"), 0o644); err != nil {
+		t.Fatalf("failed to write HEAD: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "refs", "heads"), 0o755); err != nil {
+		t.Fatalf("failed to create refs dir: %v", err)
+	}
+	sha := "0000000000000000000000000000000000000000"
+	if err := os.WriteFile(filepath.Join(dir, "refs", "heads", "master"), []byte(sha+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write ref: %v", err)
+	}
+
+	return dir
+}
+
+func TestAddGitCmd(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	repoDir := newBareGitRepoFixture(t, "myrepo.git")
+
+	o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root)}
+	if err := AddGitCmd(ctx, o, s, repoDir, defaultCliOpts()); err != nil {
+		t.Fatalf("AddGitCmd: %v", err)
+	}
+	assertArtifactInStore(t, s, "myrepo.git")
+}
+
+// TestAddGitCmd_RejectsUnsafeName guards against names like ".." that `store serve git` would resolve onto or outside its root directory.
+func TestAddGitCmd_RejectsUnsafeName(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	repoDir := newBareGitRepoFixture(t, "myrepo.git")
+
+	for _, name := range []string{".", ".."} {
+		o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root), Name: name}
+		if err := AddGitCmd(ctx, o, s, repoDir, defaultCliOpts()); err == nil {
+			t.Errorf("expected AddGitCmd to reject --name %q, got nil", name)
+		}
+	}
+	assertArtifactNotInStore(t, s, "hauler/.")
+}
+
+func TestAddGitCmd_RejectsPlainDirectory(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	notARepo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(notARepo, "notes.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("failed to write notes.txt: %v", err)
+	}
+
+	o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root)}
+	if err := AddGitCmd(ctx, o, s, notARepo, defaultCliOpts()); err == nil {
+		t.Fatal("expected AddGitCmd to reject a directory that is not a git repository at all, got nil")
+	}
+}
+
+// TestAddGitCmd_MirrorsNonBareRepo verifies AddGitCmd accepts a normal (non-bare) local working copy directly, without requiring the caller to bare-clone it themselves first.
+func TestAddGitCmd_MirrorsNonBareRepo(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	repoDir := t.TempDir()
+	repo, err := gogit.PlainInit(repoDir, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to get worktree: %v", err)
+	}
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+	if _, err := wt.Commit("initial commit", &gogit.CommitOptions{AllowEmptyCommits: true, Author: sig}); err != nil {
+		t.Fatalf("failed to commit: %v", err)
+	}
+
+	o := &flags.AddGitOpts{StoreRootOpts: defaultRootOpts(s.Root)}
+	if err := AddGitCmd(ctx, o, s, repoDir, defaultCliOpts()); err != nil {
+		t.Fatalf("AddGitCmd: %v", err)
+	}
+	assertArtifactInStore(t, s, filepath.Base(repoDir))
 }
 
 func TestStoreImage(t *testing.T) {
@@ -3551,6 +3648,193 @@ func writeCAFile(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// formatAddedLine appends fetched/cached counts only for the kinds actually seen, so a completion line never says "0 fetched" or "0 cached".
+func TestFormatAddedLine_FetchedCached(t *testing.T) {
+	tests := []struct {
+		name            string
+		written, cached int64
+		want            string
+	}{
+		{name: "fetched only", written: 3, want: "✓ added example.com/repo:v1 (3 layers, 100 B, 3.0s, 3 fetched)"},
+		{name: "cached only", cached: 3, want: "✓ added example.com/repo:v1 (3 layers, 100 B, 3.0s, 3 cached)"},
+		{name: "mixed", written: 1, cached: 2, want: "✓ added example.com/repo:v1 (3 layers, 100 B, 3.0s, 1 fetched, 2 cached)"},
+		{name: "neither", want: "✓ added example.com/repo:v1 (3 layers, 100 B, 3.0s)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stats := &store.ImageStats{}
+			stats.Layers.Store(3)
+			stats.Bytes.Store(100)
+			stats.Written.Store(tt.written)
+			stats.Cached.Store(tt.cached)
+			if got := formatAddedLine("example.com/repo:v1", stats, 3*time.Second); got != tt.want {
+				t.Errorf("formatAddedLine = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// store add file and store add chart report "1 fetched" on the first add and "1 cached" once the content is already in the store.
+func TestAddCompletionLine_FetchedThenCached(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := map[string]func(ctx context.Context, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error{
+		"file": func(ctx context.Context, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+			return storeFile(ctx, s, v1.File{Path: path}, ro, rso)
+		},
+		"chart": func(ctx context.Context, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+			o := newAddChartOpts(chartTestdataDir, "")
+			o.Concurrency = consts.DefaultConcurrency
+			o.NoProgress = true
+			return AddChartCmd(ctx, o, s, "rancher-cluster-templates-0.5.2.tgz", rso, ro)
+		},
+	}
+	for name, add := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := newTestStore(t)
+			var buf bytes.Buffer
+			ctx := zerolog.New(&buf).Level(zerolog.InfoLevel).WithContext(context.Background())
+			ro := defaultCliOpts()
+			ro.LogLevel = "info"
+			rso := defaultRootOpts(s.Root)
+
+			for _, want := range []string{"1 fetched)", "1 cached)"} {
+				buf.Reset()
+				if err := add(ctx, s, rso, ro); err != nil {
+					t.Fatalf("add: %v", err)
+				}
+				if !strings.Contains(buf.String(), want) {
+					t.Errorf("expected completion line with %q, got:\n%s", want, buf.String())
+				}
+			}
+		})
+	}
+}
+
+// store add image reports fetched, cached, and mixed counts per layer, including an image that shares only some layers with one already stored.
+func TestStoreImage_CompletionLine_FetchedCached(t *testing.T) {
+	host, opts := newLocalhostRegistry(t)
+	var layers []gcrv1.Layer
+	for i := 0; i < 4; i++ {
+		l, err := random.Layer(1024, gtypes.OCILayer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		layers = append(layers, l)
+	}
+	push := func(repo string, ls []gcrv1.Layer) {
+		img, err := mutate.AppendLayers(empty.Image, ls...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref, err := goname.NewTag(host+"/"+repo, goname.Insecure)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := remote.Write(ref, img, opts...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	push("test/first:v1", layers[:3])
+	push("test/shared:v1", []gcrv1.Layer{layers[0], layers[1], layers[3]})
+
+	s := newTestStore(t)
+	var buf bytes.Buffer
+	ctx := zerolog.New(&buf).Level(zerolog.InfoLevel).WithContext(context.Background())
+	ro := defaultCliOpts()
+	ro.LogLevel = "info"
+	rso := defaultRootOpts(s.Root)
+
+	for _, tc := range []struct{ repo, want string }{
+		{"test/first:v1", "3 fetched)"},
+		{"test/first:v1", "3 cached)"},
+		{"test/shared:v1", "1 fetched, 2 cached)"},
+	} {
+		buf.Reset()
+		if err := storeImage(ctx, s, v1.Image{Name: host + "/" + tc.repo}, "", true, rso, ro, "", "", false); err != nil {
+			t.Fatalf("storeImage %s: %v", tc.repo, err)
+		}
+		if !strings.Contains(buf.String(), tc.want) {
+			t.Errorf("%s: expected completion line with %q, got:\n%s", tc.repo, tc.want, buf.String())
+		}
+	}
+}
+
+// two images sharing every layer, added at the same time, report the shared layers as fetched once in total since they are only downloaded once.
+func TestStoreImage_CompletionLine_ParallelSharedLayers(t *testing.T) {
+	host, opts := newLocalhostRegistry(t)
+	var layers []gcrv1.Layer
+	for i := 0; i < 3; i++ {
+		l, err := random.Layer(64*1024, gtypes.OCILayer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		layers = append(layers, l)
+	}
+	for _, repo := range []string{"test/one:v1", "test/two:v1"} {
+		img, err := mutate.AppendLayers(empty.Image, layers...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A distinct config keeps the two images apart while every layer is shared.
+		cfg, err := img.ConfigFile()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Author = repo
+		if img, err = mutate.ConfigFile(img, cfg); err != nil {
+			t.Fatal(err)
+		}
+		ref, err := goname.NewTag(host+"/"+repo, goname.Insecure)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := remote.Write(ref, img, opts...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s := newTestStore(t)
+	ro := defaultCliOpts()
+	ro.LogLevel = "info"
+	rso := defaultRootOpts(s.Root)
+
+	var mu sync.Mutex
+	var fetched, cached int
+	var wg sync.WaitGroup
+	for _, repo := range []string{"test/one:v1", "test/two:v1"} {
+		wg.Add(1)
+		go func(repo string) {
+			defer wg.Done()
+			var buf bytes.Buffer
+			ctx := zerolog.New(&buf).Level(zerolog.InfoLevel).WithContext(context.Background())
+			if err := storeImage(ctx, s, v1.Image{Name: host + "/" + repo}, "", true, rso, ro, "", "", false); err != nil {
+				t.Errorf("storeImage %s: %v", repo, err)
+				return
+			}
+			var f, c int
+			if m := regexp.MustCompile(`(\d+) fetched`).FindStringSubmatch(buf.String()); m != nil {
+				fmt.Sscan(m[1], &f)
+			}
+			if m := regexp.MustCompile(`(\d+) cached`).FindStringSubmatch(buf.String()); m != nil {
+				fmt.Sscan(m[1], &c)
+			}
+			mu.Lock()
+			fetched += f
+			cached += c
+			mu.Unlock()
+		}(repo)
+	}
+	wg.Wait()
+
+	if fetched != len(layers) || fetched+cached != 2*len(layers) {
+		t.Errorf("fetched %d and cached %d across both images, want %d fetched and %d cached", fetched, cached, len(layers), len(layers))
+	}
 }
 
 // credentials embedded in a remote file URL never reach the logs or the store, while the rest of the URL is kept for re-sync.

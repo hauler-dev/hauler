@@ -10,6 +10,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 
+	"hauler.dev/go/hauler/v2/pkg/archives"
 	content2 "hauler.dev/go/hauler/v2/pkg/artifacts"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
@@ -26,6 +27,8 @@ type ClientOptions struct {
 	NameOverride          string
 	InsecureSkipTLSVerify bool
 	CAFile                string
+	// ArchiveFormat is the tar.<compression> a directory is archived as, empty means archives.DefaultFormat
+	ArchiveFormat string
 }
 
 var (
@@ -43,9 +46,12 @@ type Getter interface {
 }
 
 func NewClient(opts ClientOptions) *Client {
+	if opts.ArchiveFormat == "" {
+		opts.ArchiveFormat = archives.DefaultFormat
+	}
 	defaults := map[string]Getter{
 		"file":      NewFile(),
-		"directory": NewDirectory(),
+		"directory": NewDirectory(opts.ArchiveFormat),
 		"http":      NewHttp(opts.InsecureSkipTLSVerify, opts.CAFile),
 	}
 

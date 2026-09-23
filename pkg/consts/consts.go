@@ -29,6 +29,9 @@ const (
 	FileDirectoryConfigMediaType = "application/vnd.content.hauler.file.directory.config.v1+json"
 	FileHttpConfigMediaType      = "application/vnd.content.hauler.file.http.config.v1+json"
 
+	// git media types
+	GitRepoConfigMediaType = "application/vnd.content.hauler.git.repo.config.v1+json"
+
 	// wasm media types
 	WasmArtifactLayerMediaType = "application/vnd.wasm.content.layer.v1+wasm"
 	WasmConfigMediaType        = "application/vnd.wasm.config.v1+json"
@@ -108,6 +111,8 @@ const (
 	ChartsContentKind = "Charts"
 	FilesContentKind  = "Files"
 	// DriverContentKind = "Driver"
+	DirectoriesContentKind = "Directories"
+	GitContentKind         = "Git"
 
 	// content groups
 	ContentGroup    = "content.hauler.cattle.io"
@@ -154,6 +159,10 @@ const (
 	DefaultFileserverPort            = 8080
 	DefaultFileserverTimeout         = 60
 	DefaultFileserverRealm           = "hauler-fileserver"
+	DefaultGitRootDir                = "git"
+	DefaultGitPort                   = 8090
+	DefaultGitTimeout                = 60
+	DefaultGitRealm                  = "hauler-git"
 	DefaultHaulerArchiveName         = "haul.tar.zst"
 	DefaultHaulerManifestName        = "hauler-manifest.yaml"
 	DefaultStoreMetadataName         = "store.json"
@@ -168,7 +177,7 @@ const (
 var FileExcludePattern = fmt.Sprintf(`^%s/[.\-_]`, DefaultNamespace)
 
 // ContentTypeFilters lists the values `store info --type` and `store copy --type` accept, kept in one place so the two commands can't drift apart when a new content type is added.
-var ContentTypeFilters = []string{"image", "chart", "file", "sigs", "atts", "sbom", "referrer", "all"}
+var ContentTypeFilters = []string{"image", "chart", "file", "directory", "git", "sigs", "atts", "sbom", "referrer", "all"}
 
 // SigKindExt maps a cosign artifact kind to its tag-convention extension.
 // Kinds come in two shapes: plain ("dev.hauler/sigs") for an image's own

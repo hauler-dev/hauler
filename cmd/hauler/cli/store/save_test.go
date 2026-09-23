@@ -925,3 +925,31 @@ func TestSaveCmd_ChunkSize_Invalid(t *testing.T) {
 		t.Fatal("SaveCmd: expected error for chunk-size=0, got nil")
 	}
 }
+
+// invalid --redundancy-percent values are rejected before the archive is built, so nothing is written or left behind.
+func TestSaveCmd_RedundancyPercent_RejectedBeforeArchiving(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	if err := s.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	cases := map[string]func(o *flags.SaveOpts){
+		"over 100":           func(o *flags.SaveOpts) { o.RedundancyPercent = 150; o.ChunkSize = "1K" },
+		"negative":           func(o *flags.SaveOpts) { o.RedundancyPercent = -1; o.ChunkSize = "1K" },
+		"without chunk-size": func(o *flags.SaveOpts) { o.RedundancyPercent = 20 },
+	}
+	for name, set := range cases {
+		t.Run(name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+			o := newSaveOpts(s.Root, archivePath)
+			set(o)
+			if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if left, _ := filepath.Glob(archivePath + "*"); len(left) != 0 {
+				t.Errorf("expected nothing written, found %v", left)
+			}
+		})
+	}
+}
