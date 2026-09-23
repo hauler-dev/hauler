@@ -609,7 +609,7 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	}
 }
 
-// resolveCtype computes the human-readable content type ("image", "chart", "file",
+// resolveCtype computes the human-readable content type ("image", "chart", "file", "directory",
 // "sigs", "atts", "sbom", "referrer") for a descriptor. configMediaType is the
 // manifest's config media type and is used to distinguish image/chart/file when the
 // kind annotation doesn't already identify a more specific type; it may be empty
@@ -622,6 +622,8 @@ func resolveCtype(desc ocispec.Descriptor, configMediaType string) string {
 		ctype = "chart"
 	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType:
 		ctype = "file"
+	case consts.FileDirectoryConfigMediaType:
+		ctype = "directory"
 	default:
 		ctype = "image"
 	}

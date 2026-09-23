@@ -12,6 +12,7 @@ import (
 	"github.com/containerd/containerd/v2/core/remotes"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
+
 	"hauler.dev/go/hauler/v2/pkg/content"
 )
 
@@ -95,10 +96,23 @@ func (s *pusher) Push(ctx context.Context, desc ocispec.Descriptor) (ccontent.Wr
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return nil, fmt.Errorf("path_traversal_disallowed: %q resolves outside destination dir", filename)
 	}
+	// A title resolving to destDir itself would overwrite (or, for a directory, replace) the whole destination.
+	if rel == "." {
+		return nil, fmt.Errorf("invalid_destination: %q resolves to the destination dir itself", filename)
+	}
 
 	// Create parent directories (e.g. when filename is "subdir/file.txt")
 	if err := os.MkdirAll(filepath.Dir(fullFileName), 0755); err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("creating directory for %s", fullFileName))
+	}
+
+	// Directory sourced content is a compressed tar archive, so expand it into fullFileName (verified and staged, then swapped in on Close)
+	if desc.Annotations[content.AnnotationUnpack] == "true" {
+		uw, err := newUnpackWriteCloser(ctx, fullFileName, desc.Digest)
+		if err != nil {
+			return nil, errors.Wrap(err, "preparing to unpack directory archive")
+		}
+		return content.NewIoContentWriter(uw, content.WithOutputHash(desc.Digest.String())), nil
 	}
 
 	// Create the file
