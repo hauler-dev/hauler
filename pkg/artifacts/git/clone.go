@@ -91,7 +91,7 @@ func (g *Git) clone(url string) (string, func(), error) {
 		sshAuth, err := gitssh.NewPublicKeysFromFile("git", auth.sshKey, "")
 		if err != nil {
 			cleanup()
-			return "", nil, fmt.Errorf("loading SSH key [%s]: %w", auth.sshKey, err)
+			return "", nil, fmt.Errorf("failed to load ssh key [%s]: %w", auth.sshKey, err)
 		}
 		opts.Auth = sshAuth
 	}
@@ -100,7 +100,7 @@ func (g *Git) clone(url string) (string, func(), error) {
 	repo, err := gogit.PlainCloneContext(g.ctx, dir, true, opts)
 	if err != nil {
 		cleanup()
-		return "", nil, fmt.Errorf("cloning [%s]: %w", audit.SanitizeURL(url), err)
+		return "", nil, fmt.Errorf("failed to clone [%s]: %w", audit.SanitizeURL(url), err)
 	}
 
 	// The clone records its URL as origin in the repo's own config, so strip any embedded credentials before it's archived.
@@ -111,7 +111,7 @@ func (g *Git) clone(url string) (string, func(), error) {
 	}
 	if err != nil {
 		cleanup()
-		return "", nil, fmt.Errorf("sanitizing origin for [%s]: %w", audit.SanitizeURL(url), err)
+		return "", nil, fmt.Errorf("failed to remove credentials from origin for [%s]: %w", audit.SanitizeURL(url), err)
 	}
 
 	return dir, cleanup, nil
@@ -154,7 +154,7 @@ func installGitHTTPClient(auth cloneAuth) error {
 
 	cert, err := tls.LoadX509KeyPair(auth.certFile, auth.keyFile)
 	if err != nil {
-		return fmt.Errorf("loading client certificate: %w", err)
+		return fmt.Errorf("failed to load client certificate: %w", err)
 	}
 	tr.TLSClientConfig.Certificates = append(tr.TLSClientConfig.Certificates, cert)
 

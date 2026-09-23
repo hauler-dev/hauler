@@ -27,10 +27,10 @@ func NewGit(ctx context.Context, cfg flags.ServeGitOpts, repos map[string]string
 	names := make([]string, 0, len(repos))
 	for name, dir := range repos {
 		if err := validateBareRepo(dir); err != nil {
-			return nil, fmt.Errorf("repository [%s]: %w", name, err)
+			return nil, fmt.Errorf("invalid git repository [%s]: %w", name, err)
 		}
 		if err := updateServerInfo(dir); err != nil {
-			return nil, fmt.Errorf("repository [%s]: failed to regenerate git server info: %w", name, err)
+			return nil, fmt.Errorf("failed to generate server info for git repository [%s]: %w", name, err)
 		}
 		names = append(names, name)
 	}

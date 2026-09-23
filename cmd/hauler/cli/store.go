@@ -179,7 +179,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 func addStoreServe(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Serve the content store via an OCI Compliant Registry or Fileserver",
+		Short: "Serve the content store via an OCI Compliant Registry, Fileserver, or Git Server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -445,7 +445,7 @@ func addStoreAddGit(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 
 	cmd := &cobra.Command{
 		Use:   "git",
-		Short: "(EXPERIMENTAL) Add a git repo to the store",
+		Short: "(EXPERIMENTAL) Add a git repository to the store",
 		Example: `  # add an existing local bare repo
   hauler store add git myrepo.git
 

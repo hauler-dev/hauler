@@ -1355,7 +1355,7 @@ func resolveGitJobs(manifestDir string, repos []v1.GitRepo, remote bool, rso *fl
 			return nil, fmt.Errorf("git repository [%s] must be a remote URL when synced from a remote manifest", r.Path)
 		}
 		if remote && (r.UsernameEnv != "" || r.PasswordEnv != "" || r.SSHKey != "" || r.CertFile != "" || r.KeyFile != "" || r.CaFile != "") {
-			return nil, fmt.Errorf("git repository [%s] can't use credentials from a remote manifest", audit.SanitizeURL(r.Path))
+			return nil, fmt.Errorf("git repository [%s] cannot use credentials from a remote manifest", audit.SanitizeURL(r.Path))
 		}
 		if !isURL && !filepath.IsAbs(r.Path) {
 			r.Path = filepath.Join(manifestDir, r.Path)

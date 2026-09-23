@@ -221,7 +221,7 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 		return err
 	}
 	if len(repos) == 0 {
-		return fmt.Errorf("no git repositories found in the store, add one with `hauler store add git <repo>`")
+		return fmt.Errorf("no git repositories found in the store... add one with `hauler store add git <repo>`")
 	}
 	l.Infof("found [%d] git repository(s) in the store", len(repos))
 
