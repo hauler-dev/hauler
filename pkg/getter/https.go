@@ -26,7 +26,10 @@ func NewHttp(insecureSkipTLSVerify bool, caFile string) *Http {
 }
 
 func (h Http) Name(u *url.URL) string {
-	unescaped, err := url.PathUnescape(u.String())
+	// Name the file without the URL's query or fragment, so a presigned URL's signature never ends up in it.
+	c := *u
+	c.RawQuery, c.Fragment = "", ""
+	unescaped, err := url.PathUnescape(c.String())
 	if err != nil {
 		return ""
 	}
