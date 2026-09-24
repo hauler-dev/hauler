@@ -116,7 +116,7 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 			client.ChartPathOptions.Password = password
 		}
 		client.ChartPathOptions.RepoURL = opts.RepoURL
-	} else { // handles cases like grafana and loki
+	} else if opts.RepoURL != "" { // handles cases like grafana and loki, while no repo leaves a local chart path as is
 		chartRef = opts.RepoURL + "/" + name
 	}
 
