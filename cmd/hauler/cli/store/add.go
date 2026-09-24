@@ -232,10 +232,16 @@ func storeDirectory(ctx context.Context, s *store.Layout, di v1.Directory, ro *f
 
 	log.BaseFromContext(ctx).Debugf("adding directory [%s] to the store as [%s]", di.Path, ref.Name())
 
+	// A fresh store.ImageStats is built inside the closure per attempt, same as storeFile.
 	var desc ocispec.Descriptor
+	var stats *store.ImageStats
 	err = retry.Operation(ctx, rso, ro, func() error {
+		attemptStats := &store.ImageStats{}
 		var addErr error
-		desc, addErr = s.AddArtifact(ctx, d, ref.Name())
+		desc, addErr = s.AddArtifact(store.WithImageStats(ctx, attemptStats), d, ref.Name())
+		if addErr == nil {
+			stats = attemptStats
+		}
 		return addErr
 	})
 	if err != nil {
@@ -286,13 +292,6 @@ func storeDirectory(ctx context.Context, s *store.Layout, di v1.Directory, ro *f
 		l.Debugf("generated audit id of [%s]", audit.ID())
 	} else {
 		l.Debugf("generated audit id of [none]")
-	}
-
-	var stats *store.ImageStats
-	if size, sizeErr := d.Size(); sizeErr == nil {
-		stats = &store.ImageStats{}
-		stats.Layers.Store(1)
-		stats.Bytes.Store(size)
 	}
 
 	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
@@ -364,10 +363,16 @@ func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path s
 
 	l.Infof("adding git repository [%s] to the store", display)
 
+	// A fresh store.ImageStats is built inside the closure per attempt, same as storeFile.
 	var desc ocispec.Descriptor
+	var stats *store.ImageStats
 	err = retry.Operation(ctx, o.StoreRootOpts, ro, func() error {
+		attemptStats := &store.ImageStats{}
 		var addErr error
-		desc, addErr = s.AddArtifact(ctx, g, ref.Name())
+		desc, addErr = s.AddArtifact(store.WithImageStats(ctx, attemptStats), g, ref.Name())
+		if addErr == nil {
+			stats = attemptStats
+		}
 		return addErr
 	})
 	if err != nil {
@@ -406,13 +411,6 @@ func AddGitCmd(ctx context.Context, o *flags.AddGitOpts, s *store.Layout, path s
 		l.Debugf("generated audit id of [%s]", audit.ID())
 	} else {
 		l.Debugf("generated audit id of [none]")
-	}
-
-	var stats *store.ImageStats
-	if size, sizeErr := g.Size(); sizeErr == nil {
-		stats = &store.ImageStats{}
-		stats.Layers.Store(1)
-		stats.Bytes.Store(size)
 	}
 
 	l.Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))

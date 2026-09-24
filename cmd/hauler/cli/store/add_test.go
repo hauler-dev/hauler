@@ -3699,12 +3699,20 @@ func TestFormatAddedLine_FetchedCached(t *testing.T) {
 	}
 }
 
-// store add file and store add chart report "1 fetched" on the first add and "1 cached" once the content is already in the store.
+// store add file, chart, directory, and git report "1 fetched" on the first add and "1 cached" once the content is already in the store.
 func TestAddCompletionLine_FetchedThenCached(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.txt")
 	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	dir := filepath.Join(t.TempDir(), "mydir")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repoDir := newBareGitRepoFixture(t, "myrepo.git")
 
 	cases := map[string]func(ctx context.Context, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error{
 		"file": func(ctx context.Context, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
@@ -3715,6 +3723,12 @@ func TestAddCompletionLine_FetchedThenCached(t *testing.T) {
 			o.Concurrency = consts.DefaultConcurrency
 			o.NoProgress = true
 			return AddChartCmd(ctx, o, s, "rancher-cluster-templates-0.5.2.tgz", rso, ro)
+		},
+		"directory": func(ctx context.Context, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+			return storeDirectory(ctx, s, v1.Directory{Path: dir}, ro, rso)
+		},
+		"git": func(ctx context.Context, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+			return AddGitCmd(ctx, &flags.AddGitOpts{StoreRootOpts: rso}, s, repoDir, ro)
 		},
 	}
 	for name, add := range cases {
