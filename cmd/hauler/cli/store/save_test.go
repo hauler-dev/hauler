@@ -3,6 +3,7 @@ package store
 // save_test.go covers writeExportsManifest and SaveCmd.
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -925,3 +926,74 @@ func TestSaveCmd_ChunkSize_Invalid(t *testing.T) {
 		t.Fatal("SaveCmd: expected error for chunk-size=0, got nil")
 	}
 }
+<<<<<<< HEAD
+=======
+
+// invalid --redundancy-percent values are rejected before the archive is built, so nothing is written or left behind.
+func TestSaveCmd_RedundancyPercent_RejectedBeforeArchiving(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	if err := s.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	cases := map[string]func(o *flags.SaveOpts){
+		"over 100":           func(o *flags.SaveOpts) { o.RedundancyPercent = 150; o.ChunkSize = "1K" },
+		"negative":           func(o *flags.SaveOpts) { o.RedundancyPercent = -1; o.ChunkSize = "1K" },
+		"without chunk-size": func(o *flags.SaveOpts) { o.RedundancyPercent = 20 },
+	}
+	for name, set := range cases {
+		t.Run(name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+			o := newSaveOpts(s.Root, archivePath)
+			set(o)
+			if err := SaveCmd(ctx, o, s, defaultRootOpts(s.Root), defaultCliOpts()); err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if left, _ := filepath.Glob(archivePath + "*"); len(left) != 0 {
+				t.Errorf("expected nothing written, found %v", left)
+			}
+		})
+	}
+}
+
+// the haul is compressed in the format its --filename implies, defaulting to tar.zst, and each one unarchives like store load does.
+func TestSaveCmd_FormatFollowsFilename(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	path := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeFile(ctx, s, v1.File{Path: path}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	tests := map[string][]byte{
+		"haul.tar.zst": {0x28, 0xb5, 0x2f, 0xfd},
+		"haul.tar.gz":  {0x1f, 0x8b},
+		"haul.tgz":     {0x1f, 0x8b},
+		"HAUL.TAR.GZ":  {0x1f, 0x8b},
+		"haul.tar.xz":  {0xfd, '7', 'z', 'X', 'Z', 0x00},
+		"haul.tar.bz2": []byte("BZh"),
+		"haul.tar.lz4": {0x04, 0x22, 0x4d, 0x18},
+		"haul":         {0x28, 0xb5, 0x2f, 0xfd},
+	}
+	for name, magic := range tests {
+		archivePath := filepath.Join(t.TempDir(), name)
+		if err := SaveCmd(ctx, newSaveOpts(s.Root, archivePath), s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+			t.Fatalf("SaveCmd %s: %v", name, err)
+		}
+		data, err := os.ReadFile(archivePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.HasPrefix(data, magic) {
+			t.Errorf("%s starts with % x, want % x", name, data[:len(magic)], magic)
+		}
+		if err := archives.Unarchive(ctx, archivePath, t.TempDir()); err != nil {
+			t.Errorf("Unarchive %s: %v", name, err)
+		}
+	}
+}
+>>>>>>> 1e6ad8c (fixed save archives by filename (#861))
