@@ -42,11 +42,10 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 	}
 
 	// maps to handle compression and archival types
-	compressionMap := archives.CompressionMap
 	archivalMap := archives.ArchivalMap
 
 	// select the compression and archival type based parsed filename extension
-	compression := compressionMap["zst"]
+	compression := archives.Compressor(archives.FormatFromName(o.FileName))
 	archival := archivalMap["tar"]
 
 	absOutputfile, err := filepath.Abs(o.FileName)
