@@ -606,7 +606,7 @@ func TestStoreFile(t *testing.T) {
 func TestStoreFile_QueryStringURL(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
-	remote := seedFileInHTTPServer(t, "notes.txt", "payload") + "?X-Amz-Signature=abc%2Fdef&X-Amz-Expires=300"
+	remote := seedFileInHTTPServer(t, "notes.txt", "payload") + "?download=1&version=abc%2Fdef"
 
 	if err := storeFile(ctx, s, v1.File{Path: remote}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
 		t.Fatalf("storeFile with a query-string URL: %v", err)
@@ -3624,5 +3624,48 @@ func TestStoreFile_NoCredentialsLeak(t *testing.T) {
 	}
 	if want := raw; original != want {
 		t.Errorf("original ref = %q, want %q so a re-sync can still fetch it", original, want)
+	}
+}
+
+// a presigned remote file URL's query never reaches the store, only the file's own URL is kept.
+func TestStoreFile_NoPresignedSignatureLeak(t *testing.T) {
+	raw := seedFileInHTTPServer(t, "notes.txt", "payload")
+	presigned := raw + "?versionId=v1&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA-SECRET-KEY&X-Amz-Signature=SECRET-SIGNATURE"
+
+	s := newTestStore(t)
+	ctx := newTestContext(t)
+	rso := defaultRootOpts(s.Root)
+
+	if err := storeFile(ctx, s, v1.File{Path: presigned}, defaultCliOpts(), rso); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	if err := filepath.Walk(s.Root, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(data, []byte("SECRET-SIGNATURE")) || bytes.Contains(data, []byte("AKIA-SECRET-KEY")) {
+			t.Errorf("store file %s contains presigned signing params", p)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var original string
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.Contains(desc.Annotations[ocispec.AnnotationRefName], "notes.txt") {
+			original = desc.Annotations[consts.OriginalRefAnnotation]
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if want := raw; original != want {
+		t.Errorf("original ref = %q, want %q", original, want)
 	}
 }
