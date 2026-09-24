@@ -1,6 +1,7 @@
 package chart_test
 
 import (
+	"net"
 	"os"
 	"reflect"
 	"strings"
@@ -144,5 +145,27 @@ func TestNewChart_VerifyOnUnsignedChartFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "provenance") {
 		t.Fatalf("expected provenance error, got: %v", err)
+	}
+}
+
+// helm's unreachable repository error never carries the repo URL's credentials or presigned query.
+func TestNewChart_NoCredentialsInRepoErrors(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	_, err = chart.NewChart("mychart", &action.ChartPathOptions{
+		RepoURL: "http://user:SECRET-TOKEN@" + addr + "/charts?sig=SECRET-SIG",
+	})
+	if err == nil {
+		t.Fatal("expected an unreachable repository error, got nil")
+	}
+	for _, secret := range []string{"SECRET-TOKEN", "SECRET-SIG"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("error message contains %s: %v", secret, err)
+		}
 	}
 }

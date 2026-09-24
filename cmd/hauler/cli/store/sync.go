@@ -26,6 +26,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
@@ -185,11 +186,11 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	// If passed a hauler manifest, process it
 	if len(o.FileName) != 0 {
 		for _, fileName := range o.FileName {
-			l.Infof("processing manifest [%s] to store [%s]", fileName, o.StoreDir)
+			l.Infof("processing manifest [%s] to store [%s]", audit.SanitizeURL(fileName), o.StoreDir)
 
 			haulPath := fileName
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
-				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
+				l.Debugf("detected remote manifest... starting download... [%s]", audit.SanitizeURL(haulPath))
 
 				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
 				parsedURL, err := url.Parse(haulPath)
@@ -237,11 +238,11 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 	// If passed an image.txt file, process it
 	if len(o.ImageTxt) != 0 {
 		for _, imageTxt := range o.ImageTxt {
-			l.Infof("processing image.txt [%s] to store [%s]", imageTxt, o.StoreDir)
+			l.Infof("processing image.txt [%s] to store [%s]", audit.SanitizeURL(imageTxt), o.StoreDir)
 
 			haulPath := imageTxt
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
-				l.Debugf("detected remote image.txt... starting download... [%s]", haulPath)
+				l.Debugf("detected remote image.txt... starting download... [%s]", audit.SanitizeURL(haulPath))
 
 				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
 				parsedURL, err := url.Parse(haulPath)

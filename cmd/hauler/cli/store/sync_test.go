@@ -3170,3 +3170,40 @@ func TestRunImageJobs_AlreadyCancelledContext(t *testing.T) {
 		})
 	}
 }
+
+// a presigned remote manifest or image.txt URL's query never reaches the logs.
+func TestSyncCmd_RemotePresigned_NoLogLeak(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.DebugLevel).WithContext(context.Background())
+	s := newTestStore(t)
+	const presign = "?X-Amz-Credential=AKIA-SECRET-KEY&X-Amz-Signature=SECRET-SIGNATURE"
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/presigned", "v1")
+	fileURL := seedFileInHTTPServer(t, "synced.sh", "echo synced")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/images.txt") {
+			io.WriteString(w, host+"/myorg/presigned:v1\n") //nolint:errcheck
+			return
+		}
+		fmt.Fprintf(w, "apiVersion: content.hauler.cattle.io/v1\nkind: Files\nmetadata:\n  name: presigned\nspec:\n  files:\n    - path: %s\n", fileURL)
+	}))
+	t.Cleanup(srv.Close)
+
+	o := newSyncOpts(s.Root)
+	o.FileName = []string{srv.URL + "/manifest.yaml" + presign}
+	o.ImageTxt = []string{srv.URL + "/images.txt" + presign}
+	ro := defaultCliOpts()
+	ro.LogLevel = "debug"
+
+	if err := SyncCmd(ctx, o, s, defaultRootOpts(s.Root), ro); err != nil {
+		t.Fatalf("SyncCmd: %v", err)
+	}
+	assertArtifactInStore(t, s, "synced.sh")
+	assertArtifactInStore(t, s, "myorg/presigned")
+	for _, secret := range []string{"SECRET-SIGNATURE", "AKIA-SECRET-KEY"} {
+		if strings.Contains(logs.String(), secret) {
+			t.Errorf("logs contain %s:\n%s", secret, logs.String())
+		}
+	}
+}

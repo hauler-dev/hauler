@@ -59,7 +59,7 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, s *store.Layout, rso *flags
 	for _, fileName := range fileNames {
 		resolved := resolveHaulPath(fileName)
 		wasRemote := strings.HasPrefix(fileName, "http://") || strings.HasPrefix(fileName, "https://") || remoteOrigin[fileName]
-		l.Infof("loading haul [%s] to [%s]", resolved, o.StoreDir)
+		l.Infof("loading haul [%s] to [%s]", audit.SanitizeURL(resolved), o.StoreDir)
 		err := unarchiveLayoutTo(ctx, resolved, o.StoreDir, tempDir, ro, wasRemote)
 		if err != nil {
 			return err
@@ -173,7 +173,7 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	l := log.FromContext(ctx)
 
 	if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
-		l.Debugf("detected remote archive... starting download... [%s]", haulPath)
+		l.Debugf("detected remote archive... starting download... [%s]", audit.SanitizeURL(haulPath))
 		local, err := downloadHaul(ctx, haulPath, tempDir)
 		if err != nil {
 			return err

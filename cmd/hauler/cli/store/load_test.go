@@ -3,6 +3,7 @@ package store
 // load_test.go covers unarchiveLayoutTo, LoadCmd, and clearDir.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	mholtarchives "github.com/mholt/archives"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rs/zerolog"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
@@ -562,5 +564,42 @@ func TestClearDir(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Errorf("clearDir: expected empty dir, found: %s", strings.Join(names, ", "))
+	}
+}
+
+// a presigned remote haul URL's query and credentials never reach the logs.
+func TestLoadCmd_RemotePresigned_NoLogLeak(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.DebugLevel).WithContext(context.Background())
+	ro := defaultCliOpts()
+	ro.LogLevel = "debug"
+	const presign = "?X-Amz-Credential=AKIA-SECRET-KEY&X-Amz-Signature=SECRET-SIGNATURE"
+
+	archiveData, err := os.ReadFile(testHaulArchive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(archiveData) //nolint:errcheck
+	}))
+	t.Cleanup(srv.Close)
+	haulURL := strings.Replace(srv.URL, "http://", "http://user:SECRET-TOKEN@", 1) + "/haul.tar.zst" + presign
+
+	for _, urls := range [][]string{{srv.URL + "/haul.tar.zst" + presign}, {haulURL}} {
+		destDir := t.TempDir()
+		s, err := store.NewLayout(destDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
+		if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), ro); err != nil {
+			t.Fatalf("LoadCmd %v: %v", urls, err)
+		}
+	}
+
+	for _, secret := range []string{"SECRET-SIGNATURE", "AKIA-SECRET-KEY", "SECRET-TOKEN"} {
+		if strings.Contains(logs.String(), secret) {
+			t.Errorf("logs contain %s:\n%s", secret, logs.String())
+		}
 	}
 }
