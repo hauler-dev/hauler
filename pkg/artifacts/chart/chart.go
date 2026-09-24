@@ -22,6 +22,7 @@ import (
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
@@ -121,7 +122,8 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 
 	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, settings)
 	if err != nil {
-		return nil, err
+		// Helm echoes the raw repo URL, including any user:token or presigned query, in its errors.
+		return nil, audit.SanitizeError(err)
 	}
 
 	return &Chart{
