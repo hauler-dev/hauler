@@ -566,108 +566,8 @@ func TestClearDir(t *testing.T) {
 		t.Errorf("clearDir: expected empty dir, found: %s", strings.Join(names, ", "))
 	}
 }
-<<<<<<< HEAD
-=======
 
-// serveRedundantChunks splits the test haul into redundant chunks, serves them over HTTP except where unreachable reports true, and returns every chunk URL.
-func serveRedundantChunks(t *testing.T, unreachable func(name string) bool) []string {
-	t.Helper()
-	data, err := os.ReadFile(testHaulArchive)
-	if err != nil {
-		t.Fatalf("read test archive: %v", err)
-	}
-	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
-	if err := os.WriteFile(archivePath, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	chunks, err := archives.SplitArchiveRedundant(context.Background(), archivePath, int64(len(data)/4+100), 50)
-	if err != nil {
-		t.Fatalf("SplitArchiveRedundant: %v", err)
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := filepath.Base(r.URL.Path)
-		if unreachable != nil && unreachable(name) {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(filepath.Dir(archivePath), name))
-	}))
-	t.Cleanup(srv.Close)
-
-	urls := make([]string, 0, len(chunks))
-	for _, c := range chunks {
-		urls = append(urls, srv.URL+"/"+filepath.Base(c))
-	}
-	return urls
-}
-
-// a remote redundant chunk set with one unreachable chunk still loads, repaired from parity, instead of failing on the download.
-func TestLoadCmd_RemoteRedundantChunks_OneUnreachable(t *testing.T) {
-	ctx := newTestContext(t)
-	urls := serveRedundantChunks(t, func(name string) bool { return name == "haul.tar.zst.002" })
-
-	destDir := t.TempDir()
-	s, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
-	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
-		t.Fatalf("LoadCmd with one unreachable chunk: %v", err)
-	}
-	loaded, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if countArtifactsInStore(t, loaded) == 0 {
-		t.Error("expected artifacts in store after repairing the missing chunk")
-	}
-}
-
-// a remote chunk set where nothing can be downloaded still fails instead of silently loading nothing.
-func TestLoadCmd_RemoteChunks_AllUnreachable(t *testing.T) {
-	ctx := newTestContext(t)
-	urls := serveRedundantChunks(t, func(string) bool { return true })
-
-	destDir := t.TempDir()
-	s, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
-	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err == nil {
-		t.Fatal("expected LoadCmd to fail when no chunk could be downloaded, got nil")
-	}
-}
-
-// a remote chunk set behind presigned-style URLs loads, since the query string no longer ends up in the downloaded chunk's filename.
-func TestLoadCmd_RemoteChunks_PresignedURLs(t *testing.T) {
-	ctx := newTestContext(t)
-	urls := serveRedundantChunks(t, nil)
-	for i := range urls {
-		urls[i] += "?X-Amz-Signature=abc%2Fdef&X-Amz-Expires=300"
-	}
-
-	destDir := t.TempDir()
-	s, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
-	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
-		t.Fatalf("LoadCmd with presigned-style chunk URLs: %v", err)
-	}
-	loaded, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if countArtifactsInStore(t, loaded) == 0 {
-		t.Error("expected artifacts in store after loading presigned chunk URLs")
-	}
-}
-
-// a presigned remote haul or chunk URL's query and credentials never reach the logs, including the skipped chunk warning.
+// a presigned remote haul URL's query and credentials never reach the logs.
 func TestLoadCmd_RemotePresigned_NoLogLeak(t *testing.T) {
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).Level(zerolog.DebugLevel).WithContext(context.Background())
@@ -683,12 +583,9 @@ func TestLoadCmd_RemotePresigned_NoLogLeak(t *testing.T) {
 		w.Write(archiveData) //nolint:errcheck
 	}))
 	t.Cleanup(srv.Close)
-	chunkURLs := serveRedundantChunks(t, func(name string) bool { return name == "haul.tar.zst.002" })
-	for i := range chunkURLs {
-		chunkURLs[i] = strings.Replace(chunkURLs[i], "http://", "http://user:SECRET-TOKEN@", 1) + presign
-	}
+	haulURL := strings.Replace(srv.URL, "http://", "http://user:SECRET-TOKEN@", 1) + "/haul.tar.zst" + presign
 
-	for _, urls := range [][]string{{srv.URL + "/haul.tar.zst" + presign}, chunkURLs} {
+	for _, urls := range [][]string{{srv.URL + "/haul.tar.zst" + presign}, {haulURL}} {
 		destDir := t.TempDir()
 		s, err := store.NewLayout(destDir)
 		if err != nil {
@@ -705,8 +602,4 @@ func TestLoadCmd_RemotePresigned_NoLogLeak(t *testing.T) {
 			t.Errorf("logs contain %s:\n%s", secret, logs.String())
 		}
 	}
-	if !strings.Contains(logs.String(), "failed to download chunk") {
-		t.Errorf("expected the skipped chunk warning to be exercised, got:\n%s", logs.String())
-	}
 }
->>>>>>> bd8c05e (fixed presigned url leaks with files and hauls (#859))

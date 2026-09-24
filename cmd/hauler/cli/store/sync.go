@@ -26,6 +26,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
@@ -188,14 +189,8 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			l.Infof("processing manifest [%s] to store [%s]", audit.SanitizeURL(fileName), o.StoreDir)
 
 			haulPath := fileName
-<<<<<<< HEAD
 			if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
-				l.Debugf("detected remote manifest... starting download... [%s]", haulPath)
-=======
-			remote := strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://")
-			if remote {
 				l.Debugf("detected remote manifest... starting download... [%s]", audit.SanitizeURL(haulPath))
->>>>>>> bd8c05e (fixed presigned url leaks with files and hauls (#859))
 
 				h := getter.NewHttp(o.InsecureSkipTLSVerify, o.CaFile)
 				parsedURL, err := url.Parse(haulPath)

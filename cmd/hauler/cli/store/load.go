@@ -122,16 +122,7 @@ func stageRemoteChunks(ctx context.Context, fileNames []string, stageDir string)
 
 		local, err := downloadHaul(ctx, fn, stageDir)
 		if err != nil {
-<<<<<<< HEAD
 			return nil, nil, err
-=======
-			log.FromContext(ctx).Warnf("failed to download chunk [%s]: %v... continuing...", audit.SanitizeURL(fn), err)
-			key, _ := archives.ChunkGroupKey(filepath.Base(parsedURL.Path))
-			if _, seen := failed[key]; !seen {
-				failed[key] = err
-			}
-			continue
->>>>>>> bd8c05e (fixed presigned url leaks with files and hauls (#859))
 		}
 		remoteOrigin[local] = true
 
