@@ -3,6 +3,7 @@ package store
 // save_test.go covers writeExportsManifest and SaveCmd.
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -951,5 +952,45 @@ func TestSaveCmd_RedundancyPercent_RejectedBeforeArchiving(t *testing.T) {
 				t.Errorf("expected nothing written, found %v", left)
 			}
 		})
+	}
+}
+
+// the haul is compressed in the format its --filename implies, defaulting to tar.zst, and each one unarchives like store load does.
+func TestSaveCmd_FormatFollowsFilename(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	path := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeFile(ctx, s, v1.File{Path: path}, defaultCliOpts(), defaultRootOpts(s.Root)); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	tests := map[string][]byte{
+		"haul.tar.zst": {0x28, 0xb5, 0x2f, 0xfd},
+		"haul.tar.gz":  {0x1f, 0x8b},
+		"haul.tgz":     {0x1f, 0x8b},
+		"HAUL.TAR.GZ":  {0x1f, 0x8b},
+		"haul.tar.xz":  {0xfd, '7', 'z', 'X', 'Z', 0x00},
+		"haul.tar.bz2": []byte("BZh"),
+		"haul.tar.lz4": {0x04, 0x22, 0x4d, 0x18},
+		"haul":         {0x28, 0xb5, 0x2f, 0xfd},
+	}
+	for name, magic := range tests {
+		archivePath := filepath.Join(t.TempDir(), name)
+		if err := SaveCmd(ctx, newSaveOpts(s.Root, archivePath), s, defaultRootOpts(s.Root), defaultCliOpts()); err != nil {
+			t.Fatalf("SaveCmd %s: %v", name, err)
+		}
+		data, err := os.ReadFile(archivePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.HasPrefix(data, magic) {
+			t.Errorf("%s starts with % x, want % x", name, data[:len(magic)], magic)
+		}
+		if err := archives.Unarchive(ctx, archivePath, t.TempDir()); err != nil {
+			t.Errorf("Unarchive %s: %v", name, err)
+		}
 	}
 }
