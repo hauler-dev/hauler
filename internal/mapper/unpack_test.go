@@ -210,6 +210,49 @@ func TestExtractArchive_Symlinks(t *testing.T) {
 	}
 }
 
+// TestExtractArchive_SymlinkChains confirms a link through another link is restored inside root but skipped when it escapes, in either archive order.
+func TestExtractArchive_SymlinkChains(t *testing.T) {
+	archivePath := buildArchive(t, []archiveEntry{
+		dirEntry("mydir"),
+		dirEntry("mydir/sub"),
+		dirEntry("mydir/real-docs"),
+		fileEntry("mydir/real-docs/README.md", "readme"),
+		linkEntry("mydir/before", "sub/up/../secret"),
+		linkEntry("mydir/readme-before", "docs/README.md"),
+		linkEntry("mydir/sub/up", ".."),
+		linkEntry("mydir/docs", "real-docs"),
+		linkEntry("mydir/after", "sub/up/../secret"),
+		linkEntry("mydir/parent", "sub/up/.."),
+		linkEntry("mydir/readme-after", "docs/README.md"),
+		linkEntry("mydir/to-up", "sub/up"),
+	})
+
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("outside"), 0o600); err != nil {
+		t.Fatalf("failed to write outside file: %v", err)
+	}
+	dir := filepath.Join(outside, "extract-root")
+	if err := extractArchive(context.Background(), archivePath, dir); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	for _, name := range []string{"before", "after", "parent"} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("expected escaping symlink %s to be skipped", name)
+		}
+	}
+	for _, name := range []string{"sub/up", "to-up", "docs"} {
+		if _, err := os.Readlink(filepath.Join(dir, filepath.FromSlash(name))); err != nil {
+			t.Errorf("expected safe symlink %s to be restored: %v", name, err)
+		}
+	}
+	for _, name := range []string{"readme-before", "readme-after"} {
+		if got, err := os.ReadFile(filepath.Join(dir, name)); err != nil || string(got) != "readme" {
+			t.Errorf("expected %s to read through docs, got %q (err %v)", name, got, err)
+		}
+	}
+}
+
 // TestExtractArchive_PreservesModesAndTimes confirms file and directory permissions and mtimes survive the round trip, regardless of umask.
 func TestExtractArchive_PreservesModesAndTimes(t *testing.T) {
 	mtime := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)

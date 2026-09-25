@@ -184,10 +184,23 @@ func extractArchive(ctx context.Context, archivePath, dir string) error {
 		}
 	}
 
-	for _, hdr := range links {
-		if err := writeSymlink(root, hdr); err != nil {
-			l.Warnf("skipping symlink [%s]: %v", hdr.Name, err)
+	// A link whose target goes through a link not created yet is retried until a pass restores nothing new.
+	for len(links) > 0 {
+		var pending []*tar.Header
+		for _, hdr := range links {
+			if err := writeSymlink(root, hdr); os.IsNotExist(err) {
+				pending = append(pending, hdr)
+			} else if err != nil {
+				l.Warnf("skipping symlink [%s]: %v", hdr.Name, err)
+			}
 		}
+		if len(pending) == len(links) {
+			for _, hdr := range pending {
+				l.Warnf("skipping symlink [%s]: target [%s] does not exist", hdr.Name, hdr.Linkname)
+			}
+			break
+		}
+		links = pending
 	}
 
 	// Deepest first so a read-only parent never blocks fixing up its children.
@@ -253,6 +266,25 @@ func writeSymlink(root string, hdr *tar.Header) error {
 		}
 		if fi.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("parent [%s] is itself a symlink", p)
+		}
+	}
+
+	// Resolve on disk too, since a lexical check alone lets a chain through an earlier symlink (i.e. sub/up/..) escape root.
+	if i := strings.LastIndex(link, string(filepath.Separator)); i >= 0 {
+		dirPart := link
+		if !strings.HasSuffix(link, ".") {
+			dirPart = link[:i]
+		}
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return err
+		}
+		realDir, err := filepath.EvalSymlinks(filepath.Dir(target) + string(filepath.Separator) + dirPart)
+		if err != nil {
+			return err
+		}
+		if !within(realRoot, realDir) {
+			return fmt.Errorf("target [%s] resolves outside the extracted directory through a symlink", hdr.Linkname)
 		}
 	}
 
