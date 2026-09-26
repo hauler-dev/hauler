@@ -58,7 +58,7 @@ func TestCreateManifestCmd_Image(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestCreateManifestCmd_ImageWithRewrite(t *testing.T) {
 	// storeImage with a rewrite target: the store ends up with the new ref as
 	// the "current" annotations, but consts.OriginalRefAnnotation still holds
 	// the original, pullable source ref captured at the initial add.
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/src/repo:v1"}, "", false, rso, ro, "newrepo/img:v2", "", false, ""); err != nil {
 		t.Fatalf("storeImage with rewrite: %v", err)
 	}
 	assertArtifactInStore(t, s, "newrepo/img:v2")
@@ -218,7 +218,7 @@ func TestCreateManifestCmd_MultiPlatformIndexOmitsPlatform(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/multiarch:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage multi-arch index: %v", err)
 	}
 
@@ -395,7 +395,7 @@ func TestCreateManifestCmd_MixedContent(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: host + "/test/repo:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 	co := newAddChartOpts(chartTestdataDir, "")
