@@ -12,7 +12,8 @@ RUN echo "hauler:x:1001:1001::/home/hauler:" > /etc/passwd \
 && mkdir /home/hauler/.docker \
 && mkdir /store \
 && mkdir /fileserver \
-&& mkdir /registry
+&& mkdir /registry \
+&& mkdir /git
 
 # release stage
 FROM scratch AS release
@@ -25,6 +26,7 @@ COPY --from=builder --chown=hauler:hauler /tmp/. /tmp
 COPY --from=builder --chown=hauler:hauler /store/. /store
 COPY --from=builder --chown=hauler:hauler /registry/. /registry
 COPY --from=builder --chown=hauler:hauler /fileserver/. /fileserver
+COPY --from=builder --chown=hauler:hauler /git/. /git
 COPY --from=builder --chown=hauler:hauler /hauler /hauler
 
 USER hauler
