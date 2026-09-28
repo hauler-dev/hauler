@@ -140,7 +140,7 @@ func TestCopyCmd_Registry(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/copy:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/copy:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -176,7 +176,7 @@ func TestCopyCmd_Registry_OnlyFilter(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 	for _, repo := range []string{"myorg/repo1:v1", "myorg/repo2:v1"} {
-		if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/" + repo}, "", false, rso, ro, "", "", false); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/" + repo}, "", false, rso, ro, "", "", false, ""); err != nil {
 			t.Fatalf("storeImage %s: %v", repo, err)
 		}
 	}
@@ -384,7 +384,7 @@ func TestCopyCmd_Registry_IgnoreErrors(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/ignore:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/ignore:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -417,7 +417,7 @@ func TestCopyCmd_Registry_IgnoreErrors_EnvVar(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/ignore-env:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/ignore-env:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
@@ -451,7 +451,7 @@ func TestCopyCmd_Registry_IgnoreErrors_EnvVar_MultipleArtifacts(t *testing.T) {
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
 	for _, repo := range []string{"test/ignore-env-a:v1", "test/ignore-env-b:v1"} {
-		if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/" + repo}, "", false, rso, ro, "", "", false); err != nil {
+		if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/" + repo}, "", false, rso, ro, "", "", false, ""); err != nil {
 			t.Fatalf("storeImage %s: %v", repo, err)
 		}
 	}
@@ -669,7 +669,7 @@ func TestCopyCmd_Dir_SkipsImages(t *testing.T) {
 	s := newTestStore(t)
 	rso := defaultRootOpts(s.Root)
 	ro := defaultCliOpts()
-	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/imgskip:v1"}, "", false, rso, ro, "", "", false); err != nil {
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/imgskip:v1"}, "", false, rso, ro, "", "", false, ""); err != nil {
 		t.Fatalf("storeImage: %v", err)
 	}
 
