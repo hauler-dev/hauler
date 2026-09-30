@@ -17,12 +17,14 @@ import (
 
 type Http struct {
 	client *http.Client
+	// err holds a bad ca file until Open, so only a remote fetch fails on it and local paths are unaffected
+	err error
 }
 
 func NewHttp(insecureSkipTLSVerify bool, caFile string) *Http {
 	tr, err := content.BuildTransport(insecureSkipTLSVerify, caFile)
 	if err != nil {
-		return &Http{client: http.DefaultClient}
+		return &Http{err: err}
 	}
 	return &Http{client: &http.Client{Transport: tr}}
 }
@@ -39,6 +41,9 @@ func (h Http) Name(u *url.URL) string {
 }
 
 func (h Http) Open(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
+	if h.err != nil {
+		return nil, h.err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, redactURLError(err, u)

@@ -705,8 +705,8 @@ func resolveImageJobs(o *flags.SyncOpts, a map[string]string, images []v1.Image)
 			i.CaFile = o.CaFile
 		}
 
-		// a CA file and skipping TLS verification are mutually exclusive: providing one forces verification on
-		i.InsecureSkipTLSVerify = o.CaFile == "" && resolveBoolFlag(i.InsecureSkipTLSVerify, a[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
+		// insecure resolves like any other bool flag, and the transport lets it win over a ca file only when both are set
+		i.InsecureSkipTLSVerify = resolveBoolFlag(i.InsecureSkipTLSVerify, a[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
 
 		if i.Local {
 			needsPubKeyVerification := a[consts.ImageAnnotationKey] != "" || o.Key != "" || i.Key != ""
@@ -909,7 +909,7 @@ func resolveAndVerify(ctx context.Context, cache *cosign.Cache, j imageJob, rso 
 		return "", &verifyError{stage: "unable to parse image reference", err: err}
 	}
 
-	pinned, err := pinDigest(ctx, ref, rso, ro)
+	pinned, err := pinDigest(ctx, ref, rso, ro, j.img.InsecureSkipTLSVerify, j.img.CaFile)
 	if err != nil {
 		return "", &verifyError{stage: "unable to resolve image digest", err: err}
 	}
@@ -977,8 +977,8 @@ func headDescriptor(ctx context.Context, ref goname.Reference, rso *flags.StoreR
 // retry.Operation checks ctx before every attempt and aborts its backoff on
 // cancellation, so a cancelled run still fails fast rather than sleeping out
 // the budget.
-func pinDigest(ctx context.Context, ref goname.Reference, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) (string, error) {
-	desc, err := headDescriptor(ctx, ref, rso, ro, false, "")
+func pinDigest(ctx context.Context, ref goname.Reference, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, insecureSkipTLSVerify bool, caFile string) (string, error) {
+	desc, err := headDescriptor(ctx, ref, rso, ro, insecureSkipTLSVerify, caFile)
 	if err != nil {
 		return "", err
 	}
@@ -1249,8 +1249,8 @@ func resolveFileJobs(o *flags.SyncOpts, a map[string]string, files []v1.File) []
 			f.CaFile = o.CaFile
 		}
 
-		// a CA file and skipping TLS verification are mutually exclusive: providing one forces verification on
-		f.InsecureSkipTLSVerify = o.CaFile == "" && resolveBoolFlag(f.InsecureSkipTLSVerify, a[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
+		// insecure resolves like any other bool flag, and the transport lets it win over a ca file only when both are set
+		f.InsecureSkipTLSVerify = resolveBoolFlag(f.InsecureSkipTLSVerify, a[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
 
 		jobs = append(jobs, fileJob{file: f})
 	}

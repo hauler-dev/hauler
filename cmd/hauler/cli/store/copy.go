@@ -199,6 +199,14 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			PlainHTTP: o.PlainHTTP,
 			Insecure:  o.Insecure,
 		}
+		// insecure wins over ca-file, so the ca file is only read when insecure is not set
+		if o.CaFile != "" && !o.Insecure {
+			pool, err := content.CAPool(o.CaFile)
+			if err != nil {
+				return err
+			}
+			registryOpts.RootCAs = pool
+		}
 		// Shared across every per-artifact RegistryTarget below to keep connections pooled.
 		registryClient := content.NewRegistryHTTPClient(components[1], registryOpts)
 

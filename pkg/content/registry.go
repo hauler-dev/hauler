@@ -78,6 +78,8 @@ func NewRegistryHTTPClient(host string, opts RegistryOptions) *http.Client {
 	}
 	if opts.Insecure {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	} else if opts.RootCAs != nil {
+		transport.TLSClientConfig = &tls.Config{RootCAs: opts.RootCAs}
 	}
 	var rt http.RoundTripper = transport
 	if opts.PlainHTTP {
