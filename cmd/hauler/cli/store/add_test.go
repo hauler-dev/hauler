@@ -71,10 +71,7 @@ func newLocalhostRegistry(t *testing.T) (host string, remoteOpts []remote.Option
 	return host, remoteOpts
 }
 
-// chartTestdataDir is the relative path from cmd/hauler/cli/store/ to the
-// top-level testdata directory, matching the convention in add_test.go.
-// It must remain relative so that url.ParseRequestURI rejects it (an absolute
-// path would be mistakenly treated as a URL by chart.NewChart's isUrl check).
+// chartTestdataDir is the relative path from cmd/hauler/cli/store/ to the top-level testdata directory.
 const chartTestdataDir = "../../../../testdata"
 
 // --------------------------------------------------------------------------

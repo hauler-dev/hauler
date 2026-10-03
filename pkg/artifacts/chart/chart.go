@@ -307,9 +307,11 @@ func (h *Chart) chartData() (gv1.Layer, error) {
 
 	return chartDataLayer, err
 }
+
+// isUrl reports whether name is a remote repo url, which needs both a scheme and a host so absolute and windows paths stay local
 func isUrl(name string) bool {
-	_, err := url.ParseRequestURI(name)
-	return err == nil
+	u, err := url.Parse(name)
+	return err == nil && u.Scheme != "" && u.Host != ""
 }
 
 func newRegistryClient(certFile, keyFile, caFile string, insecureSkipTLSverify, plainHTTP bool) (*registry.Client, error) {
