@@ -122,9 +122,9 @@ func TestCacheBuildsOneVerifierPerConfig(t *testing.T) {
 	}
 
 	// Tlog: true alongside a key makes offlineWithKey false, so this build
-	// reaches cosign.TrustedRoot() -- a TUF fetch (cli/verify/common.go:191).
-	// Online it succeeds and SetLegacyClientsAndKeys then returns early at
-	// common.go:140 on co.TrustedMaterial != nil; offline SetTrustedMaterial
+	// reaches cosign.TrustedRoot(), a TUF fetch (setTrustedMaterial).
+	// Online it succeeds and setLegacyKeys then returns early
+	// on co.TrustedMaterial != nil; offline setTrustedMaterial
 	// only warns, leaving TrustedMaterial nil, and the build instead fails at
 	// GetRekorPubs. Asserting on the entry count rather than on the returned
 	// pointer holds either way: a failed build is still cached under its own
@@ -468,8 +468,8 @@ func (t *countingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 // appended is identical.
 //
 // WithRemoteOptions, which replaces ROpt wholesale, is the only thing that
-// works here: options.RegistryOptions.ClientOpts ends its list with
-// remote.Reuse(puller) (cli/options/registry.go:169), and a reused Puller
+// works here: registryClientOpts ends its list with
+// remote.Reuse(puller) (setup.go), and a reused Puller
 // captured its transport when it was built, so a remote.WithTransport appended
 // afterwards via WithMoreRemoteOptions is silently ignored. Dropping the
 // inherited remote.WithContext along with the Reuse is deliberate: requests
