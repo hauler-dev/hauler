@@ -143,13 +143,11 @@ func installGitHTTPClient(auth cloneAuth) error {
 	if auth.insecureSkipTLSVerify {
 		tr.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec
 	} else if auth.caFile != "" {
-		caTr, err := content.BuildTransport(false, auth.caFile)
+		pool, err := content.CAPool(auth.caFile)
 		if err != nil {
 			return err
 		}
-		if caHTTPTr, ok := caTr.(*http.Transport); ok && caHTTPTr.TLSClientConfig != nil {
-			tr.TLSClientConfig.RootCAs = caHTTPTr.TLSClientConfig.RootCAs
-		}
+		tr.TLSClientConfig.RootCAs = pool
 	}
 
 	cert, err := tls.LoadX509KeyPair(auth.certFile, auth.keyFile)

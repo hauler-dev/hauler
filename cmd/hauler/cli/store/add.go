@@ -546,7 +546,7 @@ func verifyAddImage(ctx context.Context, o *flags.AddImageOpts, ref string, rso 
 		return "", &verifyError{stage: "unable to parse image reference", err: err}
 	}
 
-	pinned, err := pinDigest(ctx, r, rso, ro)
+	pinned, err := pinDigest(ctx, r, rso, ro, o.InsecureSkipTLSVerify, o.CaFile)
 	if err != nil {
 		return "", &verifyError{stage: "unable to resolve image digest", err: err}
 	}
@@ -1178,8 +1178,8 @@ func resolveChartJobs(o *flags.SyncOpts, annotations map[string]string, manifest
 			}
 		}
 
-		// a CA file and skipping TLS verification are mutually exclusive: providing one forces verification on
-		insecureSkipTLSVerify := o.CaFile == "" && resolveBoolFlag(ch.InsecureSkipTLSVerify, annotations[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
+		// insecure resolves like any other bool flag, and the transport lets it win over a ca file only when both are set
+		insecureSkipTLSVerify := resolveBoolFlag(ch.InsecureSkipTLSVerify, annotations[consts.ImageAnnotationInsecureSkipTLSVerify] == "true", o.InsecureSkipTLSVerify, o.InsecureChanged)
 
 		jobs = append(jobs, chartJob{
 			cfg: ch,

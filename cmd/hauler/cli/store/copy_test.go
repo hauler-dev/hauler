@@ -163,6 +163,37 @@ func TestCopyCmd_Registry(t *testing.T) {
 	}
 }
 
+// A bad --ca-file must fail the copy, and --insecure must win by never reading it.
+func TestCopyCmd_Registry_CaFile(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	seedImage(t, srcHost, "test/copy", "v1")
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/copy:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	dstHost, _ := newTestRegistry(t)
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+		CaFile:        filepath.Join(t.TempDir(), "missing.pem"),
+	}
+	err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro)
+	if err == nil || !strings.Contains(err.Error(), "reading CA file") {
+		t.Fatalf("CopyCmd with a missing ca file returned %v, want a ca file error", err)
+	}
+
+	o.Insecure = true
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+		t.Fatalf("CopyCmd read the ca file even though insecure was set: %v", err)
+	}
+}
+
 // TestCopyCmd_Registry_OnlyFilter seeds two images in distinct repos, copies
 // with --only=repo1, and asserts only repo1 reaches the target.
 func TestCopyCmd_Registry_OnlyFilter(t *testing.T) {
