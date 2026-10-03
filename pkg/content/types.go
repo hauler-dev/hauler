@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"io"
 
@@ -24,6 +25,7 @@ type RegistryOptions struct {
 	Insecure  bool
 	Username  string
 	Password  string
+	RootCAs   *x509.CertPool
 }
 
 // ResolveName extracts the reference name from a descriptor's annotations

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +29,7 @@ import (
 	"helm.sh/helm/v4/pkg/registry"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/layer"
 )
 
@@ -96,6 +96,10 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	client.ChartPathOptions.CaFile = opts.CaFile
 	client.ChartPathOptions.InsecureSkipTLSVerify = opts.InsecureSkipTLSVerify
 	client.ChartPathOptions.PlainHTTP = opts.PlainHTTP
+	// insecureSkipTLSVerify wins over caFile, so clear it to keep helm's own getters from reading the ca file when both are set
+	if opts.InsecureSkipTLSVerify {
+		client.ChartPathOptions.CaFile = ""
+	}
 
 	registryClient, err := newRegistryClient(client.CertFile, client.KeyFile, client.CaFile,
 		client.InsecureSkipTLSVerify, client.PlainHTTP)
@@ -371,7 +375,7 @@ func newRegistryClientWithTLS(certFile, keyFile, caFile string, insecureSkipTLSv
 }
 
 // newTLSConfig constructs a *tls.Config from the given cert/key/CA files, mirroring the
-// behavior of helm's internal tlsutil.NewTLSConfig.
+// behavior of helm's internal tlsutil.NewTLSConfig, except the ca file adds to the system roots and is skipped when insecure.
 func newTLSConfig(certFile, keyFile, caFile string, insecureSkipTLSverify bool) (*tls.Config, error) {
 	config := &tls.Config{
 		InsecureSkipVerify: insecureSkipTLSverify,
@@ -393,14 +397,10 @@ func newTLSConfig(certFile, keyFile, caFile string, insecureSkipTLSverify bool) 
 		config.Certificates = []tls.Certificate{cert}
 	}
 
-	if caFile != "" {
-		caPEMBlock, err := os.ReadFile(caFile)
+	if caFile != "" && !insecureSkipTLSverify {
+		cp, err := content.CAPool(caFile)
 		if err != nil {
-			return nil, fmt.Errorf("can't read CA file: %q: %w", caFile, err)
-		}
-		cp := x509.NewCertPool()
-		if !cp.AppendCertsFromPEM(caPEMBlock) {
-			return nil, fmt.Errorf("failed to append certificates from pem block")
+			return nil, err
 		}
 		config.RootCAs = cp
 	}

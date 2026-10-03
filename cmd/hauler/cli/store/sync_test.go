@@ -1266,6 +1266,7 @@ func TestResolveImageJobs_InsecurePrecedence(t *testing.T) {
 	tests := []struct {
 		name       string
 		cliCaFile  string
+		cliIns     bool
 		cliChanged bool
 		annotation string
 		imageIns   bool
@@ -1274,14 +1275,16 @@ func TestResolveImageJobs_InsecurePrecedence(t *testing.T) {
 		{name: "per-image true when CLI unset", imageIns: true, want: true},
 		{name: "annotation true when CLI unset", annotation: "true", want: true},
 		{name: "explicit CLI false overrides annotation and per-image", cliChanged: true, annotation: "true", imageIns: true, want: false},
-		// a CA file forces verification on, overriding a per-image/annotation true
-		{name: "ca-file forces insecure off", cliCaFile: "/ca.pem", annotation: "true", imageIns: true, want: false},
+		// a cli ca file no longer forces insecure off, since the transport lets insecure win when both are set
+		{name: "ca-file keeps per-image and annotation insecure", cliCaFile: "/ca.pem", annotation: "true", imageIns: true, want: true},
+		{name: "ca-file keeps cli insecure", cliCaFile: "/ca.pem", cliIns: true, cliChanged: true, want: true},
+		{name: "ca-file alone stays secure", cliCaFile: "/ca.pem", want: false},
 		{name: "all unset stays false", want: false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &flags.SyncOpts{CaFile: tc.cliCaFile, InsecureChanged: tc.cliChanged}
+			o := &flags.SyncOpts{CaFile: tc.cliCaFile, InsecureSkipTLSVerify: tc.cliIns, InsecureChanged: tc.cliChanged}
 			a := map[string]string{}
 			if tc.annotation != "" {
 				a[consts.ImageAnnotationInsecureSkipTLSVerify] = tc.annotation
@@ -3448,5 +3451,23 @@ func TestSyncCmd_RemotePresigned_NoLogLeak(t *testing.T) {
 		if strings.Contains(logs.String(), secret) {
 			t.Errorf("logs contain %s:\n%s", secret, logs.String())
 		}
+	}
+}
+
+// A cli ca file must not force insecure off for files or charts either, matching images and every other command.
+func TestResolveFileAndChartJobs_CaFileKeepsInsecure(t *testing.T) {
+	o := &flags.SyncOpts{CaFile: "/ca.pem", InsecureSkipTLSVerify: true, InsecureChanged: true}
+
+	files := resolveFileJobs(o, nil, []v1.File{{Path: "https://example.com/install.sh"}})
+	if len(files) != 1 || !files[0].file.InsecureSkipTLSVerify || files[0].file.CaFile != "/ca.pem" {
+		t.Fatalf("file job lost insecure or the ca file: %+v", files)
+	}
+
+	charts, err := resolveChartJobs(o, nil, "", []v1.Chart{{Name: "example", RepoURL: "oci://example.com/charts"}})
+	if err != nil {
+		t.Fatalf("resolveChartJobs: %v", err)
+	}
+	if len(charts) != 1 || !charts[0].opts.ChartOpts.InsecureSkipTLSVerify || charts[0].opts.ChartOpts.CaFile != "/ca.pem" {
+		t.Fatalf("chart job lost insecure or the ca file: %+v", charts)
 	}
 }
