@@ -3452,6 +3452,160 @@ func TestSyncCmd_RemotePresigned_NoLogLeak(t *testing.T) {
 	}
 }
 
+// A remote manifest may only name remote files, while a local manifest keeps using local paths.
+func TestCheckRemoteFiles(t *testing.T) {
+	if err := checkRemoteFiles([]v1.File{{Path: "/etc/hosts"}}, false); err != nil {
+		t.Errorf("a local path from a local manifest should be allowed, got: %v", err)
+	}
+	for _, p := range []string{"https://example.com/install.sh", "http://example.com/install.sh", "https://user:token@example.com/f?X-Amz-Signature=abc"} {
+		if err := checkRemoteFiles([]v1.File{{Path: p}}, true); err != nil {
+			t.Errorf("remote file [%s] from a remote manifest should be allowed, got: %v", p, err)
+		}
+	}
+	for _, p := range []string{"/etc/hosts", "../secrets/id_ed25519", "secret.txt", "file:///etc/hosts", `C:\Users\me\secret.txt`, "https:///nohost", ""} {
+		if err := checkRemoteFiles([]v1.File{{Path: "https://example.com/ok"}, {Path: p}}, true); err == nil {
+			t.Errorf("local file [%s] from a remote manifest should be refused", p)
+		}
+	}
+}
+
+// A remote manifest may only name charts from remote repositories, without local credentials or files, while a local manifest is unchanged.
+func TestCheckRemoteCharts(t *testing.T) {
+	if err := checkRemoteCharts([]v1.Chart{{Name: "/charts/local.tgz", UsernameEnv: "U", PasswordEnv: "P", ValuesFiles: []string{"v.yaml"}}}, false); err != nil {
+		t.Errorf("a local chart from a local manifest should be allowed, got: %v", err)
+	}
+
+	good := map[string]v1.Chart{
+		"https repo":        {Name: "cert-manager", RepoURL: "https://charts.jetstack.io", Version: "v1.15.0"},
+		"oci repo":          {Name: "external-secrets", RepoURL: "oci://ghcr.io/external-secrets/charts"},
+		"oci name, no repo": {Name: "oci://ghcr.io/external-secrets/charts/external-secrets"},
+	}
+	for name, ch := range good {
+		if err := checkRemoteCharts([]v1.Chart{ch}, true); err != nil {
+			t.Errorf("%s: should be allowed from a remote manifest, got: %v", name, err)
+		}
+	}
+
+	bad := map[string]v1.Chart{
+		"local name, no repo": {Name: "/charts/local.tgz"},
+		"absolute repo path":  {Name: "local.tgz", RepoURL: "/charts"},
+		"relative repo path":  {Name: "local.tgz", RepoURL: "../charts"},
+		"file repo":           {Name: "local.tgz", RepoURL: "file:///charts"},
+		"username env":        {Name: "c", RepoURL: "https://example.com", UsernameEnv: "AWS_ACCESS_KEY_ID", PasswordEnv: "AWS_SECRET_ACCESS_KEY"},
+		"cert file":           {Name: "c", RepoURL: "https://example.com", CertFile: "/home/me/client.crt"},
+		"key file":            {Name: "c", RepoURL: "https://example.com", KeyFile: "/home/me/client.key"},
+		"ca file":             {Name: "c", RepoURL: "https://example.com", CaFile: "/home/me/ca.pem"},
+		"values files":        {Name: "c", RepoURL: "https://example.com", ValuesFiles: []string{"/home/me/values.yaml"}},
+	}
+	for name, ch := range bad {
+		if err := checkRemoteCharts([]v1.Chart{ch}, true); err == nil {
+			t.Errorf("%s: should be refused from a remote manifest", name)
+		}
+	}
+}
+
+// A refused remote manifest must store nothing and must not create the store its annotation names.
+func TestProcessContent_LocalFilesAndChartsRejectedFromRemoteManifest(t *testing.T) {
+	ctx := newTestContext(t)
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("secret"), 0o600); err != nil {
+		t.Fatalf("writing secret: %v", err)
+	}
+	absCharts, err := filepath.Abs(chartTestdataDir)
+	if err != nil {
+		t.Fatalf("resolving testdata: %v", err)
+	}
+
+	manifests := map[string]string{
+		"file":  fmt.Sprintf("apiVersion: content.hauler.cattle.io/v1\nkind: Files\nmetadata:\n  name: f\n  annotations:\n    %s: %%s\nspec:\n  files:\n    - path: %s\n", consts.AnnotationTargetStore, secret),
+		"chart": fmt.Sprintf("apiVersion: content.hauler.cattle.io/v1\nkind: Charts\nmetadata:\n  name: c\n  annotations:\n    %s: %%s\nspec:\n  charts:\n    - name: %s/rancher-cluster-templates-0.5.2.tgz\n", consts.AnnotationTargetStore, absCharts),
+	}
+	for name, tmpl := range manifests {
+		s := newTestStore(t)
+		target := filepath.Join(t.TempDir(), "annotated-store")
+		fi := writeManifestFile(t, fmt.Sprintf(tmpl, target))
+		o := newSyncOpts(s.Root)
+
+		err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, true)
+		if err == nil || !strings.Contains(err.Error(), "remote manifest") {
+			t.Fatalf("%s: expected a remote manifest refusal, got: %v", name, err)
+		}
+		assertArtifactNotInStore(t, s, "secret")
+		assertArtifactNotInStore(t, s, "rancher-cluster-templates")
+		if _, err := os.Stat(target); !os.IsNotExist(err) {
+			t.Fatalf("%s: the annotated store was created before the manifest was refused", name)
+		}
+	}
+}
+
+// --trust-remote-manifests lets a remote manifest use local files, charts, directories, and git repos like a local one, and logs that it did.
+func TestProcessContent_TrustRemoteManifests(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "trusted-secret.txt")
+	if err := os.WriteFile(secret, []byte("secret"), 0o600); err != nil {
+		t.Fatalf("writing file: %v", err)
+	}
+	absCharts, err := filepath.Abs(chartTestdataDir)
+	if err != nil {
+		t.Fatalf("resolving testdata: %v", err)
+	}
+	dir := newSyncDirFixture(t, t.TempDir(), "trusted-dir")
+	repo := newBareGitRepoFixture(t, "trusted.git")
+
+	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: f
+spec:
+  files:
+    - path: %s
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Charts
+metadata:
+  name: c
+spec:
+  charts:
+    - name: %s/rancher-cluster-templates-0.5.2.tgz
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Directories
+metadata:
+  name: d
+spec:
+  directories:
+    - path: %s
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Git
+metadata:
+  name: g
+spec:
+  git:
+    - path: %s
+`, secret, absCharts, dir, repo)
+
+	s := newTestStore(t)
+	o := newSyncOpts(s.Root)
+	if err := processContent(newTestContext(t), writeManifestFile(t, manifest), o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, true); err == nil {
+		t.Fatal("control failed: the remote manifest was accepted without --trust-remote-manifests")
+	}
+
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+	s = newTestStore(t)
+	o = newSyncOpts(s.Root)
+	o.TrustRemoteManifests = true
+	if err := processContent(ctx, writeManifestFile(t, manifest), o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, true); err != nil {
+		t.Fatalf("processContent with --trust-remote-manifests: %v", err)
+	}
+	for _, ref := range []string{"trusted-secret.txt", "rancher-cluster-templates", "trusted-dir", "trusted.git"} {
+		assertArtifactInStore(t, s, ref)
+	}
+	if !strings.Contains(logs.String(), "trusting remote manifest") {
+		t.Errorf("no trust warning was logged, got: %s", logs.String())
+	}
+}
+
 // A cli ca file must not force insecure off for files or charts either, matching images and every other command.
 func TestResolveFileAndChartJobs_CaFileKeepsInsecure(t *testing.T) {
 	o := &flags.SyncOpts{CaFile: "/ca.pem", InsecureSkipTLSVerify: true, InsecureChanged: true}

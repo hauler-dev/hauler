@@ -304,9 +304,13 @@ func resolveBoolFlag(item, annTrue, global, cliChanged bool) bool {
 	return global || item || annTrue
 }
 
-// processContent syncs every document in fi; remote marks a manifest fetched over the network, which may not reference local directories.
+// processContent syncs every document in fi; remote marks a manifest fetched over the network, which may not use local paths or credentials unless --trust-remote-manifests is set.
 func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts, targetStores map[string]*store.Layout, remote bool) error {
 	l := log.FromContext(ctx)
+	if remote && o.TrustRemoteManifests {
+		l.Warnf("trusting remote manifest [%s]... local paths and credentials are allowed", filepath.Base(fi.Name()))
+		remote = false
+	}
 
 	reader := yaml.NewYAMLReader(bufio.NewReader(fi))
 
@@ -340,6 +344,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
 					return err
 				}
+				if err := checkRemoteFiles(cfg.Spec.Files, remote); err != nil {
+					return err
+				}
 				a := cfg.GetAnnotations()
 				docStore, err := resolveTargetStore(ctx, a, s, rso, ro, targetStores, o.StoreChanged)
 				if err != nil {
@@ -363,7 +370,7 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			switch gvk.Version {
 			case "v1":
 				if remote {
-					return fmt.Errorf("refusing [kind=%s] from a remote manifest... directories are local only... sync from a local manifest instead", gvk.Kind)
+					return fmt.Errorf("refusing [kind=%s] from a remote manifest... directories are local only... sync from a local manifest or use --trust-remote-manifests", gvk.Kind)
 				}
 				var cfg v1.Directories
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
@@ -458,6 +465,9 @@ func processContent(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *stor
 			case "v1":
 				var cfg v1.Charts
 				if err := yaml.Unmarshal(doc, &cfg); err != nil {
+					return err
+				}
+				if err := checkRemoteCharts(cfg.Spec.Charts, remote); err != nil {
 					return err
 				}
 				a := cfg.GetAnnotations()
@@ -1352,10 +1362,10 @@ func resolveGitJobs(manifestDir string, repos []v1.GitRepo, remote bool, rso *fl
 		}
 		isURL := gitartifact.IsGitURL(r.Path)
 		if remote && !isURL {
-			return nil, fmt.Errorf("git repository [%s] must be a remote URL when synced from a remote manifest", r.Path)
+			return nil, fmt.Errorf("git repository [%s] must be a remote URL when synced from a remote manifest... use --trust-remote-manifests to allow", r.Path)
 		}
 		if remote && (r.UsernameEnv != "" || r.PasswordEnv != "" || r.SSHKey != "" || r.CertFile != "" || r.KeyFile != "" || r.CaFile != "") {
-			return nil, fmt.Errorf("git repository [%s] cannot use credentials from a remote manifest", audit.SanitizeURL(r.Path))
+			return nil, fmt.Errorf("git repository [%s] cannot use credentials from a remote manifest... use --trust-remote-manifests to allow", audit.SanitizeURL(r.Path))
 		}
 		if !isURL && !filepath.IsAbs(r.Path) {
 			r.Path = filepath.Join(manifestDir, r.Path)
@@ -1379,6 +1389,45 @@ func resolveGitJobs(manifestDir string, repos []v1.GitRepo, remote bool, rso *fl
 		}})
 	}
 	return jobs, nil
+}
+
+// checkRemoteFiles refuses local file paths from a remote manifest, which would otherwise copy any readable local file into the store.
+func checkRemoteFiles(files []v1.File, remote bool) error {
+	if !remote {
+		return nil
+	}
+	for _, f := range files {
+		u, err := url.Parse(f.Path)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("file [%s] must be a remote URL when synced from a remote manifest... use --trust-remote-manifests to allow", audit.SanitizeURL(f.Path))
+		}
+	}
+	return nil
+}
+
+// checkRemoteCharts refuses local charts, credentials, and local files from a remote manifest, the same way git repositories are checked.
+func checkRemoteCharts(charts []v1.Chart, remote bool) error {
+	if !remote {
+		return nil
+	}
+	for _, ch := range charts {
+		if !isRemoteChart(ch) {
+			return fmt.Errorf("chart [%s] must come from a remote repository when synced from a remote manifest... use --trust-remote-manifests to allow", audit.SanitizeURL(ch.Name))
+		}
+		if ch.UsernameEnv != "" || ch.PasswordEnv != "" || ch.CertFile != "" || ch.KeyFile != "" || ch.CaFile != "" || len(ch.ValuesFiles) > 0 {
+			return fmt.Errorf("chart [%s] cannot use credentials or local files from a remote manifest... use --trust-remote-manifests to allow", audit.SanitizeURL(ch.Name))
+		}
+	}
+	return nil
+}
+
+// isRemoteChart reports whether ch is pulled from a repository rather than read from a local path, which helm only does when the repo url is empty.
+func isRemoteChart(ch v1.Chart) bool {
+	if ch.RepoURL == "" {
+		return strings.HasPrefix(ch.Name, "oci://")
+	}
+	u, err := url.Parse(ch.RepoURL)
+	return err == nil && u.Scheme != "" && u.Host != ""
 }
 
 // resolveDirectoryJobs resolves each directory's path against manifestDir and rejects any entry that isn't a local directory.
