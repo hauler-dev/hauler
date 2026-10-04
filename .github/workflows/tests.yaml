@@ -222,6 +222,38 @@ jobs:
           # verify existing registry associated with rewritten image in store
           hauler store info | grep 'ghcr.io/custom-path/nginx'
 
+      - name: Verify - hauler store add image --key
+        run: |
+          # verify via key with the classic signature and the new bundle format
+          hauler store add image ghcr.io/hauler-dev/cosign-test-classic:latest --key testdata/cosign.pub
+          hauler store add image ghcr.io/hauler-dev/cosign-test-bundle:latest --key testdata/cosign.pub
+          # verify via key without the transparency log
+          hauler store add image ghcr.io/hauler-dev/cosign-test-notlog:latest --key testdata/cosign.pub
+          # verify via key with the transparency log
+          hauler store add image ghcr.io/hauler-dev/cosign-test-classic:latest --key testdata/cosign.pub --use-tlog-verify
+          hauler store add image ghcr.io/hauler-dev/cosign-test-bundle:latest --key testdata/cosign.pub --use-tlog-verify
+          # verify failure with the wrong key, an unsigned image, and no transparency log entry
+          openssl ecparam -name prime256v1 -genkey -noout | openssl ec -pubout -out other.pub
+          ! hauler store add image ghcr.io/hauler-dev/cosign-test-classic:latest --key other.pub || exit 1
+          ! hauler store add image ghcr.io/hauler-dev/cosign-test-bundle:latest --key other.pub || exit 1
+          ! hauler store add image ghcr.io/hauler-dev/library/nginx:1.25-alpine --key testdata/cosign.pub || exit 1
+          ! hauler store add image ghcr.io/hauler-dev/cosign-test-notlog:latest --key testdata/cosign.pub --use-tlog-verify || exit 1
+          rm -f other.pub
+
+      - name: Verify - hauler store add image --certificate-identity
+        run: |
+          # verify via keyless with the certificate identity
+          hauler store add image ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0 --platform linux/amd64 --certificate-identity https://github.com/kubewarden/kubewarden-controller/.github/workflows/release.yml@refs/tags/v1.35.0 --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          # verify via keyless with the certificate identity regexp and github workflow repository
+          hauler store add image ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0 --platform linux/amd64 --certificate-identity-regexp '^https://github.com/kubewarden/kubewarden-controller/' --certificate-oidc-issuer-regexp '^https://token\.actions\.githubusercontent\.com$' --certificate-github-workflow-repository kubewarden/kubewarden-controller
+          # verify failure with the wrong identity, issuer, or workflow repository
+          ! hauler store add image ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0 --platform linux/amd64 --certificate-identity-regexp '^https://github.com/kubewarden/policy-server/' --certificate-oidc-issuer https://token.actions.githubusercontent.com || exit 1
+          ! hauler store add image ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0 --platform linux/amd64 --certificate-identity-regexp '^https://github.com/kubewarden/' --certificate-oidc-issuer https://accounts.google.com || exit 1
+          ! hauler store add image ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0 --platform linux/amd64 --certificate-identity-regexp '^https://github.com/kubewarden/' --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-repository kubewarden/policy-server || exit 1
+          # verify failure with an unsigned image and without an issuer
+          ! hauler store add image ghcr.io/hauler-dev/library/busybox:stable --platform linux/amd64 --certificate-identity-regexp '.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com || exit 1
+          ! hauler store add image ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0 --platform linux/amd64 --certificate-identity-regexp '^https://github.com/kubewarden/' || exit 1
+
       - name: Verify - hauler store copy
         run: |
           hauler store copy --help
@@ -355,6 +387,17 @@ jobs:
           hauler store sync --image-txt https://raw.githubusercontent.com/hauler-dev/hauler/main/testdata/images.txt
           # confirm images are present in the store
           hauler store info | grep 'busybox'
+
+      - name: Verify - hauler store sync (signatures)
+        run: |
+          # verify via key and keyless from manifest fields and annotations
+          hauler store sync --filename testdata/hauler-manifest-signatures.yaml
+          # verify failure when cli flags override the manifest
+          openssl ecparam -name prime256v1 -genkey -noout | openssl ec -pubout -out other.pub
+          ! hauler store sync --filename testdata/hauler-manifest-signatures.yaml --key other.pub || exit 1
+          ! hauler store sync --filename testdata/hauler-manifest-signatures.yaml --use-tlog-verify || exit 1
+          ! hauler store sync --filename testdata/hauler-manifest-signatures.yaml --certificate-github-workflow-repository kubewarden/policy-server || exit 1
+          rm -f other.pub
 
       - name: Verify - hauler store serve
         run: |

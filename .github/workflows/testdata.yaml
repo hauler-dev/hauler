@@ -34,6 +34,11 @@ jobs:
       - name: Fetch Hauler Binary
         run: curl -sfL https://get.hauler.dev | bash
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.3
+
       - name: Login to GitHub Container Registry and Docker Hub Container Registry
         run: |
           hauler login ghcr.io --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }}
@@ -47,10 +52,24 @@ jobs:
           hauler store add image busybox:stable
           hauler store add image gcr.io/distroless/base
           hauler store add image gcr.io/distroless/base@sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5
+          hauler store add image ghcr.io/kubewarden/audit-scanner:v1.35.0
 
       - name: Push Store Contents to Hauler-Dev GitHub Container Registry
         run: |
           hauler store copy registry://ghcr.io/${{ github.repository_owner }}
+
+      - name: Sign Images for Tests
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          hauler store --store cosign-test-store add image ghcr.io/${{ github.repository_owner }}/library/busybox:stable --platform linux/amd64 --rewrite cosign-test-classic:latest
+          hauler store --store cosign-test-store add image ghcr.io/${{ github.repository_owner }}/library/busybox:stable --platform linux/amd64 --rewrite cosign-test-bundle:latest
+          hauler store --store cosign-test-store add image ghcr.io/${{ github.repository_owner }}/library/busybox:stable --platform linux/amd64 --rewrite cosign-test-notlog:latest
+          hauler store --store cosign-test-store copy registry://ghcr.io/${{ github.repository_owner }}
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false --new-bundle-format=false ghcr.io/${{ github.repository_owner }}/cosign-test-classic:latest
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false ghcr.io/${{ github.repository_owner }}/cosign-test-bundle:latest
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false --new-bundle-format=false --tlog-upload=false ghcr.io/${{ github.repository_owner }}/cosign-test-notlog:latest
 
       - name: Verify Hauler Store Contents
         run: hauler store info

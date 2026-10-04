@@ -1,0 +1,45 @@
+# hauler manifest
+# api version of v1
+apiVersion: content.hauler.cattle.io/v1
+kind: Images
+metadata:
+  name: hauler-content-images-signatures-example
+spec:
+  images:
+    - name: ghcr.io/hauler-dev/cosign-test-classic:latest
+      key: testdata/cosign.pub
+      use-tlog-verify: true
+    - name: ghcr.io/hauler-dev/cosign-test-bundle:latest
+      key: testdata/cosign.pub
+      use-tlog-verify: true
+    - name: ghcr.io/hauler-dev/cosign-test-notlog:latest
+      key: testdata/cosign.pub
+    - name: ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0
+      platform: linux/amd64
+      certificate-identity-regexp: ^https://github.com/kubewarden/kubewarden-controller/
+      certificate-oidc-issuer-regexp: ^https://token\.actions\.githubusercontent\.com$
+      certificate-github-workflow-repository: kubewarden/kubewarden-controller
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Images
+metadata:
+  name: hauler-content-images-signatures-key-annotations-example
+  annotations:
+    hauler.dev/key: testdata/cosign.pub
+    hauler.dev/use-tlog-verify: "true"
+spec:
+  images:
+    - name: ghcr.io/hauler-dev/cosign-test-classic:latest
+    - name: ghcr.io/hauler-dev/cosign-test-bundle:latest
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Images
+metadata:
+  name: hauler-content-images-signatures-keyless-annotations-example
+  annotations:
+    hauler.dev/platform: linux/amd64
+    hauler.dev/certificate-identity: https://github.com/kubewarden/kubewarden-controller/.github/workflows/release.yml@refs/tags/v1.35.0
+    hauler.dev/certificate-oidc-issuer: https://token.actions.githubusercontent.com
+spec:
+  images:
+    - name: ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0
