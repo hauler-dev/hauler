@@ -23,7 +23,7 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 
 	f.IntVarP(&o.Port, "port", "p", consts.DefaultRegistryPort, "(Optional) Set the port to use for incoming connections")
-	f.StringVar(&o.RootDir, "directory", consts.DefaultRegistryRootDir, "(Optional) Directory to use for backend. Defaults to $PWD/registry")
+	f.StringVar(&o.RootDir, "directory", consts.DefaultRegistryRootDir, "(Optional) Directory to use for backend. (defaults to $PWD/registry)")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "(Optional) Location of the registry config file (overrides all flags)")
 	f.BoolVar(&o.ReadOnly, "readonly", true, "(Optional) Run the registry as readonly")
 	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
