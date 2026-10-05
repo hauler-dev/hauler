@@ -1,12 +1,22 @@
 package store
 
 import (
+	"io"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/distribution/distribution/v3/registry/handlers"
+	goname "github.com/google/go-containerregistry/pkg/name"
+	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/internal/server"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
@@ -93,6 +103,9 @@ func TestDefaultRegistryConfig(t *testing.T) {
 	if fsParams["rootdirectory"] != rootDir {
 		t.Errorf("storage.filesystem.rootdirectory = %v, want %q", fsParams["rootdirectory"], rootDir)
 	}
+	if cfg.Storage[server.StoreDriverName] != nil {
+		t.Errorf("storage.%s set without --in-place", server.StoreDriverName)
+	}
 
 	// URL allow rules.
 	if len(cfg.Validation.Manifests.URLs.Allow) == 0 {
@@ -109,6 +122,25 @@ func TestDefaultRegistryConfig(t *testing.T) {
 	}
 	if cfg.Tags.MaxTags != consts.DefaultRegistryTagsMaxEntries {
 		t.Errorf("Tags.MaxTags = %d, want %d", cfg.Tags.MaxTags, consts.DefaultRegistryTagsMaxEntries)
+	}
+}
+
+// --in-place swaps the filesystem driver for the in-place store driver.
+func TestDefaultRegistryConfig_InPlace(t *testing.T) {
+	rootDir := t.TempDir()
+	o := &flags.ServeRegistryOpts{RootDir: rootDir, InPlace: true}
+	rso := defaultRootOpts(rootDir)
+
+	cfg := DefaultRegistryConfig(o, rso, defaultCliOpts())
+	if cfg.Storage["filesystem"] != nil {
+		t.Error("storage.filesystem should not be set with --in-place")
+	}
+	params := cfg.Storage[server.StoreDriverName]
+	if params == nil {
+		t.Fatalf("storage.%s not set", server.StoreDriverName)
+	}
+	if params["rootdirectory"] != rootDir || params["store"] != rso.StoreDir {
+		t.Errorf("storage.%s = %v, want rootdirectory %q and store %q", server.StoreDriverName, params, rootDir, rso.StoreDir)
 	}
 }
 
@@ -249,4 +281,156 @@ func TestExtractGitRepos_SkipsUnsafeName(t *testing.T) {
 	if _, ok := repos["good"]; !ok {
 		t.Errorf("expected the valid repo to still be served, got %v", repos)
 	}
+}
+
+// TestServeRegistry_InPlace serves a store through the hauler storage driver (no copy) and
+// pulls back an image, its cosign sig, a multi-arch index and a file, then checks nothing
+// was written to the registry directory.
+func TestServeRegistry_InPlace(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	srcImg := seedImage(t, srcHost, "test/signed", "v1")
+	seedCosignV2Artifacts(t, srcHost, "test/signed", srcImg)
+	seedIndex(t, srcHost, "test/multi", "v2")
+	fileURL := seedFileInHTTPServer(t, "data.txt", "hello from the store")
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if _, err := s.AddImage(ctx, srcHost+"/test/signed:v1", "", false, "", false, ""); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/multi:v2"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+	if err := storeFile(ctx, s, v1.File{Path: fileURL}, ro, rso); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	rootDir := t.TempDir()
+	o := &flags.ServeRegistryOpts{RootDir: rootDir, ReadOnly: true, InPlace: true}
+	srv := httptest.NewServer(handlers.NewApp(ctx, DefaultRegistryConfig(o, rso, ro)))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	opts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+	pullImage := func(ref string) gcrv1.Image {
+		t.Helper()
+		r, err := goname.ParseReference(host+"/"+ref, goname.Insecure)
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err := remote.Image(r, opts...)
+		if err != nil {
+			t.Fatalf("pull %s: %v", ref, err)
+		}
+		layers, err := img.Layers()
+		if err != nil {
+			t.Fatalf("layers %s: %v", ref, err)
+		}
+		for _, l := range layers {
+			rc, err := l.Compressed() // remote verifies the digest on read
+			if err != nil {
+				t.Fatalf("layer %s: %v", ref, err)
+			}
+			if _, err := io.Copy(io.Discard, rc); err != nil {
+				t.Fatalf("read layer %s: %v", ref, err)
+			}
+			rc.Close()
+		}
+		return img
+	}
+
+	pullImage("test/signed:v1")
+	hash, err := srcImg.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pullImage("test/signed:" + strings.ReplaceAll(hash.String(), ":", "-") + ".sig")
+
+	idxRef, _ := goname.ParseReference(host+"/test/multi:v2", goname.Insecure)
+	idx, err := remote.Index(idxRef, opts...)
+	if err != nil {
+		t.Fatalf("pull index: %v", err)
+	}
+	im, err := idx.IndexManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range im.Manifests {
+		pullImage("test/multi@" + m.Digest.String())
+	}
+
+	fileImg := pullImage(consts.DefaultNamespace + "/data.txt:latest")
+	layers, _ := fileImg.Layers()
+	rc, err := layers[0].Compressed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(got) != "hello from the store" {
+		t.Errorf("file content = %q", got)
+	}
+
+	reg, _ := goname.NewRegistry(host, goname.Insecure)
+	repos, err := remote.Catalog(ctx, reg, opts...)
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	for _, want := range []string{"test/signed", "test/multi", consts.DefaultNamespace + "/data.txt"} {
+		if !slices.Contains(repos, want) {
+			t.Errorf("catalog %v missing %s", repos, want)
+		}
+	}
+
+	if entries, _ := os.ReadDir(rootDir); len(entries) != 0 {
+		t.Errorf("registry directory should stay empty, has %d entries", len(entries))
+	}
+}
+
+// TestServeRegistry_InPlace_Writable checks --readonly=false: new pushes land in the registry
+// directory, and re-pushing content the store already serves succeeds.
+func TestServeRegistry_InPlace_Writable(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	stored := seedImage(t, srcHost, "test/stored", "v1")
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/stored:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	rootDir := t.TempDir()
+	o := &flags.ServeRegistryOpts{RootDir: rootDir, ReadOnly: false, InPlace: true}
+	srv := httptest.NewServer(handlers.NewApp(ctx, DefaultRegistryConfig(o, rso, ro)))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	opts := []remote.Option{remote.WithTransport(srv.Client().Transport)}
+
+	pushed := seedImage(t, host, "test/pushed", "v1", opts...)
+	if err := remote.Write(mustRef(t, host+"/test/stored:v1"), stored, opts...); err != nil {
+		t.Errorf("re-push of stored image: %v", err)
+	}
+
+	pushedDigest, _ := pushed.Digest()
+	desc, err := remote.Head(mustRef(t, host+"/test/pushed:v1"), opts...)
+	if err != nil || desc.Digest != pushedDigest {
+		t.Fatalf("pushed image not served: %v", err)
+	}
+	if entries, _ := os.ReadDir(rootDir); len(entries) == 0 {
+		t.Error("push should have written to the registry directory")
+	}
+}
+
+func mustRef(t *testing.T, s string) goname.Reference {
+	t.Helper()
+	r, err := goname.ParseReference(s, goname.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }

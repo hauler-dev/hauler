@@ -210,24 +210,13 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 		// Shared across every per-artifact RegistryTarget below to keep connections pooled.
 		registryClient := content.NewRegistryHTTPClient(components[1], registryOpts)
 
-		// Pre-build a map from base ref → image manifest digest so that sig/att/sbom
-		// descriptors (which store the base image ref, not the cosign tag) can be routed
-		// to the correct destination tag using the cosign tag convention.
-		refDigest := make(map[string]string)
-		if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
-			kind := desc.Annotations[consts.KindAnnotationName]
-			if kind == consts.KindAnnotationImage || kind == consts.KindAnnotationIndex {
-				if baseRef := desc.Annotations[ocispec.AnnotationRefName]; baseRef != "" {
-					refDigest[baseRef] = desc.Digest.String()
-				}
-			}
-			return nil
-		}); err != nil {
+		refDigest, err := content.SubjectDigests(s.OCI)
+		if err != nil {
 			return err
 		}
 
 		var fatalErr error
-		err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
+		err = s.Walk(func(reference string, desc ocispec.Descriptor) error {
 			if fatalErr != nil {
 				return nil
 			}
@@ -254,32 +243,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				}
 			}
 
-			// For sig/att/sbom descriptors, derive the cosign tag from the parent
-			// image's manifest digest rather than using AnnotationRefName directly.
-			destRef := baseRef
-			kind := desc.Annotations[consts.KindAnnotationName]
-			if ext, isSigKind := consts.SigKindExt(kind); isSigKind {
-				// Prefer the subject recorded at add time -- a per-platform sig must
-				// land on its own subject's tag, not the top-level index's. Old
-				// archives predate the annotation and only ever hold top-level
-				// artifacts, so the pre-pass map remains correct for them.
-				subject := desc.Annotations[consts.SubjectDigestAnnotation]
-				if subject == "" {
-					subject = refDigest[baseRef]
-				}
-				if subject != "" {
-					digestTag := strings.ReplaceAll(subject, ":", "-")
-					repo := repoFromBaseRef(baseRef)
-					destRef = repo + ":" + digestTag + ext
-				}
-			} else if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
-				// OCI 1.1 referrer (cosign v3 new-bundle-format): push by manifest digest so
-				// the target registry wires it up via the OCI Referrers API (subject field).
-				// For registries that don't support the Referrers API natively, the manifest
-				// is still pushed intact... the subject linkage depends on registry support.
-				repo := repoFromBaseRef(baseRef)
-				destRef = repo + "@" + desc.Digest.String()
-			}
+			destRef := content.RegistryDestRef(desc, refDigest)
 
 			toRef, err := content.RewriteRefToRegistry(destRef, components[1])
 			if err != nil {
@@ -344,22 +308,6 @@ func resolveCopyCtype(ctx context.Context, s *store.Layout, desc ocispec.Descrip
 	}
 
 	return resolveCtype(desc, m.Config.MediaType), nil
-}
-
-// repoFromBaseRef strips any digest and/or tag from a stored ref name, yielding
-// just the repository path. AnnotationRefName never contains a registry host, so
-// the only colons come from a tag or the digest algorithm separator. A digest-only
-// ref (myorg/myimage@sha256:<hex>) must strip the "@sha256:<hex>" suffix rather
-// than the last colon, which would otherwise land inside the digest (#667).
-func repoFromBaseRef(baseRef string) string {
-	repo := baseRef
-	if at := strings.Index(repo, "@"); at != -1 {
-		repo = repo[:at]
-	}
-	if colon := strings.LastIndex(repo, ":"); colon != -1 {
-		repo = repo[:colon]
-	}
-	return repo
 }
 
 // extractManifestContent extracts a manifest's layers through a mapper target

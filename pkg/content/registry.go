@@ -13,6 +13,7 @@ import (
 	goname "github.com/google/go-containerregistry/pkg/name"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/reference"
 )
 
@@ -186,4 +187,65 @@ func RewriteRefToRegistry(sourceRef string, targetRegistry string) (string, erro
 	default:
 		return fmt.Sprintf("%s/%s:latest", targetRegistry, repo), nil
 	}
+}
+
+// SubjectDigests maps each stored image/index base ref to its digest so sig/att/sbom
+// descriptors (which store the base image ref, not the cosign tag) can be routed to the
+// correct destination tag using the cosign tag convention.
+func SubjectDigests(o *OCI) (map[string]string, error) {
+	subjects := make(map[string]string)
+	err := o.Walk(func(_ string, desc ocispec.Descriptor) error {
+		kind := desc.Annotations[consts.KindAnnotationName]
+		if kind == consts.KindAnnotationImage || kind == consts.KindAnnotationIndex {
+			if baseRef := desc.Annotations[ocispec.AnnotationRefName]; baseRef != "" {
+				subjects[baseRef] = desc.Digest.String()
+			}
+		}
+		return nil
+	})
+	return subjects, err
+}
+
+// RegistryDestRef returns the registry-relative ref (no host) a stored descriptor is published
+// under, given the subjects map from SubjectDigests. Callers must skip descriptors with no
+// AnnotationRefName before calling.
+func RegistryDestRef(desc ocispec.Descriptor, subjects map[string]string) string {
+	baseRef := desc.Annotations[ocispec.AnnotationRefName]
+	kind := desc.Annotations[consts.KindAnnotationName]
+	if ext, isSigKind := consts.SigKindExt(kind); isSigKind {
+		// Prefer the subject recorded at add time -- a per-platform sig must
+		// land on its own subject's tag, not the top-level index's. Old
+		// archives predate the annotation and only ever hold top-level
+		// artifacts, so the subjects map remains correct for them.
+		subject := desc.Annotations[consts.SubjectDigestAnnotation]
+		if subject == "" {
+			subject = subjects[baseRef]
+		}
+		if subject != "" {
+			return RepoFromBaseRef(baseRef) + ":" + strings.ReplaceAll(subject, ":", "-") + ext
+		}
+	} else if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
+		// OCI 1.1 referrer (cosign v3 new-bundle-format): push by manifest digest so
+		// the target registry wires it up via the OCI Referrers API (subject field).
+		// For registries that don't support the Referrers API natively, the manifest
+		// is still pushed intact... the subject linkage depends on registry support.
+		return RepoFromBaseRef(baseRef) + "@" + desc.Digest.String()
+	}
+	return baseRef
+}
+
+// RepoFromBaseRef strips any digest and/or tag from a stored ref name, yielding
+// just the repository path. AnnotationRefName never contains a registry host, so
+// the only colons come from a tag or the digest algorithm separator. A digest-only
+// ref (myorg/myimage@sha256:<hex>) must strip the "@sha256:<hex>" suffix rather
+// than the last colon, which would otherwise land inside the digest (#667).
+func RepoFromBaseRef(baseRef string) string {
+	repo := baseRef
+	if at := strings.Index(repo, "@"); at != -1 {
+		repo = repo[:at]
+	}
+	if colon := strings.LastIndex(repo, ":"); colon != -1 {
+		repo = repo[:colon]
+	}
+	return repo
 }
