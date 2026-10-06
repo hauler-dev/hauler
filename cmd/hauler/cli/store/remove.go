@@ -62,27 +62,13 @@ func artifactType(ctx context.Context, s *store.Layout, desc ocispec.Descriptor)
 	}
 }
 
-func formatReference(ref string) string {
-	tagIdx := strings.LastIndex(ref, ":")
-	if tagIdx == -1 {
+// formatReference splits a store key of "<ref>-<kind>" into "<ref> [<kind>]", cutting at the kind itself since tags can contain dashes.
+func formatReference(ref, kind string) string {
+	base, ok := strings.CutSuffix(ref, "-"+kind)
+	if kind == "" || !ok || base == "" {
 		return ref
 	}
-
-	dashIdx := strings.Index(ref[tagIdx+1:], "-")
-	if dashIdx == -1 {
-		return ref
-	}
-
-	dashIdx = tagIdx + 1 + dashIdx
-
-	base := ref[:dashIdx]
-	suffix := ref[dashIdx+1:]
-
-	if base == "" || suffix == "" {
-		return ref
-	}
-
-	return fmt.Sprintf("%s [%s]", base, suffix)
+	return fmt.Sprintf("%s [%s]", base, kind)
 }
 
 func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref string, ro *flags.CliRootOpts, rso *flags.StoreRootOpts) error {
@@ -122,7 +108,7 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	if len(matches) >= 1 {
 		l.Infof("found %d matching references:", len(matches))
 		for _, m := range matches {
-			l.Infof("  - [%s]", formatReference(m.reference))
+			l.Infof("  - [%s]", formatReference(m.reference, m.desc.Annotations[consts.KindAnnotationName]))
 		}
 	}
 
@@ -154,7 +140,7 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 	// remove artifact(s)
 	for _, m := range matches {
 		if err := s.RemoveArtifact(ctx, m.reference, m.desc); err != nil {
-			return fmt.Errorf("failed to remove artifact [%s]: %w", formatReference(m.reference), err)
+			return fmt.Errorf("failed to remove artifact [%s]: %w", formatReference(m.reference, m.desc.Annotations[consts.KindAnnotationName]), err)
 		}
 
 		if auditLevel(ro) != "none" {
@@ -188,7 +174,7 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 			l.Debugf("generated audit id of [none]")
 		}
 
-		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference), m.desc.MediaType, m.desc.Digest.String())
+		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference, m.desc.Annotations[consts.KindAnnotationName]), m.desc.MediaType, m.desc.Digest.String())
 	}
 
 	// clean up unreferenced blobs
