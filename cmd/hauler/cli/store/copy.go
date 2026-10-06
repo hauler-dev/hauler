@@ -106,9 +106,8 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 					}
 					manifestRC.Close()
 
-					// Skip images - only extract files and charts
-					if m.Config.MediaType == consts.DockerConfigJSON ||
-						m.Config.MediaType == ocispec.MediaTypeImageConfig {
+					// Skip images - only extract files and charts, including files shipped with an image config (i.e. rke2 binaries)
+					if isContainerImageManifest(m) {
 						l.Debugf("skipping image manifest in index [%s]", reference)
 						continue
 					}
@@ -150,9 +149,8 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 					return nil
 				}
 
-				// Skip images - only extract files and charts for directory targets
-				if m.Config.MediaType == consts.DockerConfigJSON ||
-					m.Config.MediaType == ocispec.MediaTypeImageConfig {
+				// Skip images - only extract files and charts for directory targets, including files shipped with an image config (i.e. rke2 binaries)
+				if isContainerImageManifest(m) {
 					rc.Close()
 					l.Debugf("skipping image [%s] for directory target", reference)
 					return nil
