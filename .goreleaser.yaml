@@ -95,6 +95,9 @@ homebrew_casks:
     description: "Hauler: Airgap Swiss Army Knife"
     binaries:
       - hauler
+    conflicts:
+      - cask: hauler
+      - cask: hauler-dev
     hooks:
       post:
         install: |
