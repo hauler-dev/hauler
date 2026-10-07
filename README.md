@@ -57,6 +57,10 @@ curl -sfL https://get.hauler.dev | bash
 # installs latest release
 brew tap hauler-dev/homebrew-tap
 brew install hauler
+
+# installs latest release, release candidate, or dev build
+brew tap hauler-dev/homebrew-tap
+brew install hauler-dev
 ```
 
 ### Windows
@@ -69,6 +73,7 @@ irm https://get.hauler.dev/install.ps1 | iex
 ## Acknowledgements
 
 `Hauler` wouldn't be possible without the open-source community, but there are a few projects that stand out:
+
 - [containerd](https://github.com/containerd/containerd)
 - [go-containerregistry](https://github.com/google/go-containerregistry)
 - [cosign](https://github.com/sigstore/cosign)
