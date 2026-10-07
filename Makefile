@@ -50,7 +50,7 @@ test:
 vulns:
 	govulncheck $(GO_FILES) > $(GO_VULNCHECKS) 2>&1 || true
 	curl -fsSL -o rancher.openvex.json.gz https://raw.githubusercontent.com/rancher/vexhub/refs/heads/main/reports/rancher.openvex.json.gz && gunzip -f rancher.openvex.json.gz || true
-	trivy fs --vex rancher.openvex.json --skip-files rancher.openvex.json . > $(TRIVY_RESULTS) 2>&1 || true
+	trivy fs --vex rancher.openvex.json --skip-files rancher.openvex.json --show-suppressed . > $(TRIVY_RESULTS) 2>&1 || true
 	rm rancher.openvex.json || true
 
 # cleanup artifacts
