@@ -53,6 +53,16 @@ vulns:
 	trivy fs --vex rancher.openvex.json --skip-files rancher.openvex.json --show-suppressed . > $(TRIVY_RESULTS) 2>&1 || true
 	rm rancher.openvex.json || true
 
+# check for dependency and go updates
+outdated:
+	go list -m -u -f '{{if and .Update (not .Indirect)}}{{.Path}} [{{.Version}}] -> [{{.Update.Version}}]{{end}}' all
+	@echo "go [$$(awk '/^go /{print $$2}' go.mod)] -> [$$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1 | sed 's/^go//')]"
+
+# bump direct dependencies to their latest versions
+bump-outdated:
+	go get $$(go list -m -f '{{if not (or .Indirect .Main)}}{{.Path}}@latest{{end}}' all)
+	go mod tidy
+
 # cleanup artifacts
 clean:
 	rm -rf $(BIN_DIRECTORY) $(DIST_DIRECTORY) $(GO_COVERPROFILE) $(GO_VULNCHECKS) $(TRIVY_RESULTS)
