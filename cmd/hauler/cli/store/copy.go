@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/errdefs"
+	"github.com/google/go-containerregistry/pkg/authn"
+	goname "github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
@@ -275,8 +280,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			} else if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
 				// OCI 1.1 referrer (cosign v3 new-bundle-format): push by manifest digest so
 				// the target registry wires it up via the OCI Referrers API (subject field).
-				// For registries that don't support the Referrers API natively, the manifest
-				// is still pushed intact... the subject linkage depends on registry support.
+				// linkReferrer below adds the fallback tag for registries without the API.
 				repo := repoFromBaseRef(baseRef)
 				destRef = repo + "@" + desc.Digest.String()
 			}
@@ -309,6 +313,15 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				return nil
 			}
 			l.Infof("%s: digest: %s size: %d", toRef, pushed.Digest, pushed.Size)
+			if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
+				if err := linkReferrer(ctx, s, desc, toRef, o.PlainHTTP, registryClient); err != nil {
+					if !ignoreErrors {
+						fatalErr = fmt.Errorf("failed to link referrer [%s]: %w", toRef, err)
+						return nil
+					}
+					l.Warnf("failed to link referrer [%s]: %v", toRef, err)
+				}
+			}
 			return nil
 		})
 		if fatalErr != nil {
@@ -324,6 +337,40 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 
 	l.Infof("copied artifacts to [%s]", components[1])
 	return nil
+}
+
+// rawManifest lets go-containerregistry put a manifest from the store byte for byte.
+type rawManifest struct {
+	raw       []byte
+	mediaType string
+}
+
+func (m rawManifest) RawManifest() ([]byte, error) { return m.raw, nil }
+func (m rawManifest) MediaType() (gvtypes.MediaType, error) {
+	return gvtypes.MediaType(m.mediaType), nil
+}
+
+// linkReferrer puts a pushed referrer's manifest again through go-containerregistry, which adds it to the subject's sha256-<hex> fallback tag on registries without the referrers API so clients like cosign can find it.
+func linkReferrer(ctx context.Context, s *store.Layout, desc ocispec.Descriptor, toRef string, plainHTTP bool, client *http.Client) error {
+	rc, err := s.Fetch(ctx, desc)
+	if err != nil {
+		return err
+	}
+	raw, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		return err
+	}
+
+	var nameOpts []goname.Option
+	if plainHTTP {
+		nameOpts = append(nameOpts, goname.Insecure)
+	}
+	ref, err := goname.ParseReference(toRef, nameOpts...)
+	if err != nil {
+		return err
+	}
+	return remote.Put(ref, rawManifest{raw: raw, mediaType: desc.MediaType}, remote.WithContext(ctx), remote.WithTransport(client.Transport), remote.WithAuthFromKeychain(authn.DefaultKeychain))
 }
 
 // resolveCopyCtype classifies desc the same way `store info` does, fetching and decoding its manifest unless the kind annotation alone already identifies a sig/att/sbom/referrer (KindAnnotationName's "image"/"imageIndex" values are set generically by AddArtifact for any top-level artifact, not just real images, so they can't be trusted to skip the fetch the way a sig/att/sbom/referrer kind can).
