@@ -58,6 +58,10 @@ curl -sfL https://get.hauler.dev | bash
 brew tap hauler-dev/homebrew-tap
 brew install hauler
 
+# installs specific release
+brew tap hauler-dev/homebrew-tap
+brew install hauler@2.1.1
+
 # installs latest release, release candidate, or dev build
 brew tap hauler-dev/homebrew-tap
 brew install hauler-dev
