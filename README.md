@@ -1,46 +1,18 @@
-# Rancher Government Hauler
+# Hauler - Airgap Swiss Army Knife
 
-![rancher-government-hauler-logo](/static/rgs-hauler-logo.png)
+![hauler-logo](/static/hauler-logo.png)
 
-## Airgap Swiss Army Knife
+## What is Hauler?
 
-`Rancher Government Hauler` simplifies the airgap experience without requiring operators to adopt a specific workflow. **Hauler** simplifies the airgapping process, by representing assets (images, charts, files, etc...) as content and collections to allow operators to easily fetch, store, package, and distribute these assets with declarative manifests or through the command line.
+`Hauler` simplifies delivering software into disconnected and airgapped environments without requiring operators to adopt a specific workflow on either side of the airgap. We represent artifacts, such as images, charts, files, and more, as content and collections, so operators can fetch, store, package, and distribute them with declarative manifests or the command line.
 
-`Hauler` does this by storing contents and collections as OCI Artifacts and allows operators to serve contents and collections with an embedded registry and fileserver. Additionally, `Hauler` has the ability to store and inspect various non-image OCI Artifacts.
+`Hauler` carries your artifacts and their supply chain into disconnected and airgapped environments. Every artifact keeps its signatures, attestations, and SBOMs, and can be verified before it is saved and again after it is loaded, so teams on the disconnected and airgapped side know exactly what they received and where it originated.
 
-For more information, please review the **[Hauler Documentation](https://hauler.dev)!**
+`Hauler` replaces the custom scripts and ad hoc tooling that disconnected and airgapped delivery usually requires. It is one binary, one archive, and one workflow, from a single file to entire product suites on Linux, macOS, or Windows, so teams spend less time moving software and more time using it.
 
-## Recent Changes
+`Hauler` is proudly developed and maintained by **[Rancher Government](https://github.com/ranchergovernment)!!**
 
-### In Hauler v2.0.0...
-
-- Removed support for `apiVersion` of `v1alpha` and removed the automated conversion functionality to `v1`.
-  - Please note that notices have been provided in this `README`, the `docs`, and in `cli` warnings since Hauler `v1.2.x`.
-
-### In Hauler v1.4.0...
-
-- Added a notice to `hauler store sync --products/--product-registry` to warn users the default registry will be updated in a future release.
-  - Users will see logging notices when using the `--products/--product-registry` such as...
-  - `!!! WARNING !!! [--products] will be updating its default registry in a future release...`
-  - `!!! WARNING !!! [--product-registry] will be updating its default registry in a future release...`
-
-### From older releases...
-
-- Updated the behavior of `hauler store load` to default to loading a `haul` with the name of `haul.tar.zst` and requires the flag of `--filename/-f` to load a `haul` with a different name
-- Users can load multiple `hauls` by specifying multiple flags of `--filename/-f`
-  - updated command usage: `hauler store load --filename hauling-hauls.tar.zst`
-  - previous command usage (do not use): `hauler store load hauling-hauls.tar.zst`
-
----
-
-- Updated the behavior of `hauler store sync` to default to syncing a `manifest` with the name of `hauler-manifest.yaml` and requires the flag of `--filename/-f` to sync a `manifest` with a different name
-- Users can sync multiple `manifests` by specifying multiple flags of `--filename/-f`
-  - updated command usage: `hauler store sync --filename hauling-hauls-manifest.yaml`
-  - previous command usage (do not use): `hauler store sync --files hauling-hauls-manifest.yaml`
-
----
-
-Please review the documentation for any additional [Known Limits, Issues, and Notices](https://docs.hauler.dev/docs/known-limits)!
+For more information, please review the **[Hauler Documentation](https://docs.hauler.dev)!**
 
 ## Installation
 
@@ -73,6 +45,49 @@ brew install hauler-dev
 # installs latest release
 irm https://get.hauler.dev/install.ps1 | iex
 ```
+
+## Known Issues and Limits
+
+<!-- known-limits:start -->
+Please report any issues to [Hauler](https://github.com/hauler-dev/hauler/issues), [Hauler Helm](https://github.com/hauler-dev/hauler-helm/issues), or [Hauler Docs](https://github.com/hauler-dev/hauler-docs/issues).
+
+### Breaking Changes
+
+Please see the [release notes](https://github.com/hauler-dev/hauler/releases) for full details.
+
+| Release Version | Change |
+|:---:|:---:|
+| v2.1.1 | `--platform` is rejected with a digest-pinned multi-platform index |
+| v2.1.1 | errors retrieving signatures, attestations, SBOMs, and referrers fail the image instead of being skipped |
+| v2.1.0 | `hauler store add image` and `hauler store sync` fail when an image fails signature verification, instead of skipping it... with `--ignore-errors` the unverified image is stored with a warning |
+| v2.1.0 | `hauler store info -o json` changed shape |
+| v2.1.0 | flag precedence is CLI first, then per-item fields, then manifest annotations |
+| v2.0.0 | removed `apiVersion: hauler.cattle.io/v1alpha1`... use `hauler.cattle.io/v1` |
+
+### Known Limitations
+
+These are current limitations of Hauler, with workarounds included where available.
+
+| Command or Area | Limitation |
+|:---:|:---:|
+| `hauler store load` | podman generated tarballs are not supported and may not load every image |
+| `hauler store copy` | copying to a registry path requires `hauler login <registry-url>` without the `<path>` first |
+| `hauler store add chart` | a chart with the same name as the store may fail to fetch, since helm checks for a local directory with that name first |
+| temporary space | defaults to the os temp directory (i.e. `/tmp`), which needs as much free space as the store or haul... or set `--tempdir` / `HAULER_TEMP_DIR` |
+| homebrew | versioned casks (`hauler@<version>`) never upgrade... use `hauler` or `hauler-dev` to receive upgrades |
+
+### Experimental Features
+
+Commands and flags marked `(EXPERIMENTAL)` are not yet stable and may change in a future release.
+
+| Release Version | Command or Flag |
+|:---:|:---:|
+| v2.1.1 | `hauler store copy --type` |
+| v2.1.1 | `hauler store serve registry --basic-auth` / `--basic-auth-realm` |
+| v2.1.1 | `hauler store serve fileserver --basic-auth` / `--basic-auth-realm` |
+| v2.1.0 | `hauler store create manifest` |
+
+<!-- known-limits:end -->
 
 ## Acknowledgements
 
