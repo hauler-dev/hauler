@@ -54,6 +54,22 @@ func validateStoreExists(s *store.Layout) error {
 	)
 }
 
+// storeEmpty reports whether the store holds no artifacts at all.
+func storeEmpty(s *store.Layout) (bool, error) {
+	empty := true
+	err := s.Walk(func(string, ocispec.Descriptor) error {
+		empty = false
+		return nil
+	})
+	return empty, err
+}
+
+// dirEmpty reports whether dir has nothing in it, counting a missing dir as empty.
+func dirEmpty(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return errors.Is(err, fs.ErrNotExist) || (err == nil && len(entries) == 0)
+}
+
 func loadConfig(filename string) (*configuration.Configuration, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -127,6 +143,15 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 
 	tr.Close()
 
+	// an empty store still serves, the same as fileserver and git
+	empty, err := storeEmpty(s)
+	if err != nil {
+		return err
+	}
+	if empty {
+		l.Warnf("no artifacts found in the store... add some with `hauler store add` or `hauler store sync`")
+	}
+
 	cfg := DefaultRegistryConfig(o, rso, ro)
 	if o.ConfigFile != "" {
 		ucfg, err := loadConfig(o.ConfigFile)
@@ -185,6 +210,11 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 		return err
 	}
 
+	// an empty store still serves, the same as registry and git
+	if dirEmpty(o.RootDir) {
+		l.Warnf("no files, charts, or directories found in the store... add some with `hauler store add` or `hauler store sync`")
+	}
+
 	f, err := server.NewFile(ctx, *o)
 	if err != nil {
 		return err
@@ -220,10 +250,12 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 	if err != nil {
 		return err
 	}
+	// an empty store still serves, the same as registry and fileserver
 	if len(repos) == 0 {
-		return fmt.Errorf("no git repositories found in the store... add one with `hauler store add git <repo>`")
+		l.Warnf("no git repositories found in the store... add some with `hauler store add` or `hauler store sync`")
+	} else {
+		l.Infof("found [%d] git repository(s) in the store", len(repos))
 	}
-	l.Infof("found [%d] git repository(s) in the store", len(repos))
 
 	g, err := server.NewGit(ctx, *o, repos)
 	if err != nil {

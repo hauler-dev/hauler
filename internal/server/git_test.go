@@ -183,10 +183,28 @@ func TestUpdateServerInfo(t *testing.T) {
 	}
 }
 
+// TestNewGit_NoRepos verifies an empty store still serves, the same as registry and fileserver, with an empty listing and a 404 for any repo path.
 func TestNewGit_NoRepos(t *testing.T) {
 	ctx := context.Background()
-	if _, err := NewGit(ctx, flags.ServeGitOpts{}, map[string]string{}); err == nil {
-		t.Fatal("expected an error when no repositories are given, got nil")
+	srv, err := NewGit(ctx, flags.ServeGitOpts{}, map[string]string{})
+	if err != nil {
+		t.Fatalf("expected no error with no repositories, got: %v", err)
+	}
+	httpSrv := srv.(*http.Server)
+
+	rec := httptest.NewRecorder()
+	httpSrv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200", rec.Code)
+	}
+	if body := rec.Body.String(); body != "hauler git server\n\navailable repositories:\n" {
+		t.Errorf("GET / body = %q, want an empty listing", body)
+	}
+
+	rec = httptest.NewRecorder()
+	httpSrv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/myrepo/info/refs", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("GET /myrepo/info/refs = %d, want 404", rec.Code)
 	}
 }
 

@@ -20,10 +20,6 @@ import (
 
 // NewGit serves every repo in repos (name -> bare repo directory) over git's dumb HTTP protocol, each under its own /<name>/ path, regenerating info/refs and objects/info/packs on startup.
 func NewGit(ctx context.Context, cfg flags.ServeGitOpts, repos map[string]string) (Server, error) {
-	if len(repos) == 0 {
-		return nil, fmt.Errorf("no git repositories to serve")
-	}
-
 	names := make([]string, 0, len(repos))
 	for name, dir := range repos {
 		if err := validateBareRepo(dir); err != nil {

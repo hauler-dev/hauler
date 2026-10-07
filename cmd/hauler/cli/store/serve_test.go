@@ -250,3 +250,41 @@ func TestExtractGitRepos_SkipsUnsafeName(t *testing.T) {
 		t.Errorf("expected the valid repo to still be served, got %v", repos)
 	}
 }
+
+// TestStoreEmpty verifies serve registry can tell an empty store apart from one with artifacts, so it warns only when there is nothing to serve.
+func TestStoreEmpty(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	empty, err := storeEmpty(s)
+	if err != nil {
+		t.Fatalf("storeEmpty: %v", err)
+	}
+	if !empty {
+		t.Error("expected a new store to be empty")
+	}
+
+	if _, err := s.AddArtifact(ctx, gitartifact.NewGit(newBareGitRepoFixture(t, "myrepo.git"), gitartifact.WithContext(ctx)), "hauler/myrepo:latest"); err != nil {
+		t.Fatalf("AddArtifact: %v", err)
+	}
+	if empty, err = storeEmpty(s); err != nil || empty {
+		t.Errorf("expected a store with an artifact to not be empty, got empty=%t err=%v", empty, err)
+	}
+}
+
+// TestDirEmpty verifies serve fileserver warns for a missing or empty directory and not for one with content.
+func TestDirEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if !dirEmpty(filepath.Join(dir, "missing")) {
+		t.Error("expected a missing directory to count as empty")
+	}
+	if !dirEmpty(dir) {
+		t.Error("expected an empty directory to be empty")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if dirEmpty(dir) {
+		t.Error("expected a directory with a file to not be empty")
+	}
+}
