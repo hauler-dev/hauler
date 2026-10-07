@@ -96,8 +96,8 @@ func TestRepoFromBaseRef(t *testing.T) {
 		"nested/path/img@sha256:" + strings.Repeat("b", 64): "nested/path/img",
 	}
 	for in, want := range cases {
-		if got := repoFromBaseRef(in); got != want {
-			t.Errorf("repoFromBaseRef(%q) = %q, want %q", in, got, want)
+		if got := content.RepoFromBaseRef(in); got != want {
+			t.Errorf("content.RepoFromBaseRef(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -110,7 +110,7 @@ func TestDestRef_DigestOnly_Parses(t *testing.T) {
 	refDigestHex := strings.Repeat("c", 64)
 	base := "myorg/myimage@" + imgDigest // tag@digest ingests to digest-only
 
-	repo := repoFromBaseRef(base)
+	repo := content.RepoFromBaseRef(base)
 
 	// sig/att/sbom cosign tag
 	sigDest := repo + ":" + strings.ReplaceAll(imgDigest, ":", "-") + ".sig"

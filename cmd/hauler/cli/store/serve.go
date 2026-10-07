@@ -76,6 +76,12 @@ func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts,
 		},
 	}
 
+	if o.InPlace {
+		// serve the store in place; rootdirectory only takes writes (e.g. pushes with --readonly=false)
+		delete(cfg.Storage, "filesystem")
+		cfg.Storage[server.StoreDriverName] = configuration.Parameters{"store": rso.StoreDir, "rootdirectory": o.RootDir}
+	}
+
 	if o.TLSCert != "" && o.TLSKey != "" {
 		cfg.HTTP.TLS.Certificate = o.TLSCert
 		cfg.HTTP.TLS.Key = o.TLSKey
@@ -115,17 +121,25 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 		return err
 	}
 
-	tr := server.NewTempRegistry(ctx, o.RootDir)
-	if err := tr.Start(); err != nil {
-		return err
+	// a user config may use any storage backend, so it can't serve the store in place
+	if o.InPlace && o.ConfigFile != "" {
+		l.Warnf("--in-place is ignored with --config... copying the store into the registry instead")
+		o.InPlace = false
 	}
 
-	opts := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
-	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), ro); err != nil {
-		return err
-	}
+	if !o.InPlace {
+		tr := server.NewTempRegistry(ctx, o.RootDir)
+		if err := tr.Start(); err != nil {
+			return err
+		}
 
-	tr.Close()
+		opts := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
+		if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), ro); err != nil {
+			return err
+		}
+
+		tr.Close()
+	}
 
 	cfg := DefaultRegistryConfig(o, rso, ro)
 	if o.ConfigFile != "" {

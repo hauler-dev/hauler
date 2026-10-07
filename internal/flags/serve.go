@@ -14,6 +14,7 @@ type ServeRegistryOpts struct {
 	ReadOnly       bool
 	BasicAuth      string
 	BasicAuthRealm string
+	InPlace        bool
 
 	TLSCert string
 	TLSKey  string
@@ -24,6 +25,7 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 
 	f.IntVarP(&o.Port, "port", "p", consts.DefaultRegistryPort, "(Optional) Set the port to use for incoming connections")
 	f.StringVar(&o.RootDir, "directory", consts.DefaultRegistryRootDir, "(Optional) Directory to use for backend. (defaults to $PWD/registry)")
+	f.BoolVar(&o.InPlace, "in-place", false, "(EXPERIMENTAL) (Optional) Serve the store in place instead of copying it into --directory (which then only holds pushed content). Ignored with --config")
 	f.StringVarP(&o.ConfigFile, "config", "c", "", "(Optional) Location of the registry config file (overrides all flags)")
 	f.BoolVar(&o.ReadOnly, "readonly", true, "(Optional) Run the registry as readonly")
 	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
