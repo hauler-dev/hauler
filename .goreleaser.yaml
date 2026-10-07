@@ -44,7 +44,57 @@ homebrew_casks:
       owner: hauler-dev
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      branch: "hauler-{{ .Tag }}"
+      pull_request:
+        enabled: true
+        base:
+          branch: main
     description: "Hauler: Airgap Swiss Army Knife"
+    skip_upload: auto
+    conflicts:
+      - cask: hauler-dev
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hauler"]
+          end
+
+  - name: hauler-dev
+    repository:
+      owner: hauler-dev
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      branch: "hauler-{{ .Tag }}"
+      pull_request:
+        enabled: true
+        base:
+          branch: main
+    description: "Hauler: Airgap Swiss Army Knife (release candidates and dev builds)"
+    binaries:
+      - hauler
+    conflicts:
+      - cask: hauler
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hauler"]
+          end
+
+  - name: "hauler@{{ .Version }}"
+    repository:
+      owner: hauler-dev
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      branch: "hauler-{{ .Tag }}"
+      pull_request:
+        enabled: true
+        base:
+          branch: main
+    description: "Hauler: Airgap Swiss Army Knife"
+    binaries:
+      - hauler
     hooks:
       post:
         install: |
