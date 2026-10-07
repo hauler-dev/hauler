@@ -6,15 +6,47 @@ updates:
     schedule:
       interval: "daily"
     target-branch: "main"
+    groups:
+      kubernetes:
+        patterns:
+          - "helm.sh/*"
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+      sigstore:
+        patterns:
+          - "github.com/sigstore/*"
+      containers:
+        patterns:
+          - "github.com/containerd/*"
+          - "github.com/distribution/*"
+          - "github.com/docker/*"
+          - "github.com/google/go-containerregistry"
+          - "github.com/opencontainers/*"
+      golang:
+        patterns:
+          - "golang.org/x/*"
 
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "daily"
     target-branch: "release/2.1"
-
-  - package-ecosystem: "gomod"
-    directory: "/"
-    schedule:
-      interval: "daily"
-    target-branch: "release/2.0"
+    groups:
+      kubernetes:
+        patterns:
+          - "helm.sh/*"
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+      sigstore:
+        patterns:
+          - "github.com/sigstore/*"
+      containers:
+        patterns:
+          - "github.com/containerd/*"
+          - "github.com/distribution/*"
+          - "github.com/docker/*"
+          - "github.com/google/go-containerregistry"
+          - "github.com/opencontainers/*"
+      golang:
+        patterns:
+          - "golang.org/x/*"
