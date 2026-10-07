@@ -322,9 +322,7 @@ func TestProcessContent_Charts_v1(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
 
-	// Use the same relative path as add_test.go: url.ParseRequestURI accepts
-	// absolute Unix paths, making isUrl() return true for them. A relative
-	// path correctly keeps isUrl() false so Helm sees it as a local directory.
+	// Use the same relative path as add_test.go.
 	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
 kind: Charts
 metadata:
