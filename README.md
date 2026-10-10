@@ -4,9 +4,9 @@
 
 ## What is Hauler?
 
-`Hauler` is a free and open source tool that simplifies delivering artifacts into disconnected and airgapped environments without requiring operators to adopt a specific workflow on either side. We represent artifacts, such as images, charts, files, and more, as content and collections, so operators can fetch, store, package, and distribute them with declarative manifests or the command line, whether the destination is disconnected, airgapped, limited, constrained, or anywhere else your artifacts need to go.
+`Hauler` is a free and open source tool that simplifies delivering artifacts into disconnected and airgapped environments without requiring operators to adopt a specific workflow on either side. It represents artifacts, such as images, charts, files, and more, as content and collections, so operators can fetch, store, package, and distribute them with declarative manifests or the command line, whether the destination is disconnected, airgapped, limited, constrained, or anywhere else your artifacts need to go.
 
-`Hauler` carries your artifacts and their supply chain into disconnected and airgapped environments. Every artifact keeps its signatures, attestations, and SBOMs, and can be verified before it is saved and again after it is loaded, so teams on the disconnected and airgapped side know exactly what they received and where it originated.
+`Hauler` does this by storing content and collections as OCI artifacts and serving them through embedded services, such as a registry, fileserver, and more. Every artifact keeps its signatures, attestations, and SBOMs, which can be verified before it is saved and again after it is loaded, so teams on the disconnected and airgapped side know exactly what they received and where it originated.
 
 `Hauler` replaces the custom scripts and ad hoc tooling that disconnected and airgapped delivery usually requires. It is one binary, one archive, and one workflow, from a single file to entire product suites on Linux, macOS, or Windows, so teams spend less time moving software and more time using it.
 
