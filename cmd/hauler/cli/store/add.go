@@ -26,7 +26,6 @@ import (
 	"helm.sh/helm/v4/pkg/engine"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/chart"
@@ -36,6 +35,7 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/getter"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/reference"

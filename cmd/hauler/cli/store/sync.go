@@ -23,7 +23,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts/file"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
@@ -31,6 +30,7 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/cosign"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/getter"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/reference"
@@ -512,7 +512,7 @@ func resolveTargetStore(ctx context.Context, a map[string]string, def *store.Lay
 		return def, nil
 	}
 
-	abs, err := flags.ResolveStoreDir(ctx, ro, target)
+	abs, err := store.ResolveStoreDir(ctx, ro, target)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve target store [%s]: %w", target, err)
 	}
@@ -528,7 +528,7 @@ func resolveTargetStore(ctx context.Context, a map[string]string, def *store.Lay
 	// only overriding StoreDir, everything else still comes from rso
 	altOpts := *rso
 	altOpts.StoreDir = abs
-	ts, err := altOpts.Store(ctx, ro)
+	ts, err := store.Open(ctx, &altOpts, ro)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open target store [%s]: %w", target, err)
 	}

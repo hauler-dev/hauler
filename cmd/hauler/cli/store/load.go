@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"strings"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/getter"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/store"
@@ -29,10 +29,15 @@ import (
 var legacyChunkRe = regexp.MustCompile(`_\d+\.`)
 
 // extracts the contents of an archived oci layout to an existing oci layout
-func LoadCmd(ctx context.Context, o *flags.LoadOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
+func LoadCmd(ctx context.Context, o *flags.LoadOpts, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	// rso.TempOverride is already resolved (flag or HAULER_TEMP_DIR) by Store().
+	s, err := store.Open(ctx, rso, ro)
+	if err != nil {
+		return err
+	}
+
+	// rso.TempOverride is already resolved (flag or HAULER_TEMP_DIR) by store.Open.
 	tempOverride := rso.TempOverride
 
 	tempDir, err := os.MkdirTemp(tempOverride, consts.DefaultHaulerTempDirName)

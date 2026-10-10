@@ -10,7 +10,7 @@ import (
 	cosignpkg "github.com/sigstore/cosign/v3/pkg/cosign"
 	"github.com/sigstore/sigstore/pkg/signature"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/retry"
 )

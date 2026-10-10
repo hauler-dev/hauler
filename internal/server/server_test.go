@@ -20,7 +20,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 )
 
 func TestNewTempRegistry_StartStop(t *testing.T) {

@@ -15,8 +15,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 )
 
 // newTargetRegistry serves an in-memory registry with or without the referrers API, the latter like registries without it (i.e. ghcr and distribution).

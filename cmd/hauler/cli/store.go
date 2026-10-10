@@ -7,10 +7,11 @@ import (
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v4/pkg/action"
 
-	"hauler.dev/go/hauler/v2/cmd/hauler/cli/store"
-	"hauler.dev/go/hauler/v2/internal/flags"
+	storecli "hauler.dev/go/hauler/v2/cmd/hauler/cli/store"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	pkgstore "hauler.dev/go/hauler/v2/pkg/store"
 )
 
 func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
@@ -53,12 +54,12 @@ func addStoreExtract(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.ExtractCmd(ctx, o, s, args[0])
+			return storecli.ExtractCmd(ctx, o, s, args[0])
 		},
 	}
 	o.AddFlags(cmd)
@@ -137,15 +138,15 @@ func addStoreSync(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 			ctx := cmd.Context()
 
 			if o.DryRun {
-				return store.SyncCmd(ctx, o, nil, rso, ro)
+				return storecli.SyncCmd(ctx, o, nil, rso, ro)
 			}
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.SyncCmd(ctx, o, s, rso, ro)
+			return storecli.SyncCmd(ctx, o, s, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -162,13 +163,7 @@ func addStoreLoad(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-
-			s, err := o.Store(ctx, ro)
-			if err != nil {
-				return err
-			}
-
-			return store.LoadCmd(ctx, o, s, rso, ro)
+			return storecli.LoadCmd(ctx, o, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -202,12 +197,12 @@ func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cob
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.ServeRegistryCmd(ctx, o, s, rso, ro)
+			return storecli.ServeRegistryCmd(ctx, o, s, rso, ro)
 		},
 	}
 
@@ -225,12 +220,12 @@ func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.ServeFilesCmd(ctx, o, s, ro)
+			return storecli.ServeFilesCmd(ctx, o, s, ro)
 		},
 	}
 
@@ -248,12 +243,12 @@ func addStoreServeGit(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.ServeGitCmd(ctx, o, s, ro)
+			return storecli.ServeGitCmd(ctx, o, s, ro)
 		},
 	}
 
@@ -272,12 +267,12 @@ func addStoreSave(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.SaveCmd(ctx, o, s, rso, ro)
+			return storecli.SaveCmd(ctx, o, s, rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -310,14 +305,14 @@ func addStoreInfo(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
 			for _, allowed := range allowedValues {
 				if o.TypeFilter == allowed {
-					return store.InfoCmd(ctx, o, s)
+					return storecli.InfoCmd(ctx, o, s)
 				}
 			}
 			return fmt.Errorf("type must be one of %v", allowedValues)
@@ -343,14 +338,14 @@ func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
 			for _, allowed := range allowedValues {
 				if o.TypeFilter == allowed {
-					return store.CopyCmd(ctx, o, s, args[0], ro)
+					return storecli.CopyCmd(ctx, o, s, args[0], ro)
 				}
 			}
 			return fmt.Errorf("type must be one of %v", allowedValues)
@@ -399,12 +394,12 @@ func addStoreAddFile(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.AddFileCmd(ctx, o, s, args[0], ro)
+			return storecli.AddFileCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -427,12 +422,12 @@ func addStoreAddDirectory(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobr
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.AddDirectoryCmd(ctx, o, s, args[0], ro)
+			return storecli.AddDirectoryCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -461,12 +456,12 @@ func addStoreAddGit(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.AddGitCmd(ctx, o, s, args[0], ro)
+			return storecli.AddGitCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -516,12 +511,12 @@ func addStoreAddImage(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.AddImageCmd(ctx, o, s, args[0], rso, ro)
+			return storecli.AddImageCmd(ctx, o, s, args[0], rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -577,12 +572,12 @@ func addStoreAddChart(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Co
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.AddChartCmd(ctx, o, s, args[0], rso, ro)
+			return storecli.AddChartCmd(ctx, o, s, args[0], rso, ro)
 		},
 	}
 	o.AddFlags(cmd)
@@ -624,12 +619,12 @@ func addStoreCreateManifest(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *co
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, o.StoreRootOpts, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.CreateManifestCmd(ctx, o, s)
+			return storecli.CreateManifestCmd(ctx, o, s)
 		},
 	}
 	o.AddFlags(cmd)
@@ -666,12 +661,12 @@ func addStoreRemove(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comm
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := rso.Store(ctx, ro)
+			s, err := pkgstore.Open(ctx, rso, ro)
 			if err != nil {
 				return err
 			}
 
-			return store.RemoveCmd(ctx, o, s, args[0], ro, rso)
+			return storecli.RemoveCmd(ctx, o, s, args[0], ro, rso)
 		},
 	}
 	o.AddFlags(cmd)

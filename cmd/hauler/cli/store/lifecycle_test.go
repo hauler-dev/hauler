@@ -14,8 +14,8 @@ import (
 	goname "github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -57,15 +57,11 @@ func TestLifecycle_FileArtifact_AddSaveLoadCopy(t *testing.T) {
 
 	// Step 4: LoadCmd -> store B.
 	storeBDir := t.TempDir()
-	storeBPreLoad, err := store.NewLayout(storeBDir)
-	if err != nil {
-		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
-	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -131,15 +127,11 @@ func TestLifecycle_Image_AddSaveLoadCopyRegistry(t *testing.T) {
 
 	// Step 4: LoadCmd -> store B.
 	storeBDir := t.TempDir()
-	storeBPreLoad, err := store.NewLayout(storeBDir)
-	if err != nil {
-		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
-	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -203,15 +195,11 @@ func TestLifecycle_Chart_AddSaveLoadExtract(t *testing.T) {
 
 	// Step 3: LoadCmd -> new store.
 	storeBDir := t.TempDir()
-	storeBPreLoad, err := store.NewLayout(storeBDir)
-	if err != nil {
-		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
-	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -291,15 +279,11 @@ func TestLifecycle_DigestOnlyImage_AddSaveLoad(t *testing.T) {
 
 	// Step 4: LoadCmd -> fresh store B
 	storeBDir := t.TempDir()
-	storeBPreLoad, err := store.NewLayout(storeBDir)
-	if err != nil {
-		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
-	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -361,15 +345,11 @@ func TestLifecycle_TwoDigestsSameRepo_AddSaveLoad(t *testing.T) {
 	}
 
 	storeBDir := t.TempDir()
-	storeBPreLoad, err := store.NewLayout(storeBDir)
-	if err != nil {
-		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
-	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -430,15 +410,11 @@ func TestLifecycle_Remove_ThenSave(t *testing.T) {
 
 	// Step 4: LoadCmd -> new store.
 	storeBDir := t.TempDir()
-	storeBPreLoad, err := store.NewLayout(storeBDir)
-	if err != nil {
-		t.Fatalf("store.NewLayout(storeB pre-load): %v", err)
-	}
 	loadOpts := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(storeBDir),
 		FileName:      []string{archivePath},
 	}
-	if err := LoadCmd(ctx, loadOpts, storeBPreLoad, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, loadOpts, defaultRootOpts(storeBDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 

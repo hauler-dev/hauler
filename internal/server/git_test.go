@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 )
 
 const (
