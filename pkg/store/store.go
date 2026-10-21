@@ -423,7 +423,10 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
 	}
 
-	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx))
+	img, err := daemon.Image(parsedRef,
+		daemon.WithContext(ctx),
+		daemon.WithFileBufferedOpener(),
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
 	}
