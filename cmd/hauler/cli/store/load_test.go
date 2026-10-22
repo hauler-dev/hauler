@@ -17,10 +17,10 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	"hauler.dev/go/hauler/v2/pkg/archives"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -152,20 +152,16 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 
 	t.Run("single archive", func(t *testing.T) {
 		destDir := t.TempDir()
-		s, err := store.NewLayout(destDir)
-		if err != nil {
-			t.Fatalf("store.NewLayout: %v", err)
-		}
 		o := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(destDir),
 			FileName:      []string{testHaulArchive},
 		}
-		if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd: %v", err)
 		}
 		// re-open: LoadCmd writes through its own content.OCI instance, so s's
 		// in-memory index predates the load.
-		s, err = store.NewLayout(destDir)
+		s, err := store.NewLayout(destDir)
 		if err != nil {
 			t.Fatalf("store.NewLayout (post-load): %v", err)
 		}
@@ -179,15 +175,11 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 		// silently discarded by the OCI pusher. The descriptor count after two
 		// loads must equal the count after a single load.
 		singleDir := t.TempDir()
-		singlePreLoad, err := store.NewLayout(singleDir)
-		if err != nil {
-			t.Fatalf("store.NewLayout single (pre-load): %v", err)
-		}
 		singleOpts := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(singleDir),
 			FileName:      []string{testHaulArchive},
 		}
-		if err := LoadCmd(ctx, singleOpts, singlePreLoad, defaultRootOpts(singleDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, singleOpts, defaultRootOpts(singleDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd single: %v", err)
 		}
 		singleStore, err := store.NewLayout(singleDir)
@@ -197,15 +189,11 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 		singleCount := countArtifactsInStore(t, singleStore)
 
 		doubleDir := t.TempDir()
-		doublePreLoad, err := store.NewLayout(doubleDir)
-		if err != nil {
-			t.Fatalf("store.NewLayout double (pre-load): %v", err)
-		}
 		doubleOpts := &flags.LoadOpts{
 			StoreRootOpts: defaultRootOpts(doubleDir),
 			FileName:      []string{testHaulArchive, testHaulArchive},
 		}
-		if err := LoadCmd(ctx, doubleOpts, doublePreLoad, defaultRootOpts(doubleDir), defaultCliOpts()); err != nil {
+		if err := LoadCmd(ctx, doubleOpts, defaultRootOpts(doubleDir), defaultCliOpts()); err != nil {
 			t.Fatalf("LoadCmd double: %v", err)
 		}
 		doubleStore, err := store.NewLayout(doubleDir)
@@ -244,16 +232,12 @@ func TestLoadCmd_RemoteArchive(t *testing.T) {
 	destDir := t.TempDir()
 	remoteURL := srv.URL + "/haul.tar.zst"
 
-	preLoad, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatalf("store.NewLayout (pre-load): %v", err)
-	}
 	o := &flags.LoadOpts{
 		StoreRootOpts: defaultRootOpts(destDir),
 		FileName:      []string{remoteURL},
 	}
 
-	if err := LoadCmd(ctx, o, preLoad, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd remote: %v", err)
 	}
 
@@ -484,7 +468,7 @@ func TestLoadCmd_ContainerdHaulRoundTripsNonImageContent(t *testing.T) {
 
 	dest := newTestStore(t)
 	lo := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(dest.Root), FileName: []string{archivePath}}
-	if err := LoadCmd(ctx, lo, dest, defaultRootOpts(dest.Root), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, lo, defaultRootOpts(dest.Root), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd: %v", err)
 	}
 
@@ -606,12 +590,8 @@ func TestLoadCmd_RemoteRedundantChunks_OneUnreachable(t *testing.T) {
 	urls := serveRedundantChunks(t, func(name string) bool { return name == "haul.tar.zst.002" })
 
 	destDir := t.TempDir()
-	s, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
 	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
-	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd with one unreachable chunk: %v", err)
 	}
 	loaded, err := store.NewLayout(destDir)
@@ -629,12 +609,8 @@ func TestLoadCmd_RemoteChunks_AllUnreachable(t *testing.T) {
 	urls := serveRedundantChunks(t, func(string) bool { return true })
 
 	destDir := t.TempDir()
-	s, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
 	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
-	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err == nil {
+	if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err == nil {
 		t.Fatal("expected LoadCmd to fail when no chunk could be downloaded, got nil")
 	}
 }
@@ -648,12 +624,8 @@ func TestLoadCmd_RemoteChunks_PresignedURLs(t *testing.T) {
 	}
 
 	destDir := t.TempDir()
-	s, err := store.NewLayout(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
 	o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
-	if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
+	if err := LoadCmd(ctx, o, defaultRootOpts(destDir), defaultCliOpts()); err != nil {
 		t.Fatalf("LoadCmd with presigned-style chunk URLs: %v", err)
 	}
 	loaded, err := store.NewLayout(destDir)
@@ -688,12 +660,8 @@ func TestLoadCmd_RemotePresigned_NoLogLeak(t *testing.T) {
 
 	for _, urls := range [][]string{{srv.URL + "/haul.tar.zst" + presign}, chunkURLs} {
 		destDir := t.TempDir()
-		s, err := store.NewLayout(destDir)
-		if err != nil {
-			t.Fatal(err)
-		}
 		o := &flags.LoadOpts{StoreRootOpts: defaultRootOpts(destDir), FileName: urls}
-		if err := LoadCmd(ctx, o, s, defaultRootOpts(destDir), ro); err != nil {
+		if err := LoadCmd(ctx, o, defaultRootOpts(destDir), ro); err != nil {
 			t.Fatalf("LoadCmd %v: %v", urls, err)
 		}
 	}

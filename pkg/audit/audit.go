@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 )
 
 var auditID string

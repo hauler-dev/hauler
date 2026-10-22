@@ -23,10 +23,10 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/yaml.v3"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/internal/server"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/store"

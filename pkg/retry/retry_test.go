@@ -11,8 +11,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 )
 
 func testContext() context.Context {

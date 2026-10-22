@@ -45,8 +45,8 @@ import (
 	"github.com/sigstore/sigstore/pkg/signature/payload"
 	"helm.sh/helm/v4/pkg/action"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"hauler.dev/go/hauler/v2/internal/flags"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/flags"
 	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
