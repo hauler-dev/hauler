@@ -51,6 +51,9 @@ type Layout struct {
 	// WithBlobConcurrency; must be known before content.NewOCI is called, so
 	// NewLayout applies opts before constructing the OCI store.
 	blobConcurrency int
+
+	// tempDir is where AddLocalImage spools `docker save` output; empty means the OS default.
+	tempDir string
 }
 
 type Options func(*Layout)
@@ -75,6 +78,13 @@ func WithHaulerDir(dir string) Options {
 func WithBlobConcurrency(n int) Options {
 	return func(l *Layout) {
 		l.blobConcurrency = n
+	}
+}
+
+// WithTempDir sets the directory for scratch files such as the Docker save spool.
+func WithTempDir(dir string) Options {
+	return func(l *Layout) {
+		l.tempDir = dir
 	}
 }
 
@@ -423,7 +433,18 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
 	}
 
-	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx))
+	dc, err := newSpoolingDaemonClient(l.tempDir)
+	if err != nil {
+		return "", fmt.Errorf("creating Docker client from environment: %w", err)
+	}
+	defer func() {
+		if err := dc.Close(); err != nil {
+			zlog.Warn().Err(err).Msg("failed to clean up docker save spool or client")
+		}
+	}()
+
+	// Unbuffered is correct only because dc spools; with the stock client it would run one full docker save per layer read.
+	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx), daemon.WithClient(dc), daemon.WithUnbufferedOpener())
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
 	}
