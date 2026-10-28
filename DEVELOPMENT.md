@@ -63,6 +63,16 @@ Using `go`...
 go test ./...
 ```
 
+### Local Docker images
+
+`hauler store add image IMAGE --local` uses `DOCKER_HOST` when set, otherwise
+`DOCKER_CONTEXT`, otherwise the current context in the Docker CLI configuration
+under `DOCKER_CONFIG` or `~/.docker`. Named contexts retain their TLS and SSH
+connection settings. An invalid selected context fails rather than falling back
+to another daemon. Without a selected context, the default daemon is used, with
+`~/.docker/run/docker.sock` as the Docker Desktop fallback when the default
+socket is absent.
+
 ### Useful Tips
 
 - The `--store` flag defaults to `./store` in the current working directory during local testing, so running `./hauler store add ...` from the project root is safe and self-contained. Use `rm -rf store` in the working directory to clear.

@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 
+	"github.com/docker/cli/cli/config"
+	dockercontext "github.com/docker/cli/cli/context/docker"
+	contextstore "github.com/docker/cli/cli/context/store"
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/moby/moby/client"
 )
@@ -32,11 +38,76 @@ type spoolingDaemonClient struct {
 }
 
 func newSpoolingDaemonClient(dir string) (*spoolingDaemonClient, error) {
-	c, err := client.New(client.FromEnv)
+	c, err := newLocalDockerClient()
 	if err != nil {
 		return nil, err
 	}
 	return &spoolingDaemonClient{Client: c, dir: dir}, nil
+}
+
+// newLocalDockerClient follows Docker CLI selection: an explicit DOCKER_HOST,
+// then DOCKER_CONTEXT, then the current context in DOCKER_CONFIG/config.json.
+// Resolve per operation, without changing process-wide environment or CLI config.
+func newLocalDockerClient() (*client.Client, error) {
+	if os.Getenv("DOCKER_HOST") != "" {
+		return client.New(client.FromEnv)
+	}
+
+	dir := os.Getenv("DOCKER_CONFIG")
+	if dir == "" {
+		home, _ := os.UserHomeDir()
+		if home == "" && runtime.GOOS != "windows" {
+			if u, err := user.Current(); err == nil {
+				home = u.HomeDir
+			}
+		}
+		dir = filepath.Join(home, ".docker")
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		return nil, fmt.Errorf("loading Docker configuration: %w", err)
+	}
+	name := os.Getenv("DOCKER_CONTEXT")
+	if name == "" {
+		name = cfg.CurrentContext
+	}
+	if name == "" || name == "default" {
+		opts := []client.Opt{client.FromEnv}
+		// Preserve the Docker Desktop fallback for an unconfigured default
+		// endpoint. Never use it in place of a selected named context.
+		if _, err := os.Stat("/var/run/docker.sock"); os.IsNotExist(err) {
+			if home, err := os.UserHomeDir(); err == nil {
+				sock := filepath.Join(home, ".docker", "run", "docker.sock")
+				if _, err := os.Stat(sock); err == nil {
+					opts = append(opts, client.WithHost("unix://"+sock))
+				}
+			}
+		}
+		return client.New(opts...)
+	}
+
+	store := contextstore.New(filepath.Join(dir, "contexts"), contextstore.NewConfig(nil,
+		contextstore.EndpointTypeGetter(dockercontext.DockerEndpoint, func() any { return &dockercontext.EndpointMeta{} })))
+	meta, err := store.GetMetadata(name)
+	if err != nil {
+		return nil, fmt.Errorf("loading Docker context %q: %w", name, err)
+	}
+	ep, err := dockercontext.EndpointFromContext(meta)
+	if err != nil {
+		return nil, fmt.Errorf("loading Docker context %q endpoint: %w", name, err)
+	}
+	if ep.Host == "" {
+		return nil, fmt.Errorf("Docker context %q has no daemon endpoint", name)
+	}
+	endpoint, err := dockercontext.WithTLSData(store, name, ep)
+	if err != nil {
+		return nil, fmt.Errorf("loading Docker context %q TLS data: %w", name, err)
+	}
+	opts, err := endpoint.ClientOpts()
+	if err != nil {
+		return nil, fmt.Errorf("configuring Docker context %q: %w", name, err)
+	}
+	return client.New(opts...)
 }
 
 // ImageSave spools the daemon's tarball on first call and serves every call from that file.

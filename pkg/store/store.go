@@ -429,13 +429,9 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
 
-	if err := ensureDockerHost(); err != nil {
-		return "", fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
-	}
-
 	dc, err := newSpoolingDaemonClient(l.tempDir)
 	if err != nil {
-		return "", fmt.Errorf("creating Docker client from environment: %w", err)
+		return "", fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer func() {
 		if err := dc.Close(); err != nil {
@@ -458,32 +454,6 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", err
 	}
 	return d.String(), nil
-}
-
-// ensureDockerHost sets DOCKER_HOST if it is not already set and the default
-// socket (/var/run/docker.sock) does not exist. Docker Desktop on macOS places
-// its socket at ~/.docker/run/docker.sock instead of the default path.
-func ensureDockerHost() error {
-	if os.Getenv("DOCKER_HOST") != "" {
-		return nil
-	}
-
-	if _, err := os.Stat("/var/run/docker.sock"); err == nil {
-		return nil
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	sock := filepath.Join(home, ".docker", "run", "docker.sock")
-	if _, err := os.Stat(sock); err != nil {
-		return fmt.Errorf("no Docker socket found at /var/run/docker.sock or %s", sock)
-	}
-	if err := os.Setenv("DOCKER_HOST", "unix://"+sock); err != nil {
-		return fmt.Errorf("setting DOCKER_HOST: %w", err)
-	}
-	return nil
 }
 
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's
