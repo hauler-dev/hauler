@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hauler.dev/schemas/v1/hauler-manifest.json",
+  "title": "Hauler Manifest (v1)",
+  "description": "A single hauler content manifest document. Multi-document YAML files contain one of these per document.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "description": "API group and version of the content or collection",
+      "enum": [
+        "content.hauler.cattle.io/v1",
+        "collection.hauler.cattle.io/v1"
+      ]
+    },
+    "kind": {
+      "description": "Content kind in this document",
+      "enum": ["Images", "Charts", "Files", "Directories", "Git"]
+    },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "spec": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "Images" } }, "required": ["kind"] },
+      "then": { "properties": { "spec": { "$ref": "#/$defs/imageSpec" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "Charts" } }, "required": ["kind"] },
+      "then": { "properties": { "spec": { "$ref": "#/$defs/chartSpec" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "Files" } }, "required": ["kind"] },
+      "then": { "properties": { "spec": { "$ref": "#/$defs/fileSpec" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "Directories" } }, "required": ["kind"] },
+      "then": { "properties": { "spec": { "$ref": "#/$defs/directorySpec" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "Git" } }, "required": ["kind"] },
+      "then": { "properties": { "spec": { "$ref": "#/$defs/gitSpec" } } }
+    }
+  ],
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "description": "Standard object metadata. Only name and annotations are used by hauler.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of this document, used in log output"
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Document-wide defaults. Values must be strings, so booleans need quoting (for example \"true\").",
+          "additionalProperties": { "type": "string" },
+          "properties": {
+            "hauler.dev/store": { "type": "string", "description": "Target store directory for this document" },
+            "hauler.dev/retries": { "type": "string", "description": "Retry count for this document" },
+            "hauler.dev/key": { "type": "string", "description": "Default cosign public key path for every image in this document" },
+            "hauler.dev/platform": { "type": "string", "description": "Default platform, for example linux/amd64" },
+            "hauler.dev/registry": { "type": "string", "description": "Default registry prefix for unqualified image names" },
+            "hauler.dev/use-tlog-verify": { "type": "string", "enum": ["true", "false"], "description": "Verify the transparency log during signature verification" },
+            "hauler.dev/rewrite": { "type": "string", "description": "Default rewrite rule" },
+            "hauler.dev/exclude-extras": { "type": "string", "enum": ["true", "false"], "description": "Skip signatures, attestations and SBOMs" },
+            "hauler.dev/certificate-identity": { "type": "string", "description": "Expected cosign certificate identity" },
+            "hauler.dev/certificate-identity-regexp": { "type": "string", "description": "Expected cosign certificate identity, as a regular expression" },
+            "hauler.dev/certificate-oidc-issuer": { "type": "string", "description": "Expected cosign OIDC issuer" },
+            "hauler.dev/certificate-oidc-issuer-regexp": { "type": "string", "description": "Expected cosign OIDC issuer, as a regular expression" },
+            "hauler.dev/certificate-github-workflow-repository": { "type": "string", "description": "Expected GitHub workflow repository in the cosign certificate" },
+            "hauler.dev/ca-file": { "type": "string", "description": "CA bundle path used for remote fetches" },
+            "hauler.dev/insecure-skip-tls-verify": { "type": "string", "enum": ["true", "false"], "description": "Skip TLS verification" }
+          }
+        }
+      }
+    },
+
+    "imageSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "images": {
+          "type": "array",
+          "description": "Images to add to the store",
+          "items": { "$ref": "#/$defs/image" }
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Full image location, referenced by tag or digest" },
+        "key": { "type": "string", "description": "Path to the cosign public key used to verify image signatures" },
+        "use-tlog-verify": { "type": "boolean", "description": "Verify the transparency log during signature verification" },
+        "certificate-identity": { "type": "string", "description": "Expected cosign certificate identity (keyless verification)" },
+        "certificate-identity-regexp": { "type": "string", "description": "Expected cosign certificate identity, as a regular expression" },
+        "certificate-oidc-issuer": { "type": "string", "description": "Expected cosign OIDC issuer (keyless verification)" },
+        "certificate-oidc-issuer-regexp": { "type": "string", "description": "Expected cosign OIDC issuer, as a regular expression" },
+        "certificate-github-workflow-repository": { "type": "string", "description": "Expected GitHub workflow repository in the cosign certificate" },
+        "platform": { "type": "string", "description": "Platform to pull, for example linux/amd64. All platforms are pulled when unset." },
+        "rewrite": { "type": "string", "description": "Rewrite rule applied to the image reference" },
+        "exclude-extras": { "type": "boolean", "description": "Skip signatures, attestations and SBOMs for this image" },
+        "local": { "type": "boolean", "description": "Read the image from the local container runtime instead of a registry" },
+        "ca-file": { "type": "string", "description": "CA bundle path. The system bundle is used when unset." },
+        "insecure-skip-tls-verify": { "type": "boolean", "description": "Skip TLS verification for this image" }
+      }
+    },
+
+    "chartSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "charts": {
+          "type": "array",
+          "description": "Helm charts to add to the store",
+          "items": { "$ref": "#/$defs/chart" }
+        }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Chart name, an oci:// reference, or a local .tgz filename" },
+        "repoURL": { "type": "string", "description": "Chart repository URL, or a local directory holding the .tgz. Omit for an oci:// chart name." },
+        "version": { "type": "string", "description": "Chart version. The latest version is used when unset." },
+        "rewrite": { "type": "string", "description": "Rewrite rule applied to the chart reference" },
+        "valuesFiles": {
+          "type": "array",
+          "description": "Local values files used when resolving chart images and dependencies",
+          "items": { "type": "string" }
+        },
+        "platform": { "type": "string", "description": "Platform used when pulling images discovered in the chart" },
+        "add-images": { "type": "boolean", "description": "Also add the images referenced by the chart" },
+        "add-dependencies": { "type": "boolean", "description": "Also add the chart's dependencies" },
+        "exclude-extras": { "type": "boolean", "description": "Skip signatures, attestations and SBOMs for discovered images" },
+        "verify": { "type": "boolean", "description": "Verify the chart's provenance file" },
+        "keyring": { "type": "string", "description": "Keyring path used when verify is set" },
+        "usernameEnv": { "type": "string", "description": "Name of the environment variable holding the repository username. HTTP repos only; use `hauler login` for OCI registries. Never put the raw value here." },
+        "passwordEnv": { "type": "string", "description": "Name of the environment variable holding the repository password. Never put the raw value here." },
+        "passCredentialsAll": { "type": "boolean", "description": "Pass credentials to all domains, not just the chart repository" },
+        "certFile": { "type": "string", "description": "Client certificate path" },
+        "keyFile": { "type": "string", "description": "Client private key path" },
+        "caFile": { "type": "string", "description": "CA bundle path" },
+        "insecureSkipTLSVerify": { "type": "boolean", "description": "Skip TLS verification for this chart" },
+        "plainHTTP": { "type": "boolean", "description": "Use plain HTTP instead of HTTPS" }
+      }
+    },
+
+    "fileSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "description": "Files to add to the store",
+          "items": { "$ref": "#/$defs/file" }
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "description": "Local path or remote URL of the file contents. Relative paths resolve against the manifest's own directory." },
+        "name": { "type": "string", "description": "Overrides the name derived from path" },
+        "ca-file": { "type": "string", "description": "CA bundle path for remote files. The system bundle is used when unset." },
+        "insecure-skip-tls-verify": { "type": "boolean", "description": "Skip TLS verification for remote files" }
+      }
+    },
+
+    "directorySpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "directories": {
+          "type": "array",
+          "description": "Local directories to add to the store",
+          "items": { "$ref": "#/$defs/directory" }
+        }
+      }
+    },
+    "directory": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "description": "Local path to the directory. Relative paths resolve against the manifest's own directory." },
+        "name": { "type": "string", "description": "Overrides the name derived from path" }
+      }
+    },
+
+    "gitSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "git": {
+          "type": "array",
+          "description": "Git repositories to add to the store",
+          "items": { "$ref": "#/$defs/gitRepo" }
+        }
+      }
+    },
+    "gitRepo": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "description": "Local repository path, resolved against the manifest's own directory when relative, or a remote clone URL" },
+        "name": { "type": "string", "description": "Overrides the name derived from path" },
+        "usernameEnv": { "type": "string", "description": "Name of the environment variable holding the username. Never put the raw value here." },
+        "passwordEnv": { "type": "string", "description": "Name of the environment variable holding the password or token. Never put the raw value here." },
+        "sshKey": { "type": "string", "description": "Path to the SSH private key used for cloning" },
+        "certFile": { "type": "string", "description": "Client certificate path" },
+        "keyFile": { "type": "string", "description": "Client private key path" },
+        "caFile": { "type": "string", "description": "CA bundle path" },
+        "insecureSkipTLSVerify": { "type": "boolean", "description": "Skip TLS verification for this repository" }
+      }
+    }
+  }
+}
