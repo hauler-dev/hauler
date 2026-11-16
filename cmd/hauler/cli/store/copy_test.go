@@ -870,3 +870,63 @@ func TestCopyCmd_Dir_TypeFilter(t *testing.T) {
 		}
 	}
 }
+
+// TestCopyCmd_Dir_TypeImage verifies --type image on a directory target writes the store's images as an OCI layout and leaves files out.
+func TestCopyCmd_Dir_TypeImage(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	img := seedImage(t, srcHost, "test/dirimg", "v1")
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/dirimg:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+	url := seedFileInHTTPServer(t, "data.txt", "hello")
+	if err := storeFile(ctx, s, v1.File{Path: url}, ro, rso); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	destDir := t.TempDir()
+	o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), TypeFilter: "image"}
+	if err := CopyCmd(ctx, o, s, "dir://"+destDir, ro); err != nil {
+		t.Fatalf("CopyCmd --type image: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(destDir, "data.txt")); err == nil {
+		t.Error("data.txt should not be extracted with --type image")
+	}
+
+	dest, err := store.NewLayout(destDir)
+	if err != nil {
+		t.Fatalf("NewLayout(destDir): %v", err)
+	}
+	if n := countArtifactsInStore(t, dest); n != 1 {
+		t.Errorf("expected 1 artifact in OCI layout, got %d", n)
+	}
+	assertArtifactInStore(t, dest, "test/dirimg:v1")
+
+	want, err := img.Digest()
+	if err != nil {
+		t.Fatalf("img.Digest: %v", err)
+	}
+	if got := storedDigest(t, dest, "test/dirimg:v1"); got != want.String() {
+		t.Errorf("digest = %s, want %s", got, want)
+	}
+	// Every layer blob must have been copied, not just the manifest.
+	layers, err := img.Layers()
+	if err != nil {
+		t.Fatalf("img.Layers: %v", err)
+	}
+	for _, layer := range layers {
+		d, err := layer.Digest()
+		if err != nil {
+			t.Fatalf("layer.Digest: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(destDir, "blobs", d.Algorithm, d.Hex)); err != nil {
+			t.Errorf("layer blob %s missing: %v", d, err)
+		}
+	}
+}
