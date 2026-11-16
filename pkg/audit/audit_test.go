@@ -1,7 +1,10 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -343,5 +346,40 @@ func TestEnsureDir_ConcurrentFirstCreationSucceeds(t *testing.T) {
 	}
 	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
 		t.Fatalf("expected %s to exist as a directory, stat err: %v", dir, err)
+	}
+}
+
+func TestSanitizeError(t *testing.T) {
+	tests := map[string]string{
+		// net/http request error, which only masks the password
+		`Get "http://user:***@host:8080/f.txt?X-Amz-Signature=SECRET": dial tcp: connection refused`: `Get "http://host:8080/f.txt": dial tcp: connection refused`,
+		// helm repo error, which echoes the raw repo URL
+		`looks like "https://user:SECRET@charts.example.com/stable?sig=SECRET" is not a valid chart repository or cannot be reached: Get "https://user:***@charts.example.com/stable/index.yaml?sig=SECRET": EOF`: `looks like "https://charts.example.com/stable" is not a valid chart repository or cannot be reached: Get "https://charts.example.com/stable/index.yaml": EOF`,
+		// a URL url.Parse rejects still loses its userinfo and query
+		`fetching http://user:SECRET@host:badport/f.txt?sig=SECRET failed`: `fetching http://host:badport/f.txt failed`,
+		// trailing punctuation belongs to the surrounding text, not the URL
+		`fetching https://user:SECRET@host/f.txt?sig=SECRET: EOF`:     `fetching https://host/f.txt: EOF`,
+		`bad url (https://user:SECRET@host/f.txt?sig=SECRET).`:        `bad url (https://host/f.txt).`,
+		`bad url (http://user:SECRET@host:badport/f.txt?sig=SECRET).`: `bad url (http://host:badport/f.txt).`,
+		// no URLs, or URLs with nothing to strip, are left alone
+		`chart not found`:                         `chart not found`,
+		`fetching https://example.com/f.txt: EOF`: `fetching https://example.com/f.txt: EOF`,
+	}
+	for in, want := range tests {
+		if got := SanitizeError(errors.New(in)).Error(); got != want {
+			t.Errorf("SanitizeError(%q) = %q, want %q", in, got, want)
+		}
+	}
+
+	if SanitizeError(nil) != nil {
+		t.Error("SanitizeError(nil) should be nil")
+	}
+	plain := errors.New("chart not found")
+	if SanitizeError(plain) != plain {
+		t.Error("an error without anything to strip should be returned as is")
+	}
+	wrapped := SanitizeError(fmt.Errorf("fetching https://user:SECRET@host/f.txt: %w", context.Canceled))
+	if !errors.Is(wrapped, context.Canceled) || strings.Contains(wrapped.Error(), "SECRET") {
+		t.Errorf("expected a sanitized error that still unwraps to context.Canceled, got %v", wrapped)
 	}
 }

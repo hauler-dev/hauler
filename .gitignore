@@ -1,4 +1,9 @@
+# operating system
 **/.DS_Store
+Thumbs.db
+desktop.ini
+
+# editors and ides
 .idea
 .vscode
 *.suo
@@ -7,18 +12,35 @@
 *.sln
 *.sw?
 *.dir-locals.el
+*~
+\#*\#
+.\#*
+
+# go builds and tests
+bin/
 dist/
 tmp/
-bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+__debug_bin*
+go.work
+go.work.sum
+coverage.out
+vulncheck.out
+trivy.out
+
+# hauler artifacts
 /store/
 registry/
 fileserver/
 cmd/hauler/binaries
 testdata/certs/
-coverage.out
-vulncheck.out
-trivy.out
+
+# claude and ai assistants
 CLAUDE.md
 **/CLAUDE.*
 .claude**
-__debug_bin*

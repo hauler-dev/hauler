@@ -10,6 +10,7 @@ package content
 
 import (
 	"context"
+	"crypto/x509"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -409,4 +410,29 @@ func TestRewriteRefToRegistry(t *testing.T) {
 			}
 		})
 	}
+}
+
+// RootCAs must let the client trust a private registry, and Insecure must still win over it.
+func TestNewRegistryHTTPClient_RootCAs(t *testing.T) {
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "https://")
+
+	if _, err := NewRegistryHTTPClient(host, RegistryOptions{}).Get(srv.URL); err == nil {
+		t.Fatal("control failed: the test server was trusted without its ca")
+	}
+
+	pool := x509.NewCertPool()
+	pool.AddCert(srv.Certificate())
+	resp, err := NewRegistryHTTPClient(host, RegistryOptions{RootCAs: pool}).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("RootCAs did not trust the registry: %v", err)
+	}
+	resp.Body.Close()
+
+	resp, err = NewRegistryHTTPClient(host, RegistryOptions{Insecure: true, RootCAs: x509.NewCertPool()}).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("Insecure did not win over RootCAs: %v", err)
+	}
+	resp.Body.Close()
 }

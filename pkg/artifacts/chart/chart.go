@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +21,7 @@ import (
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
@@ -29,6 +29,7 @@ import (
 	"helm.sh/helm/v4/pkg/registry"
 
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/layer"
 )
 
@@ -95,6 +96,10 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 	client.ChartPathOptions.CaFile = opts.CaFile
 	client.ChartPathOptions.InsecureSkipTLSVerify = opts.InsecureSkipTLSVerify
 	client.ChartPathOptions.PlainHTTP = opts.PlainHTTP
+	// insecureSkipTLSVerify wins over caFile, so clear it to keep helm's own getters from reading the ca file when both are set
+	if opts.InsecureSkipTLSVerify {
+		client.ChartPathOptions.CaFile = ""
+	}
 
 	registryClient, err := newRegistryClient(client.CertFile, client.KeyFile, client.CaFile,
 		client.InsecureSkipTLSVerify, client.PlainHTTP)
@@ -115,13 +120,14 @@ func NewChart(name string, opts *action.ChartPathOptions) (*Chart, error) {
 			client.ChartPathOptions.Password = password
 		}
 		client.ChartPathOptions.RepoURL = opts.RepoURL
-	} else { // handles cases like grafana and loki
+	} else if opts.RepoURL != "" { // handles cases like grafana and loki, while no repo leaves a local chart path as is
 		chartRef = opts.RepoURL + "/" + name
 	}
 
 	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, settings)
 	if err != nil {
-		return nil, err
+		// Helm echoes the raw repo URL, including any user:token or presigned query, in its errors.
+		return nil, audit.SanitizeError(err)
 	}
 
 	return &Chart{
@@ -301,9 +307,11 @@ func (h *Chart) chartData() (gv1.Layer, error) {
 
 	return chartDataLayer, err
 }
+
+// isUrl reports whether name is a remote repo url, which needs both a scheme and a host so absolute and windows paths stay local
 func isUrl(name string) bool {
-	_, err := url.ParseRequestURI(name)
-	return err == nil
+	u, err := url.Parse(name)
+	return err == nil && u.Scheme != "" && u.Host != ""
 }
 
 func newRegistryClient(certFile, keyFile, caFile string, insecureSkipTLSverify, plainHTTP bool) (*registry.Client, error) {
@@ -369,7 +377,7 @@ func newRegistryClientWithTLS(certFile, keyFile, caFile string, insecureSkipTLSv
 }
 
 // newTLSConfig constructs a *tls.Config from the given cert/key/CA files, mirroring the
-// behavior of helm's internal tlsutil.NewTLSConfig.
+// behavior of helm's internal tlsutil.NewTLSConfig, except the ca file adds to the system roots and is skipped when insecure.
 func newTLSConfig(certFile, keyFile, caFile string, insecureSkipTLSverify bool) (*tls.Config, error) {
 	config := &tls.Config{
 		InsecureSkipVerify: insecureSkipTLSverify,
@@ -391,14 +399,10 @@ func newTLSConfig(certFile, keyFile, caFile string, insecureSkipTLSverify bool) 
 		config.Certificates = []tls.Certificate{cert}
 	}
 
-	if caFile != "" {
-		caPEMBlock, err := os.ReadFile(caFile)
+	if caFile != "" && !insecureSkipTLSverify {
+		cp, err := content.CAPool(caFile)
 		if err != nil {
-			return nil, fmt.Errorf("can't read CA file: %q: %w", caFile, err)
-		}
-		cp := x509.NewCertPool()
-		if !cp.AppendCertsFromPEM(caPEMBlock) {
-			return nil, fmt.Errorf("failed to append certificates from pem block")
+			return nil, err
 		}
 		config.RootCAs = cp
 	}

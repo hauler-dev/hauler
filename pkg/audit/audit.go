@@ -9,6 +9,7 @@ import (
 	osuser "os/user"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -110,6 +111,47 @@ func SanitizeURL(raw string) string {
 	u.Fragment = ""
 	return u.String()
 }
+
+// errorURLPattern matches an http(s) URL inside free text, stopping at whitespace and quotes.
+var errorURLPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
+
+// SanitizeError rewrites every http(s) URL in an error message with SanitizeURL, keeping the original error for errors.Is and errors.As.
+func SanitizeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := errorURLPattern.ReplaceAllStringFunc(err.Error(), sanitizeErrorURL)
+	if msg == err.Error() {
+		return err
+	}
+	return &sanitizedError{msg: msg, err: err}
+}
+
+// sanitizeErrorURL keeps trailing punctuation from the surrounding text, and falls back to cutting the query and userinfo by hand when a URL can't be parsed, so nothing leaks through free text.
+func sanitizeErrorURL(match string) string {
+	raw := strings.TrimRight(match, ".,:;!)]}")
+	suffix := match[len(raw):]
+	if s := SanitizeURL(raw); s != raw || !strings.ContainsAny(raw, "?#@") {
+		return s + suffix
+	}
+	if i := strings.IndexAny(raw, "?#"); i >= 0 {
+		raw = raw[:i]
+	}
+	scheme, rest, _ := strings.Cut(raw, "://")
+	if at := strings.LastIndex(rest, "@"); at >= 0 && !strings.Contains(rest[:at], "/") {
+		rest = rest[at+1:]
+	}
+	return scheme + "://" + rest + suffix
+}
+
+type sanitizedError struct {
+	msg string
+	err error
+}
+
+func (e *sanitizedError) Error() string { return e.msg }
+
+func (e *sanitizedError) Unwrap() error { return e.err }
 
 // BuildSystem returns OS level context for verbose audit entries
 func BuildSystem() SystemEntry {

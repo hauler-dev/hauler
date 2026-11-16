@@ -19,55 +19,64 @@ func TestFormatReference(t *testing.T) {
 	tests := []struct {
 		name string
 		ref  string
+		kind string
 		want string
 	}{
 		{
-			name: "empty string returns empty",
-			ref:  "",
-			want: "",
+			name: "tag without dash",
+			ref:  "rancher/rancher:v2.8.5-dev.hauler/imageIndex",
+			kind: "dev.hauler/imageIndex",
+			want: "rancher/rancher:v2.8.5 [dev.hauler/imageIndex]",
 		},
 		{
-			name: "no colon returns unchanged",
-			ref:  "nocolon",
-			want: "nocolon",
+			name: "tag with dash keeps the whole tag",
+			ref:  "hauler-dev/library/nginx:1.25-alpine-dev.hauler/imageIndex",
+			kind: "dev.hauler/imageIndex",
+			want: "hauler-dev/library/nginx:1.25-alpine [dev.hauler/imageIndex]",
 		},
 		{
-			name: "tag without dash returns unchanged",
-			ref:  "rancher/rancher:v2.8.5",
-			want: "rancher/rancher:v2.8.5",
+			name: "tag with several dashes",
+			ref:  "repo:v1.0.0-rc-1-dev.hauler/image",
+			kind: "dev.hauler/image",
+			want: "repo:v1.0.0-rc-1 [dev.hauler/image]",
 		},
 		{
-			name: "cosign sig tag splits at first dash after last colon",
-			ref:  "repo:sha256-abc123.sig",
-			want: "repo:sha256 [abc123.sig]",
+			name: "registry port and cosign sigs kind",
+			ref:  "host:5000/repo:1.2-alpine-dev.hauler/sigs",
+			kind: "dev.hauler/sigs",
+			want: "host:5000/repo:1.2-alpine [dev.hauler/sigs]",
 		},
 		{
-			name: "cosign att tag format",
-			ref:  "myrepo:sha256-deadbeef.att",
-			want: "myrepo:sha256 [deadbeef.att]",
+			name: "referrer kind with subject digest",
+			ref:  "repo:v1-dev.hauler/referrers/abc123",
+			kind: "dev.hauler/referrers/abc123",
+			want: "repo:v1 [dev.hauler/referrers/abc123]",
 		},
 		{
-			name: "cosign sbom tag format",
-			ref:  "myrepo:sha256-deadbeef.sbom",
-			want: "myrepo:sha256 [deadbeef.sbom]",
+			name: "empty kind returns unchanged",
+			ref:  "repo:1.25-alpine",
+			kind: "",
+			want: "repo:1.25-alpine",
 		},
 		{
-			name: "tag is only a dash returns unchanged (empty suffix)",
-			ref:  "repo:-",
-			want: "repo:-",
+			name: "kind not at the end returns unchanged",
+			ref:  "repo:1.25-alpine",
+			kind: "dev.hauler/image",
+			want: "repo:1.25-alpine",
 		},
 		{
-			name: "multiple colons uses last one",
-			ref:  "host:5000/repo:sha256-abc.sig",
-			want: "host:5000/repo:sha256 [abc.sig]",
+			name: "only the kind returns unchanged",
+			ref:  "-dev.hauler/image",
+			kind: "dev.hauler/image",
+			want: "-dev.hauler/image",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := formatReference(tc.ref)
+			got := formatReference(tc.ref, tc.kind)
 			if got != tc.want {
-				t.Errorf("formatReference(%q) = %q, want %q", tc.ref, got, tc.want)
+				t.Errorf("formatReference(%q, %q) = %q, want %q", tc.ref, tc.kind, got, tc.want)
 			}
 		})
 	}

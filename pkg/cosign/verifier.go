@@ -2,15 +2,13 @@ package cosign
 
 import (
 	"context"
-	"crypto"
 	"errors"
 	"fmt"
 	"sync"
 
 	goname "github.com/google/go-containerregistry/pkg/name"
-	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
 	cosignpkg "github.com/sigstore/cosign/v3/pkg/cosign"
+	"github.com/sigstore/sigstore/pkg/signature"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/reference"
@@ -101,7 +99,7 @@ type Verifier struct {
 // -- hauler cannot call Exec here because Exec prints, which forces the
 // process-global output capture that serializes verification.
 //
-// ctx governs setup only in appearance: options.RegistryOptions.ClientOpts bakes
+// ctx governs setup only in appearance: registryClientOpts bakes
 // it into co.RegistryClientOpts, which every later Verify reuses, so ctx also
 // governs all registry I/O for the returned Verifier's whole lifetime. Pass a
 // run-scoped ctx. A per-image or per-timeout ctx here cancels registry reads for
@@ -113,28 +111,13 @@ func NewVerifier(ctx context.Context, cfg Config, rso *flags.StoreRootOpts, ro *
 
 	var identities []cosignpkg.Identity
 	if cfg.Keyless() {
-		certOpts := options.CertVerifyOptions{
-			CertOidcIssuer:               cfg.CertOidcIssuer,
-			CertOidcIssuerRegexp:         cfg.CertOidcIssuerRegexp,
-			CertIdentity:                 cfg.CertIdentity,
-			CertIdentityRegexp:           cfg.CertIdentityRegexp,
-			CertGithubWorkflowRepository: cfg.CertGithubWorkflowRepository,
-		}
 		var err error
-		if identities, err = certOpts.Identities(); err != nil {
+		if identities, err = keylessIdentities(cfg); err != nil {
 			return nil, fmt.Errorf("building identities: %w", err)
 		}
 	}
 
-	// insecureSkipTLSVerify takes precedence: when set, caFile is ignored --
-	// mirrors content.BuildTransport's precedence for the plain registry pull.
-	regOpts := options.RegistryOptions{}
-	if cfg.InsecureSkipTLSVerify {
-		regOpts.AllowInsecure = true
-	} else {
-		regOpts.RegistryCACert = cfg.CaFile
-	}
-	ociremoteOpts, err := regOpts.ClientOpts(ctx)
+	ociremoteOpts, err := registryClientOpts(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("constructing registry client options: %w", err)
 	}
@@ -164,23 +147,19 @@ func NewVerifier(ctx context.Context, cfg Config, rso *flags.StoreRootOpts, ro *
 	// signed timestamps are consulted.
 	offlineWithKey := !cfg.Keyless() && co.IgnoreTlog && !co.UseSignedTimestamps
 
-	// Order is load-bearing and copied from Exec: trust material first, then
-	// legacy clients, then the verifier -- LoadVerifierFromKeyOrCert validates
-	// a certificate chain against the trust material and must see it populated.
-	if err := verify.SetTrustedMaterial(ctx, "", "", "", "", "", offlineWithKey, co); err != nil {
-		return nil, fmt.Errorf("setting trusted material: %w", err)
-	}
-
-	// The second and third arguments mirror cosign's unexported shouldVerifySCT
-	// and keylessVerification (cli/verify/common.go:387,397); both reduce to
-	// "no explicit key" given hauler never sets IgnoreSCT or a security key.
-	if err := verify.SetLegacyClientsAndKeys(ctx, co.IgnoreTlog, cfg.Keyless(), cfg.Keyless(), "", "", "", "", "", co); err != nil {
+	// order matters: setLegacyKeys loads individual keys only when setTrustedMaterial left co.TrustedMaterial nil
+	setTrustedMaterial(ctx, offlineWithKey, co)
+	if err := setLegacyKeys(ctx, cfg.Keyless(), co); err != nil {
 		return nil, fmt.Errorf("setting up clients and keys: %w", err)
 	}
 
-	sv, _, closeSV, err := verify.LoadVerifierFromKeyOrCert(ctx, cfg.Key, "", "", "", crypto.SHA256, false, false, co)
-	if err != nil {
-		return nil, fmt.Errorf("loading verifier from key opts: %w", err)
+	// keyless leaves sv nil so cosign verifies against the fulcio certificate instead
+	var sv signature.Verifier
+	closeSV := func() {}
+	if !cfg.Keyless() {
+		if sv, closeSV, err = loadKeyVerifier(ctx, cfg.Key); err != nil {
+			return nil, fmt.Errorf("loading verifier from key opts: %w", err)
+		}
 	}
 	co.SigVerifier = sv
 

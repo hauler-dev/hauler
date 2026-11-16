@@ -524,3 +524,63 @@ func TestDecodeOriginalChartRef(t *testing.T) {
 		})
 	}
 }
+
+// directory artifacts round trip into a Directories doc while a directory added as a file stays in Files.
+func TestCreateManifestCmd_Directory(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	dir := filepath.Join(t.TempDir(), "mydir")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := storeDirectory(ctx, s, v1.Directory{Path: dir}, ro, rso); err != nil {
+		t.Fatalf("storeDirectory: %v", err)
+	}
+	if err := storeFile(ctx, s, v1.File{Path: dir}, ro, rso); err != nil {
+		t.Fatalf("storeFile: %v", err)
+	}
+
+	o := newCreateManifestOpts(t, rso)
+	if err := CreateManifestCmd(ctx, o, s); err != nil {
+		t.Fatalf("CreateManifestCmd: %v", err)
+	}
+
+	content := readManifest(t, o.Output)
+	dirDoc := content[strings.Index(content, "kind: Directories"):]
+	if !strings.Contains(content, "kind: Directories") || !strings.Contains(dirDoc, "path: "+dir) || !strings.Contains(dirDoc, "name: mydir\n") {
+		t.Errorf("expected a Directories doc for %q, got:\n%s", dir, content)
+	}
+	if !strings.Contains(content, "kind: Files") || !strings.Contains(content, "name: mydir.tar.zst") {
+		t.Errorf("expected a Files doc with mydir.tar.zst, got:\n%s", content)
+	}
+}
+
+// git artifacts round trip into a Git doc keyed by spec.git.
+func TestCreateManifestCmd_Git(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	repoDir := newBareGitRepoFixture(t, "myrepo.git")
+
+	if err := AddGitCmd(ctx, &flags.AddGitOpts{StoreRootOpts: rso}, s, repoDir, defaultCliOpts()); err != nil {
+		t.Fatalf("AddGitCmd: %v", err)
+	}
+
+	o := newCreateManifestOpts(t, rso)
+	if err := CreateManifestCmd(ctx, o, s); err != nil {
+		t.Fatalf("CreateManifestCmd: %v", err)
+	}
+	content := readManifest(t, o.Output)
+	for _, want := range []string{"kind: Git\n", "    git:\n", "path: " + repoDir, "name: myrepo.git"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("expected %q in manifest, got:\n%s", want, content)
+		}
+	}
+}

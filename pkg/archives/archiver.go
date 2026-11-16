@@ -211,7 +211,31 @@ func SplitArchive(ctx context.Context, archivePath string, maxBytes int64) ([]st
 	if err := os.Remove(archivePath); err != nil {
 		return nil, fmt.Errorf("failed to remove original archive after splitting: %w", err)
 	}
+	if err := removeLeftoverChunks(ctx, archivePath, len(chunks)); err != nil {
+		return nil, err
+	}
 
 	l.Infof("split archive [%s] into %d chunk(s)", filepath.Base(archivePath), len(chunks))
 	return chunks, nil
+}
+
+// removeLeftoverChunks deletes chunks numbered above keep that an earlier, larger save left behind, since load treats every matching chunk as part of the set.
+func removeLeftoverChunks(ctx context.Context, archivePath string, keep int) error {
+	all, err := filepath.Glob(archivePath + ".*")
+	if err != nil {
+		return err
+	}
+	removed := 0
+	for _, m := range all {
+		if base, idx, ok := chunkInfo(m); ok && base == filepath.Clean(archivePath) && idx > keep {
+			if err := os.Remove(m); err != nil {
+				return fmt.Errorf("failed to remove leftover chunk [%s]: %w", m, err)
+			}
+			removed++
+		}
+	}
+	if removed > 0 {
+		log.FromContext(ctx).Infof("removed [%d] leftover chunk(s) from a previous save", removed)
+	}
+	return nil
 }

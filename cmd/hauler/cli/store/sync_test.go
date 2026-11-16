@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -179,7 +180,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err != nil {
 		t.Fatalf("processContent Files v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "synced.sh")
@@ -218,7 +219,7 @@ spec:
 	ro := defaultCliOpts()
 	targetStores := map[string]*store.Layout{}
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, targetStores); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, targetStores, false); err != nil {
 		t.Fatalf("processContent Files v1 with target store: %v", err)
 	}
 
@@ -322,9 +323,7 @@ func TestProcessContent_Charts_v1(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
 
-	// Use the same relative path as add_test.go: url.ParseRequestURI accepts
-	// absolute Unix paths, making isUrl() return true for them. A relative
-	// path correctly keeps isUrl() false so Helm sees it as a local directory.
+	// Use the same relative path as add_test.go.
 	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
 kind: Charts
 metadata:
@@ -339,7 +338,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err != nil {
 		t.Fatalf("processContent Charts v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "rancher-cluster-templates")
@@ -365,7 +364,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err != nil {
 		t.Fatalf("processContent Images v1: %v", err)
 	}
 	assertArtifactInStore(t, s, "myorg/myimage")
@@ -428,7 +427,7 @@ spec:
 			o.Platform = tc.cliPlatform
 			fi := writeManifestFile(t, tc.manifest)
 
-			err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{})
+			err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, false)
 			if err == nil {
 				t.Fatal("processContent accepted a platform on a digest-pinned index")
 			}
@@ -449,7 +448,7 @@ spec:
 		ro.IgnoreErrors = true
 		fi := writeManifestFile(t, perImage)
 
-		if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+		if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err != nil {
 			t.Fatalf("processContent with --ignore-errors: %v", err)
 		}
 		if got := countArtifactsInStore(t, s); got != 0 {
@@ -474,7 +473,7 @@ metadata:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err == nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err == nil {
 		t.Fatal("expected error for unsupported kind, got nil")
 	}
 }
@@ -499,7 +498,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err != nil {
 		t.Fatalf("expected nil for unrecognized apiVersion (warn-and-skip), got: %v", err)
 	}
 	if n := countArtifactsInStore(t, s); n != 0 {
@@ -545,7 +544,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err != nil {
 		t.Fatalf("processContent MultiDoc: %v", err)
 	}
 	assertArtifactInStore(t, s, "multi.sh")
@@ -1265,6 +1264,7 @@ func TestResolveImageJobs_InsecurePrecedence(t *testing.T) {
 	tests := []struct {
 		name       string
 		cliCaFile  string
+		cliIns     bool
 		cliChanged bool
 		annotation string
 		imageIns   bool
@@ -1273,14 +1273,16 @@ func TestResolveImageJobs_InsecurePrecedence(t *testing.T) {
 		{name: "per-image true when CLI unset", imageIns: true, want: true},
 		{name: "annotation true when CLI unset", annotation: "true", want: true},
 		{name: "explicit CLI false overrides annotation and per-image", cliChanged: true, annotation: "true", imageIns: true, want: false},
-		// a CA file forces verification on, overriding a per-image/annotation true
-		{name: "ca-file forces insecure off", cliCaFile: "/ca.pem", annotation: "true", imageIns: true, want: false},
+		// a cli ca file no longer forces insecure off, since the transport lets insecure win when both are set
+		{name: "ca-file keeps per-image and annotation insecure", cliCaFile: "/ca.pem", annotation: "true", imageIns: true, want: true},
+		{name: "ca-file keeps cli insecure", cliCaFile: "/ca.pem", cliIns: true, cliChanged: true, want: true},
+		{name: "ca-file alone stays secure", cliCaFile: "/ca.pem", want: false},
 		{name: "all unset stays false", want: false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &flags.SyncOpts{CaFile: tc.cliCaFile, InsecureChanged: tc.cliChanged}
+			o := &flags.SyncOpts{CaFile: tc.cliCaFile, InsecureSkipTLSVerify: tc.cliIns, InsecureChanged: tc.cliChanged}
 			a := map[string]string{}
 			if tc.annotation != "" {
 				a[consts.ImageAnnotationInsecureSkipTLSVerify] = tc.annotation
@@ -1424,7 +1426,7 @@ spec:
 	o := newSyncOpts(s.Root)
 	ro := defaultCliOpts()
 
-	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}); err != nil {
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, ro, map[string]*store.Layout{}, false); err != nil {
 		t.Fatalf("processContent: %v", err)
 	}
 
@@ -3168,5 +3170,456 @@ func TestRunImageJobs_AlreadyCancelledContext(t *testing.T) {
 				t.Fatalf("store holds %d artifacts, want 0; an already-cancelled run must not store anything", got)
 			}
 		})
+	}
+}
+
+// newSyncDirFixture creates <base>/<name>/sub/a.txt and returns the directory path.
+func newSyncDirFixture(t *testing.T, base, name string) string {
+	t.Helper()
+	dir := filepath.Join(base, name)
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sub", "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// artifactManifest decodes the manifest of the first artifact whose ref contains refSubstring.
+func artifactManifest(t *testing.T, s *store.Layout, refSubstring string) ocispec.Manifest {
+	t.Helper()
+	var m ocispec.Manifest
+	found := false
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if found || !strings.Contains(desc.Annotations[ocispec.AnnotationRefName], refSubstring) {
+			return nil
+		}
+		found = true
+		rc, err := s.Fetch(context.Background(), desc)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+		return json.NewDecoder(rc).Decode(&m)
+	}); err != nil || !found {
+		t.Fatalf("artifactManifest %q: found=%v err=%v", refSubstring, found, err)
+	}
+	return m
+}
+
+// a relative Directories path resolves against the manifest's own directory, not the process cwd.
+func TestProcessContent_Directories_v1(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	fi := writeManifestFile(t, `apiVersion: content.hauler.cattle.io/v1
+kind: Directories
+metadata:
+  name: test-directories
+spec:
+  directories:
+    - path: ./syncdir
+    - path: ./syncdir
+      name: renamed
+`)
+	newSyncDirFixture(t, filepath.Dir(fi.Name()), "syncdir")
+
+	o := newSyncOpts(s.Root)
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, false); err != nil {
+		t.Fatalf("processContent Directories v1: %v", err)
+	}
+	for _, ref := range []string{"hauler/syncdir:", "hauler/renamed:"} {
+		assertArtifactInStore(t, s, ref)
+		if got := artifactManifest(t, s, ref).Config.MediaType; got != consts.FileDirectoryConfigMediaType {
+			t.Errorf("%s config media type = %q, want %q", ref, got, consts.FileDirectoryConfigMediaType)
+		}
+	}
+}
+
+func TestProcessContent_Directories_RejectedFromRemoteManifest(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	dir := newSyncDirFixture(t, t.TempDir(), "secret")
+
+	fi := writeManifestFile(t, fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Directories
+metadata:
+  name: test-directories
+spec:
+  directories:
+    - path: %s
+`, dir))
+
+	o := newSyncOpts(s.Root)
+	err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, true)
+	if err == nil || !strings.Contains(err.Error(), "remote manifest") {
+		t.Fatalf("expected a remote manifest refusal, got: %v", err)
+	}
+	assertArtifactNotInStore(t, s, "secret")
+}
+
+func TestResolveDirectoryJobs(t *testing.T) {
+	jobs, err := resolveDirectoryJobs("/manifests", []v1.Directory{{Path: "rel"}, {Path: "/abs/dir", Name: "n"}})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if jobs[0].Path != filepath.Join("/manifests", "rel") || jobs[1].Path != "/abs/dir" || jobs[1].Name != "n" {
+		t.Errorf("unexpected jobs: %+v", jobs)
+	}
+
+	for _, bad := range []v1.Directory{{Path: ""}, {Path: "https://example.com/dir"}, {Path: "file:///tmp/dir"}} {
+		if _, err := resolveDirectoryJobs("/manifests", []v1.Directory{bad}); err == nil {
+			t.Errorf("expected %+v to be rejected", bad)
+		}
+	}
+}
+
+// a Files entry pointing at a directory still works, but stores one .tar.zst file (the store save default) instead of a directory artifact.
+func TestProcessContent_Files_DirectoryPathStoredAsTarball(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	dir := newSyncDirFixture(t, t.TempDir(), "bundle")
+
+	fi := writeManifestFile(t, fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: test-files
+spec:
+  files:
+    - path: %s
+`, dir))
+
+	o := newSyncOpts(s.Root)
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, false); err != nil {
+		t.Fatalf("processContent Files with a directory: %v", err)
+	}
+	assertArtifactInStore(t, s, "hauler/bundle.tar.zst:")
+	if got := artifactManifest(t, s, "bundle.tar.zst").Config.MediaType; got != consts.FileLocalConfigMediaType {
+		t.Errorf("config media type = %q, want %q", got, consts.FileLocalConfigMediaType)
+	}
+}
+
+// a directory stored via `store add file` takes its archive format from --name, defaulting to tar.zst.
+func TestStoreFile_DirectoryFormatFollowsName(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	dir := newSyncDirFixture(t, t.TempDir(), "bundle")
+
+	tests := []struct {
+		name, ref string
+		magic     []byte
+	}{
+		{name: "", ref: "hauler/bundle.tar.zst:", magic: []byte{0x28, 0xb5, 0x2f, 0xfd}},
+		{name: "bundle.tar.gz", ref: "hauler/bundle.tar.gz:", magic: []byte{0x1f, 0x8b}},
+		{name: "bundle.tgz", ref: "hauler/bundle.tgz:", magic: []byte{0x1f, 0x8b}},
+		{name: "bundle.tar.xz", ref: "hauler/bundle.tar.xz:", magic: []byte{0xfd, '7', 'z', 'X', 'Z', 0x00}},
+	}
+	for _, tt := range tests {
+		if err := storeFile(ctx, s, v1.File{Path: dir, Name: tt.name}, ro, rso); err != nil {
+			t.Fatalf("storeFile %q: %v", tt.name, err)
+		}
+		assertArtifactInStore(t, s, tt.ref)
+		m := artifactManifest(t, s, tt.ref)
+		if m.Config.MediaType != consts.FileLocalConfigMediaType {
+			t.Errorf("%s config media type = %q, want %q", tt.ref, m.Config.MediaType, consts.FileLocalConfigMediaType)
+		}
+		if _, ok := m.Layers[0].Annotations[content.AnnotationUnpack]; ok {
+			t.Errorf("%s layer carries the unpack annotation, so it would extract as a directory", tt.ref)
+		}
+		rc, err := s.Fetch(ctx, m.Layers[0])
+		if err != nil {
+			t.Fatalf("fetching %s layer: %v", tt.ref, err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("reading %s layer: %v", tt.ref, err)
+		}
+		if !bytes.HasPrefix(data, tt.magic) {
+			t.Errorf("%s layer starts with % x, want % x", tt.ref, data[:len(tt.magic)], tt.magic)
+		}
+	}
+}
+
+// a Git doc stores local repos, resolving a relative path against the manifest's own directory.
+func TestProcessContent_Git_v1(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	fi := writeManifestFile(t, `apiVersion: content.hauler.cattle.io/v1
+kind: Git
+metadata:
+  name: test-git
+spec:
+  git:
+    - path: ./syncrepo.git
+    - path: ./syncrepo.git
+      name: renamed-repo
+`)
+	if err := os.Rename(newBareGitRepoFixture(t, "syncrepo.git"), filepath.Join(filepath.Dir(fi.Name()), "syncrepo.git")); err != nil {
+		t.Fatal(err)
+	}
+
+	o := newSyncOpts(s.Root)
+	if err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, false); err != nil {
+		t.Fatalf("processContent Git v1: %v", err)
+	}
+	for _, ref := range []string{"hauler/syncrepo.git:", "hauler/renamed-repo:"} {
+		assertArtifactInStore(t, s, ref)
+		if got := artifactManifest(t, s, ref).Config.MediaType; got != consts.GitRepoConfigMediaType {
+			t.Errorf("%s config media type = %q, want %q", ref, got, consts.GitRepoConfigMediaType)
+		}
+	}
+}
+
+func TestResolveGitJobs(t *testing.T) {
+	t.Setenv("TEST_GIT_USER", "me")
+	t.Setenv("TEST_GIT_TOKEN", "secret")
+
+	jobs, err := resolveGitJobs("/manifests", []v1.GitRepo{
+		{Path: "rel.git"},
+		{Path: "https://example.com/org/repo.git", Name: "n", UsernameEnv: "TEST_GIT_USER", PasswordEnv: "TEST_GIT_TOKEN"},
+	}, false, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if jobs[0].path != filepath.Join("/manifests", "rel.git") {
+		t.Errorf("relative path = %q, want it resolved against the manifest dir", jobs[0].path)
+	}
+	if jobs[1].path != "https://example.com/org/repo.git" || jobs[1].opts.Username != "me" || jobs[1].opts.Password != "secret" || jobs[1].opts.Name != "n" {
+		t.Errorf("unexpected URL job: path=%q opts=%+v", jobs[1].path, jobs[1].opts)
+	}
+
+	bad := map[string]struct {
+		repo   v1.GitRepo
+		remote bool
+	}{
+		"missing path":                    {repo: v1.GitRepo{}},
+		"only one credential env":         {repo: v1.GitRepo{Path: "https://example.com/r.git", UsernameEnv: "TEST_GIT_USER"}},
+		"unset credential env":            {repo: v1.GitRepo{Path: "https://example.com/r.git", UsernameEnv: "TEST_GIT_USER", PasswordEnv: "TEST_GIT_UNSET"}},
+		"local path from remote manifest": {repo: v1.GitRepo{Path: "/srv/private.git"}, remote: true},
+		"credentials from remote":         {repo: v1.GitRepo{Path: "https://example.com/r.git", UsernameEnv: "TEST_GIT_USER", PasswordEnv: "TEST_GIT_TOKEN"}, remote: true},
+		"ssh key from remote":             {repo: v1.GitRepo{Path: "git@example.com:org/r.git", SSHKey: "/home/me/.ssh/id_ed25519"}, remote: true},
+	}
+	for name, tt := range bad {
+		if _, err := resolveGitJobs("/manifests", []v1.GitRepo{tt.repo}, tt.remote, nil); err == nil {
+			t.Errorf("%s: expected an error, got nil", name)
+		}
+	}
+
+	if _, err := resolveGitJobs("/manifests", []v1.GitRepo{{Path: "https://example.com/r.git"}}, true, nil); err != nil {
+		t.Errorf("a plain URL from a remote manifest should be allowed, got: %v", err)
+	}
+}
+
+// a presigned remote manifest or image.txt URL's query never reaches the logs.
+func TestSyncCmd_RemotePresigned_NoLogLeak(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.DebugLevel).WithContext(context.Background())
+	s := newTestStore(t)
+	const presign = "?X-Amz-Credential=AKIA-SECRET-KEY&X-Amz-Signature=SECRET-SIGNATURE"
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/presigned", "v1")
+	fileURL := seedFileInHTTPServer(t, "synced.sh", "echo synced")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/images.txt") {
+			io.WriteString(w, host+"/myorg/presigned:v1\n") //nolint:errcheck
+			return
+		}
+		fmt.Fprintf(w, "apiVersion: content.hauler.cattle.io/v1\nkind: Files\nmetadata:\n  name: presigned\nspec:\n  files:\n    - path: %s\n", fileURL)
+	}))
+	t.Cleanup(srv.Close)
+
+	o := newSyncOpts(s.Root)
+	o.FileName = []string{srv.URL + "/manifest.yaml" + presign}
+	o.ImageTxt = []string{srv.URL + "/images.txt" + presign}
+	ro := defaultCliOpts()
+	ro.LogLevel = "debug"
+
+	if err := SyncCmd(ctx, o, s, defaultRootOpts(s.Root), ro); err != nil {
+		t.Fatalf("SyncCmd: %v", err)
+	}
+	assertArtifactInStore(t, s, "synced.sh")
+	assertArtifactInStore(t, s, "myorg/presigned")
+	for _, secret := range []string{"SECRET-SIGNATURE", "AKIA-SECRET-KEY"} {
+		if strings.Contains(logs.String(), secret) {
+			t.Errorf("logs contain %s:\n%s", secret, logs.String())
+		}
+	}
+}
+
+// A remote manifest may only name remote files, while a local manifest keeps using local paths.
+func TestCheckRemoteFiles(t *testing.T) {
+	if err := checkRemoteFiles([]v1.File{{Path: "/etc/hosts"}}, false); err != nil {
+		t.Errorf("a local path from a local manifest should be allowed, got: %v", err)
+	}
+	for _, p := range []string{"https://example.com/install.sh", "http://example.com/install.sh", "https://user:token@example.com/f?X-Amz-Signature=abc"} {
+		if err := checkRemoteFiles([]v1.File{{Path: p}}, true); err != nil {
+			t.Errorf("remote file [%s] from a remote manifest should be allowed, got: %v", p, err)
+		}
+	}
+	for _, p := range []string{"/etc/hosts", "../secrets/id_ed25519", "secret.txt", "file:///etc/hosts", `C:\Users\me\secret.txt`, "https:///nohost", ""} {
+		if err := checkRemoteFiles([]v1.File{{Path: "https://example.com/ok"}, {Path: p}}, true); err == nil {
+			t.Errorf("local file [%s] from a remote manifest should be refused", p)
+		}
+	}
+}
+
+// A remote manifest may only name charts from remote repositories, without local credentials or files, while a local manifest is unchanged.
+func TestCheckRemoteCharts(t *testing.T) {
+	if err := checkRemoteCharts([]v1.Chart{{Name: "/charts/local.tgz", UsernameEnv: "U", PasswordEnv: "P", ValuesFiles: []string{"v.yaml"}}}, false); err != nil {
+		t.Errorf("a local chart from a local manifest should be allowed, got: %v", err)
+	}
+
+	good := map[string]v1.Chart{
+		"https repo":        {Name: "cert-manager", RepoURL: "https://charts.jetstack.io", Version: "v1.15.0"},
+		"oci repo":          {Name: "external-secrets", RepoURL: "oci://ghcr.io/external-secrets/charts"},
+		"oci name, no repo": {Name: "oci://ghcr.io/external-secrets/charts/external-secrets"},
+	}
+	for name, ch := range good {
+		if err := checkRemoteCharts([]v1.Chart{ch}, true); err != nil {
+			t.Errorf("%s: should be allowed from a remote manifest, got: %v", name, err)
+		}
+	}
+
+	bad := map[string]v1.Chart{
+		"local name, no repo": {Name: "/charts/local.tgz"},
+		"absolute repo path":  {Name: "local.tgz", RepoURL: "/charts"},
+		"relative repo path":  {Name: "local.tgz", RepoURL: "../charts"},
+		"file repo":           {Name: "local.tgz", RepoURL: "file:///charts"},
+		"username env":        {Name: "c", RepoURL: "https://example.com", UsernameEnv: "AWS_ACCESS_KEY_ID", PasswordEnv: "AWS_SECRET_ACCESS_KEY"},
+		"cert file":           {Name: "c", RepoURL: "https://example.com", CertFile: "/home/me/client.crt"},
+		"key file":            {Name: "c", RepoURL: "https://example.com", KeyFile: "/home/me/client.key"},
+		"ca file":             {Name: "c", RepoURL: "https://example.com", CaFile: "/home/me/ca.pem"},
+		"values files":        {Name: "c", RepoURL: "https://example.com", ValuesFiles: []string{"/home/me/values.yaml"}},
+	}
+	for name, ch := range bad {
+		if err := checkRemoteCharts([]v1.Chart{ch}, true); err == nil {
+			t.Errorf("%s: should be refused from a remote manifest", name)
+		}
+	}
+}
+
+// A refused remote manifest must store nothing and must not create the store its annotation names.
+func TestProcessContent_LocalFilesAndChartsRejectedFromRemoteManifest(t *testing.T) {
+	ctx := newTestContext(t)
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("secret"), 0o600); err != nil {
+		t.Fatalf("writing secret: %v", err)
+	}
+	absCharts, err := filepath.Abs(chartTestdataDir)
+	if err != nil {
+		t.Fatalf("resolving testdata: %v", err)
+	}
+
+	manifests := map[string]string{
+		"file":  fmt.Sprintf("apiVersion: content.hauler.cattle.io/v1\nkind: Files\nmetadata:\n  name: f\n  annotations:\n    %s: %%s\nspec:\n  files:\n    - path: %s\n", consts.AnnotationTargetStore, secret),
+		"chart": fmt.Sprintf("apiVersion: content.hauler.cattle.io/v1\nkind: Charts\nmetadata:\n  name: c\n  annotations:\n    %s: %%s\nspec:\n  charts:\n    - name: %s/rancher-cluster-templates-0.5.2.tgz\n", consts.AnnotationTargetStore, absCharts),
+	}
+	for name, tmpl := range manifests {
+		s := newTestStore(t)
+		target := filepath.Join(t.TempDir(), "annotated-store")
+		fi := writeManifestFile(t, fmt.Sprintf(tmpl, target))
+		o := newSyncOpts(s.Root)
+
+		err := processContent(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, true)
+		if err == nil || !strings.Contains(err.Error(), "remote manifest") {
+			t.Fatalf("%s: expected a remote manifest refusal, got: %v", name, err)
+		}
+		assertArtifactNotInStore(t, s, "secret")
+		assertArtifactNotInStore(t, s, "rancher-cluster-templates")
+		if _, err := os.Stat(target); !os.IsNotExist(err) {
+			t.Fatalf("%s: the annotated store was created before the manifest was refused", name)
+		}
+	}
+}
+
+// --trust-remote-manifests lets a remote manifest use local files, charts, directories, and git repos like a local one, and logs that it did.
+func TestProcessContent_TrustRemoteManifests(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "trusted-secret.txt")
+	if err := os.WriteFile(secret, []byte("secret"), 0o600); err != nil {
+		t.Fatalf("writing file: %v", err)
+	}
+	absCharts, err := filepath.Abs(chartTestdataDir)
+	if err != nil {
+		t.Fatalf("resolving testdata: %v", err)
+	}
+	dir := newSyncDirFixture(t, t.TempDir(), "trusted-dir")
+	repo := newBareGitRepoFixture(t, "trusted.git")
+
+	manifest := fmt.Sprintf(`apiVersion: content.hauler.cattle.io/v1
+kind: Files
+metadata:
+  name: f
+spec:
+  files:
+    - path: %s
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Charts
+metadata:
+  name: c
+spec:
+  charts:
+    - name: %s/rancher-cluster-templates-0.5.2.tgz
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Directories
+metadata:
+  name: d
+spec:
+  directories:
+    - path: %s
+---
+apiVersion: content.hauler.cattle.io/v1
+kind: Git
+metadata:
+  name: g
+spec:
+  git:
+    - path: %s
+`, secret, absCharts, dir, repo)
+
+	s := newTestStore(t)
+	o := newSyncOpts(s.Root)
+	if err := processContent(newTestContext(t), writeManifestFile(t, manifest), o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, true); err == nil {
+		t.Fatal("control failed: the remote manifest was accepted without --trust-remote-manifests")
+	}
+
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+	s = newTestStore(t)
+	o = newSyncOpts(s.Root)
+	o.TrustRemoteManifests = true
+	if err := processContent(ctx, writeManifestFile(t, manifest), o, s, o.StoreRootOpts, defaultCliOpts(), map[string]*store.Layout{}, true); err != nil {
+		t.Fatalf("processContent with --trust-remote-manifests: %v", err)
+	}
+	for _, ref := range []string{"trusted-secret.txt", "rancher-cluster-templates", "trusted-dir", "trusted.git"} {
+		assertArtifactInStore(t, s, ref)
+	}
+	if !strings.Contains(logs.String(), "trusting remote manifest") {
+		t.Errorf("no trust warning was logged, got: %s", logs.String())
+	}
+}
+
+// A cli ca file must not force insecure off for files or charts either, matching images and every other command.
+func TestResolveFileAndChartJobs_CaFileKeepsInsecure(t *testing.T) {
+	o := &flags.SyncOpts{CaFile: "/ca.pem", InsecureSkipTLSVerify: true, InsecureChanged: true}
+
+	files := resolveFileJobs(o, nil, []v1.File{{Path: "https://example.com/install.sh"}})
+	if len(files) != 1 || !files[0].file.InsecureSkipTLSVerify || files[0].file.CaFile != "/ca.pem" {
+		t.Fatalf("file job lost insecure or the ca file: %+v", files)
+	}
+
+	charts, err := resolveChartJobs(o, nil, "", []v1.Chart{{Name: "example", RepoURL: "oci://example.com/charts"}})
+	if err != nil {
+		t.Fatalf("resolveChartJobs: %v", err)
+	}
+	if len(charts) != 1 || !charts[0].opts.ChartOpts.InsecureSkipTLSVerify || charts[0].opts.ChartOpts.CaFile != "/ca.pem" {
+		t.Fatalf("chart job lost insecure or the ca file: %+v", charts)
 	}
 }

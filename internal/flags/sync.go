@@ -27,6 +27,7 @@ type SyncOpts struct {
 	NoProgress                   bool
 	CaFile                       string
 	InsecureSkipTLSVerify        bool
+	TrustRemoteManifests         bool
 
 	// Whether each of these flags was explicitly set on the CLI, captured in
 	// sync's PreRunE. A plain bool (and a resolved store/retries value) has no
@@ -61,4 +62,5 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
 	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
+	f.BoolVar(&o.TrustRemoteManifests, "trust-remote-manifests", false, "(Optional) Allow remote manifests to use local paths and credentials")
 }
