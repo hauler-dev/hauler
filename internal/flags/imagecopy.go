@@ -19,6 +19,7 @@ type ImageCopyOpts struct {
 	NoClobber                      bool
 	Jobs                           int
 	AllowNondistributableArtifacts bool
+	ExcludeExtras                  bool
 }
 
 func (o *ImageCopyOpts) AddFlags(cmd *cobra.Command) {
@@ -31,6 +32,7 @@ func (o *ImageCopyOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image... i.e. linux/amd64 (defaults to all)")
 	f.BoolVar(&o.AllTags, "all-tags", false, "(Optional) Copy all tags from the source repository to the destination")
 	f.BoolVar(&o.NoClobber, "no-clobber", false, "(Optional) Avoid overwriting existing tags at the destination")
-	f.IntVar(&o.Jobs, "jobs", runtime.GOMAXPROCS(0), "(Optional) Maximum number of concurrent copies (only applies with --all-tags)")
+	f.IntVar(&o.Jobs, "jobs", runtime.GOMAXPROCS(0), "(Optional) Maximum number of concurrent copies (requires --all-tags)")
+	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when copying the image")
 	f.BoolVar(&o.AllowNondistributableArtifacts, "allow-nondistributable-artifacts", false, "(Optional) Allow pushing non-distributable (foreign) layers")
 }
