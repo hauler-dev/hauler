@@ -14,6 +14,7 @@ type ServeRegistryOpts struct {
 	ReadOnly       bool
 	BasicAuth      string
 	BasicAuthRealm string
+	SkipCopy       bool
 
 	TLSCert string
 	TLSKey  string
@@ -29,6 +30,8 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
 	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultRegistryRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
 
+	f.BoolVar(&o.SkipCopy, "skip-copy", false, "(Optional) Skip copying the store into --directory at startup and serve its existing contents")
+
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authentication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authentication")
 
@@ -43,6 +46,7 @@ type ServeFilesOpts struct {
 	RootDir        string
 	BasicAuth      string
 	BasicAuthRealm string
+	SkipCopy       bool
 
 	TLSCert string
 	TLSKey  string
@@ -56,6 +60,8 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.RootDir, "directory", consts.DefaultFileserverRootDir, "(Optional) Directory to use for backend. (defaults to $PWD/fileserver)")
 	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
 	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultFileserverRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
+
+	f.BoolVar(&o.SkipCopy, "skip-copy", false, "(Optional) Skip copying the store into --directory at startup and serve its existing contents")
 
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authentication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authentication")
@@ -72,6 +78,7 @@ type ServeGitOpts struct {
 	RootDir        string
 	BasicAuth      string
 	BasicAuthRealm string
+	SkipCopy       bool
 
 	TLSCert string
 	TLSKey  string
@@ -85,6 +92,8 @@ func (o *ServeGitOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.RootDir, "directory", consts.DefaultGitRootDir, "(EXPERIMENTAL) (Optional) Directory to use for backend. (defaults to $PWD/git)")
 	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
 	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultGitRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
+
+	f.BoolVar(&o.SkipCopy, "skip-copy", false, "(EXPERIMENTAL) (Optional) Skip copying the store into --directory at startup and serve its existing contents")
 
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(EXPERIMENTAL) (Optional) Location of the TLS Certificate to use for server authentication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(EXPERIMENTAL) (Optional) Location of the TLS Key to use for server authentication")
