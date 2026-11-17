@@ -322,3 +322,26 @@ func TestSkipCopy(t *testing.T) {
 		t.Errorf("expected --directory untouched with skipCopy, found %d entries", len(entries))
 	}
 }
+
+func TestCopyOnly(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	src := filepath.Join(t.TempDir(), "x.txt")
+	if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddFileCmd(ctx, &flags.AddFileOpts{StoreRootOpts: defaultRootOpts(s.Root)}, s, src, defaultCliOpts()); err != nil {
+		t.Fatalf("AddFileCmd: %v", err)
+	}
+
+	// copy-only must return after the copy instead of blocking in ListenAndServe
+	root := filepath.Join(t.TempDir(), "fileserver")
+	o := &flags.ServeFilesOpts{StoreRootOpts: &flags.StoreRootOpts{}, RootDir: root, CopyOnly: true}
+	if err := ServeFilesCmd(ctx, o, s, defaultCliOpts()); err != nil {
+		t.Fatalf("ServeFilesCmd --copy-only: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "x.txt")); err != nil {
+		t.Errorf("expected x.txt copied into --directory: %v", err)
+	}
+}

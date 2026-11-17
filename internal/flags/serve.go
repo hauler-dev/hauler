@@ -15,6 +15,7 @@ type ServeRegistryOpts struct {
 	BasicAuth      string
 	BasicAuthRealm string
 	SkipCopy       bool
+	CopyOnly       bool
 
 	TLSCert string
 	TLSKey  string
@@ -31,6 +32,8 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultRegistryRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
 
 	f.BoolVar(&o.SkipCopy, "skip-copy", false, "(Optional) Skip copying the store into --directory at startup and serve its existing contents")
+	f.BoolVar(&o.CopyOnly, "copy-only", false, "(Optional) Copy the store into --directory and exit without serving (fills --directory for a later --skip-copy)")
+	cmd.MarkFlagsMutuallyExclusive("skip-copy", "copy-only")
 
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authentication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authentication")
@@ -47,6 +50,7 @@ type ServeFilesOpts struct {
 	BasicAuth      string
 	BasicAuthRealm string
 	SkipCopy       bool
+	CopyOnly       bool
 
 	TLSCert string
 	TLSKey  string
@@ -62,6 +66,8 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultFileserverRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
 
 	f.BoolVar(&o.SkipCopy, "skip-copy", false, "(Optional) Skip copying the store into --directory at startup and serve its existing contents")
+	f.BoolVar(&o.CopyOnly, "copy-only", false, "(Optional) Copy the store into --directory and exit without serving (fills --directory for a later --skip-copy)")
+	cmd.MarkFlagsMutuallyExclusive("skip-copy", "copy-only")
 
 	f.StringVar(&o.TLSCert, "tls-cert", "", "(Optional) Location of the TLS Certificate to use for server authentication")
 	f.StringVar(&o.TLSKey, "tls-key", "", "(Optional) Location of the TLS Key to use for server authentication")

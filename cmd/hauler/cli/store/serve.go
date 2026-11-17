@@ -74,10 +74,10 @@ func dirEmpty(dir string) bool {
 func validateDirExists(dir string) error {
 	info, err := os.Stat(dir)
 	if err != nil {
-		return fmt.Errorf("unable to serve [%s] with --skip-copy: %w", dir, err)
+		return fmt.Errorf("failed to serve [%s] with --skip-copy: %w", dir, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("unable to serve [%s] with --skip-copy: not a directory", dir)
+		return fmt.Errorf("failed to serve [%s] with --skip-copy: not a directory", dir)
 	}
 	return nil
 }
@@ -172,6 +172,11 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 		if empty {
 			l.Warnf("no artifacts found in the store... add some with `hauler store add` or `hauler store sync`")
 		}
+
+		if o.CopyOnly {
+			l.Infof("copied store into [%s]... exiting without serving (--copy-only)", o.RootDir)
+			return nil
+		}
 	}
 
 	cfg := DefaultRegistryConfig(o, rso, ro)
@@ -237,11 +242,16 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 		if err := CopyCmd(ctx, opts, s, "directory://"+o.RootDir, ro); err != nil {
 			return err
 		}
-	}
 
-	// an empty store still serves, the same as registry and git
-	if dirEmpty(o.RootDir) {
-		l.Warnf("no files, charts, or directories found in the store... add some with `hauler store add` or `hauler store sync`")
+		// an empty store still serves, the same as registry and git
+		if dirEmpty(o.RootDir) {
+			l.Warnf("no files, charts, or directories found in the store... add some with `hauler store add` or `hauler store sync`")
+		}
+
+		if o.CopyOnly {
+			l.Infof("copied store into [%s]... exiting without serving (--copy-only)", o.RootDir)
+			return nil
+		}
 	}
 
 	f, err := server.NewFile(ctx, *o)
