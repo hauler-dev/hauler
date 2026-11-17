@@ -137,7 +137,7 @@ func (o *AddChartOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images discovered via --add-images")
 	f.StringArrayVar(&o.ValuesFiles, "values", []string{}, "(Optional) Specify helm chart values when fetching images")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image, e.g. linux/amd64. Not allowed with a digest-pinned multi-platform image")
-	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
+	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not already define one")
 	f.StringVar(&o.KubeVersion, "kube-version", "v1.34.1", "(Optional) Override the kubernetes version for helm template rendering")
 	f.IntVarP(&o.Concurrency, "concurrency", "j", consts.DefaultConcurrency, "(Optional) Maximum number of charts and their discovered images to fetch and store concurrently (1 = serial; also via HAULER_CONCURRENCY, explicit flag wins)")
 	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
