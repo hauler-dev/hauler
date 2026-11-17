@@ -46,6 +46,25 @@ brew install hauler-dev
 irm https://get.hauler.dev/install.ps1 | iex
 ```
 
+## Manifest Schema
+
+Hauler publishes a JSON Schema for the v1 manifest API at
+[https://hauler.dev/schemas/v1/hauler-manifest.json](https://hauler.dev/schemas/v1/hauler-manifest.json).
+
+Manifests are decoded leniently, so a misspelled key is silently ignored at sync time. Point your editor at the schema to catch those while writing the manifest, by adding a modeline to the top of the file:
+
+```yaml
+# yaml-language-server: $schema=https://hauler.dev/schemas/v1/hauler-manifest.json
+apiVersion: content.hauler.cattle.io/v1
+kind: Images
+```
+
+Or validate in CI:
+
+```bash
+check-jsonschema --schemafile https://hauler.dev/schemas/v1/hauler-manifest.json hauler-manifest.yaml
+```
+
 ## Known Issues and Limits
 
 <!-- known-limits:start -->
