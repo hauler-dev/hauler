@@ -24,9 +24,7 @@ type schemaDef struct {
 	Required   []string                  `json:"required"`
 }
 
-// schemaType is the JSON Schema type keyword expected for a Go field kind, plus the type
-// its array items must carry ("$ref" for a slice of structs). An unlisted kind fails the
-// test on purpose, so a new field type can't slip in untyped.
+// schemaType maps a Go field kind to its expected JSON Schema type, failing on unmapped kinds
 func schemaType(t *testing.T, f reflect.StructField) (typ, itemTyp string) {
 	switch f.Type.Kind() {
 	case reflect.String:
@@ -51,9 +49,7 @@ func schemaType(t *testing.T, f reflect.StructField) (typ, itemTyp string) {
 	}
 }
 
-// TestSchemaMatchesTypes keeps static/schemas/v1/hauler-manifest.json in sync with the
-// structs in this package. Manifests are decoded non-strictly, so the published schema is
-// the only thing that catches a misspelled key, and a stale schema silently stops doing that.
+// TestSchemaMatchesTypes keeps the published schema in sync with the structs in this package
 func TestSchemaMatchesTypes(t *testing.T) {
 	data, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -127,10 +123,7 @@ func TestSchemaMatchesTypes(t *testing.T) {
 			}
 		}
 
-		// Requiredness is schema-owned: omitempty on these structs only affects
-		// marshaling, which nothing does, so it says nothing about what a manifest
-		// must set (Chart.Name is omitempty but a nameless chart cannot resolve,
-		// Image.Key is not omitempty but is optional). Only check for typos.
+		// requiredness is schema-owned, omitempty says nothing about it, so only check for typos
 		for _, r := range def.Required {
 			if _, ok := def.Properties[r]; !ok {
 				t.Errorf("$defs/%s requires %q, which it does not declare as a property", c.def, r)

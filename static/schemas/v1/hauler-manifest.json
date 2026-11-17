@@ -63,7 +63,6 @@
             "hauler.dev/platform": { "type": "string", "description": "Default platform, for example linux/amd64" },
             "hauler.dev/registry": { "type": "string", "description": "Default registry prefix for unqualified image names" },
             "hauler.dev/use-tlog-verify": { "type": "string", "enum": ["true", "false"], "description": "Verify the transparency log during signature verification" },
-            "hauler.dev/rewrite": { "type": "string", "description": "Default rewrite rule" },
             "hauler.dev/exclude-extras": { "type": "string", "enum": ["true", "false"], "description": "Skip signatures, attestations and SBOMs" },
             "hauler.dev/certificate-identity": { "type": "string", "description": "Expected cosign certificate identity" },
             "hauler.dev/certificate-identity-regexp": { "type": "string", "description": "Expected cosign certificate identity, as a regular expression" },
