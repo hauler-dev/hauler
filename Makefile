@@ -49,9 +49,19 @@ test:
 # check for vulnerabilities
 vulns:
 	govulncheck $(GO_FILES) > $(GO_VULNCHECKS) 2>&1 || true
-	curl -fsSL -o rancher.openvex.json https://media.githubusercontent.com/media/rancher/vexhub/refs/heads/main/reports/rancher.openvex.json || true
-	trivy fs --vex rancher.openvex.json --skip-files rancher.openvex.json . > $(TRIVY_RESULTS) 2>&1 || true
+	curl -fsSL -o rancher.openvex.json.gz https://raw.githubusercontent.com/rancher/vexhub/refs/heads/main/reports/rancher.openvex.json.gz && gunzip -f rancher.openvex.json.gz || true
+	trivy fs --vex rancher.openvex.json --skip-files rancher.openvex.json --show-suppressed . > $(TRIVY_RESULTS) 2>&1 || true
 	rm rancher.openvex.json || true
+
+# check for dependency and go updates
+outdated:
+	go list -m -u -f '{{if and .Update (not .Indirect)}}{{.Path}} [{{.Version}}] -> [{{.Update.Version}}]{{end}}' all
+	@echo "go [$$(awk '/^go /{print $$2}' go.mod)] -> [$$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1 | sed 's/^go//')]"
+
+# bump direct dependencies to their latest versions
+bump-outdated:
+	go get $$(go list -m -f '{{if not (or .Indirect .Main)}}{{.Path}}@latest{{end}}' all)
+	go mod tidy
 
 # cleanup artifacts
 clean:

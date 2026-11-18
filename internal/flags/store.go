@@ -125,6 +125,9 @@ func (o *StoreRootOpts) Store(ctx context.Context, ro *CliRootOpts) (*store.Layo
 	if o.BlobConcurrency > 0 {
 		opts = append(opts, store.WithBlobConcurrency(o.BlobConcurrency))
 	}
+	if o.TempOverride != "" {
+		opts = append(opts, store.WithTempDir(o.TempOverride))
+	}
 	s, err := store.NewLayout(abs, opts...)
 	if err != nil {
 		return nil, err

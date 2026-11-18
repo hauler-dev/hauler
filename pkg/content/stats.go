@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 )
@@ -81,4 +82,22 @@ func (s *IOStats) exitBlob() {
 // addSemWait records time spent blocked acquiring blobSem.
 func (s *IOStats) addSemWait(d time.Duration) {
 	s.BlobSemWaitNanos.Add(int64(d))
+}
+
+type blobCountersKey struct{}
+
+// blobCounters are optional per-operation counters, keeping WriteBlob's cache-hit reporting decoupled from store's ImageStats type.
+type blobCounters struct {
+	Cached  *atomic.Int64
+	Written *atomic.Int64
+}
+
+// WithBlobCounters attaches cached/written counters to ctx for WriteBlob to increment alongside the store-wide IOStats.
+func WithBlobCounters(ctx context.Context, cached, written *atomic.Int64) context.Context {
+	return context.WithValue(ctx, blobCountersKey{}, blobCounters{Cached: cached, Written: written})
+}
+
+func blobCountersFromContext(ctx context.Context) blobCounters {
+	c, _ := ctx.Value(blobCountersKey{}).(blobCounters)
+	return c
 }

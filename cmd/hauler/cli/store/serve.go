@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -19,13 +20,16 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/middleware/redirect"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/middleware/rewrite"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/yaml.v3"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/internal/repodata"
 	"hauler.dev/go/hauler/v2/internal/server"
+	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	"hauler.dev/go/hauler/v2/pkg/reference"
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
@@ -49,6 +53,22 @@ func validateStoreExists(s *store.Layout) error {
 		s.Root,
 		err,
 	)
+}
+
+// storeEmpty reports whether the store holds no artifacts at all.
+func storeEmpty(s *store.Layout) (bool, error) {
+	empty := true
+	err := s.Walk(func(string, ocispec.Descriptor) error {
+		empty = false
+		return nil
+	})
+	return empty, err
+}
+
+// dirEmpty reports whether dir has nothing in it, counting a missing dir as empty.
+func dirEmpty(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return errors.Is(err, fs.ErrNotExist) || (err == nil && len(entries) == 0)
 }
 
 func loadConfig(filename string) (*configuration.Configuration, error) {
@@ -124,6 +144,15 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 
 	tr.Close()
 
+	// an empty store still serves, the same as fileserver and git
+	empty, err := storeEmpty(s)
+	if err != nil {
+		return err
+	}
+	if empty {
+		l.Warnf("no artifacts found in the store... add some with `hauler store add` or `hauler store sync`")
+	}
+
 	cfg := DefaultRegistryConfig(o, rso, ro)
 	if o.ConfigFile != "" {
 		ucfg, err := loadConfig(o.ConfigFile)
@@ -182,6 +211,11 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 		return err
 	}
 
+	// an empty store still serves, the same as registry and git
+	if dirEmpty(o.RootDir) {
+		l.Warnf("no files, charts, or directories found in the store... add some with `hauler store add` or `hauler store sync`")
+	}
+
 	if o.GenerateRepodata {
 		rpmCount, debCount, err := prepareRepodata(o.RootDir)
 		if err != nil {
@@ -212,6 +246,97 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	}
 
 	return nil
+}
+
+func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro *flags.CliRootOpts) error {
+	l := log.FromContext(ctx)
+
+	if err := validateStoreExists(s); err != nil {
+		return err
+	}
+
+	repos, err := extractGitRepos(ctx, s, o.RootDir, ro)
+	if err != nil {
+		return err
+	}
+	// an empty store still serves, the same as registry and fileserver
+	if len(repos) == 0 {
+		l.Warnf("no git repositories found in the store... add some with `hauler store add` or `hauler store sync`")
+	} else {
+		l.Infof("found [%d] git repository(s) in the store", len(repos))
+	}
+
+	g, err := server.NewGit(ctx, *o, repos)
+	if err != nil {
+		return err
+	}
+
+	if o.BasicAuth != "" {
+		l.Infof("using basic auth via htpasswd file [%s] (realm [%s])", o.BasicAuth, o.BasicAuthRealm)
+	}
+
+	if o.TLSCert != "" && o.TLSKey != "" {
+		l.Infof("starting git server with tls on port [%d]", o.Port)
+		if err := g.ListenAndServeTLS(o.TLSCert, o.TLSKey); err != nil {
+			return err
+		}
+	} else {
+		l.Infof("starting git server on port [%d]", o.Port)
+		if err := g.ListenAndServe(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// extractGitRepos extracts every git artifact into rootDir through the same directory copy fileserver uses, and returns the name -> directory map NewGit needs to serve them.
+func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string, ro *flags.CliRootOpts) (map[string]string, error) {
+	if err := CopyCmd(ctx, &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}, TypeFilter: "git"}, s, "directory://"+rootDir, ro); err != nil {
+		return nil, err
+	}
+
+	repos := map[string]string{}
+	err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+		// Walk yields synthetic composite keys too (e.g. "<ref>-<kind>" for cosign referrer bookkeeping), so skip anything without a proper ref name, same as CreateManifestCmd.
+		refName, ok := desc.Annotations[ocispec.AnnotationRefName]
+		if !ok {
+			return nil
+		}
+		if kind := desc.Annotations[consts.KindAnnotationName]; kind != "" {
+			if _, isCosignArtifact := consts.SigKindExt(kind); isCosignArtifact || strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
+				return nil
+			}
+		}
+
+		rc, err := s.Fetch(ctx, desc)
+		if err != nil {
+			return nil
+		}
+		defer rc.Close()
+
+		var m ocispec.Manifest
+		if err := json.NewDecoder(rc).Decode(&m); err != nil || m.Config.MediaType != consts.GitRepoConfigMediaType || len(m.Layers) == 0 {
+			return nil
+		}
+
+		ref, err := reference.ParseReference(refName)
+		if err != nil {
+			return nil
+		}
+		name := strings.TrimPrefix(ref.Context().RepositoryStr(), consts.DefaultNamespace+"/")
+		// A store loaded from elsewhere can carry any name, and it becomes a URL path, so never serve one that resolves outside rootDir.
+		if err := gitartifact.ValidateName(name); err != nil {
+			log.FromContext(ctx).Warnf("skipping git repository [%s]: %v", refName, err)
+			return nil
+		}
+
+		// The directory copy extracts each repo under its layer title, which `store add git` sets to the same name.
+		repos[name] = filepath.Join(rootDir, m.Layers[0].Annotations[ocispec.AnnotationTitle])
+		return nil
+	})
+
+	return repos, err
 }
 
 // prepareRepodata moves top-level .rpm/.deb files under rootDir into their own rpms/ and debs/ subdirectories and generates each package manager's repo metadata there.

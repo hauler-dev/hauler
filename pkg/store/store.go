@@ -51,6 +51,9 @@ type Layout struct {
 	// WithBlobConcurrency; must be known before content.NewOCI is called, so
 	// NewLayout applies opts before constructing the OCI store.
 	blobConcurrency int
+
+	// tempDir is where AddLocalImage spools `docker save` output; empty means the OS default.
+	tempDir string
 }
 
 type Options func(*Layout)
@@ -75,6 +78,13 @@ func WithHaulerDir(dir string) Options {
 func WithBlobConcurrency(n int) Options {
 	return func(l *Layout) {
 		l.blobConcurrency = n
+	}
+}
+
+// WithTempDir sets the directory for scratch files such as the Docker save spool.
+func WithTempDir(dir string) Options {
+	return func(l *Layout) {
+		l.tempDir = dir
 	}
 }
 
@@ -218,12 +228,28 @@ func (l *Layout) AddArtifact(ctx context.Context, oci artifacts.OCI, ref string)
 		return ocispec.Descriptor{}, err
 	}
 
+	// layerCtx carries per-layer Cached/Written counters, same as writeImageBlobs's identical layerCtx.
+	layerCtx := ctx
+	if stats := imageStatsFromContext(ctx); stats != nil {
+		var totalBytes int64
+		for _, lyr := range layers {
+			size, err := lyr.Size()
+			if err != nil {
+				return ocispec.Descriptor{}, err
+			}
+			totalBytes += size
+		}
+		stats.Layers.Add(int64(len(layers)))
+		stats.Bytes.Add(totalBytes)
+		layerCtx = content.WithBlobCounters(ctx, &stats.Cached, &stats.Written)
+	}
+
 	// errgroup.WithContext, not a zero-value Group: Wait() on a zero-value
 	// group never cancels siblings on failure, so other layers would keep
 	// downloading after one fails. gctx is cancelled the moment any
 	// writeLayer errors, which content.OCI.WriteBlob observes (via ctx.Err()
 	// and the wrapped reader) to abort in-flight writes promptly.
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(layerCtx)
 	for _, lyr := range layers {
 		lyr := lyr
 		g.Go(func() error {
@@ -403,11 +429,18 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 		return "", fmt.Errorf("parsing reference %q: %w", ref, err)
 	}
 
-	if err := ensureDockerHost(); err != nil {
-		return "", fmt.Errorf("failed to locate Docker daemon socket: %w -- is the Docker daemon running?", err)
+	dc, err := newSpoolingDaemonClient(l.tempDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to create docker client: %w", err)
 	}
+	defer func() {
+		if err := dc.Close(); err != nil {
+			zlog.Warn().Err(err).Msg("failed to clean up docker save spool or client")
+		}
+	}()
 
-	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx))
+	// Unbuffered is correct only because dc spools; with the stock client it would run one full docker save per layer read.
+	img, err := daemon.Image(parsedRef, daemon.WithContext(ctx), daemon.WithClient(dc), daemon.WithUnbufferedOpener())
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch image from Docker daemon: %w -- is the Docker daemon running?", err)
 	}
@@ -423,32 +456,6 @@ func (l *Layout) AddLocalImage(ctx context.Context, ref string) (string, error) 
 	return d.String(), nil
 }
 
-// ensureDockerHost sets DOCKER_HOST if it is not already set and the default
-// socket (/var/run/docker.sock) does not exist. Docker Desktop on macOS places
-// its socket at ~/.docker/run/docker.sock instead of the default path.
-func ensureDockerHost() error {
-	if os.Getenv("DOCKER_HOST") != "" {
-		return nil
-	}
-
-	if _, err := os.Stat("/var/run/docker.sock"); err == nil {
-		return nil
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	sock := filepath.Join(home, ".docker", "run", "docker.sock")
-	if _, err := os.Stat(sock); err != nil {
-		return fmt.Errorf("no Docker socket found at /var/run/docker.sock or %s", sock)
-	}
-	if err := os.Setenv("DOCKER_HOST", "unix://"+sock); err != nil {
-		return fmt.Errorf("setting DOCKER_HOST: %w", err)
-	}
-	return nil
-}
-
 // writeImageBlobs writes all blobs for a single image (layers, config, manifest) to the store's
 // blob directory. It does not add an entry to the OCI index.
 func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
@@ -457,6 +464,8 @@ func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 		return fmt.Errorf("getting layers: %w", err)
 	}
 
+	// layerCtx carries per-layer Cached/Written counters; config/manifest blobs below keep the plain ctx so they don't inflate the layer count.
+	layerCtx := ctx
 	if stats := imageStatsFromContext(ctx); stats != nil {
 		var totalBytes int64
 		for _, lyr := range layers {
@@ -468,11 +477,12 @@ func (l *Layout) writeImageBlobs(ctx context.Context, img v1.Image) error {
 		}
 		stats.Layers.Add(int64(len(layers)))
 		stats.Bytes.Add(totalBytes)
+		layerCtx = content.WithBlobCounters(ctx, &stats.Cached, &stats.Written)
 	}
 
 	// See AddArtifact's identical errgroup.WithContext conversion for why this
 	// can't stay a zero-value errgroup.Group.
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(layerCtx)
 	for _, lyr := range layers {
 		lyr := lyr
 		g.Go(func() error { return l.writeLayer(gctx, lyr) })

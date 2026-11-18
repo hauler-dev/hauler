@@ -1,0 +1,49 @@
+name: Feature Request
+description: submit a feature request to help us improve hauler
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        thank you for helping us improve hauler... we welcome all requests for enhancements. please fill out each section so we can better assist you.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before Submitting
+      options:
+        - label: I searched the existing issues and this feature has not been requested
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Related Problem
+      description: is this feature related to an existing problem? provide a clear and concise description of the problem
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: provide a clear and concise description of what you want to happen (i.e. new command, flag, or manifest field)
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Possible Alternatives
+      description: provide a clear and concise description of any alternative solutions or workarounds you have considered
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: provide any other context, examples, or links about the feature
+    validations:
+      required: false

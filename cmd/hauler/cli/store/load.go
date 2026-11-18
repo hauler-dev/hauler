@@ -59,7 +59,7 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, s *store.Layout, rso *flags
 	for _, fileName := range fileNames {
 		resolved := resolveHaulPath(fileName)
 		wasRemote := strings.HasPrefix(fileName, "http://") || strings.HasPrefix(fileName, "https://") || remoteOrigin[fileName]
-		l.Infof("loading haul [%s] to [%s]", resolved, o.StoreDir)
+		l.Infof("loading haul [%s] to [%s]", audit.SanitizeURL(resolved), o.StoreDir)
 		err := unarchiveLayoutTo(ctx, resolved, o.StoreDir, tempDir, ro, wasRemote)
 		if err != nil {
 			return err
@@ -105,6 +105,9 @@ func stageRemoteChunks(ctx context.Context, fileNames []string, stageDir string)
 	remoteOrigin := map[string]bool{}
 	var result []string
 
+	// A chunk that fails to download is skipped rather than fatal, so a redundant set can still be repaired from parity... a set with no chunks at all still errors.
+	failed := map[string]error{}
+
 	for _, fn := range fileNames {
 		if !strings.HasPrefix(fn, "http://") && !strings.HasPrefix(fn, "https://") {
 			result = append(result, fn)
@@ -122,7 +125,12 @@ func stageRemoteChunks(ctx context.Context, fileNames []string, stageDir string)
 
 		local, err := downloadHaul(ctx, fn, stageDir)
 		if err != nil {
-			return nil, nil, err
+			log.FromContext(ctx).Warnf("failed to download chunk [%s]: %v... continuing...", audit.SanitizeURL(fn), err)
+			key, _ := archives.ChunkGroupKey(filepath.Base(parsedURL.Path))
+			if _, seen := failed[key]; !seen {
+				failed[key] = err
+			}
+			continue
 		}
 		remoteOrigin[local] = true
 
@@ -130,6 +138,12 @@ func stageRemoteChunks(ctx context.Context, fileNames []string, stageDir string)
 		if !added[key] {
 			result = append(result, local)
 			added[key] = true
+		}
+	}
+
+	for key, err := range failed {
+		if !added[key] {
+			return nil, nil, err
 		}
 	}
 
@@ -150,9 +164,10 @@ func downloadHaul(ctx context.Context, urlStr, destDir string) (string, error) {
 	}
 	defer rc.Close()
 
-	fileName := h.Name(parsedURL)
-	if fileName == "" {
-		fileName = filepath.Base(parsedURL.Path)
+	// Name the file from the URL path alone, so a presigned URL's query string never ends up in the filename and breaks chunk grouping.
+	fileName := filepath.Base(parsedURL.Path)
+	if fileName == "." || fileName == "/" {
+		fileName = h.Name(parsedURL)
 	}
 	localPath := filepath.Join(destDir, fileName)
 
@@ -163,6 +178,9 @@ func downloadHaul(ctx context.Context, urlStr, destDir string) (string, error) {
 	defer out.Close()
 
 	if _, err = io.Copy(out, rc); err != nil {
+		// Never leave a partial download behind where it could be picked up as a complete chunk.
+		out.Close()
+		os.Remove(localPath)
 		return "", err
 	}
 	return localPath, nil
@@ -173,7 +191,7 @@ func unarchiveLayoutTo(ctx context.Context, haulPath string, dest string, tempDi
 	l := log.FromContext(ctx)
 
 	if strings.HasPrefix(haulPath, "http://") || strings.HasPrefix(haulPath, "https://") {
-		l.Debugf("detected remote archive... starting download... [%s]", haulPath)
+		l.Debugf("detected remote archive... starting download... [%s]", audit.SanitizeURL(haulPath))
 		local, err := downloadHaul(ctx, haulPath, tempDir)
 		if err != nil {
 			return err

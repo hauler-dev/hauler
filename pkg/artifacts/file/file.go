@@ -2,6 +2,8 @@ package file
 
 import (
 	"context"
+	"net/url"
+	"os"
 
 	gv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
@@ -10,6 +12,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/pkg/artifacts"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/getter"
 )
 
@@ -53,6 +56,10 @@ func NewFile(path string, opts ...Option) *File {
 
 // Name is the name of the file's reference
 func (f *File) Name(path string) string {
+	// A local directory is stored as a single archive, so its derived name carries the archive extension.
+	if fi, err := os.Stat(path); err == nil && fi.IsDir() && f.client.Options.NameOverride == "" {
+		return f.client.Name(path) + "." + f.client.Options.ArchiveFormat
+	}
 	return f.client.Name(path)
 }
 
@@ -138,12 +145,18 @@ func (f *File) compute() error {
 	for k, v := range layer.Annotations {
 		annotations[k] = v
 	}
-	annotations[ocispec.AnnotationTitle] = f.client.Name(f.Path)
+	annotations[ocispec.AnnotationTitle] = f.Name(f.Path)
 	layer.Annotations = annotations
 
 	cfg := f.client.Config(f.Path)
 	if cfg == nil {
 		cfg = f.client.Config(f.Path)
+	}
+
+	// A directory added as a file is one opaque archive, so drop the unpack marker and label it a plain local file.
+	if _, ok := annotations[content.AnnotationUnpack]; ok {
+		delete(annotations, content.AnnotationUnpack)
+		cfg = getter.NewFile().Config(&url.URL{Path: f.Path})
 	}
 
 	cfgDesc, err := partial.Descriptor(cfg)

@@ -27,6 +27,7 @@ type SyncOpts struct {
 	NoProgress                   bool
 	CaFile                       string
 	InsecureSkipTLSVerify        bool
+	TrustRemoteManifests         bool
 
 	// Whether each of these flags was explicitly set on the CLI, captured in
 	// sync's PreRunE. A plain bool (and a resolved store/retries value) has no
@@ -52,7 +53,7 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.StringVar(&o.CertGithubWorkflowRepository, "certificate-github-workflow-repository", "", "(Optional) Cosign certificate-github-workflow-repository option")
 	f.StringSliceVar(&o.Products, "products", []string{}, "(Optional) Specify the product name to fetch collections from the product registry i.e. rancher=v2.10.1,rke2=v1.31.5+rke2r1")
 	f.StringVarP(&o.Platform, "platform", "p", "", "(Optional) Specify the platform of the image... i.e linux/amd64 (defaults to all). Not allowed with a digest-pinned multi-platform image")
-	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not alredy define one")
+	f.StringVarP(&o.Registry, "registry", "g", "", "(Optional) Specify the registry of the image for images that do not already define one")
 	f.StringVarP(&o.ProductRegistry, "product-registry", "c", "", "(Optional) Specify the product registry. Defaults to RGS Carbide Registry (rgcrprod.azurecr.us)")
 	f.BoolVar(&o.Tlog, "use-tlog-verify", false, "(Optional) Allow transparency log verification (defaults to false)")
 	f.BoolVar(&o.ExcludeExtras, "exclude-extras", false, "(Optional) Exclude cosign signatures, attestations, SBOMs, and OCI referrers when pulling images")
@@ -61,4 +62,5 @@ func (o *SyncOpts) AddFlags(cmd *cobra.Command) {
 	f.BoolVar(&o.NoProgress, "no-progress", false, "(Optional) Disable the live progress display")
 	f.StringVar(&o.CaFile, "ca-file", "", "(Optional) Location of CA Bundle to enable certification verification")
 	f.BoolVar(&o.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "(Optional) Skip TLS certificate verification")
+	f.BoolVar(&o.TrustRemoteManifests, "trust-remote-manifests", false, "(Optional) Allow remote manifests to use local paths and credentials")
 }

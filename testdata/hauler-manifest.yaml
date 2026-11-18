@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://hauler.dev/schemas/v1/hauler-manifest.json
 # hauler manifest
 # api version of v1
 apiVersion: content.hauler.cattle.io/v1

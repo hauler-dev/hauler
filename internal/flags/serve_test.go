@@ -52,3 +52,41 @@ func TestServeFilesOptsAddFlagsRegistersBasicAuth(t *testing.T) {
 		t.Fatalf("got --basic-auth-realm default %q, want %q", realm.DefValue, consts.DefaultFileserverRealm)
 	}
 }
+
+// TestServeGitOptsAddFlagsRegistersBasicAuth is the git-server equivalent of the two tests above.
+func TestServeGitOptsAddFlagsRegistersBasicAuth(t *testing.T) {
+	o := &ServeGitOpts{}
+	cmd := &cobra.Command{Use: "git"}
+	o.AddFlags(cmd)
+
+	auth := cmd.Flags().Lookup("basic-auth")
+	if auth == nil {
+		t.Fatal("expected --basic-auth to be registered")
+	}
+	if auth.DefValue != "" {
+		t.Fatalf("expected --basic-auth default to be empty, got %q", auth.DefValue)
+	}
+
+	realm := cmd.Flags().Lookup("basic-auth-realm")
+	if realm == nil {
+		t.Fatal("expected --basic-auth-realm to be registered")
+	}
+	if realm.DefValue != consts.DefaultGitRealm {
+		t.Fatalf("got --basic-auth-realm default %q, want %q", realm.DefValue, consts.DefaultGitRealm)
+	}
+}
+
+// TestServeGitOptsAddFlagsRegistersDirectory verifies --directory defaults the same way fileserver's does, since serve git now extracts store content into it too.
+func TestServeGitOptsAddFlagsRegistersDirectory(t *testing.T) {
+	o := &ServeGitOpts{}
+	cmd := &cobra.Command{Use: "git"}
+	o.AddFlags(cmd)
+
+	dir := cmd.Flags().Lookup("directory")
+	if dir == nil {
+		t.Fatal("expected --directory to be registered")
+	}
+	if dir.DefValue != consts.DefaultGitRootDir {
+		t.Fatalf("got --directory default %q, want %q", dir.DefValue, consts.DefaultGitRootDir)
+	}
+}

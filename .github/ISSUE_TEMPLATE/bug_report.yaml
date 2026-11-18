@@ -1,0 +1,85 @@
+name: Bug Report
+description: submit a bug report to help us improve hauler
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        thank you for helping us improve hauler... please fill out each section so we can better assist you.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before Submitting
+      options:
+        - label: I searched the existing issues and this bug has not been reported
+          required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environmental Info
+      description: provide the output of `uname -a` and how hauler is running (i.e. binary, container, ci)
+      placeholder: Linux hauler 6.8.0 x86_64 GNU/Linux... running the binary
+    validations:
+      required: true
+
+  - type: textarea
+    id: hauler-version
+    attributes:
+      label: Hauler Version
+      description: provide the output of `hauler version`
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: provide a clear and concise description of the bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: provide the exact commands and manifests needed to reproduce the bug
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: provide a clear and concise description of what you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: provide a clear and concise description of what actually happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: provide relevant output, ideally re-run with `--log-level debug`... remove any credentials or presigned urls
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: provide any other context about the bug (i.e. registry type, proxy, airgap specifics)
+    validations:
+      required: false

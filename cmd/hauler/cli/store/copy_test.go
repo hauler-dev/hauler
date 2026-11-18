@@ -12,7 +12,11 @@ import (
 
 	goname "github.com/google/go-containerregistry/pkg/name"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/static"
+	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -160,6 +164,37 @@ func TestCopyCmd_Registry(t *testing.T) {
 	}
 	if _, err := remote.Get(dstRef, dstOpts...); err != nil {
 		t.Errorf("image not found in target registry after copy: %v", err)
+	}
+}
+
+// A bad --ca-file must fail the copy, and --insecure must win by never reading it.
+func TestCopyCmd_Registry_CaFile(t *testing.T) {
+	ctx := newTestContext(t)
+
+	srcHost, _ := newLocalhostRegistry(t)
+	seedImage(t, srcHost, "test/copy", "v1")
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+	if err := storeImage(ctx, s, v1.Image{Name: srcHost + "/test/copy:v1"}, "", false, rso, ro, "", "", false); err != nil {
+		t.Fatalf("storeImage: %v", err)
+	}
+
+	dstHost, _ := newTestRegistry(t)
+	o := &flags.CopyOpts{
+		StoreRootOpts: defaultRootOpts(s.Root),
+		PlainHTTP:     true,
+		CaFile:        filepath.Join(t.TempDir(), "missing.pem"),
+	}
+	err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro)
+	if err == nil || !strings.Contains(err.Error(), "reading CA file") {
+		t.Fatalf("CopyCmd with a missing ca file returned %v, want a ca file error", err)
+	}
+
+	o.Insecure = true
+	if err := CopyCmd(ctx, o, s, "registry://"+dstHost, ro); err != nil {
+		t.Fatalf("CopyCmd read the ca file even though insecure was set: %v", err)
 	}
 }
 
@@ -689,6 +724,71 @@ func TestCopyCmd_Dir_SkipsImages(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Errorf("expected empty destDir for image-only store, found: %s", strings.Join(names, ", "))
+	}
+}
+
+// TestCopyCmd_Dir_ImageTypeFiles verifies files shipped with an image config and titled layers (i.e. rke2 binaries) are copied to a directory target, single-platform and multi-platform, the same as extract.
+func TestCopyCmd_Dir_ImageTypeFiles(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	buildImg := func(content []byte, title string) gcrv1.Image {
+		img, err := mutate.Append(empty.Image, mutate.Addendum{
+			Layer:       static.NewLayer(content, gvtypes.OCILayer),
+			Annotations: map[string]string{ocispec.AnnotationTitle: title},
+		})
+		if err != nil {
+			t.Fatalf("mutate.Append: %v", err)
+		}
+		img = mutate.MediaType(img, gvtypes.OCIManifestSchema1)
+		return mutate.ConfigMediaType(img, gvtypes.MediaType(ocispec.MediaTypeImageConfig))
+	}
+
+	single, err := goname.NewTag(host+"/rke2/single:v1.31.5-rke2r1", goname.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(single, buildImg([]byte("installer"), "install.sh"), rOpts...); err != nil {
+		t.Fatalf("remote.Write: %v", err)
+	}
+
+	idx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{Add: buildImg([]byte("amd64"), "rke2.linux-amd64"), Descriptor: gcrv1.Descriptor{MediaType: gvtypes.OCIManifestSchema1, Platform: &gcrv1.Platform{OS: "linux", Architecture: "amd64"}}},
+		mutate.IndexAddendum{Add: buildImg([]byte("arm64"), "rke2.linux-arm64"), Descriptor: gcrv1.Descriptor{MediaType: gvtypes.OCIManifestSchema1, Platform: &gcrv1.Platform{OS: "linux", Architecture: "arm64"}}},
+	)
+	multi, err := goname.NewTag(host+"/rke2/multi:v1.31.5-rke2r1", goname.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(multi, idx, rOpts...); err != nil {
+		t.Fatalf("remote.WriteIndex: %v", err)
+	}
+
+	s := newTestStore(t)
+	for _, ref := range []string{single.String(), multi.String()} {
+		if _, err := s.AddImage(ctx, ref, "", false, "", false, "", rOpts...); err != nil {
+			t.Fatalf("AddImage %s: %v", ref, err)
+		}
+	}
+
+	destDir := t.TempDir()
+	if err := CopyCmd(ctx, &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root)}, s, "dir://"+destDir, defaultCliOpts()); err != nil {
+		t.Fatalf("CopyCmd dir: %v", err)
+	}
+
+	for _, want := range []string{"install.sh", "rke2.linux-amd64", "rke2.linux-arm64"} {
+		if _, err := os.Stat(filepath.Join(destDir, want)); err != nil {
+			t.Errorf("expected [%s] in the directory target: %v", want, err)
+		}
+	}
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "sha256:") {
+			t.Errorf("unexpected digest-named file [%s]", e.Name())
+		}
 	}
 }
 
