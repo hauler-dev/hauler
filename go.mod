@@ -8,7 +8,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/distribution/v3 v3.1.2
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.7.2+incompatible
+	github.com/docker/cli v29.10.0+incompatible
 	github.com/docker/go-metrics v0.1.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/go-git/go-git/v5 v5.19.3
