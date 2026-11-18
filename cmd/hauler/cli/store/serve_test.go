@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	v1 "hauler.dev/go/hauler/v2/pkg/apis/hauler.cattle.io/v1"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 )
@@ -286,5 +287,31 @@ func TestDirEmpty(t *testing.T) {
 	}
 	if dirEmpty(dir) {
 		t.Error("expected a directory with a file to not be empty")
+	}
+}
+
+// TestPackageTitles verifies --generate-repodata finds rpm and deb files by their stored name, folders included, and ignores other files.
+func TestPackageTitles(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	for _, f := range []v1.File{
+		{Path: seedFileInHTTPServer(t, "jq.rpm", "rpm"), Name: "el9/jq.rpm"},
+		{Path: seedFileInHTTPServer(t, "jq.deb", "deb")},
+		{Path: seedFileInHTTPServer(t, "notes.txt", "notes")},
+	} {
+		if err := storeFile(ctx, s, f, ro, rso); err != nil {
+			t.Fatalf("storeFile %s: %v", f.Path, err)
+		}
+	}
+
+	titles, err := packageTitles(ctx, s)
+	if err != nil {
+		t.Fatalf("packageTitles: %v", err)
+	}
+	if got, want := strings.Join(titles, ","), "el9/jq.rpm,jq.deb"; got != want {
+		t.Errorf("packageTitles = %s, want %s", got, want)
 	}
 }

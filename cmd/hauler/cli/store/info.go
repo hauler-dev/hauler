@@ -13,6 +13,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/internal/repodata"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/reference"
@@ -106,8 +107,8 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 					continue
 				}
 
-				ctype := resolveCtype(desc, internalManifest.Config.MediaType)
-				if o.TypeFilter != "all" && ctype != o.TypeFilter {
+				ctype := resolveCtype(desc, internalManifest)
+				if !matchesTypeFilter(o.TypeFilter, ctype) {
 					continue
 				}
 
@@ -149,8 +150,8 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 				return nil
 			}
 
-			ctype := resolveCtype(desc, m.Config.MediaType)
-			if o.TypeFilter != "all" && ctype != o.TypeFilter {
+			ctype := resolveCtype(desc, m)
+			if !matchesTypeFilter(o.TypeFilter, ctype) {
 				return nil
 			}
 
@@ -230,8 +231,8 @@ func InfoCmd(ctx context.Context, o *flags.InfoOpts, s *store.Layout) error {
 				return nil
 			}
 
-			ctype := resolveCtype(desc, m.Config.MediaType)
-			if o.TypeFilter != "all" && ctype != o.TypeFilter {
+			ctype := resolveCtype(desc, m)
+			if !matchesTypeFilter(o.TypeFilter, ctype) {
 				return nil
 			}
 
@@ -588,20 +589,14 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 		size += l.Size
 	}
 
-	ctype := resolveCtype(desc, m.Config.MediaType)
+	ctype := resolveCtype(desc, m)
 
 	refName, err := resolveDisplayReference(desc)
 	if err != nil {
 		return item{}
 	}
 
-	if ctype == "file" {
-		if pkgType := packageFileType(refName); pkgType != "" {
-			ctype = pkgType
-		}
-	}
-
-	if o.TypeFilter != "all" && ctype != o.TypeFilter {
+	if !matchesTypeFilter(o.TypeFilter, ctype) {
 		return item{}
 	}
 
@@ -615,19 +610,20 @@ func newItem(s *store.Layout, desc ocispec.Descriptor, m ocispec.Manifest, plat 
 	}
 }
 
-// resolveCtype computes the human-readable content type ("image", "chart", "file", "directory", "git",
-// "sigs", "atts", "sbom", "referrer") for a descriptor. configMediaType is the
-// manifest's config media type and is used to distinguish image/chart/file when the
-// kind annotation doesn't already identify a more specific type; it may be empty
-// when the manifest could not be decoded (the --check fallback-row path), in which
-// case ctype defaults to "image" unless the kind annotation says otherwise.
-func resolveCtype(desc ocispec.Descriptor, configMediaType string) string {
+// resolveCtype computes the content type (one of consts.ContentTypeFilters) for desc from its manifest m, which is empty when the manifest could not be decoded (the --check fallback row path) and then defaults to "image" unless the kind annotation says otherwise.
+func resolveCtype(desc ocispec.Descriptor, m ocispec.Manifest) string {
 	var ctype string
-	switch configMediaType {
+	switch m.Config.MediaType {
 	case consts.ChartConfigMediaType:
 		ctype = "chart"
 	case consts.FileLocalConfigMediaType, consts.FileHttpConfigMediaType:
 		ctype = "file"
+		// a file is an rpm or deb by the name it's written to on disk, the same check serve fileserver --generate-repodata uses
+		if len(m.Layers) > 0 {
+			if pkgType := repodata.PackageType(m.Layers[0].Annotations[ocispec.AnnotationTitle]); pkgType != "" {
+				ctype = pkgType
+			}
+		}
 	case consts.FileDirectoryConfigMediaType:
 		ctype = "directory"
 	case consts.GitRepoConfigMediaType:
@@ -650,20 +646,9 @@ func resolveCtype(desc ocispec.Descriptor, configMediaType string) string {
 	return ctype
 }
 
-// packageFileType refines a "file" ctype into "rpm" or "deb" when refName's stored filename has that extension, or returns "" to leave it as a plain file.
-func packageFileType(refName string) string {
-	repo := refName
-	if i := strings.LastIndex(repo, ":"); i >= 0 {
-		repo = repo[:i]
-	}
-	switch {
-	case strings.HasSuffix(strings.ToLower(repo), ".rpm"):
-		return "rpm"
-	case strings.HasSuffix(strings.ToLower(repo), ".deb"):
-		return "deb"
-	default:
-		return ""
-	}
+// matchesTypeFilter reports whether ctype passes --type filter, where "file" also matches rpm and deb since they are files too.
+func matchesTypeFilter(filter, ctype string) bool {
+	return filter == "all" || filter == ctype || (filter == "file" && (ctype == "rpm" || ctype == "deb"))
 }
 
 // fallbackItem builds a synthetic failure row directly from desc's index
@@ -687,7 +672,7 @@ func fallbackItem(desc ocispec.Descriptor, plat string, problem store.BlobResult
 
 	return item{
 		Reference:    refName,
-		Type:         resolveCtype(desc, ""),
+		Type:         resolveCtype(desc, ocispec.Manifest{}),
 		Platform:     plat,
 		Layers:       0,
 		Size:         0,
@@ -708,7 +693,7 @@ func addFallbackRow(items *[]item, desc ocispec.Descriptor, plat string, o *flag
 	if row.isEmpty() {
 		return false
 	}
-	if o.TypeFilter != "all" && row.Type != o.TypeFilter {
+	if !matchesTypeFilter(o.TypeFilter, row.Type) {
 		return false
 	}
 	*items = append(*items, row)

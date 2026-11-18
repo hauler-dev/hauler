@@ -117,7 +117,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 						continue
 					}
 
-					if ctype := resolveCtype(desc, m.Config.MediaType); o.TypeFilter != "all" && ctype != o.TypeFilter {
+					if ctype := resolveCtype(desc, m); !matchesTypeFilter(o.TypeFilter, ctype) {
 						l.Debugf("skipping manifest in index [%s] (not matching --type filter)", reference)
 						continue
 					}
@@ -161,7 +161,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 					return nil
 				}
 
-				if ctype := resolveCtype(desc, m.Config.MediaType); o.TypeFilter != "all" && ctype != o.TypeFilter {
+				if ctype := resolveCtype(desc, m); !matchesTypeFilter(o.TypeFilter, ctype) {
 					rc.Close()
 					l.Debugf("skipping [%s] (not matching --type filter)", reference)
 					return nil
@@ -251,7 +251,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 					l.Warnf("failed to resolve content type for [%s]: %v", baseRef, err)
 					return nil
 				}
-				if ctype != o.TypeFilter {
+				if !matchesTypeFilter(o.TypeFilter, ctype) {
 					l.Debugf("skipping [%s] (not matching --type filter)", baseRef)
 					return nil
 				}
@@ -373,7 +373,7 @@ func linkReferrer(ctx context.Context, s *store.Layout, desc ocispec.Descriptor,
 
 // resolveCopyCtype classifies desc the same way `store info` does, fetching and decoding its manifest unless the kind annotation alone already identifies a sig/att/sbom/referrer (KindAnnotationName's "image"/"imageIndex" values are set generically by AddArtifact for any top-level artifact, not just real images, so they can't be trusted to skip the fetch the way a sig/att/sbom/referrer kind can).
 func resolveCopyCtype(ctx context.Context, s *store.Layout, desc ocispec.Descriptor) (string, error) {
-	if ctype := resolveCtype(desc, ""); ctype != "image" {
+	if ctype := resolveCtype(desc, ocispec.Manifest{}); ctype != "image" {
 		return ctype, nil
 	}
 
@@ -388,7 +388,7 @@ func resolveCopyCtype(ctx context.Context, s *store.Layout, desc ocispec.Descrip
 		return "", err
 	}
 
-	return resolveCtype(desc, m.Config.MediaType), nil
+	return resolveCtype(desc, m), nil
 }
 
 // repoFromBaseRef strips any digest and/or tag from a stored ref name, yielding

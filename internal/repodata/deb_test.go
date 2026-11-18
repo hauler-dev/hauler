@@ -88,7 +88,7 @@ func TestGenerateDebRepo(t *testing.T) {
 		t.Fatalf("failed to write deb fixture: %v", err)
 	}
 
-	if err := GenerateDebRepo(dir); err != nil {
+	if _, err := GenerateDebRepo(t.Context(), dir, DefaultDebSuite, "."); err != nil {
 		t.Fatalf("GenerateDebRepo failed: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestGenerateDebRepo(t *testing.T) {
 		t.Fatalf("failed to read Release: %v", err)
 	}
 	release := string(releaseBytes)
-	if !containsAll(release, "Suite: stable", "Architectures: amd64", "Components: main") {
+	if !containsAll(release, "Suite: stable", "Architectures: amd64", "Components: main", "\nMD5Sum:\n", "\nSHA1:\n", "\nSHA256:\n") {
 		t.Errorf("Release missing expected content: %s", release)
 	}
 
@@ -128,17 +128,154 @@ func TestGenerateDebRepo(t *testing.T) {
 	}
 }
 
+func TestGenerateDebRepo_MultilineDescription(t *testing.T) {
+	dir := t.TempDir()
+
+	order := []string{"Package", "Version", "Architecture", "Maintainer", "Description"}
+	fields := map[string]string{
+		"Package":      "hello",
+		"Version":      "1.0-1",
+		"Architecture": "amd64",
+		"Maintainer":   "Test <test@example.com>",
+		"Description":  "a test package\n first paragraph\n .\n second paragraph",
+	}
+	if err := os.WriteFile(filepath.Join(dir, "hello_1.0-1_amd64.deb"), newDebFixture(t, order, fields), 0o644); err != nil {
+		t.Fatalf("failed to write deb fixture: %v", err)
+	}
+
+	if _, err := GenerateDebRepo(t.Context(), dir, DefaultDebSuite, "."); err != nil {
+		t.Fatalf("GenerateDebRepo failed: %v", err)
+	}
+
+	packagesBytes, err := os.ReadFile(filepath.Join(dir, "dists", "stable", "main", "binary-amd64", "Packages"))
+	if err != nil {
+		t.Fatalf("failed to read Packages: %v", err)
+	}
+	packages := string(packagesBytes)
+
+	want := "Description: a test package\n first paragraph\n .\n second paragraph\nFilename: hello_1.0-1_amd64.deb\n"
+	if !strings.Contains(packages, want) {
+		t.Errorf("Packages does not keep the description folded inside the stanza:\n%s", packages)
+	}
+	// a blank line inside the stanza would split it and leave Filename in a stanza with no Package
+	if strings.Count(strings.TrimRight(packages, "\n"), "\n\n") != 0 {
+		t.Errorf("Packages has a blank line inside the only stanza:\n%s", packages)
+	}
+}
+
+func TestGenerateDebRepo_ArchAll(t *testing.T) {
+	dir := t.TempDir()
+
+	order := []string{"Package", "Version", "Architecture", "Maintainer", "Description"}
+	for _, pkg := range []struct{ name, arch string }{{"hello", "amd64"}, {"world", "arm64"}, {"docs", "all"}} {
+		fields := map[string]string{
+			"Package":      pkg.name,
+			"Version":      "1.0-1",
+			"Architecture": pkg.arch,
+			"Maintainer":   "Test <test@example.com>",
+			"Description":  "a test package",
+		}
+		name := pkg.name + "_1.0-1_" + pkg.arch + ".deb"
+		if err := os.WriteFile(filepath.Join(dir, name), newDebFixture(t, order, fields), 0o644); err != nil {
+			t.Fatalf("failed to write deb fixture: %v", err)
+		}
+	}
+
+	if _, err := GenerateDebRepo(t.Context(), dir, DefaultDebSuite, "."); err != nil {
+		t.Fatalf("GenerateDebRepo failed: %v", err)
+	}
+
+	for arch, want := range map[string][]string{
+		"amd64": {"Package: hello", "Package: docs"},
+		"arm64": {"Package: world", "Package: docs"},
+		"all":   {"Package: docs"},
+	} {
+		b, err := os.ReadFile(filepath.Join(dir, "dists", "stable", "main", "binary-"+arch, "Packages"))
+		if err != nil {
+			t.Fatalf("failed to read binary-%s Packages: %v", arch, err)
+		}
+		if !containsAll(string(b), want...) {
+			t.Errorf("binary-%s Packages missing %v:\n%s", arch, want, b)
+		}
+	}
+	amd64, _ := os.ReadFile(filepath.Join(dir, "dists", "stable", "main", "binary-amd64", "Packages"))
+	if strings.Contains(string(amd64), "Package: world") {
+		t.Errorf("binary-amd64 Packages lists an arm64 package:\n%s", amd64)
+	}
+}
+
 func TestGenerateDebRepo_NoDebFiles(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatalf("failed to write notes.txt: %v", err)
 	}
 
-	if err := GenerateDebRepo(dir); err != nil {
+	if _, err := GenerateDebRepo(t.Context(), dir, DefaultDebSuite, "."); err != nil {
 		t.Fatalf("GenerateDebRepo failed: %v", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(dir, "dists")); !os.IsNotExist(err) {
 		t.Error("expected no dists directory when no .deb files are present")
+	}
+}
+
+// TestGenerateDebRepo_Suite verifies a folder's debs become their own suite with Filename relative to the repo root, and that one suite can index several folders.
+func TestGenerateDebRepo_Suite(t *testing.T) {
+	dir := t.TempDir()
+
+	order := []string{"Package", "Version", "Architecture", "Maintainer", "Description"}
+	for _, rel := range []string{"bookworm/hello_1.0-1_amd64.deb", "hello_2.0-1_amd64.deb", "stable/world_1.0-1_amd64.deb"} {
+		fields := map[string]string{"Package": "hello", "Version": "1.0-1", "Architecture": "amd64", "Maintainer": "Test <test@example.com>", "Description": "a test package"}
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(rel)), 0o755); err != nil {
+			t.Fatalf("failed to create folder: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, rel), newDebFixture(t, order, fields), 0o644); err != nil {
+			t.Fatalf("failed to write deb fixture: %v", err)
+		}
+	}
+
+	if count, err := GenerateDebRepo(t.Context(), dir, "bookworm", "bookworm"); err != nil || count != 1 {
+		t.Fatalf("GenerateDebRepo(bookworm) = %d, %v... want 1 package", count, err)
+	}
+	if count, err := GenerateDebRepo(t.Context(), dir, DefaultDebSuite, ".", "stable"); err != nil || count != 2 {
+		t.Fatalf("GenerateDebRepo(stable) = %d, %v... want 2 packages", count, err)
+	}
+
+	bookworm, err := os.ReadFile(filepath.Join(dir, "dists", "bookworm", "main", "binary-amd64", "Packages"))
+	if err != nil {
+		t.Fatalf("failed to read bookworm Packages: %v", err)
+	}
+	if !strings.Contains(string(bookworm), "Filename: bookworm/hello_1.0-1_amd64.deb\n") || strings.Contains(string(bookworm), "hello_2.0-1") {
+		t.Errorf("bookworm Packages should list only bookworm/ with its folder in Filename:\n%s", bookworm)
+	}
+	release, err := os.ReadFile(filepath.Join(dir, "dists", "bookworm", "Release"))
+	if err != nil || !containsAll(string(release), "Suite: bookworm\n", "Codename: bookworm\n") {
+		t.Errorf("bookworm Release missing its suite (%v):\n%s", err, release)
+	}
+
+	stable, err := os.ReadFile(filepath.Join(dir, "dists", "stable", "main", "binary-amd64", "Packages"))
+	if err != nil || !containsAll(string(stable), "Filename: hello_2.0-1_amd64.deb\n", "Filename: stable/world_1.0-1_amd64.deb\n") || strings.Contains(string(stable), "bookworm/") {
+		t.Errorf("stable Packages should list the top level deb and stable/ only (%v):\n%s", err, stable)
+	}
+}
+
+// TestGenerateDebRepo_SkipsUnreadable verifies a file that isn't a real deb is left out with a warning instead of failing the whole repo.
+func TestGenerateDebRepo_SkipsUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	order := []string{"Package", "Version", "Architecture", "Maintainer", "Description"}
+	fields := map[string]string{"Package": "hello", "Version": "1.0-1", "Architecture": "amd64", "Maintainer": "Test <test@example.com>", "Description": "a test package"}
+	if err := os.WriteFile(filepath.Join(dir, "hello_1.0-1_amd64.deb"), newDebFixture(t, order, fields), 0o644); err != nil {
+		t.Fatalf("failed to write deb fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "broken.deb"), []byte("not a package"), 0o644); err != nil {
+		t.Fatalf("failed to write broken.deb: %v", err)
+	}
+
+	if count, err := GenerateDebRepo(t.Context(), dir, DefaultDebSuite, "."); err != nil || count != 1 {
+		t.Fatalf("GenerateDebRepo = %d, %v... want 1 package and no error", count, err)
+	}
+	packages, err := os.ReadFile(filepath.Join(dir, "dists", "stable", "main", "binary-amd64", "Packages"))
+	if err != nil || !strings.Contains(string(packages), "Package: hello") || strings.Contains(string(packages), "broken.deb") {
+		t.Errorf("Packages should list hello and skip broken.deb (%v):\n%s", err, packages)
 	}
 }

@@ -135,10 +135,60 @@ func TestNewItem(t *testing.T) {
 		name           string
 		configMedia    string
 		kindAnnotation string
+		layerTitle     string
 		typeFilter     string
 		wantType       string
 		wantEmpty      bool
 	}{
+		{
+			name:        "file with .rpm title → rpm",
+			configMedia: consts.FileLocalConfigMediaType,
+			layerTitle:  "hello-1.0-1.x86_64.rpm",
+			typeFilter:  "all",
+			wantType:    "rpm",
+		},
+		{
+			name:        "http file with .deb title → deb",
+			configMedia: consts.FileHttpConfigMediaType,
+			layerTitle:  "hello_1.0-1_amd64.deb",
+			typeFilter:  "all",
+			wantType:    "deb",
+		},
+		{
+			name:        "file with other title → file",
+			configMedia: consts.FileLocalConfigMediaType,
+			layerTitle:  "install.sh",
+			typeFilter:  "all",
+			wantType:    "file",
+		},
+		{
+			name:        "TypeFilter:file with rpm → rpm item kept",
+			configMedia: consts.FileLocalConfigMediaType,
+			layerTitle:  "hello-1.0-1.x86_64.rpm",
+			typeFilter:  "file",
+			wantType:    "rpm",
+		},
+		{
+			name:        "TypeFilter:rpm with deb → empty item",
+			configMedia: consts.FileLocalConfigMediaType,
+			layerTitle:  "hello_1.0-1_amd64.deb",
+			typeFilter:  "rpm",
+			wantEmpty:   true,
+		},
+		{
+			name:        "TypeFilter:rpm with plain file → empty item",
+			configMedia: consts.FileLocalConfigMediaType,
+			layerTitle:  "install.sh",
+			typeFilter:  "rpm",
+			wantEmpty:   true,
+		},
+		{
+			name:        "chart with .rpm title stays chart",
+			configMedia: consts.ChartConfigMediaType,
+			layerTitle:  "odd.rpm",
+			typeFilter:  "all",
+			wantType:    "chart",
+		},
 		{
 			name:        "DockerConfigJSON → image",
 			configMedia: consts.DockerConfigJSON,
@@ -213,6 +263,9 @@ func TestNewItem(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			desc := makeDesc(tc.kindAnnotation)
 			m := makeManifest(tc.configMedia)
+			if tc.layerTitle != "" {
+				m.Layers = []ocispec.Descriptor{{Annotations: map[string]string{ocispec.AnnotationTitle: tc.layerTitle}}}
+			}
 			o := &flags.InfoOpts{TypeFilter: tc.typeFilter}
 
 			got := newItem(nil, desc, m, "linux/amd64", o)
