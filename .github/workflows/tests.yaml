@@ -387,6 +387,11 @@ jobs:
           hauler store sync --image-txt https://raw.githubusercontent.com/hauler-dev/hauler/main/testdata/images.txt
           # confirm images are present in the store
           hauler store info | grep 'busybox'
+          # verify an image list without registries is pulled from --registry
+          echo "hauler-dev/library/busybox:stable" > images-no-registry.txt
+          hauler store --store store-registry sync --image-txt images-no-registry.txt --registry ghcr.io --platform linux/amd64
+          hauler store --store store-registry info | grep 'ghcr.io/hauler-dev/library/busybox:stable'
+          rm -rf store-registry images-no-registry.txt
 
       - name: Verify - hauler store sync (signatures)
         run: |

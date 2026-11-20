@@ -589,7 +589,7 @@ func resolveChartCreds(ch v1.Chart) (username, password string, err error) {
 func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 	l.Infof("syncing images from [%s] to store", filepath.Base(fi.Name()))
-	var jobs []imageJob
+	var images []v1.Image
 	scanner := bufio.NewScanner(fi)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -597,17 +597,14 @@ func processImageTxt(ctx context.Context, fi *os.File, o *flags.SyncOpts, s *sto
 			continue
 		}
 		l.Debugf("adding image [%s] to the store [%s]", line, o.StoreDir)
-		jobs = append(jobs, imageJob{
-			img: v1.Image{
-				Name:                  line,
-				CaFile:                o.CaFile,
-				InsecureSkipTLSVerify: o.InsecureSkipTLSVerify,
-			},
-			platform:      o.Platform,
-			excludeExtras: o.ExcludeExtras,
-		})
+		images = append(images, v1.Image{Name: line})
 	}
 	if err := scanner.Err(); err != nil {
+		return err
+	}
+	// resolve like a manifest so --registry and the verification flags apply
+	jobs, err := resolveImageJobs(o, nil, images)
+	if err != nil {
 		return err
 	}
 	return runImageJobs(ctx, s, jobs, o.Concurrency, rso, ro, newSyncProgress(o, ro))

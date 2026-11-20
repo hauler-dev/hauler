@@ -690,6 +690,59 @@ func TestProcessImageTxt_EmptyFile(t *testing.T) {
 	}
 }
 
+// an image.txt line without a registry is pulled from --registry, as a manifest entry is (#909).
+func TestProcessImageTxt_UsesRegistryFlag(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	host, _ := newLocalhostRegistry(t)
+	seedImage(t, host, "myorg/regtest", "v1")
+
+	fi := writeImageTxtFile(t, "myorg/regtest:v1\n")
+	o := newSyncOpts(s.Root)
+	o.Registry = host
+
+	if err := processImageTxt(ctx, fi, o, s, o.StoreRootOpts, defaultCliOpts()); err != nil {
+		t.Fatalf("processImageTxt with --registry: %v", err)
+	}
+	found := false
+	if err := s.OCI.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if strings.HasPrefix(desc.Annotations[consts.ContainerdImageNameKey], host+"/myorg/regtest:v1") {
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if !found {
+		t.Errorf("expected an image named [%s/myorg/regtest:v1] in the store", host)
+	}
+}
+
+// --key verifies image.txt entries instead of being ignored... a signed image is stored and an unsigned one fails.
+func TestProcessImageTxt_VerifiesWithKeyFlag(t *testing.T) {
+	ctx := newTestContext(t)
+	host, remoteOpts := newLocalhostRegistry(t)
+	_, keyPath := seedSignedImage(t, host, "myorg/signed", "v1", remoteOpts...)
+	seedImage(t, host, "myorg/unsigned", "v1", remoteOpts...)
+
+	s := newTestStore(t)
+	o := newSyncOpts(s.Root)
+	o.Key = keyPath
+	if err := processImageTxt(ctx, writeImageTxtFile(t, host+"/myorg/signed:v1\n"), o, s, o.StoreRootOpts, defaultCliOpts()); err != nil {
+		t.Fatalf("processImageTxt signed image with --key: %v", err)
+	}
+	assertArtifactInStore(t, s, "myorg/signed")
+
+	s = newTestStore(t)
+	o = newSyncOpts(s.Root)
+	o.Key = keyPath
+	if err := processImageTxt(ctx, writeImageTxtFile(t, host+"/myorg/unsigned:v1\n"), o, s, o.StoreRootOpts, defaultCliOpts()); err == nil {
+		t.Fatal("expected processImageTxt to fail for an unsigned image with --key, got nil")
+	}
+	assertArtifactNotInStore(t, s, "myorg/unsigned")
+}
+
 // --------------------------------------------------------------------------
 // SyncCmd --image-txt integration tests
 // --------------------------------------------------------------------------
