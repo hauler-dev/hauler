@@ -11,6 +11,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
+	storepkg "hauler.dev/go/hauler/v2/pkg/store"
 )
 
 func addStore(parent *cobra.Command, ro *flags.CliRootOpts) {
@@ -202,9 +203,13 @@ func addStoreServeRegistry(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cob
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
-			if err != nil {
-				return err
+			// --skip-copy never reads the store, so don't create or register one
+			var s *storepkg.Layout
+			if !o.SkipCopy {
+				var err error
+				if s, err = o.Store(ctx, ro); err != nil {
+					return err
+				}
 			}
 
 			return store.ServeRegistryCmd(ctx, o, s, rso, ro)
@@ -225,9 +230,13 @@ func addStoreServeFiles(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			s, err := o.Store(ctx, ro)
-			if err != nil {
-				return err
+			// --skip-copy never reads the store, so don't create or register one
+			var s *storepkg.Layout
+			if !o.SkipCopy {
+				var err error
+				if s, err = o.Store(ctx, ro); err != nil {
+					return err
+				}
 			}
 
 			return store.ServeFilesCmd(ctx, o, s, ro)

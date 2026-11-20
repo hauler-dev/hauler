@@ -422,6 +422,20 @@ jobs:
           hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
           until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:5001/v2/_catalog; do : ; done
           pkill -f "hauler store serve registry --port 5001 --readonly --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+          # verify via registry with copy only (fills the directory and exits without serving)
+          hauler store serve registry --directory copy-only-registry --copy-only
+          [ $(find copy-only-registry -type f | wc -l) -gt 0 ]
+          rm -rf copy-only-registry
+          # verify copy only and skip copy are mutually exclusive
+          ! hauler store serve registry --copy-only --skip-copy || exit 1
+          # verify via registry with skip copy (serves the existing registry directory from an empty store)
+          hauler store serve registry --port 5001 --store skip-copy-store --skip-copy &
+          until curl -sf http://localhost:5001/v2/_catalog | grep -q '"repositories":\["'; do : ; done
+          pkill -f "hauler store serve registry --port 5001 --store skip-copy-store --skip-copy"
+          # verify skip copy did not create the store
+          [ ! -d skip-copy-store ]
+          # verify skip copy fails with a missing directory
+          ! hauler store serve registry --port 5001 --directory missing-registry --skip-copy || exit 1
 
       - name: Verify - hauler store serve fileserver
         run: |
@@ -442,6 +456,20 @@ jobs:
           hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key &
           until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
           pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
+          # verify via fileserver with copy only (fills the directory and exits without serving)
+          hauler store serve fileserver --directory copy-only-fileserver --copy-only
+          test -f copy-only-fileserver/hauler-manifest.yaml
+          rm -rf copy-only-fileserver
+          # verify copy only and skip copy are mutually exclusive
+          ! hauler store serve fileserver --copy-only --skip-copy || exit 1
+          # verify via fileserver with skip copy (serves the existing fileserver directory from an empty store)
+          hauler store serve fileserver --port 8000 --store skip-copy-store --skip-copy &
+          until curl -sf http://localhost:8000/hauler-manifest.yaml; do : ; done
+          pkill -f "hauler store serve fileserver --port 8000 --store skip-copy-store --skip-copy"
+          # verify skip copy did not create the store
+          [ ! -d skip-copy-store ]
+          # verify skip copy fails with a missing directory
+          ! hauler store serve fileserver --port 8000 --directory missing-fileserver --skip-copy || exit 1
 
       - name: Verify Hauler Store Contents
         run: |
