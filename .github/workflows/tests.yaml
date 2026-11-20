@@ -265,6 +265,23 @@ jobs:
           [ $(find registry -type f | wc -l) -gt 0 ]
           # verify via --only
           hauler store copy registry://localhost:5002 --plain-http --only busybox
+          # verify hauler copy via the same registry (registry to registry)
+          hauler copy --help
+          hauler copy localhost:5002/custom-path/busybox:latest localhost:5002/copy/busybox:latest --plain-http
+          # verify hauler copy via --platform
+          hauler copy localhost:5002/custom-path/busybox:latest localhost:5002/copy/busybox:amd64 --plain-http --platform linux/amd64
+          # verify hauler copy failure with --no-clobber on an existing tag
+          ! hauler copy localhost:5002/custom-path/busybox:latest localhost:5002/copy/busybox:latest --plain-http --no-clobber || exit 1
+          # verify hauler copy via --all-tags with --no-clobber
+          hauler copy localhost:5002/custom-path/busybox localhost:5002/copy/busybox --plain-http --all-tags --no-clobber
+          # verify hauler copy includes signatures and referrers by default
+          hauler copy localhost:5002/hauler-dev/cosign-test-classic:latest localhost:5002/copy/cosign-test-classic:latest --plain-http
+          curl -sf http://localhost:5002/v2/copy/cosign-test-classic/tags/list | grep '\.sig'
+          hauler copy localhost:5002/hauler-dev/cosign-test-bundle:latest localhost:5002/copy/cosign-test-bundle:latest --plain-http
+          curl -sf http://localhost:5002/v2/copy/cosign-test-bundle/tags/list | grep 'sha256-'
+          # verify hauler copy via --exclude-extras
+          hauler copy localhost:5002/hauler-dev/cosign-test-classic:latest localhost:5002/copy/cosign-test-bare:latest --plain-http --exclude-extras
+          ! curl -sf http://localhost:5002/v2/copy/cosign-test-bare/tags/list | grep '\.sig' || exit 1
           pkill -f "hauler store serve registry --port 5002"
           rm -rf registry
           # verify via directory target (files and charts only; images and cosign artifacts are skipped)

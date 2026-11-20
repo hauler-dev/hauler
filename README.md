@@ -101,6 +101,7 @@ Commands and flags marked `(EXPERIMENTAL)` are not yet stable and may change in 
 
 | Release Version | Command or Flag |
 |:---:|:---:|
+| v2.2.0 | `hauler copy` |
 | v2.1.1 | `hauler store copy --type` |
 | v2.1.1 | `hauler store serve registry --basic-auth` / `--basic-auth-realm` |
 | v2.1.1 | `hauler store serve fileserver --basic-auth` / `--basic-auth-realm` |

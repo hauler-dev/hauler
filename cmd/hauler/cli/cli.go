@@ -69,6 +69,7 @@ func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 	cmd.AddCommand(cranecmd.NewCmdAuthLogin("hauler"))
 	cmd.AddCommand(cranecmd.NewCmdAuthLogout("hauler"))
 	addStore(cmd, ro)
+	addCopy(cmd, ro)
 	addVersion(cmd, ro)
 	addCompletion(cmd, ro)
 
