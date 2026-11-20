@@ -338,7 +338,7 @@ func addStoreCopy(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Comman
 		Short: "Copy all store content to another location",
 		Example: `  # supported copy target prefixes
   registry://  | reg:// | oci:// - Pushes the store to an OCI registry
-  directory:// | dir://          - Extracts the store to a directory`,
+  directory:// | dir://          - Extracts files and charts to a directory (--type image writes images as an OCI layout)`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
