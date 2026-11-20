@@ -8,6 +8,7 @@ before:
     - go fmt ./...
     - go vet ./...
     - go test ./... -cover -race -covermode=atomic -coverprofile=coverage.out
+    - sh -c 'mkdir -p completions && for s in bash zsh fish; do go run ./cmd/hauler completion "$s" > "completions/hauler.$s"; done'
 
 release:
   prerelease: auto
@@ -37,6 +38,50 @@ universal_binaries:
 changelog:
   disable: false
   use: git
+
+nfpms:
+  - package_name: hauler
+    vendor: hauler-dev
+    homepage: https://hauler.dev
+    maintainer: hauler-dev <hauler@hauler.dev>
+    description: "Hauler: Airgap Swiss Army Knife"
+    license: Apache-2.0
+    section: utils
+    formats:
+      - deb
+      - rpm
+      - apk
+      - ipk
+      - archlinux
+      - msix
+    bindir: /usr/bin
+    contents:
+      - src: completions/hauler.bash
+        dst: /usr/share/bash-completion/completions/hauler
+      - src: completions/hauler.zsh
+        dst: /usr/share/zsh/site-functions/_hauler
+      - src: completions/hauler.fish
+        dst: /usr/share/fish/vendor_completions.d/hauler.fish
+      - src: LICENSE
+        dst: /usr/share/licenses/hauler/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/hauler/README.md
+    archlinux:
+      packager: hauler-dev
+    msix:
+      publisher: "CN=hauler-dev"
+      properties:
+        display_name: Hauler
+        publisher_display_name: hauler-dev
+        logo: static/rgs-hauler-logo-icon.png
+      applications:
+        - id: hauler
+          executable: hauler.exe
+    overrides:
+      msix:
+        contents:
+          - src: static/rgs-hauler-logo-icon.png
+            dst: static/rgs-hauler-logo-icon.png
 
 homebrew_casks:
   - name: hauler
