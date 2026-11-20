@@ -30,6 +30,7 @@ __debug_bin*
 go.work
 go.work.sum
 coverage.out
+completions/
 vulncheck.out
 trivy.out
 
