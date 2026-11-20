@@ -3,8 +3,10 @@ package store
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	gvtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -403,9 +406,8 @@ func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
 	}
 }
 
-func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
-	// A real container image (no AnnotationTitle on any layer) should be skipped
-	// without error and without writing any files to the destination directory.
+func TestExtractCmd_ContainerImage_WritesTar(t *testing.T) {
+	// A real container image (no AnnotationTitle on any layer) is written as a docker load compatible tar
 	ctx := newTestContext(t)
 	host, rOpts := newLocalhostRegistry(t)
 
@@ -440,22 +442,16 @@ func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
-	entries, err := os.ReadDir(destDir)
-	if err != nil {
-		t.Fatalf("ReadDir: %v", err)
-	}
-	if len(entries) != 0 {
-		names := make([]string, len(entries))
-		for i, e := range entries {
-			names[i] = e.Name()
-		}
-		t.Errorf("expected no files extracted for container image, got: %v", names)
+	assertOnlyEntries(t, destDir, "myimage_v1.tar")
+	got, tags := loadImageTar(t, filepath.Join(destDir, "myimage_v1.tar"))
+	assertSameImage(t, got, img)
+	if len(tags) != 1 || !strings.HasSuffix(tags[0], "/myapp/myimage:v1") {
+		t.Errorf("RepoTags = %v, want one tag ending in /myapp/myimage:v1", tags)
 	}
 }
 
-func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
-	// A real multi-arch container image index (no AnnotationTitle on any layer)
-	// should be skipped without error and without writing any files.
+func TestExtractCmd_ContainerImageIndex_WritesTar(t *testing.T) {
+	// A real multi-arch container image index is written as a tar holding only the selected platform
 	ctx := newTestContext(t)
 	host, rOpts := newLocalhostRegistry(t)
 
@@ -470,16 +466,18 @@ func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
 		return img
 	}
 
+	amd64Img := buildPlatformImg([]byte("amd64 content"))
+	arm64Img := buildPlatformImg([]byte("arm64 content"))
 	idx := mutate.AppendManifests(empty.Index,
 		mutate.IndexAddendum{
-			Add: buildPlatformImg([]byte("amd64 content")),
+			Add: amd64Img,
 			Descriptor: gcrv1.Descriptor{
 				MediaType: gvtypes.OCIManifestSchema1,
 				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "amd64"},
 			},
 		},
 		mutate.IndexAddendum{
-			Add: buildPlatformImg([]byte("arm64 content")),
+			Add: arm64Img,
 			Descriptor: gcrv1.Descriptor{
 				MediaType: gvtypes.OCIManifestSchema1,
 				Platform:  &gcrv1.Platform{OS: "linux", Architecture: "arm64"},
@@ -501,25 +499,189 @@ func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
 		t.Fatalf("AddImage: %v", err)
 	}
 
-	destDir := t.TempDir()
-	eo := &flags.ExtractOpts{
-		StoreRootOpts:  defaultRootOpts(s.Root),
-		DestinationDir: destDir,
+	t.Run("explicit platform", func(t *testing.T) {
+		destDir := t.TempDir()
+		eo := &flags.ExtractOpts{StoreRootOpts: defaultRootOpts(s.Root), DestinationDir: destDir, Platform: "linux/arm64"}
+		if err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1"); err != nil {
+			t.Fatalf("ExtractCmd: %v", err)
+		}
+		assertOnlyEntries(t, destDir, "multiarch_v1.tar")
+		got, _ := loadImageTar(t, filepath.Join(destDir, "multiarch_v1.tar"))
+		assertSameImage(t, got, arm64Img)
+	})
+
+	t.Run("defaults to host arch", func(t *testing.T) {
+		want := amd64Img
+		if runtime.GOARCH == "arm64" {
+			want = arm64Img
+		} else if runtime.GOARCH != "amd64" {
+			t.Skipf("no test platform for [%s]", runtime.GOARCH)
+		}
+		destDir := t.TempDir()
+		eo := &flags.ExtractOpts{StoreRootOpts: defaultRootOpts(s.Root), DestinationDir: destDir}
+		if err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1"); err != nil {
+			t.Fatalf("ExtractCmd: %v", err)
+		}
+		got, _ := loadImageTar(t, filepath.Join(destDir, "multiarch_v1.tar"))
+		assertSameImage(t, got, want)
+	})
+
+	t.Run("no matching platform fails", func(t *testing.T) {
+		destDir := t.TempDir()
+		eo := &flags.ExtractOpts{StoreRootOpts: defaultRootOpts(s.Root), DestinationDir: destDir, Platform: "linux/s390x"}
+		err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1")
+		if err == nil || !strings.Contains(err.Error(), "linux/amd64, linux/arm64") {
+			t.Fatalf("expected an error listing available platforms, got %v", err)
+		}
+		assertOnlyEntries(t, destDir)
+	})
+
+	t.Run("platform without os or arch fails", func(t *testing.T) {
+		for _, p := range []string{"linux", "/arm64", "linux/"} {
+			destDir := t.TempDir()
+			eo := &flags.ExtractOpts{StoreRootOpts: defaultRootOpts(s.Root), DestinationDir: destDir, Platform: p}
+			if err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1"); err == nil || !strings.Contains(err.Error(), "expected os/arch") {
+				t.Errorf("--platform [%s]: expected an os/arch error, got %v", p, err)
+			}
+			assertOnlyEntries(t, destDir)
+		}
+	})
+}
+
+func TestExtractCmd_ContainerImage_PlatformMismatchFails(t *testing.T) {
+	ctx := newTestContext(t)
+	host, rOpts := newLocalhostRegistry(t)
+
+	img, err := mutate.ConfigFile(empty.Image, &gcrv1.ConfigFile{OS: "linux", Architecture: "amd64"})
+	if err != nil {
+		t.Fatalf("mutate.ConfigFile: %v", err)
 	}
-	if err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1"); err != nil {
-		t.Fatalf("ExtractCmd: %v", err)
+	ref := host + "/myapp/amd64only:v1"
+	tag, err := goname.NewTag(ref, goname.Insecure)
+	if err != nil {
+		t.Fatalf("goname.NewTag: %v", err)
+	}
+	if err := remote.Write(tag, img, rOpts...); err != nil {
+		t.Fatalf("remote.Write: %v", err)
+	}
+	s := newTestStore(t)
+	if _, err := s.AddImage(ctx, ref, "", false, "", false, "", rOpts...); err != nil {
+		t.Fatalf("AddImage: %v", err)
 	}
 
-	entries, err := os.ReadDir(destDir)
-	if err != nil {
-		t.Fatalf("ReadDir: %v", err)
+	destDir := t.TempDir()
+	eo := &flags.ExtractOpts{StoreRootOpts: defaultRootOpts(s.Root), DestinationDir: destDir, Platform: "linux/arm64"}
+	if err := ExtractCmd(ctx, eo, s, "myapp/amd64only:v1"); err == nil || !strings.Contains(err.Error(), "does not match --platform") {
+		t.Fatalf("expected a platform mismatch error, got %v", err)
 	}
-	if len(entries) != 0 {
-		names := make([]string, len(entries))
-		for i, e := range entries {
-			names[i] = e.Name()
+	assertOnlyEntries(t, destDir)
+
+	eo.Platform = "linux"
+	if err := ExtractCmd(ctx, eo, s, "myapp/amd64only:v1"); err == nil || !strings.Contains(err.Error(), "expected os/arch") {
+		t.Fatalf("expected an os/arch error, got %v", err)
+	}
+	assertOnlyEntries(t, destDir)
+
+	eo.Platform = "linux/amd64"
+	if err := ExtractCmd(ctx, eo, s, "myapp/amd64only:v1"); err != nil {
+		t.Fatalf("ExtractCmd with matching platform: %v", err)
+	}
+	assertOnlyEntries(t, destDir, "amd64only_v1.tar")
+}
+
+func TestImageTarName(t *testing.T) {
+	hex := strings.Repeat("a", 64)
+	tests := map[string]string{
+		"hauler-dev/library/busybox:stable":           "busybox_stable.tar",
+		"library/busybox:latest":                      "busybox_latest.tar",
+		"distroless/base@sha256:" + hex:               "base_sha256-" + hex + ".tar",
+		"myorg/app:v1@sha256:" + hex:                  "app_v1.tar",
+		"custom-path/nginx:1.25-alpine":               "nginx_1.25-alpine.tar",
+		"hauler-dev/kubewarden/audit-scanner:v1.35.0": "audit-scanner_v1.35.0.tar",
+	}
+	for ref, want := range tests {
+		if got := imageTarName(ref); got != want {
+			t.Errorf("imageTarName(%q) = %q, want %q", ref, got, want)
 		}
-		t.Errorf("expected no files extracted for container image index, got: %v", names)
+	}
+}
+
+// loadImageTar reads the single image and its RepoTags back from a docker load style tar
+func loadImageTar(t *testing.T, p string) (gcrv1.Image, []string) {
+	t.Helper()
+	opener := func() (io.ReadCloser, error) { return os.Open(p) }
+	m, err := tarball.LoadManifest(opener)
+	if err != nil {
+		t.Fatalf("tarball.LoadManifest(%s): %v", p, err)
+	}
+	if len(m) != 1 {
+		t.Fatalf("expected 1 image in %s, got %d", p, len(m))
+	}
+	img, err := tarball.Image(opener, nil)
+	if err != nil {
+		t.Fatalf("tarball.Image(%s): %v", p, err)
+	}
+	return img, m[0].RepoTags
+}
+
+// assertSameImage compares the config digest and each layer's uncompressed content, since the tar rewrites the manifest and gzips layers
+func assertSameImage(t *testing.T, got, want gcrv1.Image) {
+	t.Helper()
+	gc, err := got.ConfigName()
+	if err != nil {
+		t.Fatalf("got.ConfigName: %v", err)
+	}
+	wc, err := want.ConfigName()
+	if err != nil {
+		t.Fatalf("want.ConfigName: %v", err)
+	}
+	if gc != wc {
+		t.Errorf("config digest = %s, want %s", gc, wc)
+	}
+	gl, err := got.Layers()
+	if err != nil {
+		t.Fatalf("got.Layers: %v", err)
+	}
+	wl, err := want.Layers()
+	if err != nil {
+		t.Fatalf("want.Layers: %v", err)
+	}
+	if len(gl) != len(wl) {
+		t.Fatalf("layer count = %d, want %d", len(gl), len(wl))
+	}
+	for i := range gl {
+		rc, err := gl[i].Uncompressed()
+		if err != nil {
+			t.Fatalf("layer %d Uncompressed: %v", i, err)
+		}
+		gd, _, err := gcrv1.SHA256(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("layer %d SHA256: %v", i, err)
+		}
+		wd, err := wl[i].DiffID()
+		if err != nil {
+			t.Fatalf("layer %d DiffID: %v", i, err)
+		}
+		if gd != wd {
+			t.Errorf("layer %d content digest = %s, want %s", i, gd, wd)
+		}
+	}
+}
+
+// assertOnlyEntries fails unless dir holds exactly the named entries
+func assertOnlyEntries(t *testing.T, dir string, want ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir(%s): %v", dir, err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Errorf("entries in %s = %v, want %v", dir, names, want)
 	}
 }
 

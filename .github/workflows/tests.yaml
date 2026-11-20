@@ -279,6 +279,10 @@ jobs:
           hauler store extract hauler/hauler-manifest-local.yaml:latest
           # view extracted content from store
           cat hauler-manifest-local.yaml
+          # verify via extracting a container image as a tar and loading it with docker
+          hauler store extract ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0
+          docker load --input audit-scanner_v1.35.0.tar
+          docker image inspect ghcr.io/hauler-dev/kubewarden/audit-scanner:v1.35.0 > /dev/null
 
       - name: Verify - hauler store info
         run: |
