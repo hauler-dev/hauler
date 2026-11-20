@@ -833,6 +833,44 @@ func TestCopyCmd_Dir_Charts(t *testing.T) {
 	}
 }
 
+// TestCopyCmd_Dir_PackageTypeFilter verifies --type rpm copies only rpm files, while --type file still copies rpm files along with plain files.
+func TestCopyCmd_Dir_PackageTypeFilter(t *testing.T) {
+	ctx := newTestContext(t)
+
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	for _, name := range []string{"hello-1.0-1.noarch.rpm", "notes.txt"} {
+		if err := storeFile(ctx, s, v1.File{Path: seedFileInHTTPServer(t, name, "content of "+name)}, ro, rso); err != nil {
+			t.Fatalf("storeFile %s: %v", name, err)
+		}
+	}
+
+	for filter, want := range map[string][]string{
+		"rpm":  {"hello-1.0-1.noarch.rpm"},
+		"deb":  nil,
+		"file": {"hello-1.0-1.noarch.rpm", "notes.txt"},
+	} {
+		destDir := t.TempDir()
+		o := &flags.CopyOpts{StoreRootOpts: defaultRootOpts(s.Root), TypeFilter: filter}
+		if err := CopyCmd(ctx, o, s, "dir://"+destDir, ro); err != nil {
+			t.Fatalf("CopyCmd with --type %s: %v", filter, err)
+		}
+		entries, err := os.ReadDir(destDir)
+		if err != nil {
+			t.Fatalf("ReadDir: %v", err)
+		}
+		var got []string
+		for _, e := range entries {
+			got = append(got, e.Name())
+		}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("--type %s copied %v, want %v", filter, got, want)
+		}
+	}
+}
+
 // TestCopyCmd_Dir_TypeFilter verifies --type restricts a directory copy to just the matching content type, leaving other types out of destDir.
 func TestCopyCmd_Dir_TypeFilter(t *testing.T) {
 	ctx := newTestContext(t)

@@ -46,6 +46,8 @@ type ServeFilesOpts struct {
 
 	TLSCert string
 	TLSKey  string
+
+	GenerateRepodata bool
 }
 
 func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
@@ -54,6 +56,7 @@ func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f.IntVarP(&o.Port, "port", "p", consts.DefaultFileserverPort, "(Optional) Set the port to use for incoming connections")
 	f.IntVar(&o.Timeout, "timeout", consts.DefaultFileserverTimeout, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")
 	f.StringVar(&o.RootDir, "directory", consts.DefaultFileserverRootDir, "(Optional) Directory to use for backend. (defaults to $PWD/fileserver)")
+	f.BoolVar(&o.GenerateRepodata, "generate-repodata", false, "(EXPERIMENTAL) (Optional) Generate rpm and deb repository metadata under rpms/ and debs/, with a repo for each folder in a package name (i.e. el9/foo.rpm)")
 	f.StringVar(&o.BasicAuth, "basic-auth", "", "(EXPERIMENTAL) (Optional) Location of the htpasswd file to use for basic authentication")
 	f.StringVar(&o.BasicAuthRealm, "basic-auth-realm", consts.DefaultFileserverRealm, "(EXPERIMENTAL) (Optional) Realm to use for basic authentication")
 

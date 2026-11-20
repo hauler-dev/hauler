@@ -443,6 +443,56 @@ jobs:
           until curl -sf --cacert testdata/certs/cacerts.pem https://localhost:8000; do : ; done
           pkill -f "hauler store serve fileserver --port 8000 --timeout 120 --tls-cert testdata/certs/server-cert.crt --tls-key testdata/certs/server-cert.key"
 
+      - name: Verify - hauler store serve fileserver --generate-repodata
+        run: |
+          # build a real deb for the runner arch, with a multi line description
+          DEB_ARCH=$(dpkg --print-architecture)
+          mkdir -p pkgs/deb/DEBIAN pkgs/deb/usr/share/doc/hauler-test
+          echo "hello" > pkgs/deb/usr/share/doc/hauler-test/README
+          printf 'Package: hauler-test\nVersion: 1.0-1\nArchitecture: %s\nMaintainer: Hauler <hauler@example.com>\nDescription: hauler test package\n first paragraph\n .\n second paragraph\n' "$DEB_ARCH" > pkgs/deb/DEBIAN/control
+          dpkg-deb --build --root-owner-group pkgs/deb "pkgs/hauler-test_1.0-1_${DEB_ARCH}.deb"
+          # build a real noarch rpm
+          mkdir -p pkgs/rpmbuild/SPECS
+          printf 'Name: hauler-test\nVersion: 1.0\nRelease: 1\nSummary: hauler test package\nLicense: Apache-2.0\nBuildArch: noarch\n%%description\nhauler test package\n%%files\n' > pkgs/rpmbuild/SPECS/hauler-test.spec
+          rpmbuild -bb --define "_topdir $PWD/pkgs/rpmbuild" pkgs/rpmbuild/SPECS/hauler-test.spec
+          # add both packages to the store
+          hauler store add file "pkgs/hauler-test_1.0-1_${DEB_ARCH}.deb"
+          hauler store add file pkgs/rpmbuild/RPMS/noarch/hauler-test-1.0-1.noarch.rpm
+          # add both again under a folder, which becomes its own rpm repo and apt suite
+          hauler store add file pkgs/rpmbuild/RPMS/noarch/hauler-test-1.0-1.noarch.rpm --name el9/hauler-test-1.0-1.noarch.rpm
+          hauler store add file "pkgs/hauler-test_1.0-1_${DEB_ARCH}.deb" --name "bookworm/hauler-test_1.0-1_${DEB_ARCH}.deb"
+          # verify the packages show as their own types and still match --type file
+          hauler store info --type rpm | grep 'hauler-test-1.0-1.noarch.rpm'
+          hauler store info --type deb | grep "hauler-test_1.0-1_${DEB_ARCH}.deb"
+          hauler store info --type file | grep 'hauler-test-1.0-1.noarch.rpm'
+          ! hauler store info --type rpm | grep -q "hauler-test_1.0-1_${DEB_ARCH}.deb"
+          # verify via fileserver with generated repodata
+          hauler store serve fileserver --port 8000 --directory repodata-fileserver --generate-repodata &
+          until curl -sf http://localhost:8000/rpms/repodata/repomd.xml; do : ; done
+          # repodata files are named by checksum like createrepo_c, so find them through repomd.xml
+          PRIMARY=$(curl -sf http://localhost:8000/rpms/repodata/repomd.xml | grep -o 'repodata/[0-9a-f]*-primary.xml.gz')
+          FILELISTS=$(curl -sf http://localhost:8000/rpms/repodata/repomd.xml | grep -o 'repodata/[0-9a-f]*-filelists.xml.gz')
+          curl -sf "http://localhost:8000/rpms/${PRIMARY}" | gunzip | grep '<name>hauler-test</name>'
+          ! curl -sf "http://localhost:8000/rpms/${PRIMARY}" | gunzip | grep 'rpmlib('
+          curl -sf "http://localhost:8000/rpms/${FILELISTS}" | gunzip | grep 'name="hauler-test"'
+          curl -sf http://localhost:8000/rpms/hauler-test-1.0-1.noarch.rpm -o /dev/null
+          curl -sf http://localhost:8000/debs/dists/stable/Release | grep "Architectures: ${DEB_ARCH}"
+          # verify the folder repos
+          EL9_PRIMARY=$(curl -sf http://localhost:8000/rpms/el9/repodata/repomd.xml | grep -o 'repodata/[0-9a-f]*-primary.xml.gz')
+          curl -sf "http://localhost:8000/rpms/el9/${EL9_PRIMARY}" | gunzip | grep 'href="hauler-test-1.0-1.noarch.rpm"'
+          curl -sf http://localhost:8000/debs/dists/bookworm/Release | grep "Suite: bookworm"
+          # verify the deb repo with a real apt client
+          mkdir -p apt/lists/partial apt/cache/archives/partial
+          printf 'deb [trusted=yes] http://localhost:8000/debs stable main\ndeb [trusted=yes] http://localhost:8000/debs bookworm main\n' > apt/sources.list
+          APT_OPTS="-o Dir::Etc::SourceList=$PWD/apt/sources.list -o Dir::Etc::SourceParts=/dev/null -o Dir::State::Lists=$PWD/apt/lists -o Dir::Cache=$PWD/apt/cache -o Debug::NoLocking=1"
+          apt-get $APT_OPTS --error-on=any update
+          apt-cache $APT_OPTS show hauler-test | grep 'second paragraph'
+          apt-cache $APT_OPTS madison hauler-test | grep 'debs bookworm/main'
+          apt-get $APT_OPTS download hauler-test
+          ls hauler-test_1.0-1_*.deb
+          pkill -f "hauler store serve fileserver --port 8000 --directory repodata-fileserver --generate-repodata"
+          rm -rf pkgs apt repodata-fileserver hauler-test_1.0-1_*.deb
+
       - name: Verify Hauler Store Contents
         run: |
           # verify store
