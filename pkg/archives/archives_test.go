@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -79,45 +78,6 @@ func TestArchive_NonExistentDir(t *testing.T) {
 	outFile := filepath.Join(t.TempDir(), "out.tar.zst")
 	if err := Archive(ctx, nonExistent, outFile, archives.Zstd{}, archives.Tar{}); err == nil {
 		t.Fatal("Archive() should return an error for a non-existent source directory")
-	}
-}
-
-func TestUnarchive_ExistingHaul(t *testing.T) {
-	ctx := testContext(t)
-
-	// testdata/ is two levels up from pkg/archives/
-	haulPath := filepath.Join("..", "..", "testdata", "haul.tar.zst")
-	if _, err := os.Stat(haulPath); err != nil {
-		t.Skipf("testdata/haul.tar.zst not found at %s: %v", haulPath, err)
-	}
-
-	dstDir := t.TempDir()
-	if err := Unarchive(ctx, haulPath, dstDir); err != nil {
-		t.Fatalf("Unarchive() error: %v", err)
-	}
-
-	var indexPath string
-	if err := filepath.Walk(dstDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.Name() == "index.json" {
-			indexPath = path
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("walk extracted dir: %v", err)
-	}
-	if indexPath == "" {
-		t.Fatal("index.json not found in extracted haul archive")
-	}
-
-	data, err := os.ReadFile(indexPath)
-	if err != nil {
-		t.Fatalf("read index.json: %v", err)
-	}
-	if !json.Valid(data) {
-		t.Fatal("index.json is not valid JSON")
 	}
 }
 

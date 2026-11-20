@@ -13,6 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/random"
 	mholtarchives "github.com/mholt/archives"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -24,9 +27,32 @@ import (
 	"hauler.dev/go/hauler/v2/pkg/store"
 )
 
-// testHaulArchive is the relative path from cmd/hauler/cli/store/ to the
-// bundled test haul archive produced by the project's own CI/test setup.
-const testHaulArchive = "../../../../testdata/haul.tar.zst"
+// newTestHaul writes a haul of two random images, one with a legacy kind and one with only a containerd image name, and returns its path.
+func newTestHaul(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	p, err := layout.Write(dir, empty.Index)
+	if err != nil {
+		t.Fatalf("layout.Write: %v", err)
+	}
+	for _, annotations := range []map[string]string{
+		{consts.KindAnnotationName: "dev.cosignproject.cosign/image", consts.ImageRefKey: "hauler/legacy:latest"},
+		{consts.ContainerdImageNameKey: "index.docker.io/library/containerd:latest"},
+	} {
+		img, err := random.Image(64*1024, 2)
+		if err != nil {
+			t.Fatalf("random.Image: %v", err)
+		}
+		if err := p.AppendImage(img, layout.WithAnnotations(annotations)); err != nil {
+			t.Fatalf("AppendImage: %v", err)
+		}
+	}
+	archivePath := filepath.Join(t.TempDir(), "haul.tar.zst")
+	if err := createRootLevelArchive(dir, archivePath); err != nil {
+		t.Fatalf("createRootLevelArchive: %v", err)
+	}
+	return archivePath
+}
 
 // createRootLevelArchive creates a tar.zst archive from dir with files placed
 // at the archive root (no directory prefix), matching the layout SaveCmd
@@ -65,6 +91,7 @@ func createRootLevelArchive(dir, outfile string) error {
 // and propagates the ContainerdImageNameKey → ImageRefKey mapping.
 func TestUnarchiveLayoutTo(t *testing.T) {
 	ctx := newTestContext(t)
+	testHaulArchive := newTestHaul(t)
 	destDir := t.TempDir()
 	tempDir := t.TempDir()
 
@@ -149,6 +176,7 @@ func TestUnarchiveLayoutTo_MergesAuditLog(t *testing.T) {
 // archives into the destination store.
 func TestLoadCmd_LocalFile(t *testing.T) {
 	ctx := newTestContext(t)
+	testHaulArchive := newTestHaul(t)
 
 	t.Run("single archive", func(t *testing.T) {
 		destDir := t.TempDir()
@@ -230,7 +258,7 @@ func TestLoadCmd_LocalFile(t *testing.T) {
 func TestLoadCmd_RemoteArchive(t *testing.T) {
 	ctx := newTestContext(t)
 
-	archiveData, err := os.ReadFile(testHaulArchive)
+	archiveData, err := os.ReadFile(newTestHaul(t))
 	if err != nil {
 		t.Fatalf("read test archive: %v", err)
 	}
@@ -276,9 +304,9 @@ func TestLoadCmd_RemoteArchive(t *testing.T) {
 func TestUnarchiveLayoutTo_AnnotationBackfill(t *testing.T) {
 	ctx := newTestContext(t)
 
-	// Step 1: Extract the real test archive to obtain a valid OCI layout on disk.
+	// Step 1: Extract the test haul to obtain a valid OCI layout on disk.
 	extractDir := t.TempDir()
-	if err := archives.Unarchive(ctx, testHaulArchive, extractDir); err != nil {
+	if err := archives.Unarchive(ctx, newTestHaul(t), extractDir); err != nil {
 		t.Fatalf("Unarchive: %v", err)
 	}
 
@@ -294,7 +322,7 @@ func TestUnarchiveLayoutTo_AnnotationBackfill(t *testing.T) {
 		t.Fatalf("unmarshal index.json: %v", err)
 	}
 	if len(idx.Manifests) == 0 {
-		t.Skip("testdata/haul.tar.zst has no top-level manifests — cannot test backfill")
+		t.Fatal("expected manifests in the test haul")
 	}
 	for i := range idx.Manifests {
 		delete(idx.Manifests[i].Annotations, consts.KindAnnotationName)
@@ -353,9 +381,9 @@ func TestUnarchiveLayoutTo_AnnotationBackfill(t *testing.T) {
 func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 	ctx := newTestContext(t)
 
-	// Step 1: Extract the real test archive to obtain a valid OCI layout on disk.
+	// Step 1: Extract the test haul to obtain a valid OCI layout on disk.
 	extractDir := t.TempDir()
-	if err := archives.Unarchive(ctx, testHaulArchive, extractDir); err != nil {
+	if err := archives.Unarchive(ctx, newTestHaul(t), extractDir); err != nil {
 		t.Fatalf("Unarchive: %v", err)
 	}
 
@@ -371,7 +399,7 @@ func TestUnarchiveLayoutTo_LegacyKindMigration(t *testing.T) {
 		t.Fatalf("unmarshal index.json: %v", err)
 	}
 	if len(idx.Manifests) == 0 {
-		t.Skip("testdata/haul.tar.zst has no top-level manifests — cannot test legacy kind migration")
+		t.Fatal("expected manifests in the test haul")
 	}
 
 	// Replace all kind annotations with old-prefix equivalents so we can verify
@@ -570,7 +598,7 @@ func TestClearDir(t *testing.T) {
 // serveRedundantChunks splits the test haul into redundant chunks, serves them over HTTP except where unreachable reports true, and returns every chunk URL.
 func serveRedundantChunks(t *testing.T, unreachable func(name string) bool) []string {
 	t.Helper()
-	data, err := os.ReadFile(testHaulArchive)
+	data, err := os.ReadFile(newTestHaul(t))
 	if err != nil {
 		t.Fatalf("read test archive: %v", err)
 	}
@@ -673,7 +701,7 @@ func TestLoadCmd_RemotePresigned_NoLogLeak(t *testing.T) {
 	ro.LogLevel = "debug"
 	const presign = "?X-Amz-Credential=AKIA-SECRET-KEY&X-Amz-Signature=SECRET-SIGNATURE"
 
-	archiveData, err := os.ReadFile(testHaulArchive)
+	archiveData, err := os.ReadFile(newTestHaul(t))
 	if err != nil {
 		t.Fatal(err)
 	}
