@@ -3,6 +3,7 @@ package chart_test
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,6 +22,15 @@ func TestNewChart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tempDir)
+
+	// copy the chart under a name that doesn't match its metadata
+	data, err := os.ReadFile("../../../testdata/rancher-cluster-templates-0.5.2.tgz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "mismatched-filename-chart.tgz"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	type args struct {
 		name string
@@ -60,7 +70,7 @@ func TestNewChart(t *testing.T) {
 			name: "should preserve real filename for local archive with mismatched name",
 			args: args{
 				name: "mismatched-filename-chart.tgz",
-				opts: &action.ChartPathOptions{RepoURL: "../../../testdata"},
+				opts: &action.ChartPathOptions{RepoURL: tempDir},
 			},
 			want: v1.Descriptor{
 				MediaType: consts.ChartLayerMediaType,
