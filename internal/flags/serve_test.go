@@ -90,3 +90,18 @@ func TestServeGitOptsAddFlagsRegistersDirectory(t *testing.T) {
 		t.Fatalf("got --directory default %q, want %q", dir.DefValue, consts.DefaultGitRootDir)
 	}
 }
+
+func TestServeFilesOptsBindHost(t *testing.T) {
+	o := &ServeFilesOpts{}
+	cmd := &cobra.Command{Use: "fileserver"}
+	o.AddFlags(cmd)
+	if o.Host != "" {
+		t.Fatalf("default host %q must preserve wildcard binding", o.Host)
+	}
+	if err := cmd.ParseFlags([]string{"--host", "127.0.0.1", "--port", "8081"}); err != nil {
+		t.Fatal(err)
+	}
+	if o.Host != "127.0.0.1" || o.Port != 8081 {
+		t.Fatalf("unexpected options: %+v", o)
+	}
+}
