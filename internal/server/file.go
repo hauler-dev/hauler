@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -46,7 +47,7 @@ func NewFile(ctx context.Context, cfg flags.ServeFilesOpts) (Server, error) {
 
 	srv := &http.Server{
 		Handler:      r,
-		Addr:         fmt.Sprintf(":%d", cfg.Port),
+		Addr:         net.JoinHostPort(cfg.Host, fmt.Sprint(cfg.Port)),
 		WriteTimeout: time.Duration(cfg.Timeout) * time.Second,
 		ReadTimeout:  time.Duration(cfg.Timeout) * time.Second,
 	}

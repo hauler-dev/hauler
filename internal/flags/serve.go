@@ -36,6 +36,7 @@ func (o *ServeRegistryOpts) AddFlags(cmd *cobra.Command) {
 }
 
 type ServeFilesOpts struct {
+	Host string
 	*StoreRootOpts
 
 	Port           int
@@ -50,6 +51,7 @@ type ServeFilesOpts struct {
 
 func (o *ServeFilesOpts) AddFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
+	f.StringVar(&o.Host, "host", "", "(Optional) Host address to bind (empty binds all interfaces)")
 
 	f.IntVarP(&o.Port, "port", "p", consts.DefaultFileserverPort, "(Optional) Set the port to use for incoming connections")
 	f.IntVar(&o.Timeout, "timeout", consts.DefaultFileserverTimeout, "(Optional) Timeout duration for HTTP Requests in seconds for both reads/writes")

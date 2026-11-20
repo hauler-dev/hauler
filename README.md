@@ -46,6 +46,20 @@ brew install hauler-dev
 irm https://get.hauler.dev/install.ps1 | iex
 ```
 
+## Fileserver bind address
+
+The fileserver listens on all interfaces by default. To serve only to local
+clients, select a loopback host explicitly:
+
+```bash
+hauler store serve fileserver --host 127.0.0.1 --port 8080
+```
+
+`--host ::1` selects IPv6 loopback. The default empty host preserves the existing
+wildcard bind. `--port` retains its existing behavior, including `0` selecting
+port 8080 rather than an ephemeral port. Registry serving uses `--config` and
+its `http.addr` setting instead; `--host` applies only to the fileserver.
+
 ## Manifest Schema
 
 Hauler publishes a JSON Schema for the v1 manifest API at
