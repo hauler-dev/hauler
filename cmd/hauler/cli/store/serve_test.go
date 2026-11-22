@@ -236,7 +236,7 @@ func TestExtractGitRepos_SkipsUnsafeName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repos, err := extractGitRepos(ctx, s, filepath.Join(parent, "gitroot"), defaultCliOpts())
+	repos, err := extractGitRepos(ctx, s, filepath.Join(parent, "gitroot"), false, defaultCliOpts())
 	if err != nil {
 		t.Fatalf("extractGitRepos: %v", err)
 	}
@@ -286,5 +286,62 @@ func TestDirEmpty(t *testing.T) {
 	}
 	if dirEmpty(dir) {
 		t.Error("expected a directory with a file to not be empty")
+	}
+}
+
+func TestSkipCopy(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	if _, err := s.AddArtifact(ctx, gitartifact.NewGit(newBareGitRepoFixture(t, "myrepo.git"), gitartifact.WithContext(ctx)), "hauler/good:latest"); err != nil {
+		t.Fatalf("AddArtifact: %v", err)
+	}
+
+	// a missing --directory must fail instead of serving nothing
+	missing := filepath.Join(t.TempDir(), "missing")
+	if err := validateDirExists(missing); err == nil {
+		t.Error("expected error for missing directory")
+	}
+	o := &flags.ServeFilesOpts{StoreRootOpts: &flags.StoreRootOpts{}, RootDir: missing, SkipCopy: true}
+	if err := ServeFilesCmd(ctx, o, s, defaultCliOpts()); err == nil || !strings.Contains(err.Error(), "--skip-copy") {
+		t.Errorf("expected --skip-copy error from ServeFilesCmd, got %v", err)
+	}
+	if _, err := os.Stat(missing); err == nil {
+		t.Error("ServeFilesCmd --skip-copy created --directory")
+	}
+
+	// with skipCopy the repo map is still built, but nothing is extracted
+	root := t.TempDir()
+	repos, err := extractGitRepos(ctx, s, root, true, defaultCliOpts())
+	if err != nil {
+		t.Fatalf("extractGitRepos: %v", err)
+	}
+	if repos["good"] == "" {
+		t.Errorf("expected repo map entry, got %v", repos)
+	}
+	if entries, _ := os.ReadDir(root); len(entries) != 0 {
+		t.Errorf("expected --directory untouched with skipCopy, found %d entries", len(entries))
+	}
+}
+
+func TestCopyOnly(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+
+	src := filepath.Join(t.TempDir(), "x.txt")
+	if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddFileCmd(ctx, &flags.AddFileOpts{StoreRootOpts: defaultRootOpts(s.Root)}, s, src, defaultCliOpts()); err != nil {
+		t.Fatalf("AddFileCmd: %v", err)
+	}
+
+	// copy-only must return after the copy instead of blocking in ListenAndServe
+	root := filepath.Join(t.TempDir(), "fileserver")
+	o := &flags.ServeFilesOpts{StoreRootOpts: &flags.StoreRootOpts{}, RootDir: root, CopyOnly: true}
+	if err := ServeFilesCmd(ctx, o, s, defaultCliOpts()); err != nil {
+		t.Fatalf("ServeFilesCmd --copy-only: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "x.txt")); err != nil {
+		t.Errorf("expected x.txt copied into --directory: %v", err)
 	}
 }

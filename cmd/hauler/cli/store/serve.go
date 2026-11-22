@@ -70,6 +70,18 @@ func dirEmpty(dir string) bool {
 	return errors.Is(err, fs.ErrNotExist) || (err == nil && len(entries) == 0)
 }
 
+// validateDirExists guards --skip-copy, so a missing or mis-mounted --directory fails loudly instead of serving nothing.
+func validateDirExists(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("failed to serve [%s] with --skip-copy: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("failed to serve [%s] with --skip-copy: not a directory", dir)
+	}
+	return nil
+}
+
 func loadConfig(filename string) (*configuration.Configuration, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -127,29 +139,44 @@ func DefaultRegistryConfig(o *flags.ServeRegistryOpts, rso *flags.StoreRootOpts,
 func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.Layout, rso *flags.StoreRootOpts, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	if err := validateStoreExists(s); err != nil {
-		return err
-	}
+	if o.SkipCopy {
+		// a user config can point storage anywhere, so only check the default backend
+		if o.ConfigFile == "" {
+			if err := validateDirExists(o.RootDir); err != nil {
+				return err
+			}
+		}
+		l.Infof("skipping store copy... serving existing contents of [%s]", o.RootDir)
+	} else {
+		if err := validateStoreExists(s); err != nil {
+			return err
+		}
 
-	tr := server.NewTempRegistry(ctx, o.RootDir)
-	if err := tr.Start(); err != nil {
-		return err
-	}
+		tr := server.NewTempRegistry(ctx, o.RootDir)
+		if err := tr.Start(); err != nil {
+			return err
+		}
 
-	opts := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
-	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), ro); err != nil {
-		return err
-	}
+		opts := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
+		if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), ro); err != nil {
+			return err
+		}
 
-	tr.Close()
+		tr.Close()
 
-	// an empty store still serves, the same as fileserver and git
-	empty, err := storeEmpty(s)
-	if err != nil {
-		return err
-	}
-	if empty {
-		l.Warnf("no artifacts found in the store... add some with `hauler store add` or `hauler store sync`")
+		// an empty store still serves, the same as fileserver and git
+		empty, err := storeEmpty(s)
+		if err != nil {
+			return err
+		}
+		if empty {
+			l.Warnf("no artifacts found in the store... add some with `hauler store add` or `hauler store sync`")
+		}
+
+		if o.CopyOnly {
+			l.Infof("copied store into [%s]... exiting without serving (--copy-only)", o.RootDir)
+			return nil
+		}
 	}
 
 	cfg := DefaultRegistryConfig(o, rso, ro)
@@ -201,18 +228,30 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
-	if err := validateStoreExists(s); err != nil {
-		return err
-	}
+	if o.SkipCopy {
+		if err := validateDirExists(o.RootDir); err != nil {
+			return err
+		}
+		l.Infof("skipping store copy... serving existing contents of [%s]", o.RootDir)
+	} else {
+		if err := validateStoreExists(s); err != nil {
+			return err
+		}
 
-	opts := &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}}
-	if err := CopyCmd(ctx, opts, s, "directory://"+o.RootDir, ro); err != nil {
-		return err
-	}
+		opts := &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}}
+		if err := CopyCmd(ctx, opts, s, "directory://"+o.RootDir, ro); err != nil {
+			return err
+		}
 
-	// an empty store still serves, the same as registry and git
-	if dirEmpty(o.RootDir) {
-		l.Warnf("no files, charts, or directories found in the store... add some with `hauler store add` or `hauler store sync`")
+		// an empty store still serves, the same as registry and git
+		if dirEmpty(o.RootDir) {
+			l.Warnf("no files, charts, or directories found in the store... add some with `hauler store add` or `hauler store sync`")
+		}
+
+		if o.CopyOnly {
+			l.Infof("copied store into [%s]... exiting without serving (--copy-only)", o.RootDir)
+			return nil
+		}
 	}
 
 	f, err := server.NewFile(ctx, *o)
@@ -246,7 +285,14 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 		return err
 	}
 
-	repos, err := extractGitRepos(ctx, s, o.RootDir, ro)
+	if o.SkipCopy {
+		if err := validateDirExists(o.RootDir); err != nil {
+			return err
+		}
+		l.Infof("skipping store copy... serving existing contents of [%s]", o.RootDir)
+	}
+
+	repos, err := extractGitRepos(ctx, s, o.RootDir, o.SkipCopy, ro)
 	if err != nil {
 		return err
 	}
@@ -281,10 +327,12 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 	return nil
 }
 
-// extractGitRepos extracts every git artifact into rootDir through the same directory copy fileserver uses, and returns the name -> directory map NewGit needs to serve them.
-func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string, ro *flags.CliRootOpts) (map[string]string, error) {
-	if err := CopyCmd(ctx, &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}, TypeFilter: "git"}, s, "directory://"+rootDir, ro); err != nil {
-		return nil, err
+// extractGitRepos extracts every git artifact into rootDir through the same directory copy fileserver uses (unless skipCopy, when rootDir already holds them), and returns the name -> directory map NewGit needs to serve them.
+func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string, skipCopy bool, ro *flags.CliRootOpts) (map[string]string, error) {
+	if !skipCopy {
+		if err := CopyCmd(ctx, &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}, TypeFilter: "git"}, s, "directory://"+rootDir, ro); err != nil {
+			return nil, err
+		}
 	}
 
 	repos := map[string]string{}
