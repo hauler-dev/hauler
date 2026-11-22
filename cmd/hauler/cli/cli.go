@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/log"
@@ -66,11 +67,24 @@ func New(ctx context.Context, ro *flags.CliRootOpts) *cobra.Command {
 
 	flags.AddRootFlags(cmd, ro)
 
-	cmd.AddCommand(cranecmd.NewCmdAuthLogin("hauler"))
-	cmd.AddCommand(cranecmd.NewCmdAuthLogout("hauler"))
+	cmd.AddCommand(auditRegistryAuth(ctx, cranecmd.NewCmdAuthLogin("hauler"), "login", ro))
+	cmd.AddCommand(auditRegistryAuth(ctx, cranecmd.NewCmdAuthLogout("hauler"), "logout", ro))
 	addStore(cmd, ro)
 	addVersion(cmd, ro)
 	addCompletion(cmd, ro)
 
 	return cmd
+}
+
+// auditRegistryAuth wraps crane's login or logout so a success records the registry host in the global audit log... never the credentials
+func auditRegistryAuth(ctx context.Context, c *cobra.Command, command string, ro *flags.CliRootOpts) *cobra.Command {
+	run := c.RunE
+	c.RunE = func(cmd *cobra.Command, args []string) error {
+		if err := run(cmd, args); err != nil {
+			return err
+		}
+		audit.Write(ctx, ro, nil, audit.Entry{Command: command, Reference: audit.SanitizeURL(args[0])}, nil)
+		return nil
+	}
+	return c
 }

@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/pkg/consts"
+	"hauler.dev/go/hauler/v2/pkg/log"
 )
 
 var auditID string
@@ -62,6 +64,8 @@ type Entry struct {
 	Type      string         `json:"type,omitempty"`
 	Reference string         `json:"reference,omitempty"`
 	Digest    string         `json:"digest,omitempty"`
+	Artifacts []string       `json:"artifacts,omitempty"`
+	HaulID    string         `json:"haul-id,omitempty"`
 	Store     string         `json:"store,omitempty"`
 	System    *SystemEntry   `json:"system,omitempty"`
 	Global    *GlobalEntry   `json:"global,omitempty"`
@@ -80,6 +84,10 @@ type portableEntry struct {
 	Type      string `json:"type,omitempty"`
 	Reference string `json:"reference,omitempty"`
 	Digest    string `json:"digest,omitempty"`
+
+	// only set by save, copy, extract, and load
+	Artifacts []string `json:"artifacts,omitempty"`
+	HaulID    string   `json:"haul-id,omitempty"`
 }
 
 // ShortFileRef returns a portable-safe short name for a local path or URL
@@ -210,8 +218,7 @@ func BuildGlobal(ro *flags.CliRootOpts, rso *flags.StoreRootOpts) GlobalEntry {
 // Append records a full log entry to <haulerDir>/audit.log
 // When e.Store is set... a portable subset to <storeDir>/audit.log
 func Append(haulerDir string, e Entry) error {
-	e.AuditID = auditID
-	e.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	Stamp(&e)
 
 	// global write... full entry including system/global/flags
 	var globalErr error
@@ -221,20 +228,7 @@ func Append(haulerDir string, e Entry) error {
 
 	// store write... portable subset only, attempted even if the global write above failed
 	if e.Store != "" {
-		reference := e.Reference
-		if e.PortableReference != "" {
-			reference = e.PortableReference
-		}
-		pe := portableEntry{
-			AuditID:   e.AuditID,
-			StoreID:   e.StoreID,
-			Timestamp: e.Timestamp,
-			Command:   e.Command,
-			Type:      e.Type,
-			Reference: reference,
-			Digest:    e.Digest,
-		}
-		if err := appendLine(e.Store, pe); err != nil {
+		if err := appendLine(e.Store, e.portable()); err != nil {
 			if globalErr != nil {
 				return fmt.Errorf("%v: audit: store write: %w", globalErr, err)
 			}
@@ -243,6 +237,139 @@ func Append(haulerDir string, e Entry) error {
 	}
 
 	return globalErr
+}
+
+// Level returns the resolved audit level (none, standard, verbose)
+func Level(ro *flags.CliRootOpts) string {
+	if ro == nil {
+		return "none"
+	}
+	if ro.AuditLevel == "" {
+		return "standard"
+	}
+	return ro.AuditLevel
+}
+
+// WithVerbose adds system, global, and flag details to e when the audit level is verbose
+func WithVerbose(e Entry, ro *flags.CliRootOpts, rso *flags.StoreRootOpts, entryFlags map[string]any) Entry {
+	if Level(ro) == "verbose" {
+		sys := BuildSystem()
+		g := BuildGlobal(ro, rso)
+		e.System = &sys
+		e.Global = &g
+		e.Flags = entryFlags
+	}
+	return e
+}
+
+// Write appends e unless auditing is off... a failed write only warns
+func Write(ctx context.Context, ro *flags.CliRootOpts, rso *flags.StoreRootOpts, e Entry, entryFlags map[string]any) {
+	l := log.FromContext(ctx)
+	if Level(ro) == "none" {
+		l.Debugf("generated audit id of [none]")
+		return
+	}
+	if err := Append(ro.HaulerDir, WithVerbose(e, ro, rso, entryFlags)); err != nil {
+		l.Warnf("failed to write audit entry: %v", err)
+	}
+	l.Debugf("generated audit id of [%s]", auditID)
+}
+
+// Stamp sets the entry's audit-id and timestamp, keeping a timestamp that is already set so a staged entry matches its later Append
+func Stamp(e *Entry) {
+	e.AuditID = auditID
+	if e.Timestamp == "" {
+		e.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	}
+}
+
+// portable returns the machine-agnostic subset of e written to the store audit log
+func (e Entry) portable() portableEntry {
+	reference := e.Reference
+	if e.PortableReference != "" {
+		reference = e.PortableReference
+	}
+	return portableEntry{
+		AuditID:   e.AuditID,
+		StoreID:   e.StoreID,
+		Timestamp: e.Timestamp,
+		Command:   e.Command,
+		Type:      e.Type,
+		Reference: reference,
+		Digest:    e.Digest,
+		Artifacts: e.Artifacts,
+		HaulID:    e.HaulID,
+	}
+}
+
+// StageStoreLog writes storeDir's audit.log plus the stamped portable form of e into outDir, so a haul carries the entry for its own save
+func StageStoreLog(storeDir, outDir string, e Entry) error {
+	Stamp(&e)
+	data, err := os.ReadFile(filepath.Join(storeDir, LogFileName))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("audit: read store log: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, LogFileName), data, 0o644); err != nil {
+		return fmt.Errorf("audit: write staged log: %w", err)
+	}
+	return appendLine(outDir, e.portable())
+}
+
+// HaulID returns the audit-id of the save that produced the haul unpacked in dir, or "" when the haul has no staged save entry
+func HaulID(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, LogFileName))
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	var last portableEntry
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &last); err != nil {
+		return ""
+	}
+	if last.Command != "store save" || !sameDigests(last.Artifacts, indexDigests(dir)) {
+		return ""
+	}
+	return last.AuditID
+}
+
+// indexDigests returns the manifest digests in dir's index.json, or nil if it cannot be read
+func indexDigests(dir string) []string {
+	data, err := os.ReadFile(filepath.Join(dir, "index.json"))
+	if err != nil {
+		return nil
+	}
+	var idx struct {
+		Manifests []struct {
+			Digest string `json:"digest"`
+		} `json:"manifests"`
+	}
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return nil
+	}
+	digests := make([]string, 0, len(idx.Manifests))
+	for _, m := range idx.Manifests {
+		digests = append(digests, m.Digest)
+	}
+	return digests
+}
+
+// sameDigests reports whether a and b hold the same digests, ignoring order and duplicates... an older hauler's haul can end with an earlier save's line, which won't match its index
+func sameDigests(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	set := map[string]bool{}
+	for _, d := range a {
+		set[d] = true
+	}
+	seen := map[string]bool{}
+	for _, d := range b {
+		if !set[d] {
+			return false
+		}
+		seen[d] = true
+	}
+	return len(seen) == len(set)
 }
 
 // LogFileName is the audit log's filename, under both haulerDir and a store's Root.

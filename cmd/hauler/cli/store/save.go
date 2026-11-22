@@ -114,6 +114,39 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 		files[filepath.Join(scratch, ocispec.ImageIndexFile)] = ocispec.ImageIndexFile
 	}
 
+	// stage the save entry into the haul's audit.log... the store's own log only gets it once the save succeeds
+	var auditEntry audit.Entry
+	staged := false
+	if auditLevel(ro) != "none" {
+		var artifacts []string
+		if err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+			artifacts = append(artifacts, desc.Digest.String())
+			return nil
+		}); err != nil {
+			return err
+		}
+		auditEntry = audit.WithVerbose(audit.Entry{
+			StoreID:           s.StoreID,
+			Store:             s.Root,
+			Command:           "store save",
+			Reference:         o.FileName,
+			PortableReference: filepath.Base(o.FileName),
+			Artifacts:         sortedDigests(artifacts),
+		}, ro, rso, map[string]any{
+			"platform":           o.Platform,
+			"containerd":         o.ContainerdCompatibility,
+			"chunk-size":         o.ChunkSize,
+			"redundancy-percent": o.RedundancyPercent,
+		})
+		audit.Stamp(&auditEntry)
+		if err := audit.StageStoreLog(o.StoreDir, scratch, auditEntry); err != nil {
+			l.Warnf("failed to stage audit entry in haul: %v", err)
+		} else {
+			files[filepath.Join(scratch, audit.LogFileName)] = audit.LogFileName
+			staged = true
+		}
+	}
+
 	entries, err := os.ReadDir(o.StoreDir)
 	if err != nil {
 		return err
@@ -121,6 +154,9 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 	for _, e := range entries {
 		name := e.Name()
 		full := filepath.Join(o.StoreDir, name)
+		if staged && name == audit.LogFileName {
+			continue // replaced by the staged copy that includes this save
+		}
 		if name == consts.ImageManifestFile {
 			continue // always regenerated into scratch
 		}
@@ -177,27 +213,10 @@ func SaveCmd(ctx context.Context, o *flags.SaveOpts, s *store.Layout, rso *flags
 	}
 
 	if auditLevel(ro) != "none" {
-		e := audit.Entry{
-			StoreID:   s.StoreID,
-			Store:     s.Root,
-			Command:   "store save",
-			Reference: o.FileName,
-		}
-		if auditLevel(ro) == "verbose" {
-			sys := audit.BuildSystem()
-			g := audit.BuildGlobal(ro, rso)
-			e.System = &sys
-			e.Global = &g
-			e.Flags = map[string]any{
-				"platform":           o.Platform,
-				"containerd":         o.ContainerdCompatibility,
-				"chunk-size":         o.ChunkSize,
-				"redundancy-percent": o.RedundancyPercent,
-			}
-		}
-		if err := audit.Append(ro.HaulerDir, e); err != nil {
+		if err := audit.Append(ro.HaulerDir, auditEntry); err != nil {
 			l.Warnf("failed to write audit entry: %v", err)
 		}
+		l.Debugf("generated audit id of [%s]", audit.ID())
 	}
 
 	return nil
