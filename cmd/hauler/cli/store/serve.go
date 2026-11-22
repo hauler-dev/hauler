@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/distribution/distribution/v3/configuration"
@@ -24,6 +27,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"hauler.dev/go/hauler/v2/internal/flags"
+	"hauler.dev/go/hauler/v2/internal/repodata"
 	"hauler.dev/go/hauler/v2/internal/server"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
 	"hauler.dev/go/hauler/v2/pkg/consts"
@@ -215,6 +219,12 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 		l.Warnf("no files, charts, or directories found in the store... add some with `hauler store add` or `hauler store sync`")
 	}
 
+	if o.GenerateRepodata {
+		if err := prepareRepodata(ctx, s, o.RootDir); err != nil {
+			return err
+		}
+	}
+
 	f, err := server.NewFile(ctx, *o)
 	if err != nil {
 		return err
@@ -328,4 +338,90 @@ func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string, ro *f
 	})
 
 	return repos, err
+}
+
+// prepareRepodata moves each rpm and deb in the store from where the fileserver copy wrote it into rpms/ or debs/, keeping the folders in its name, then generates an rpm repo for each folder and an apt suite for each folder.
+func prepareRepodata(ctx context.Context, s *store.Layout, rootDir string) error {
+	l := log.FromContext(ctx)
+
+	titles, err := packageTitles(ctx, s)
+	if err != nil {
+		return err
+	}
+	if len(titles) == 0 {
+		l.Warnf("no rpm or deb packages found in the store... skipping repodata")
+		return nil
+	}
+
+	rpmRepos := map[string]bool{}
+	debSuites := map[string][]string{}
+	for _, title := range titles {
+		dest, repo, err := repodata.PackagePath(title)
+		if err != nil {
+			l.Warnf("skipping package [%s]: %v", title, err)
+			continue
+		}
+		src := filepath.Join(rootDir, filepath.FromSlash(title))
+		dst := filepath.Join(rootDir, filepath.FromSlash(dest))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return fmt.Errorf("failed to create directory for package [%s]: %w", title, err)
+		}
+		if err := os.Rename(src, dst); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				l.Warnf("skipping package [%s]... not found in the fileserver directory", title)
+				continue
+			}
+			return fmt.Errorf("failed to move package [%s]: %w", title, err)
+		}
+
+		if repodata.PackageType(title) == "rpm" {
+			rpmRepos[repo] = true
+		} else if pkgDir := path.Dir(path.Clean(title)); !slices.Contains(debSuites[repo], pkgDir) {
+			debSuites[repo] = append(debSuites[repo], pkgDir)
+		}
+	}
+
+	for _, repo := range slices.Sorted(maps.Keys(rpmRepos)) {
+		count, err := repodata.GenerateRPMRepo(ctx, filepath.Join(rootDir, filepath.FromSlash(repo)))
+		if err != nil {
+			return fmt.Errorf("failed to generate rpm repodata for [%s]: %w", repo, err)
+		}
+		l.Infof("generated rpm repodata for [%d] package(s) in [%s]", count, repo)
+	}
+	for _, suite := range slices.Sorted(maps.Keys(debSuites)) {
+		count, err := repodata.GenerateDebRepo(ctx, filepath.Join(rootDir, "debs"), suite, debSuites[suite]...)
+		if err != nil {
+			return fmt.Errorf("failed to generate deb repodata for suite [%s]: %w", suite, err)
+		}
+		l.Infof("generated deb repodata for [%d] package(s) in [debs] suite [%s]", count, suite)
+	}
+
+	return nil
+}
+
+// packageTitles lists the rpm and deb files in the store by the path the fileserver copy writes them to, using the same type check as store info.
+func packageTitles(ctx context.Context, s *store.Layout) ([]string, error) {
+	titles := map[string]bool{}
+	err := s.Walk(func(_ string, desc ocispec.Descriptor) error {
+		if _, ok := desc.Annotations[ocispec.AnnotationRefName]; !ok {
+			return nil
+		}
+
+		rc, err := s.Fetch(ctx, desc)
+		if err != nil {
+			return nil
+		}
+		defer rc.Close()
+
+		var m ocispec.Manifest
+		if err := json.NewDecoder(rc).Decode(&m); err != nil || len(m.Layers) == 0 {
+			return nil
+		}
+		if ctype := resolveCtype(desc, m); ctype == "rpm" || ctype == "deb" {
+			titles[m.Layers[0].Annotations[ocispec.AnnotationTitle]] = true
+		}
+		return nil
+	})
+
+	return slices.Sorted(maps.Keys(titles)), err
 }
