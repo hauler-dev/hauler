@@ -55,6 +55,14 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 			return fmt.Errorf("failed to create destination directory: %w", err)
 		}
 
+		// Images can't be extracted as files, so --type image writes them as an OCI layout instead.
+		if o.TypeFilter == "image" {
+			if err := copyImagesToOCILayout(ctx, s, components[1], o.Only); err != nil {
+				return err
+			}
+			break
+		}
+
 		// For directory targets, extract files and charts (not images)
 		err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
 			// Skip cosign sig/att/sbom artifacts — they're registry-only metadata,
@@ -475,4 +483,39 @@ func copyBlobDescriptor(ctx context.Context, s *store.Layout, desc ocispec.Descr
 	}
 
 	return nil
+}
+
+// copyImagesToOCILayout copies the store's container images (not their sigs/atts/sbom/referrers) into an OCI image layout at dir.
+func copyImagesToOCILayout(ctx context.Context, s *store.Layout, dir, only string) error {
+	l := log.FromContext(ctx)
+	target, err := content.NewOCI(dir)
+	if err != nil {
+		return err
+	}
+	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
+		baseRef := desc.Annotations[ocispec.AnnotationRefName]
+		if baseRef == "" || (only != "" && !strings.Contains(baseRef, only)) {
+			return nil
+		}
+		ctype, err := resolveCopyCtype(ctx, s, desc)
+		if err != nil {
+			return fmt.Errorf("resolving content type for [%s]: %w", baseRef, err)
+		}
+		if ctype != "image" {
+			return nil
+		}
+		// The digest suffix tells the OCI pusher which descriptor is the root to index.
+		toRef := baseRef
+		if at := strings.Index(toRef, "@"); at != -1 {
+			toRef = toRef[:at]
+		}
+		if _, err := s.Copy(ctx, reference, target, toRef+"@"+desc.Digest.String()); err != nil {
+			return fmt.Errorf("copying [%s]: %w", baseRef, err)
+		}
+		l.Infof("%s", baseRef)
+		return nil
+	}); err != nil {
+		return err
+	}
+	return target.SaveIndex()
 }
