@@ -3361,8 +3361,8 @@ func TestFetchChart_DependencyJobsDoNotShareChartOpts(t *testing.T) {
 
 // TestFetchChart_DerivedDependencyFields pins the shape of a derived job:
 // dependencies are walked further, images are not rediscovered per subchart,
-// no rewrite is inherited, and parent/depth are set for attribution and the
-// depth cap.
+// any rewrite namespace prefix is inherited while preserving the child's name,
+// and parent/depth are set for attribution and the depth cap.
 func TestFetchChart_DerivedDependencyFields(t *testing.T) {
 	ctx := newTestContext(t)
 	s := newTestStore(t)
@@ -3381,6 +3381,7 @@ func TestFetchChart_DerivedDependencyFields(t *testing.T) {
 		t.Fatalf("dependency jobs = %d, want 2", len(deps))
 	}
 
+	wantRewrites := []string{"myorg/child", "myorg/crds"}
 	for i, d := range deps {
 		if !d.opts.AddDependencies {
 			t.Errorf("deps[%d].opts.AddDependencies = false, want true", i)
@@ -3388,8 +3389,8 @@ func TestFetchChart_DerivedDependencyFields(t *testing.T) {
 		if d.opts.AddImages {
 			t.Errorf("deps[%d].opts.AddImages = true, want false: the parent's render already covered the whole tree", i)
 		}
-		if d.rewrite != "" {
-			t.Errorf("deps[%d].rewrite = %q, want empty", i, d.rewrite)
+		if d.rewrite != wantRewrites[i] {
+			t.Errorf("deps[%d].rewrite = %q, want %q", i, d.rewrite, wantRewrites[i])
 		}
 		if d.depth != parent.depth+1 {
 			t.Errorf("deps[%d].depth = %d, want %d", i, d.depth, parent.depth+1)
