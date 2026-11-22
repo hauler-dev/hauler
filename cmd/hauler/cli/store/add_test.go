@@ -3425,6 +3425,47 @@ func TestRunChartJobs_FileDependencyResolvesAfterParentLevel(t *testing.T) {
 	}
 }
 
+func TestDependencyChartRewrite(t *testing.T) {
+	tests := []struct {
+		name          string
+		parentRewrite string
+		depName       string
+		want          string
+	}{
+		{name: "empty parent rewrite", parentRewrite: "", depName: "common", want: ""},
+		{name: "registry host and port with namespace", parentRewrite: "harbor.truenas.serv.init6.host:8443/bitnami-charts/valkey", depName: "common", want: "bitnami-charts/common"},
+		{name: "nested namespace with parent tag", parentRewrite: "/myorg/sub/valkey:6.3.13", depName: "common", want: "myorg/sub/common"},
+		{name: "explicit library prefix preserved", parentRewrite: "library/valkey:1.0.0", depName: "common", want: "library/common"},
+		{name: "flat single-segment rewrite has no prefix", parentRewrite: "custom-valkey:1.0.0", depName: "common", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := dependencyChartRewrite(tc.parentRewrite, tc.depName); got != tc.want {
+				t.Errorf("dependencyChartRewrite(%q, %q) = %q, want %q", tc.parentRewrite, tc.depName, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunChartJobs_DependencyInheritsRewritePrefix(t *testing.T) {
+	ctx := newTestContext(t)
+	s := newTestStore(t)
+	rso := defaultRootOpts(s.Root)
+	ro := defaultCliOpts()
+
+	job := newFileDependencyChartJob()
+	job.rewrite = "harbor.example.com:8443/bitnami-charts/parent:1.0.0"
+
+	if err := runChartJobs(ctx, s, []chartJob{job}, 2, rso, ro, nil); err != nil {
+		t.Fatalf("runChartJobs: %v", err)
+	}
+
+	assertArtifactInStore(t, s, "bitnami-charts/parent:1.0.0")
+	assertArtifactInStore(t, s, "bitnami-charts/child:2.0.0")
+	assertArtifactInStore(t, s, "bitnami-charts/crds:0.0.1")
+}
+
 // TestRunChartJobs_RemovesTempRoot asserts the shared temp root does not
 // outlive the call: it holds every chart's expansion, so leaking one per
 // `store sync` invocation would accumulate on disk.

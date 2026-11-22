@@ -1790,10 +1790,11 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 			}
 
 			deps = append(deps, chartJob{
-				cfg:    depCfg,
-				opts:   depOpts,
-				parent: ref.Name(),
-				depth:  j.depth + 1,
+				cfg:     depCfg,
+				opts:    depOpts,
+				rewrite: dependencyChartRewrite(j.rewrite, dep.Name),
+				parent:  ref.Name(),
+				depth:   j.depth + 1,
 			})
 		}
 	}
@@ -1801,6 +1802,42 @@ func fetchChart(ctx context.Context, s *store.Layout, j chartJob, tempRoot strin
 	log.BaseFromContext(ctx).Infof("%s", formatAddedLine(ref.Name(), stats, time.Since(start)))
 
 	return imageJobs, deps, nil
+}
+
+// rewriteChartRepo parses a chart rewrite target into its stored repository
+// path, stripping any leading slash and go-containerregistry's implicit
+// "library/" prefix unless the rewrite asked for it explicitly.
+func rewriteChartRepo(newRef goname.Reference, rawRewrite string) string {
+	newRepo := newRef.Context().RepositoryStr()
+	rewriteRepo := rawRewrite
+	if i := strings.LastIndex(rewriteRepo, ":"); i != -1 {
+		rewriteRepo = rewriteRepo[:i]
+	}
+	if !strings.HasPrefix(rewriteRepo, "library/") {
+		newRepo = strings.TrimPrefix(newRepo, "library/")
+	}
+	return newRepo
+}
+
+// dependencyChartRewrite derives a subchart's rewrite target from its parent
+// chart's rewrite by replacing the final repository path segment with depName
+// (for example, "harbor:8443/bitnami-charts/valkey" -> "bitnami-charts/common").
+// Returns empty when parentRewrite has no namespace prefix to inherit.
+func dependencyChartRewrite(parentRewrite, depName string) string {
+	if parentRewrite == "" || depName == "" {
+		return ""
+	}
+	cleaned := strings.TrimPrefix(parentRewrite, "/")
+	newRef, err := reference.ParseReference(cleaned)
+	if err != nil {
+		return ""
+	}
+	parentRepo := rewriteChartRepo(newRef, cleaned)
+	slashIdx := strings.LastIndex(parentRepo, "/")
+	if slashIdx <= 0 {
+		return ""
+	}
+	return parentRepo[:slashIdx+1] + depName
 }
 
 // rewriteChartReference retags a stored chart's index entry from ref to
@@ -1831,14 +1868,7 @@ func rewriteChartReference(ctx context.Context, s *store.Layout, ref goname.Refe
 
 	// rename chart name in store
 	oldRepo := ref.Context().RepositoryStr()
-	newRepo := newRef.Context().RepositoryStr()
-	rewriteRepo := rawRewrite
-	if i := strings.LastIndex(rewriteRepo, ":"); i != -1 {
-		rewriteRepo = rewriteRepo[:i]
-	}
-	if !strings.HasPrefix(rewriteRepo, "library/") {
-		newRepo = strings.TrimPrefix(newRepo, "library/")
-	}
+	newRepo := rewriteChartRepo(newRef, rawRewrite)
 	newTag := newRef.Identifier()
 	if tag, ok := newRef.(goname.Tag); ok {
 		newTag = tag.TagStr()
