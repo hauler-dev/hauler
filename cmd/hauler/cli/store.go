@@ -58,7 +58,7 @@ func addStoreExtract(rso *flags.StoreRootOpts, ro *flags.CliRootOpts) *cobra.Com
 				return err
 			}
 
-			return store.ExtractCmd(ctx, o, s, args[0])
+			return store.ExtractCmd(ctx, o, s, args[0], ro)
 		},
 	}
 	o.AddFlags(cmd)

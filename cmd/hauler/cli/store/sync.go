@@ -167,7 +167,7 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 		}
 		// The manifest is output for the user, so it goes to workDir, not tempDir (removed when sync returns).
 		workDir := flags.ResolveWorkDir(ro)
-		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts, DestinationDir: workDir}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag))
+		err = ExtractCmd(ctx, &flags.ExtractOpts{StoreRootOpts: o.StoreRootOpts, DestinationDir: workDir}, s, fmt.Sprintf("hauler/%s-manifest.yaml:%s", parts[0], tag), nil)
 		if err != nil {
 			return err
 		}
@@ -177,6 +177,14 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 			return err
 		}
 		defer fi.Close()
+		audit.Write(ctx, ro, rso, audit.Entry{
+			StoreID:   s.StoreID,
+			Store:     s.Root,
+			Command:   "store sync",
+			Type:      "product",
+			Reference: productName,
+			Digest:    fileDigest(filepath.Join(workDir, fileName)),
+		}, map[string]any{"product-registry": o.ProductRegistry, "platform": o.Platform})
 		err = processContent(ctx, fi, o, s, rso, ro, targetStores, true)
 		if err != nil {
 			return err
@@ -227,6 +235,16 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 				return err
 			}
 			defer fi.Close()
+
+			audit.Write(ctx, ro, rso, audit.Entry{
+				StoreID:           s.StoreID,
+				Store:             s.Root,
+				Command:           "store sync",
+				Type:              "manifest",
+				Reference:         audit.SanitizeURL(fileName),
+				PortableReference: audit.ShortFileRef(fileName),
+				Digest:            fileDigest(haulPath),
+			}, map[string]any{"platform": o.Platform, "registry": o.Registry})
 
 			err = processContent(ctx, fi, o, s, rso, ro, targetStores, remote)
 			if err != nil {
@@ -279,6 +297,16 @@ func SyncCmd(ctx context.Context, o *flags.SyncOpts, s *store.Layout, rso *flags
 				return err
 			}
 			defer fi.Close()
+
+			audit.Write(ctx, ro, rso, audit.Entry{
+				StoreID:           s.StoreID,
+				Store:             s.Root,
+				Command:           "store sync",
+				Type:              "image-txt",
+				Reference:         audit.SanitizeURL(imageTxt),
+				PortableReference: audit.ShortFileRef(imageTxt),
+				Digest:            fileDigest(haulPath),
+			}, map[string]any{"platform": o.Platform, "registry": o.Registry})
 
 			err = processImageTxt(ctx, fi, o, s, rso, ro)
 			if err != nil {

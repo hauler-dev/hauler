@@ -143,36 +143,21 @@ func RemoveCmd(ctx context.Context, o *flags.RemoveOpts, s *store.Layout, ref st
 			return fmt.Errorf("failed to remove artifact [%s]: %w", formatReference(m.reference, m.desc.Annotations[consts.KindAnnotationName]), err)
 		}
 
-		if auditLevel(ro) != "none" {
-			cleanRef := m.desc.Annotations[consts.ContainerdImageNameKey]
-			if cleanRef == "" {
-				cleanRef = m.desc.Annotations[ocispec.AnnotationRefName]
-			}
-			e := audit.Entry{
-				StoreID:   s.StoreID,
-				Store:     s.Root,
-				Type:      artifactType(ctx, s, m.desc),
-				Command:   "store remove",
-				Args:      []string{ref},
-				Reference: cleanRef,
-				Digest:    m.desc.Digest.String(),
-			}
-			if auditLevel(ro) == "verbose" {
-				sys := audit.BuildSystem()
-				g := audit.BuildGlobal(ro, rso)
-				e.System = &sys
-				e.Global = &g
-				e.Flags = map[string]any{
-					"force": o.Force,
-				}
-			}
-			if err := audit.Append(ro.HaulerDir, e); err != nil {
-				l.Warnf("failed to write audit entry: %v", err)
-			}
-			l.Debugf("generated audit id of [%s]", audit.ID())
-		} else {
-			l.Debugf("generated audit id of [none]")
+		cleanRef := m.desc.Annotations[consts.ContainerdImageNameKey]
+		if cleanRef == "" {
+			cleanRef = m.desc.Annotations[ocispec.AnnotationRefName]
 		}
+		audit.Write(ctx, ro, rso, audit.Entry{
+			StoreID:   s.StoreID,
+			Store:     s.Root,
+			Type:      artifactType(ctx, s, m.desc),
+			Command:   "store remove",
+			Args:      []string{ref},
+			Reference: cleanRef,
+			Digest:    m.desc.Digest.String(),
+		}, map[string]any{
+			"force": o.Force,
+		})
 
 		l.Infof("successfully removed [%s] of type [%s] with digest [%s]", formatReference(m.reference, m.desc.Annotations[consts.KindAnnotationName]), m.desc.MediaType, m.desc.Digest.String())
 	}

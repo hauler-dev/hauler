@@ -558,6 +558,32 @@ jobs:
           # verify remaining image not missing layers
           hauler store extract hauler/install.sh:latest
 
+      - name: Verify - hauler audit log
+        run: |
+          # verify each command that changes or moves content writes an audit entry... uses its own stores and hauler dir
+          export HAULER_DIR=$PWD/audit-hauler-dir
+          printf 'apiVersion: content.hauler.cattle.io/v1\nkind: Images\nmetadata:\n  name: audit\nspec:\n  images:\n    - name: ghcr.io/hauler-dev/library/busybox:stable\n      platform: linux/amd64\n' > audit-manifest.yaml
+          echo "audit" > audit-file.txt
+          hauler store sync --store audit-connected --filename audit-manifest.yaml
+          hauler store add file --store audit-connected audit-file.txt
+          hauler store save --store audit-connected --filename audit-haul.tar.zst
+          # verify the save entry ships in the haul with its artifacts
+          tar -xOf audit-haul.tar.zst audit.log | tail -1 | jq -e '.command == "store save" and (.artifacts | length) == 2'
+          SAVE_ID=$(tar -xOf audit-haul.tar.zst audit.log | tail -1 | jq -r '."audit-id"')
+          hauler store load --store audit-disconnected --filename audit-haul.tar.zst
+          # verify the load records the audit id of the save it received
+          jq -e --arg id "$SAVE_ID" 'select(.command == "store load") | ."haul-id" == $id' audit-disconnected/audit.log
+          hauler store copy --store audit-disconnected dir://./audit-copy-output
+          hauler store extract --store audit-disconnected hauler/audit-file.txt:latest --output audit-extract-output
+          # verify every command is in the disconnected store's log, including the entries carried in the haul
+          for c in "store sync" "store add image" "store add file" "store save" "store load" "store copy" "store extract"; do
+            jq -e --arg c "$c" 'select(.command == $c)' audit-disconnected/audit.log > /dev/null || { echo "missing audit entry [$c]"; exit 1; }
+          done
+          jq -e 'select(.command == "store sync") | .type == "manifest" and .reference == "audit-manifest.yaml"' audit-disconnected/audit.log
+          # verify the global log keeps the full copy target
+          jq -e --arg dir "dir://./audit-copy-output" 'select(.command == "store copy") | .reference == $dir' audit-hauler-dir/audit.log
+          rm -rf audit-*
+
       - name: Create Hauler Report
         run: |
           hauler version >> hauler-report.txt

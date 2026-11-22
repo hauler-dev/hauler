@@ -10,6 +10,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/internal/mapper"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/reference"
@@ -83,7 +84,7 @@ func isContainerImageManifest(m ocispec.Manifest) bool {
 	return false
 }
 
-func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref string) error {
+func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref string, ro *flags.CliRootOpts) error {
 	l := log.FromContext(ctx)
 
 	r, err := reference.Parse(ref)
@@ -95,6 +96,7 @@ func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref 
 	repo := r.Context().RepositoryStr() + ":" + r.Identifier()
 
 	found := false
+	var extracted []string
 	if err := s.Walk(func(reference string, desc ocispec.Descriptor) error {
 		if !strings.Contains(reference, repo) {
 			return nil
@@ -164,6 +166,7 @@ func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref 
 		}
 
 		l.Infof("extracted [%s] from store with digest [%s]", pushedDesc.MediaType, pushedDesc.Digest.String())
+		extracted = append(extracted, desc.Digest.String())
 
 		return nil
 	}); err != nil {
@@ -173,6 +176,14 @@ func ExtractCmd(ctx context.Context, o *flags.ExtractOpts, s *store.Layout, ref 
 	if !found {
 		return fmt.Errorf("reference [%s] not found in store (hint: use `hauler store info` to list store contents)", ref)
 	}
+
+	audit.Write(ctx, ro, o.StoreRootOpts, audit.Entry{
+		StoreID:   s.StoreID,
+		Store:     s.Root,
+		Command:   "store extract",
+		Reference: ref,
+		Artifacts: sortedDigests(extracted),
+	}, map[string]any{"output": o.DestinationDir})
 
 	return nil
 }

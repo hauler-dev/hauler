@@ -65,23 +65,13 @@ func LoadCmd(ctx context.Context, o *flags.LoadOpts, s *store.Layout, rso *flags
 			return err
 		}
 
-		if auditLevel(ro) != "none" {
-			e := audit.Entry{
-				StoreID:   s.StoreID,
-				Store:     s.Root,
-				Command:   "store load",
-				Reference: audit.SanitizeURL(resolved),
-			}
-			if auditLevel(ro) == "verbose" {
-				sys := audit.BuildSystem()
-				g := audit.BuildGlobal(ro, rso)
-				e.System = &sys
-				e.Global = &g
-			}
-			if err := audit.Append(ro.HaulerDir, e); err != nil {
-				l.Warnf("failed to write audit entry: %v", err)
-			}
-		}
+		audit.Write(ctx, ro, rso, audit.Entry{
+			StoreID:   s.StoreID,
+			Store:     s.Root,
+			Command:   "store load",
+			Reference: audit.SanitizeURL(resolved),
+			HaulID:    audit.HaulID(tempDir),
+		}, nil)
 
 		clearDir(tempDir)
 	}

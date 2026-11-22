@@ -26,6 +26,7 @@ import (
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/internal/server"
 	gitartifact "hauler.dev/go/hauler/v2/pkg/artifacts/git"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/log"
 	"hauler.dev/go/hauler/v2/pkg/reference"
@@ -68,6 +69,14 @@ func storeEmpty(s *store.Layout) (bool, error) {
 func dirEmpty(dir string) bool {
 	entries, err := os.ReadDir(dir)
 	return errors.Is(err, fs.ErrNotExist) || (err == nil && len(entries) == 0)
+}
+
+// serverAddr returns the listen address of a fileserver or git server
+func serverAddr(srv server.Server) string {
+	if hs, ok := srv.(*http.Server); ok {
+		return hs.Addr
+	}
+	return ""
 }
 
 func loadConfig(filename string) (*configuration.Configuration, error) {
@@ -137,7 +146,7 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 	}
 
 	opts := &flags.CopyOpts{StoreRootOpts: rso, PlainHTTP: true}
-	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), ro); err != nil {
+	if err := CopyCmd(ctx, opts, s, "registry://"+tr.Registry(), withoutAudit(ro)); err != nil {
 		return err
 	}
 
@@ -191,6 +200,13 @@ func ServeRegistryCmd(ctx context.Context, o *flags.ServeRegistryOpts, s *store.
 	}
 	server.ConfigureDebugServer(cfg)
 
+	audit.Write(ctx, ro, rso, audit.Entry{
+		StoreID:   s.StoreID,
+		Store:     s.Root,
+		Command:   "store serve registry",
+		Reference: cfg.HTTP.Addr,
+	}, map[string]any{"config": o.ConfigFile, "basic-auth": o.BasicAuth != "", "tls": cfg.HTTP.TLS.Certificate != ""})
+
 	if err = r.ListenAndServe(); err != nil {
 		return err
 	}
@@ -206,7 +222,7 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	}
 
 	opts := &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}}
-	if err := CopyCmd(ctx, opts, s, "directory://"+o.RootDir, ro); err != nil {
+	if err := CopyCmd(ctx, opts, s, "directory://"+o.RootDir, withoutAudit(ro)); err != nil {
 		return err
 	}
 
@@ -223,6 +239,13 @@ func ServeFilesCmd(ctx context.Context, o *flags.ServeFilesOpts, s *store.Layout
 	if o.BasicAuth != "" {
 		l.Infof("using basic auth via htpasswd file [%s] (realm [%s])", o.BasicAuth, o.BasicAuthRealm)
 	}
+
+	audit.Write(ctx, ro, o.StoreRootOpts, audit.Entry{
+		StoreID:   s.StoreID,
+		Store:     s.Root,
+		Command:   "store serve fileserver",
+		Reference: serverAddr(f),
+	}, map[string]any{"basic-auth": o.BasicAuth != "", "tls": o.TLSCert != "" && o.TLSKey != ""})
 
 	if o.TLSCert != "" && o.TLSKey != "" {
 		l.Infof("starting file server with tls on port [%d]", o.Port)
@@ -266,6 +289,13 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 		l.Infof("using basic auth via htpasswd file [%s] (realm [%s])", o.BasicAuth, o.BasicAuthRealm)
 	}
 
+	audit.Write(ctx, ro, o.StoreRootOpts, audit.Entry{
+		StoreID:   s.StoreID,
+		Store:     s.Root,
+		Command:   "store serve git",
+		Reference: serverAddr(g),
+	}, map[string]any{"basic-auth": o.BasicAuth != "", "tls": o.TLSCert != "" && o.TLSKey != ""})
+
 	if o.TLSCert != "" && o.TLSKey != "" {
 		l.Infof("starting git server with tls on port [%d]", o.Port)
 		if err := g.ListenAndServeTLS(o.TLSCert, o.TLSKey); err != nil {
@@ -283,7 +313,7 @@ func ServeGitCmd(ctx context.Context, o *flags.ServeGitOpts, s *store.Layout, ro
 
 // extractGitRepos extracts every git artifact into rootDir through the same directory copy fileserver uses, and returns the name -> directory map NewGit needs to serve them.
 func extractGitRepos(ctx context.Context, s *store.Layout, rootDir string, ro *flags.CliRootOpts) (map[string]string, error) {
-	if err := CopyCmd(ctx, &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}, TypeFilter: "git"}, s, "directory://"+rootDir, ro); err != nil {
+	if err := CopyCmd(ctx, &flags.CopyOpts{StoreRootOpts: &flags.StoreRootOpts{}, TypeFilter: "git"}, s, "directory://"+rootDir, withoutAudit(ro)); err != nil {
 		return nil, err
 	}
 

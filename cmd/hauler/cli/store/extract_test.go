@@ -47,7 +47,7 @@ func TestExtractCmd_File(t *testing.T) {
 		DestinationDir: destDir,
 	}
 
-	if err := ExtractCmd(ctx, eo, s, ref); err != nil {
+	if err := ExtractCmd(ctx, eo, s, ref, nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestExtractCmd_Chart(t *testing.T) {
 		DestinationDir: destDir,
 	}
 
-	if err := ExtractCmd(ctx, eo, s, ref); err != nil {
+	if err := ExtractCmd(ctx, eo, s, ref, nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestExtractCmd_NotFound(t *testing.T) {
 		DestinationDir: t.TempDir(),
 	}
 
-	err := ExtractCmd(ctx, eo, s, "hauler/nonexistent:v99")
+	err := ExtractCmd(ctx, eo, s, "hauler/nonexistent:v99", nil)
 	if err == nil {
 		t.Fatal("expected error for nonexistent ref, got nil")
 	}
@@ -178,7 +178,7 @@ func TestExtractCmd_OciArtifactKindImage(t *testing.T) {
 		StoreRootOpts:  defaultRootOpts(s.Root),
 		DestinationDir: destDir,
 	}
-	if err := ExtractCmd(ctx, eo, s, "oci-artifacts/myfile:v1"); err != nil {
+	if err := ExtractCmd(ctx, eo, s, "oci-artifacts/myfile:v1", nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -258,7 +258,7 @@ func TestExtractCmd_OciImageIndex_NoBinFiles(t *testing.T) {
 		StoreRootOpts:  defaultRootOpts(s.Root),
 		DestinationDir: destDir,
 	}
-	if err := ExtractCmd(ctx, eo, s, "binaries/mybinary:v1"); err != nil {
+	if err := ExtractCmd(ctx, eo, s, "binaries/mybinary:v1", nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -368,7 +368,7 @@ func TestExtractCmd_NestedImageIndex_NoBinFiles(t *testing.T) {
 		StoreRootOpts:  defaultRootOpts(s.Root),
 		DestinationDir: destDir,
 	}
-	if err := ExtractCmd(ctx, eo, s, "binaries/nested:v1"); err != nil {
+	if err := ExtractCmd(ctx, eo, s, "binaries/nested:v1", nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -436,7 +436,7 @@ func TestExtractCmd_ContainerImage_Skipped(t *testing.T) {
 		StoreRootOpts:  defaultRootOpts(s.Root),
 		DestinationDir: destDir,
 	}
-	if err := ExtractCmd(ctx, eo, s, "myapp/myimage:v1"); err != nil {
+	if err := ExtractCmd(ctx, eo, s, "myapp/myimage:v1", nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -506,7 +506,7 @@ func TestExtractCmd_ContainerImageIndex_Skipped(t *testing.T) {
 		StoreRootOpts:  defaultRootOpts(s.Root),
 		DestinationDir: destDir,
 	}
-	if err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1"); err != nil {
+	if err := ExtractCmd(ctx, eo, s, "myapp/multiarch:v1", nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -544,7 +544,7 @@ func TestExtractCmd_SubstringMatch(t *testing.T) {
 	}
 
 	// No explicit tag — Parse adds ":latest" as default, which still matches.
-	if err := ExtractCmd(ctx, eo, s, "hauler/extract-sub.txt"); err != nil {
+	if err := ExtractCmd(ctx, eo, s, "hauler/extract-sub.txt", nil); err != nil {
 		t.Fatalf("ExtractCmd with no-tag ref: %v", err)
 	}
 
@@ -608,7 +608,7 @@ func TestExtractCmd_CosignArtifactsProduceNoContainerImageWarning(t *testing.T) 
 		DestinationDir: destDir,
 	}
 
-	if err := ExtractCmd(ctx, eo, s, baseRef); err != nil {
+	if err := ExtractCmd(ctx, eo, s, baseRef, nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 
@@ -658,7 +658,7 @@ func TestExtractCmd_SuffixedSigKind_Skipped(t *testing.T) {
 		DestinationDir: destDir,
 	}
 
-	if err := ExtractCmd(ctx, eo, s, baseRef); err != nil {
+	if err := ExtractCmd(ctx, eo, s, baseRef, nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 

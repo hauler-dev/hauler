@@ -227,7 +227,7 @@ func TestLifecycle_Chart_AddSaveLoadExtract(t *testing.T) {
 		StoreRootOpts:  defaultRootOpts(storeB.Root),
 		DestinationDir: destDir,
 	}
-	if err := ExtractCmd(ctx, extractOpts, storeB, "hauler/rancher-cluster-templates:0.5.2"); err != nil {
+	if err := ExtractCmd(ctx, extractOpts, storeB, "hauler/rancher-cluster-templates:0.5.2", nil); err != nil {
 		t.Fatalf("ExtractCmd: %v", err)
 	}
 

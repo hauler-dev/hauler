@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 
 	"hauler.dev/go/hauler/v2/internal/flags"
 	"hauler.dev/go/hauler/v2/internal/mapper"
+	"hauler.dev/go/hauler/v2/pkg/audit"
 	"hauler.dev/go/hauler/v2/pkg/consts"
 	"hauler.dev/go/hauler/v2/pkg/content"
 	"hauler.dev/go/hauler/v2/pkg/log"
@@ -44,6 +46,9 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 	}
 
 	ignoreErrors := flags.ShouldIgnoreErrors(ro)
+
+	// top manifest digests that reached the target
+	var copied []string
 
 	components := strings.SplitN(targetRef, "://", 2)
 	switch components[0] {
@@ -137,6 +142,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 					}
 
 					l.Debugf("extracted child manifest from index [%s]", reference)
+					copied = append(copied, desc.Digest.String())
 				}
 
 			case ocispec.MediaTypeImageManifest, consts.DockerManifestSchema2:
@@ -185,6 +191,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				rc.Close()
 
 				l.Debugf("extracted [%s] to directory", reference)
+				copied = append(copied, desc.Digest.String())
 
 			default:
 				l.Debugf("skipping unsupported media type [%s] for [%s]", desc.MediaType, reference)
@@ -311,6 +318,7 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 				return nil
 			}
 			l.Infof("%s: digest: %s size: %d", toRef, pushed.Digest, pushed.Size)
+			copied = append(copied, desc.Digest.String())
 			if strings.HasPrefix(kind, consts.KindAnnotationReferrers) {
 				if err := linkReferrer(ctx, s, desc, toRef, o.PlainHTTP, registryClient); err != nil {
 					if !ignoreErrors {
@@ -332,6 +340,20 @@ func CopyCmd(ctx context.Context, o *flags.CopyOpts, s *store.Layout, targetRef 
 	default:
 		return fmt.Errorf("detecting protocol from [%s]", targetRef)
 	}
+
+	// a directory target is a local path... the store log keeps only its base name
+	portableTarget := targetRef
+	if components[0] == "directory" || components[0] == "dir" {
+		portableTarget = components[0] + "://" + filepath.Base(components[1])
+	}
+	audit.Write(ctx, ro, o.StoreRootOpts, audit.Entry{
+		StoreID:           s.StoreID,
+		Store:             s.Root,
+		Command:           "store copy",
+		Reference:         targetRef,
+		PortableReference: portableTarget,
+		Artifacts:         sortedDigests(copied),
+	}, map[string]any{"type": o.TypeFilter, "only": o.Only, "plain-http": o.PlainHTTP, "insecure": o.Insecure, "ca-file": o.CaFile})
 
 	l.Infof("copied artifacts to [%s]", components[1])
 	return nil

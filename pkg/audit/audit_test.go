@@ -383,3 +383,117 @@ func TestSanitizeError(t *testing.T) {
 		t.Errorf("expected a sanitized error that still unwraps to context.Canceled, got %v", wrapped)
 	}
 }
+
+func TestStageStoreLog(t *testing.T) {
+	storeDir := t.TempDir()
+	outDir := t.TempDir()
+	existing := `{"audit-id":"earlier","command":"store add chart"}` + "\n"
+	if err := os.WriteFile(filepath.Join(storeDir, LogFileName), []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := Entry{Command: "store save", Reference: "/abs/path/haul.tar.zst", PortableReference: "haul.tar.zst", Artifacts: []string{"sha256:abc"}, Store: storeDir, Timestamp: "2000-01-01T00:00:00Z"}
+	if err := StageStoreLog(storeDir, outDir, e); err != nil {
+		t.Fatalf("StageStoreLog: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, LogFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != 2 || lines[0]+"\n" != existing {
+		t.Fatalf("staged log = %q, want the store log plus one line", data)
+	}
+	var staged portableEntry
+	if err := json.Unmarshal([]byte(lines[1]), &staged); err != nil {
+		t.Fatal(err)
+	}
+	if staged.Reference != "haul.tar.zst" || staged.Timestamp != "2000-01-01T00:00:00Z" || len(staged.Artifacts) != 1 {
+		t.Errorf("staged entry = %+v, want the portable reference, the stamped timestamp, and the artifacts", staged)
+	}
+
+	// the store's own log is untouched until the save succeeds
+	if got, _ := os.ReadFile(filepath.Join(storeDir, LogFileName)); string(got) != existing {
+		t.Errorf("store log changed by staging: %q", got)
+	}
+
+	// a later Append keeps the staged timestamp so both logs match
+	if err := Append(t.TempDir(), e); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	storeData, _ := os.ReadFile(filepath.Join(storeDir, LogFileName))
+	storeLines := strings.Split(strings.TrimRight(string(storeData), "\n"), "\n")
+	if storeLines[len(storeLines)-1] != lines[1] {
+		t.Errorf("store line %q differs from staged line %q", storeLines[len(storeLines)-1], lines[1])
+	}
+}
+
+func TestHaulID(t *testing.T) {
+	index := `{"manifests":[{"digest":"sha256:abc"},{"digest":"sha256:def"},{"digest":"sha256:abc"}]}`
+	cases := map[string]struct {
+		log  string
+		want string
+	}{
+		"staged save entry last":         {log: `{"audit-id":"a"}` + "\n" + `{"audit-id":"save-1","command":"store save","artifacts":["sha256:abc","sha256:def"]}` + "\n", want: "save-1"},
+		"save entry without artifacts":   {log: `{"audit-id":"old","command":"store save"}` + "\n", want: ""},
+		"earlier save from another haul": {log: `{"audit-id":"save-0","command":"store save","artifacts":["sha256:abc"]}` + "\n", want: ""},
+		"save entry not last":            {log: `{"audit-id":"save-1","command":"store save","artifacts":["sha256:abc","sha256:def"]}` + "\n" + `{"audit-id":"b","command":"store add image"}` + "\n", want: ""},
+		"malformed last line":            {log: "not json\n", want: ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, LogFileName), []byte(tc.log), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "index.json"), []byte(index), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got := HaulID(dir); got != tc.want {
+				t.Errorf("HaulID = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	if got := HaulID(t.TempDir()); got != "" {
+		t.Errorf("HaulID with no log = %q, want empty", got)
+	}
+}
+
+func TestWrite(t *testing.T) {
+	cases := map[string]struct {
+		level     string
+		wantLine  bool
+		wantFlags bool
+	}{
+		"none":     {level: "none"},
+		"standard": {level: "standard", wantLine: true},
+		"verbose":  {level: "verbose", wantLine: true, wantFlags: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			ro := &flags.CliRootOpts{AuditLevel: tc.level, HaulerDir: t.TempDir()}
+			Write(context.Background(), ro, nil, Entry{Command: "store copy"}, map[string]any{"only": "busybox"})
+
+			data, err := os.ReadFile(filepath.Join(ro.HaulerDir, LogFileName))
+			if !tc.wantLine {
+				if err == nil {
+					t.Errorf("expected no audit entry, got %q", data)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("reading audit.log: %v", err)
+			}
+			var got Entry
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Command != "store copy" || (got.Flags != nil) != tc.wantFlags || (got.System != nil) != tc.wantFlags {
+				t.Errorf("entry = %+v, want flags and system details only at verbose", got)
+			}
+		})
+	}
+	// a nil ro means auditing is off
+	Write(context.Background(), nil, nil, Entry{Command: "store copy"}, nil)
+}
